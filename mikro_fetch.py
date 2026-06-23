@@ -22,6 +22,7 @@ Tasarım — iki katman bilinçli olarak ayrıldı:
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 import pandas as pd
@@ -47,70 +48,78 @@ KAYNAK_ETIKET = "Mikro API"
 # ---------------------------------------------------------------------------
 
 SORGULAR: dict[str, str] = {
-    # Muavin (genel muhasebe hareketleri). GL detay tablosu sürüme göre değişebilir.
+    # Muavin (genel muhasebe / GL satırları) — MUHASEBE_FISLERI (fis_*), canlı doğrulandı.
+    # fis_meblag0 = borç, fis_meblag1 = alacak (Mikro standart muavin yapısı).
     "muavin": """
         SELECT
-            mh.mha_tarihi      AS tarih,
-            mh.mha_hesapno     AS hesap_kodu,
-            hp.muh_isim        AS hesap_adi,
-            CASE WHEN mh.mha_RB = 0 THEN mh.mha_meblag ELSE 0 END AS borc,
-            CASE WHEN mh.mha_RB = 1 THEN mh.mha_meblag ELSE 0 END AS alacak,
-            mh.mha_aciklama    AS aciklama,
-            mh.mha_evrakno_sira AS evrak_no
-        FROM MUHASEBE_HAREKETLERI mh
-        LEFT JOIN MUHASEBE_HESAP_PLANLARI hp ON hp.muh_hesap_kodu = mh.mha_hesapno
-        WHERE mh.mha_tarihi >= '{ilk}' AND mh.mha_tarihi <= '{son}'
+            fis_tarih      AS tarih,
+            fis_hesap_kod  AS hesap_kodu,
+            fis_meblag0    AS borc,
+            fis_meblag1    AS alacak,
+            fis_aciklama1  AS aciklama,
+            fis_sira_no    AS evrak_no
+        FROM MUHASEBE_FISLERI WITH (NOLOCK)
+        WHERE fis_iptal = 0
+          AND fis_tarih >= '{ilk}' AND fis_tarih < '{son1}'
     """,
-    # Alış faturaları — STOK_HAREKETLERI satır bazlı (sth_tip=0 giriş/alış).
+    # Alış faturası — STOK_HAREKETLERI sth_tip=0, sth_evraktip=3 (canlı doğrulandı).
     "alis_fatura": """
         SELECT
             (sth_evrakno_seri + '-' + CAST(sth_evrakno_sira AS varchar(20))) AS fatura_no,
             sth_belge_no   AS belge_no,
             sth_tarih      AS tarih,
-            sth_vade_tarihi AS vade,
             sth_cari_kodu  AS cari_kodu,
             sth_stok_kod   AS stok_kodu,
             sth_miktar     AS miktar,
             sth_tutar      AS net_tutar
-        FROM STOK_HAREKETLERI
-        WHERE sth_tip = 0 AND sth_evraktip IN (3, 4)
-          AND sth_tarih >= '{ilk}' AND sth_tarih <= '{son}'
+        FROM STOK_HAREKETLERI WITH (NOLOCK)
+        WHERE sth_tip = 0 AND sth_evraktip = 3
+          AND sth_tarih >= '{ilk}' AND sth_tarih < '{son1}'
     """,
-    # Satış faturaları — STOK_HAREKETLERI satır bazlı (sth_tip=1 çıkış/satış).
+    # Satış faturası — STOK_HAREKETLERI sth_tip=1, sth_evraktip=4 (canlı doğrulandı).
     "satis_fatura": """
         SELECT
             (sth_evrakno_seri + '-' + CAST(sth_evrakno_sira AS varchar(20))) AS fatura_no,
             sth_belge_no   AS belge_no,
             sth_tarih      AS tarih,
-            sth_vade_tarihi AS vade,
             sth_cari_kodu  AS cari_kodu,
             sth_stok_kod   AS stok_kodu,
             sth_miktar     AS miktar,
             sth_tutar      AS net_tutar
-        FROM STOK_HAREKETLERI
-        WHERE sth_tip = 1 AND sth_evraktip IN (3, 4)
-          AND sth_tarih >= '{ilk}' AND sth_tarih <= '{son}'
+        FROM STOK_HAREKETLERI WITH (NOLOCK)
+        WHERE sth_tip = 1 AND sth_evraktip = 4
+          AND sth_tarih >= '{ilk}' AND sth_tarih < '{son1}'
     """,
-    # Banka hareketleri — 102 (banka) hesaplarının GL hareketleri + karşı hesap.
+    # Banka — CARI_HESAP_HAREKETLERI'nin BANKA tarafı (cha_kod = ban_kod). cha_tip 0=giriş,1=çıkış.
+    # Karşı taraf (cari): aynı evrak no'lu, banka OLMAYAN diğer satırın cha_kod'u (ss/banka-bildirim.ts).
     "banka": """
         SELECT
-            mh.mha_tarihi   AS tarih,
-            mh.mha_aciklama AS evrak_tipi,
-            CASE WHEN mh.mha_RB = 0 THEN mh.mha_meblag ELSE 0 END AS borc,
-            CASE WHEN mh.mha_RB = 1 THEN mh.mha_meblag ELSE 0 END AS alacak,
-            mh.mha_karsi_hesapno AS cari_kodu,
-            kp.muh_isim     AS karsi_hesap_ismi
-        FROM MUHASEBE_HAREKETLERI mh
-        LEFT JOIN MUHASEBE_HESAP_PLANLARI kp ON kp.muh_hesap_kodu = mh.mha_karsi_hesapno
-        WHERE mh.mha_hesapno LIKE '102%'
-          AND mh.mha_tarihi >= '{ilk}' AND mh.mha_tarihi <= '{son}'
+            CHA.cha_tarihi   AS tarih,
+            B.ban_ismi       AS banka_adi,
+            CHA.cha_aciklama AS aciklama,
+            CASE WHEN CHA.cha_tip = 0 THEN CHA.cha_meblag * ISNULL(CHA.cha_d_kur, 1) ELSE 0 END AS giris,
+            CASE WHEN CHA.cha_tip = 1 THEN CHA.cha_meblag * ISNULL(CHA.cha_d_kur, 1) ELSE 0 END AS cikis,
+            KARSI.cari_kod   AS cari_kodu
+        FROM CARI_HESAP_HAREKETLERI AS CHA WITH (NOLOCK)
+        INNER JOIN BANKALAR AS B WITH (NOLOCK) ON B.ban_kod = CHA.cha_kod
+        OUTER APPLY (
+            SELECT TOP 1 K.cha_kod AS cari_kod
+            FROM CARI_HESAP_HAREKETLERI AS K WITH (NOLOCK)
+            WHERE K.cha_evrakno_seri = CHA.cha_evrakno_seri
+              AND K.cha_evrakno_sira = CHA.cha_evrakno_sira
+              AND K.cha_Guid <> CHA.cha_Guid AND K.cha_iptal = 0
+              AND NOT EXISTS (SELECT 1 FROM BANKALAR BB WHERE BB.ban_kod = K.cha_kod)
+        ) AS KARSI
+        WHERE CHA.cha_iptal = 0
+          AND CHA.cha_tarihi >= '{ilk}' AND CHA.cha_tarihi < '{son1}'
     """,
 }
 
 
 def _sql_for(kaynak: str, analiz_ayi: str) -> str:
     bas, bit = analiz_ayi_araligi(analiz_ayi)
-    return SORGULAR[kaynak].format(ilk=bas.isoformat(), son=bit.isoformat())
+    son1 = bit + timedelta(days=1)  # ay sonunu dahil etmek için: < ertesi-gün (datetime saatleri kaçmasın)
+    return SORGULAR[kaynak].format(ilk=bas.isoformat(), son1=son1.isoformat())
 
 
 def _empty(columns: list[str]) -> pd.DataFrame:
@@ -207,10 +216,10 @@ def rows_to_banka_df(rows: list[dict[str, Any]], banka_adi: str = KAYNAK_ETIKET)
         cari = _to_str(get_row_value(r, "cari_kodu"))
         evrak = _to_str(get_row_value(r, "evrak_tipi"))
         isim = _to_str(get_row_value(r, "karsi_hesap_ismi"))
-        aciklama = " — ".join(p for p in (evrak, isim) if p)
+        aciklama = _to_str(get_row_value(r, "aciklama")) or " — ".join(p for p in (evrak, isim) if p)
         prefix = karsi_prefix(cari)
         records.append({
-            "tarih": get_row_value(r, "tarih", "mha_tarihi"),
+            "tarih": get_row_value(r, "tarih", "mha_tarihi", "cha_tarihi"),
             "evrak_tipi": evrak,
             "aciklama": aciklama,
             "giris": giris,
@@ -218,7 +227,7 @@ def rows_to_banka_df(rows: list[dict[str, Any]], banka_adi: str = KAYNAK_ETIKET)
             "bakiye": _net_bakiye(get_row_value(r, "borc_bakiye"), get_row_value(r, "alacak_bakiye")),
             "cari_kodu": cari,
             "karsi_hesap_prefix": prefix,
-            "banka_adi": banka_adi,
+            "banka_adi": _to_str(get_row_value(r, "banka_adi")) or banka_adi,
             "ic_transfer": prefix == "102",
         })
     if not records:

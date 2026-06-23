@@ -180,7 +180,7 @@ class TestContractAdapter(unittest.TestCase):
     def test_fetch_all_feeds_analyzer_end_to_end(self) -> None:
         """fetch_all çıktısı analizör tarafından sorunsuz işlenmeli (kontrat ucu uca)."""
         payloads = {
-            "MUHASEBE_HAREKETLERI mh\n        LEFT": [  # muavin
+            "MUHASEBE_FISLERI": [  # muavin (GL)
                 {"tarih": "2026-03-01", "hesap_kodu": "770.01", "hesap_adi": "Gider",
                  "borc": 8000, "alacak": 0, "aciklama": "Kira", "evrak_no": "1"},
             ],
@@ -192,9 +192,9 @@ class TestContractAdapter(unittest.TestCase):
                 {"tarih": "2026-03-12", "cari_kodu": "120.001", "stok_kodu": "A.001",
                  "miktar": 10, "net_tutar": 1600.0, "fatura_no": "SF-1"},
             ],
-            "LIKE '102%'": [  # banka
-                {"tarih": "2026-03-12", "evrak_tipi": "Tahsilat", "borc": 1600, "alacak": 0,
-                 "cari_kodu": "120.001", "karsi_hesap_ismi": "Müşteri"},
+            "BANKALAR": [  # banka (CARI_HESAP_HAREKETLERI ⨝ BANKALAR)
+                {"tarih": "2026-03-12", "banka_adi": "X Bank", "aciklama": "Tahsilat",
+                 "giris": 1600, "cikis": 0, "cari_kodu": "120.001"},
             ],
         }
 

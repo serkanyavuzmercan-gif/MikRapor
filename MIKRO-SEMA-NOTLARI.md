@@ -60,12 +60,28 @@ sayımı önler (yalnız banka tarafı). Kaynak: `ss/lib/banka-bildirim.ts` (can
 - `BANKALAR.ban_ismi` → banka adı.
 - `cha_iptal = 0` filtresi şart (iptal edilenleri dışla).
 
-## Muavin / GL (operasyonel gider 7xx) — `MUHASEBE_FISLERI` + `MUHASEBE_FIS_DETAYLARI`
+## Muavin / GL (operasyonel gider 7xx) — `MUHASEBE_FISLERI` (fis_*)
 
-Genel muhasebe **fiş başlığı** `MUHASEBE_FISLERI`, **satır detayları** `MUHASEBE_FIS_DETAYLARI`.
-(Tahmini `MUHASEBE_HAREKETLERI` tablosu **bu Mikro'da yok**.) Kolon adları `diag_mikro.py`
-ikinci tur ile teyit ediliyor; teyit sonrası buraya hesap kodu / borç / alacak / tarih kolonları
-yazılacak. MikRapor muavin'i 7xx (730/740/750/760/770) gider hesaplarını toplar.
+**Asıl GL/muavin satır tablosu `MUHASEBE_FISLERI`'dir** (her satır = bir hesaba borç/alacak
+kaydı). Tahmini `MUHASEBE_HAREKETLERI` tablosu **bu Mikro'da YOK**. Canlı doğrulanmış kolonlar:
+
+- `fis_tarih` → kayıt tarihi
+- `fis_hesap_kod` → muhasebe hesap kodu (ör. `770.01`, `102.001`, `320.01.0018`)
+- **`fis_meblag0` → BORÇ**, **`fis_meblag1` → ALACAK** (Mikro standart muavin yapısı;
+  `fis_meblag2..6` döviz/alt-döviz tutarlarıdır). ⚠️ Bu borç/alacak eşlemesi standart konvansiyon
+  kabul edildi — ilk gerçek raporda bir gider hesabının (770.xx) tutarını gözle teyit edin; ters
+  çıkarsa `mikro_fetch.py` muavin sorgusunda meblag0/meblag1'i değiştirin.
+- `fis_aciklama1` → açıklama · `fis_sira_no` → fiş sıra no · `fis_yevmiye_no` → yevmiye no
+- `fis_iptal = 0` filtresi şart.
+- Hesap **adı** bu tabloda yok (gerekiyorsa `MUHASEBE_HESAP_*` plan tablosundan JOIN — MikRapor
+  için gerekmiyor; analizör hesap koduna göre gruplar).
+
+> **DİKKAT — `MUHASEBE_FIS_DETAYLARI` muavin DEĞİLDİR.** O tablo (mfd_*) Ba/Bs belge detayıdır
+> (cari unvan/vergi no, `mfd_carikodu`, `mfd_caritutar`, `mfd_digerevrakadi`); borç/alacak per-hesap
+> içermez. Muavin için **`MUHASEBE_FISLERI`** kullanın.
+
+MikRapor muavin'i 7xx (730/740/750/760/770) gider hesaplarını toplar; ham olarak ayın tüm GL
+satırları çekilir (Excel muavin dökümüyle aynı), filtrelemeyi analizör yapar.
 
 ## Genel kurallar (ss/lib/mikro-api.ts ile aynı)
 
