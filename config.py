@@ -1,0 +1,123 @@
+"""
+Mikro ERP bağlantı ayarları — kullanıcı bazlı yerel config dosyası + ortam değişkeni fallback.
+
+Masaüstü uygulaması her kullanıcının KENDİ Mikro sunucusuna bağlanır. Bağlantı bilgileri
+ne repoda ne de koda gömülüdür; kullanıcı "Mikro Ayarları" ekranından girer ve yerel diske
+kaydedilir (Windows: %APPDATA%/MikRapor/config.json). Bilgiler kullanıcının makinesinden çıkmaz.
+
+ss/lib/mikro-api.ts ile aynı alanlar kullanılır (ApiKey, FirmaKodu, CalismaYili, KullaniciKodu,
+SifreGun) ki tek-kiracılı web entegrasyonu ile uyumlu kalsın.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import asdict, dataclass
+from datetime import date
+from pathlib import Path
+
+APP_DIR_NAME = "MikRapor"
+CONFIG_FILE_NAME = "config.json"
+
+
+def config_dir() -> Path:
+    """Platforma göre kullanıcı ayar klasörü (Windows: %APPDATA%, diğer: ~/.config)."""
+    appdata = os.environ.get("APPDATA")  # Windows
+    if appdata:
+        return Path(appdata) / APP_DIR_NAME
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".config"
+    return base / APP_DIR_NAME
+
+
+def config_path() -> Path:
+    return config_dir() / CONFIG_FILE_NAME
+
+
+@dataclass
+class MikroConfig:
+    """Mikro REST API bağlantı bilgileri (ss ortam değişkenleriyle birebir karşılık)."""
+
+    base_url: str = ""          # MIKRO_BASE_URL  — örn. https://192.168.1.50:443 veya Tailscale adresi
+    api_key: str = ""           # MIKRO_API_KEY
+    firma_kodu: str = ""        # MIKRO_FIRMA_KODU — örn. 26 (cari yıl)
+    calisma_yili: int = 0       # MIKRO_CALISMA_YILI — 0 ise içinde bulunulan yıl
+    kullanici_kodu: str = ""    # MIKRO_KULLANICI_KODU
+    sifre_gun: str = ""         # MIKRO_SIFRE_GUN — günlük MD5 parolanın tuzu (boş olabilir)
+
+    def normalized(self) -> "MikroConfig":
+        yil = self.calisma_yili or date.today().year
+        return MikroConfig(
+            base_url=(self.base_url or "").strip().rstrip("/"),
+            api_key=(self.api_key or "").strip(),
+            firma_kodu=(self.firma_kodu or "").strip(),
+            calisma_yili=int(yil),
+            kullanici_kodu=(self.kullanici_kodu or "").strip(),
+            sifre_gun=(self.sifre_gun or "").strip(),
+        )
+
+    def eksik_alanlar(self) -> list[str]:
+        """Bağlantı için zorunlu ama boş olan alanların okunabilir adları."""
+        c = self.normalized()
+        eksik: list[str] = []
+        if not c.base_url:
+            eksik.append("Mikro API adresi")
+        if not c.api_key:
+            eksik.append("API anahtarı")
+        if not c.firma_kodu:
+            eksik.append("Firma kodu")
+        if not c.kullanici_kodu:
+            eksik.append("Kullanıcı kodu")
+        return eksik
+
+    def is_complete(self) -> bool:
+        return not self.eksik_alanlar()
+
+
+def _int_or_zero(value: object) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return 0
+
+
+def _from_env() -> MikroConfig:
+    """Ortam değişkenlerinden config üretir (ss ile aynı isimler). Geliştiriciler için fallback."""
+    return MikroConfig(
+        base_url=os.environ.get("MIKRO_BASE_URL", ""),
+        api_key=os.environ.get("MIKRO_API_KEY", ""),
+        firma_kodu=os.environ.get("MIKRO_FIRMA_KODU", ""),
+        calisma_yili=_int_or_zero(os.environ.get("MIKRO_CALISMA_YILI")),
+        kullanici_kodu=os.environ.get("MIKRO_KULLANICI_KODU", ""),
+        sifre_gun=os.environ.get("MIKRO_SIFRE_GUN", ""),
+    ).normalized()
+
+
+def load_config() -> MikroConfig:
+    """Yerel config dosyasını okur; yoksa veya bozuksa ortam değişkenlerine düşer."""
+    path = config_path()
+    if path.is_file():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return MikroConfig(
+                    base_url=data.get("base_url", ""),
+                    api_key=data.get("api_key", ""),
+                    firma_kodu=str(data.get("firma_kodu", "")),
+                    calisma_yili=_int_or_zero(data.get("calisma_yili")),
+                    kullanici_kodu=data.get("kullanici_kodu", ""),
+                    sifre_gun=data.get("sifre_gun", ""),
+                ).normalized()
+        except (json.JSONDecodeError, OSError, TypeError):
+            pass
+    return _from_env()
+
+
+def save_config(cfg: MikroConfig) -> Path:
+    """Config'i yerel diske JSON olarak yazar ve dosya yolunu döndürür."""
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = asdict(cfg.normalized())
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path

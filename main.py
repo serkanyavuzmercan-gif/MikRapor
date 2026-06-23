@@ -55,6 +55,11 @@ from period_utils import analiz_ayi_label, filter_df_by_analiz_ayi, recent_anali
 from resources import app_icon, app_logo_pixmap
 from styles import DARK_STYLESHEET
 
+from config import load_config
+from mikro_api import MikroAPIError, MikroClient
+from mikro_fetch import KAYNAK_ETIKET, fetch_all
+from mikro_settings_dialog import MikroAyarlarDialog
+
 INSTANCE_KEY = "MercanSoftware.MikRapor.SingleInstance"
 
 
@@ -185,6 +190,27 @@ class MikRaporWindow(QMainWindow):
     def _build_load_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
+
+        mikro_group = QGroupBox("Mikro Bağlantısı (API)")
+        mikro_layout = QVBoxLayout(mikro_group)
+        mikro_row = QHBoxLayout()
+        btn_ayar = QPushButton("Mikro Ayarları")
+        btn_ayar.clicked.connect(self._on_mikro_ayarlar)
+        mikro_row.addWidget(btn_ayar)
+        self._btn_mikro_cek = QPushButton("Mikro'dan Çek (seçili ay)")
+        self._btn_mikro_cek.setObjectName("primaryBtn")
+        self._btn_mikro_cek.clicked.connect(self._on_mikro_cek)
+        mikro_row.addWidget(self._btn_mikro_cek)
+        mikro_row.addStretch()
+        mikro_layout.addLayout(mikro_row)
+        self._lbl_mikro = QLabel(
+            "Muavin, alış/satış faturaları ve banka hareketleri doğrudan Mikro'dan çekilir. "
+            "Plan dosyaları (120/320) elle yüklenir."
+        )
+        self._lbl_mikro.setWordWrap(True)
+        self._lbl_mikro.setStyleSheet("color: #9aa0a8;")
+        mikro_layout.addWidget(self._lbl_mikro)
+        layout.addWidget(mikro_group)
 
         def add_load_row(btn_text: str, handler, label_attr: str) -> None:
             row = QHBoxLayout()
@@ -559,6 +585,63 @@ class MikRaporWindow(QMainWindow):
             self._mark_dirty()
         except (CariPlanParseError, FileNotFoundError) as exc:
             QMessageBox.warning(self, "Dosya Hatası", str(exc))
+
+    def _on_mikro_ayarlar(self) -> None:
+        dialog = MikroAyarlarDialog(self)
+        dialog.exec()
+
+    def _on_mikro_cek(self) -> None:
+        cfg = load_config()
+        if not cfg.is_complete():
+            cevap = QMessageBox.question(
+                self, "Mikro Ayarları Eksik",
+                "Mikro bağlantı bilgileri eksik. Şimdi ayarları açmak ister misiniz?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if cevap == QMessageBox.StandardButton.Yes:
+                self._on_mikro_ayarlar()
+            return
+
+        ay = self._selected_analiz_ayi()
+        self._btn_mikro_cek.setEnabled(False)
+        self._lbl_mikro.setText(f"{analiz_ayi_label(ay)} verileri Mikro'dan çekiliyor…")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            dfs = fetch_all(MikroClient(cfg), ay)
+        except MikroAPIError as exc:
+            QApplication.restoreOverrideCursor()
+            self._btn_mikro_cek.setEnabled(True)
+            self._lbl_mikro.setText("Mikro'dan çekme başarısız.")
+            QMessageBox.warning(self, "Mikro Hatası", str(exc))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+            self._btn_mikro_cek.setEnabled(True)
+
+        self._muavin_df = dfs["muavin"]
+        self._alis_fatura_df = dfs["alis_fatura"]
+        self._satis_fatura_df = dfs["satis_fatura"]
+        self._banka_df = dfs["banka"]
+        kaynak = [f"{KAYNAK_ETIKET} ({ay})"]
+        self._muavin_paths = kaynak if not self._muavin_df.empty else []
+        self._alis_paths = kaynak if not self._alis_fatura_df.empty else []
+        self._satis_paths = kaynak if not self._satis_fatura_df.empty else []
+        self._banka_paths = kaynak if not self._banka_df.empty else []
+
+        def _lbl(df: pd.DataFrame) -> str:
+            return f"{KAYNAK_ETIKET}: {len(df):,} satır".replace(",", ".") if not df.empty else "Mikro'da kayıt yok."
+
+        self._lbl_muavin.setText(_lbl(self._muavin_df))
+        self._lbl_alis.setText(_lbl(self._alis_fatura_df))
+        self._lbl_satis.setText(_lbl(self._satis_fatura_df))
+        self._lbl_banka.setText(_lbl(self._banka_df))
+        self._lbl_mikro.setText(
+            f"{analiz_ayi_label(ay)} çekildi — muavin {len(self._muavin_df)}, "
+            f"alış {len(self._alis_fatura_df)}, satış {len(self._satis_fatura_df)}, "
+            f"banka {len(self._banka_df)} satır."
+        )
+        self._apply_table_filter()
+        self._mark_dirty()
 
     def _maas_rows(self) -> list[PersonelMaas]:
         rows: list[PersonelMaas] = []

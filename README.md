@@ -28,10 +28,19 @@ python -m venv .venv
 
 ## Veri kaynakları
 
+İki yol vardır; ikisi de aynı analiz motorunu besler:
+
+**A) Mikro API'den çekme (önerilen).** "Veri Yükleme" sekmesindeki **Mikro Ayarları**'na kendi
+Mikro sunucu bilgilerinizi girin, ardından **Mikro'dan Çek (seçili ay)** ile muavin, alış/satış
+faturaları ve banka hareketleri doğrudan çekilir. Detay: `MIKRO-API-ENTEGRASYONU.md`.
+
+**B) Elle dosya yükleme (klasik).**
 1. Aylık muavin defteri (Mikro Excel/CSV)
 2. Alış ve satış faturaları
 3. Banka hareketleri
+
+Her iki yolda da:
 4. Manuel resmi/harici maaş girişi
-5. (İsteğe bağlı) 120 tahsilat ve 320 ödeme planı
+5. (İsteğe bağlı) 120 tahsilat ve 320 ödeme planı (şimdilik yalnızca elle yükleme)
 
 Örnek dosyalar: `samples/`
