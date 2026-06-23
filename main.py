@@ -189,11 +189,22 @@ class MikRaporWindow(QMainWindow):
 
     def _build_load_tab(self) -> QWidget:
         tab = QWidget()
-        layout = QVBoxLayout(tab)
+        outer = QVBoxLayout(tab)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        host = QWidget()
+        layout = QVBoxLayout(host)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(14)
 
+        # --- Mikro bağlantısı ---
         mikro_group = QGroupBox("Mikro Bağlantısı (API)")
         mikro_layout = QVBoxLayout(mikro_group)
+        mikro_layout.setSpacing(10)
         mikro_row = QHBoxLayout()
+        mikro_row.setSpacing(10)
         btn_ayar = QPushButton("Mikro Ayarları")
         btn_ayar.clicked.connect(self._on_mikro_ayarlar)
         mikro_row.addWidget(btn_ayar)
@@ -208,22 +219,28 @@ class MikRaporWindow(QMainWindow):
             "Plan dosyaları (120/320) elle yüklenir."
         )
         self._lbl_mikro.setWordWrap(True)
-        self._lbl_mikro.setStyleSheet("color: #9aa0a8;")
+        self._lbl_mikro.setStyleSheet("color: #8b929e;")
         mikro_layout.addWidget(self._lbl_mikro)
         layout.addWidget(mikro_group)
 
+        # --- Elle dosya yükleme ---
+        manual_group = QGroupBox("Elle Dosya Yükleme")
+        manual_layout = QVBoxLayout(manual_group)
+        manual_layout.setSpacing(8)
+
         def add_load_row(btn_text: str, handler, label_attr: str) -> None:
             row = QHBoxLayout()
+            row.setSpacing(12)
             btn = QPushButton(btn_text)
-            if "Muavin" in btn_text:
-                btn.setObjectName("primaryBtn")
+            btn.setMinimumWidth(260)
+            btn.setMaximumWidth(260)
             btn.clicked.connect(handler)
             row.addWidget(btn)
             lbl = QLabel("Yüklenmedi.")
-            lbl.setStyleSheet("color: #9aa0a8;")
+            lbl.setStyleSheet("color: #8b929e;")
             setattr(self, label_attr, lbl)
             row.addWidget(lbl, stretch=1)
-            layout.addLayout(row)
+            manual_layout.addLayout(row)
 
         add_load_row("Muavin Defteri (.xlsx / .csv)", self._on_load_muavin, "_lbl_muavin")
         add_load_row("Alış Faturaları (.xlsx, çoklu)", self._on_load_alis, "_lbl_alis")
@@ -232,24 +249,33 @@ class MikRaporWindow(QMainWindow):
         add_load_row("120 Tahsilat Planı (.xlsx)", self._on_load_tahsilat_plan, "_lbl_tahsilat_plan")
         add_load_row("320 Ödeme Planı / Tediye (.xlsx)", self._on_load_tediye_plan, "_lbl_tediye_plan")
 
+        manual_layout.addSpacing(4)
         param_row = QHBoxLayout()
+        param_row.setSpacing(10)
         self._metrekare_spin = QDoubleSpinBox()
         self._metrekare_spin.setRange(0, 100000)
         self._metrekare_spin.setSuffix(" m²")
+        self._metrekare_spin.setFixedWidth(160)
         self._metrekare_spin.valueChanged.connect(self._on_metrekare_changed)
         param_row.addWidget(QLabel("Dükkan m²:"))
         param_row.addWidget(self._metrekare_spin)
         param_row.addStretch()
-        layout.addLayout(param_row)
+        manual_layout.addLayout(param_row)
+        layout.addWidget(manual_group)
 
+        # --- Maaş ---
         maas_group = QGroupBox("Manuel Maaş Girişi (Seçilen Ay)")
         maas_layout = QVBoxLayout(maas_group)
+        maas_layout.setSpacing(10)
         self._maas_table = QTableWidget(0, 4)
         self._maas_table.setHorizontalHeaderLabels(["Ad", "Resmi Maaş", "Harici Maaş", "Toplam"])
         self._maas_table.horizontalHeader().setStretchLastSection(True)
+        self._maas_table.verticalHeader().setVisible(False)
+        self._maas_table.setMinimumHeight(120)
         self._maas_table.cellChanged.connect(self._on_maas_cell_changed)
         maas_layout.addWidget(self._maas_table)
         btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
         btn_add = QPushButton("Satır Ekle")
         btn_add.clicked.connect(self._on_add_maas_row)
         btn_del = QPushButton("Satır Sil")
@@ -260,22 +286,33 @@ class MikRaporWindow(QMainWindow):
         maas_layout.addLayout(btn_row)
         layout.addWidget(maas_group)
 
+        # --- Önizleme ---
+        preview_group = QGroupBox("Veri Önizleme")
+        preview_layout = QVBoxLayout(preview_group)
+        preview_layout.setSpacing(10)
         filter_row = QHBoxLayout()
-        filter_row.addWidget(QLabel("Önizleme:"))
+        filter_row.setSpacing(10)
+        filter_row.addWidget(QLabel("Kaynak:"))
         self._preview_combo = QComboBox()
         self._preview_combo.addItems([
             "Muavin", "Alış Faturaları", "Satış Faturaları", "Banka",
             "120 Tahsilat", "320 Tediye",
         ])
+        self._preview_combo.setMinimumWidth(200)
         self._preview_combo.currentIndexChanged.connect(self._apply_table_filter)
         filter_row.addWidget(self._preview_combo)
         filter_row.addStretch()
-        layout.addLayout(filter_row)
-
+        preview_layout.addLayout(filter_row)
         self._table = QTableWidget()
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
-        layout.addWidget(self._table)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setMinimumHeight(180)
+        preview_layout.addWidget(self._table)
+        layout.addWidget(preview_group, stretch=1)
+
+        scroll.setWidget(host)
+        outer.addWidget(scroll)
         return tab
 
     def _build_analysis_tab(self) -> QWidget:
