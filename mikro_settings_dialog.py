@@ -12,6 +12,7 @@ from datetime import date
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -51,6 +52,7 @@ class MikroAyarlarDialog(QDialog):
         self._base_url = QLineEdit(self._cfg.base_url)
         self._base_url.setPlaceholderText("https://192.168.1.50:443  veya  Tailscale adresi")
         self._api_key = QLineEdit(self._cfg.api_key)
+        self._api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self._firma_kodu = QLineEdit(self._cfg.firma_kodu)
         self._firma_kodu.setPlaceholderText("örn. 26")
         self._calisma_yili = QSpinBox()
@@ -67,6 +69,10 @@ class MikroAyarlarDialog(QDialog):
         form.addRow("Çalışma yılı:", self._calisma_yili)
         form.addRow("Kullanıcı kodu:", self._kullanici)
         form.addRow("Şifre tuzu (SIFRE_GUN):", self._sifre_gun)
+
+        self._show_secrets = QCheckBox("Anahtar ve şifreyi göster")
+        self._show_secrets.toggled.connect(self._on_toggle_secrets)
+        form.addRow("", self._show_secrets)
         layout.addLayout(form)
 
         path_lbl = QLabel(f"Kayıt yeri: {config_path()}")
@@ -89,6 +95,11 @@ class MikroAyarlarDialog(QDialog):
         buttons.accepted.connect(self._on_save)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _on_toggle_secrets(self, checked: bool) -> None:
+        mode = QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password
+        self._api_key.setEchoMode(mode)
+        self._sifre_gun.setEchoMode(mode)
 
     def _current_config(self) -> MikroConfig:
         return MikroConfig(
