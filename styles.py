@@ -1,145 +1,132 @@
-"""MikRapor koyu tema QSS stilleri."""
+"""MikRapor açık (light) tema QSS — temiz, finans/rapor görünümü."""
+
+# Renk paleti:
+#   Arka plan #f4f6f9 · Kart/panel #ffffff · Kenarlık #e2e6ec
+#   Metin #1f2937 · Soluk #6b7280 · Başlık #111827
+#   Ana vurgu #2f6fed (hover #2563eb, pressed #1d4ed8)
+#   Başarı #15803d · Uyarı #b45309 · Hata #b91c1c
 
 DARK_STYLESHEET = """
-QMainWindow, QDialog, QWidget {
-    background-color: #1a1d23;
-    color: #e8eaed;
-    font-family: "Segoe UI", sans-serif;
-    font-size: 11px;
+* {
+    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+    font-size: 12px;
 }
 
+QMainWindow, QDialog { background-color: #f4f6f9; }
+QWidget { color: #1f2937; }
+QWidget#rootArea { background-color: #f4f6f9; }
+
+/* ---- Sekmeler ---- */
 QTabWidget::pane {
-    border: 1px solid #2d3340;
-    background-color: #1a1d23;
-    border-radius: 4px;
+    border: 1px solid #e2e6ec;
+    background-color: #ffffff;
+    border-radius: 10px;
+    top: -1px;
 }
-
 QTabBar::tab {
-    background-color: #252830;
-    color: #9aa0a8;
-    padding: 8px 18px;
-    margin-right: 2px;
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
-}
-
-QTabBar::tab:selected {
-    background-color: #2d3340;
-    color: #e8eaed;
+    background-color: transparent;
+    color: #6b7280;
+    padding: 9px 22px;
+    margin-right: 4px;
+    border: none;
+    border-bottom: 2px solid transparent;
     font-weight: 600;
 }
+QTabBar::tab:hover { color: #1f2937; }
+QTabBar::tab:selected { color: #111827; border-bottom: 2px solid #2f6fed; }
 
+/* ---- Butonlar ---- */
 QPushButton {
-    background-color: #2d3340;
-    color: #e8eaed;
-    border: 1px solid #343a46;
-    border-radius: 6px;
-    padding: 8px 16px;
-    font-weight: 500;
+    background-color: #ffffff;
+    color: #374151;
+    border: 1px solid #cbd2dc;
+    border-radius: 8px;
+    padding: 9px 18px;
+    font-weight: 600;
 }
+QPushButton:hover { background-color: #f3f5f8; border-color: #9aa6b6; }
+QPushButton:pressed { background-color: #e9edf3; }
+QPushButton:disabled { background-color: #f1f3f6; color: #a8b0bd; border-color: #e2e6ec; }
 
-QPushButton:hover {
-    background-color: #3a4150;
-    border-color: #4fc3f7;
+QPushButton#primaryBtn { background-color: #2f6fed; color: #ffffff; border: 1px solid #2f6fed; }
+QPushButton#primaryBtn:hover { background-color: #2563eb; border-color: #2563eb; }
+QPushButton#primaryBtn:pressed { background-color: #1d4ed8; }
+QPushButton#primaryBtn:disabled { background-color: #a9c2f5; color: #eef3fd; border-color: #a9c2f5; }
+
+/* ---- Girdiler ---- */
+QLineEdit, QComboBox, QTextEdit, QAbstractSpinBox, QDateEdit {
+    background-color: #ffffff;
+    color: #1f2937;
+    border: 1px solid #cbd2dc;
+    border-radius: 8px;
+    padding: 7px 10px;
+    selection-background-color: #2f6fed;
+    selection-color: #ffffff;
 }
-
-QPushButton:pressed {
-    background-color: #252830;
+QLineEdit:focus, QComboBox:focus, QTextEdit:focus, QAbstractSpinBox:focus, QDateEdit:focus {
+    border: 1px solid #2f6fed;
 }
-
-QPushButton#primaryBtn {
-    background-color: #1565c0;
-    border-color: #1976d2;
-}
-
-QPushButton#primaryBtn:hover {
-    background-color: #1976d2;
-}
-
-QLineEdit, QComboBox, QTextEdit, QTableWidget {
-    background-color: #252830;
-    color: #e8eaed;
-    border: 1px solid #343a46;
-    border-radius: 6px;
-    padding: 6px;
-    selection-background-color: #1565c0;
-}
-
-QComboBox::drop-down {
-    border: none;
-    width: 24px;
-}
-
+QLineEdit:hover, QComboBox:hover, QDateEdit:hover, QAbstractSpinBox:hover { border-color: #9aa6b6; }
+QComboBox::drop-down, QDateEdit::drop-down { border: none; width: 24px; }
 QComboBox QAbstractItemView {
-    background-color: #252830;
-    color: #e8eaed;
-    selection-background-color: #1565c0;
-    border: 1px solid #343a46;
+    background-color: #ffffff;
+    color: #1f2937;
+    selection-background-color: #2f6fed;
+    selection-color: #ffffff;
+    border: 1px solid #e2e6ec;
+    border-radius: 8px;
+    padding: 4px;
+    outline: none;
 }
+
+/* Takvim açılır penceresi (QDateEdit) */
+QCalendarWidget QWidget { background-color: #ffffff; color: #1f2937; alternate-background-color: #f4f6f9; }
+QCalendarWidget QAbstractItemView:enabled { background-color: #ffffff; color: #1f2937; selection-background-color: #2f6fed; selection-color: #ffffff; }
+QCalendarWidget QToolButton { color: #1f2937; background: transparent; }
+QCalendarWidget QToolButton:hover { background-color: #eef2f7; border-radius: 4px; }
+
+/* ---- Bilanço görünümü (HTML) ---- */
+QTextBrowser {
+    background-color: #ffffff;
+    color: #1f2937;
+    border: 1px solid #e2e6ec;
+    border-radius: 10px;
+    padding: 4px;
+}
+
+/* ---- Kaydırma çubukları ---- */
+QScrollArea { border: none; background-color: transparent; }
+QScrollBar:vertical { background: transparent; width: 12px; margin: 2px; }
+QScrollBar::handle:vertical { background: #cbd2dc; min-height: 30px; border-radius: 6px; }
+QScrollBar::handle:vertical:hover { background: #9aa6b6; }
+QScrollBar:horizontal { background: transparent; height: 12px; margin: 2px; }
+QScrollBar::handle:horizontal { background: #cbd2dc; min-width: 30px; border-radius: 6px; }
+QScrollBar::handle:horizontal:hover { background: #9aa6b6; }
+QScrollBar::add-line, QScrollBar::sub-line { height: 0; width: 0; }
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+
+/* ---- Gruplar / tablolar (varsa) ---- */
+QGroupBox {
+    background-color: #ffffff;
+    border: 1px solid #e2e6ec;
+    border-radius: 12px;
+    margin-top: 14px;
+    padding: 18px 16px 16px 16px;
+    font-weight: 700;
+}
+QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 16px; top: 2px; padding: 0 6px; color: #374151; }
 
 QTableWidget {
-    gridline-color: #343a46;
-    alternate-background-color: #1e2128;
+    background-color: #ffffff; color: #1f2937;
+    border: 1px solid #e2e6ec; border-radius: 10px;
+    gridline-color: #eef1f5; alternate-background-color: #f9fafc;
+    selection-background-color: #dbe7ff; selection-color: #1f2937;
 }
+QHeaderView::section { background-color: #f3f5f8; color: #374151; padding: 9px 8px; border: none; border-right: 1px solid #e7eaef; border-bottom: 1px solid #e2e6ec; font-weight: 700; }
 
-QHeaderView::section {
-    background-color: #2d3340;
-    color: #e8eaed;
-    padding: 6px;
-    border: 1px solid #343a46;
-    font-weight: 600;
-}
+/* ---- Etiketler ---- */
+QLabel { color: #1f2937; }
+QLabel#titleLabel { font-size: 22px; font-weight: 800; color: #111827; }
 
-QScrollArea {
-    border: none;
-    background-color: #1a1d23;
-}
-
-QFrame#kpiCard {
-    background-color: #252830;
-    border: 1px solid #343a46;
-    border-radius: 8px;
-}
-
-QLabel#kpiValue {
-    font-size: 15px;
-    font-weight: 700;
-    color: #4fc3f7;
-}
-
-QLabel#kpiLabel {
-    font-size: 10px;
-    color: #9aa0a8;
-}
-
-QLabel#contextLabel {
-    font-size: 11px;
-    color: #81c784;
-    background-color: #252830;
-    border: 1px solid #343a46;
-    border-radius: 6px;
-    padding: 8px 12px;
-}
-
-QLabel#titleLabel {
-    font-size: 20px;
-    font-weight: 700;
-    color: #e8eaed;
-}
-
-QGroupBox {
-    border: 1px solid #343a46;
-    border-radius: 8px;
-    margin-top: 12px;
-    padding-top: 16px;
-    font-weight: 600;
-    color: #9aa0a8;
-}
-
-QGroupBox::title {
-    subcontrol-origin: margin;
-    left: 12px;
-    padding: 0 6px;
-    color: #e8eaed;
-}
+QToolTip { background-color: #ffffff; color: #1f2937; border: 1px solid #e2e6ec; border-radius: 6px; padding: 6px 8px; }
 """
