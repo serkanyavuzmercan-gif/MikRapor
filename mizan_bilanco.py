@@ -195,6 +195,35 @@ def bilanco_metni(b: Bilanco) -> str:
     return "\n".join(out)
 
 
+def bilanco_csv(b: Bilanco) -> str:
+    """Bilançoyu CSV'ye çevirir (; ayraç, Türkçe ondalık — TR Excel uyumlu)."""
+    def s(v: float) -> str:
+        return f"{v:.2f}".replace(".", ",")
+
+    def ad(x: str) -> str:
+        return x.replace(";", ",").replace("\n", " ").strip()
+
+    out = ["Taraf;Bölüm;Hesap;Tutar (TL)"]
+    out.append(f"BİLANÇO;{b.asof} tarihi itibarıyla;;")
+
+    def blok(taraf: str, satirlar: list, bolumler: dict) -> None:
+        for d, baslik in bolumler.items():
+            ds = [x for x in satirlar if x.ana[:1] == d]
+            if not ds and not (taraf == "PASİF" and d == "5"):
+                continue
+            for x in ds:
+                out.append(f"{taraf};{ad(baslik)};{x.ana} {ad(x.ad)};{s(x.tutar)}")
+            if taraf == "PASİF" and d == "5":
+                out.append(f"{taraf};{ad(baslik)};Dönem Net Kârı/Zararı;{s(b.donem_kz)}")
+
+    blok("AKTİF", b.aktif, AKTIF_BOLUM)
+    out.append(f"AKTİF;;AKTİF TOPLAMI;{s(b.aktif_toplam)}")
+    blok("PASİF", b.pasif, PASIF_BOLUM)
+    out.append(f"PASİF;;PASİF TOPLAMI;{s(b.pasif_toplam)}")
+    out.append(f"DENGE;;Aktif-Pasif Farkı;{s(b.fark)}")
+    return "\r\n".join(out)
+
+
 # --- HTML (GUI ekranı için: özet KPI kartları + Aktif | Pasif yan yana) ---
 
 def _kpi_hucre(baslik: str, deger: str, bg: str, vrenk: str) -> str:

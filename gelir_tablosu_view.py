@@ -67,6 +67,21 @@ def build_gelir_tablosu_widget(gt: GelirTablosu, firma: str = "") -> QWidget:
     head.setTextFormat(Qt.TextFormat.RichText)
     root.addWidget(head)
 
+    if gt.maliyet_eksik:
+        uyari = QLabel(
+            "⚠ <b>Satışların Maliyeti (62) bu dönemde neredeyse sıfır.</b> Mal satan bir "
+            "işletmeyseniz <b>maliyet kapanışı henüz yapılmamış</b> demektir; brüt/net kâr "
+            "GERÇEKTE OLDUĞUNDAN ÇOK YÜKSEK görünür. Maliyet kapanışı yapılmış (kapatılmış) "
+            "bir dönem seçin ya da Mikro'da maliyet kapanışından sonra bakın."
+        )
+        uyari.setWordWrap(True)
+        uyari.setTextFormat(Qt.TextFormat.RichText)
+        uyari.setStyleSheet(
+            "QLabel { background: #fdecec; border: 1px solid #f3c0c0; border-radius: 8px; "
+            "color: #8a1c1c; padding: 11px 14px; font-size: 12px; }"
+        )
+        root.addWidget(uyari)
+
     kpi = QHBoxLayout()
     kpi.setSpacing(12)
     kpi.addWidget(_kpi_card("NET SATIŞLAR", tl(gt.net_satislar), "#eef4ff", "#1d4ed8"))

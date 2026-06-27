@@ -33,13 +33,13 @@ from PyQt6.QtWidgets import (
 from bilanco_pdf import export_bilanco_pdf
 from bilanco_view import build_bilanco_widget
 from config import load_config
-from gelir_tablosu import GelirTablosu, build_gelir_tablosu, yuzde
+from gelir_tablosu import GelirTablosu, build_gelir_tablosu, gelir_tablosu_csv, yuzde
 from gelir_tablosu_pdf import export_gelir_tablosu_pdf
 from gelir_tablosu_view import build_gelir_tablosu_widget
 from mikro_api import MikroAPIError, MikroClient
 from mikro_fetch import fetch_firma_adi, fetch_gelir_tablosu, fetch_mizan
 from mikro_settings_dialog import MikroAyarlarDialog
-from mizan_bilanco import Bilanco, build_bilanco, tl
+from mizan_bilanco import Bilanco, bilanco_csv, build_bilanco, tl
 from resources import app_icon, app_logo_pixmap
 from styles import DARK_STYLESHEET
 
@@ -124,6 +124,11 @@ class BilancoTab(QWidget):
         self._btn_pdf.setEnabled(False)
         self._btn_pdf.clicked.connect(self._on_pdf)
         controls.addWidget(self._btn_pdf)
+
+        self._btn_csv = QPushButton("CSV Kaydet")
+        self._btn_csv.setEnabled(False)
+        self._btn_csv.clicked.connect(self._on_csv)
+        controls.addWidget(self._btn_csv)
 
         self._status = QLabel("Tarih seçip «Bilanço Getir»e basın.")
         self._status.setStyleSheet("color: #8b929e;")
@@ -212,6 +217,7 @@ class BilancoTab(QWidget):
         self._view.setVisible(True)
         self._view.setWidget(build_bilanco_widget(b, firma=self._firma))
         self._btn_pdf.setEnabled(True)
+        self._btn_csv.setEnabled(True)
         if abs(b.fark) < 1.0:
             self._status.setText(f"{len(rows)} hesap · Aktif=Pasif ✓ dengede.")
             self._status.setStyleSheet("color: #81c784;")
@@ -236,6 +242,27 @@ class BilancoTab(QWidget):
             return
         self._status.setText(f"PDF kaydedildi: {Path(path).name}")
         self._status.setStyleSheet("color: #81c784;")
+
+    def _on_csv(self) -> None:
+        if not self._bilanco:
+            return
+        _csv_kaydet(self, self._status, f"bilanco_{self._bilanco.asof}.csv",
+                    bilanco_csv(self._bilanco))
+
+
+def _csv_kaydet(parent: QWidget, status: QLabel, varsayilan_ad: str, icerik: str) -> None:
+    """Ortak CSV kaydetme: dosya seç → UTF-8 (BOM, TR Excel uyumlu) yaz → durumu güncelle."""
+    path, _ = QFileDialog.getSaveFileName(parent, "CSV Kaydet", varsayilan_ad, "CSV (*.csv)")
+    if not path:
+        return
+    try:
+        with open(path, "w", encoding="utf-8-sig", newline="") as f:
+            f.write(icerik)
+    except OSError as exc:
+        QMessageBox.critical(parent, "CSV Hatası", str(exc))
+        return
+    status.setText(f"CSV kaydedildi: {Path(path).name}")
+    status.setStyleSheet("color: #81c784;")
 
 
 def _hos_geldin(emoji: str, baslik: str, aciklama: str) -> QWidget:
@@ -299,6 +326,11 @@ class GelirTablosuTab(QWidget):
         self._btn_pdf.setEnabled(False)
         self._btn_pdf.clicked.connect(self._on_pdf)
         controls.addWidget(self._btn_pdf)
+
+        self._btn_csv = QPushButton("CSV Kaydet")
+        self._btn_csv.setEnabled(False)
+        self._btn_csv.clicked.connect(self._on_csv)
+        controls.addWidget(self._btn_csv)
 
         self._status = QLabel("Dönem seçip «Gelir Tablosu Getir»e basın.")
         self._status.setStyleSheet("color: #8b929e;")
@@ -366,6 +398,7 @@ class GelirTablosuTab(QWidget):
         self._view.setVisible(True)
         self._view.setWidget(build_gelir_tablosu_widget(gt, firma=self._firma))
         self._btn_pdf.setEnabled(True)
+        self._btn_csv.setEnabled(True)
         self._status.setText(f"{gt.hesap_sayisi} gelir/gider hesabı · Net Kâr {tl(gt.net_kar)} "
                              f"(net marj {yuzde(gt.net_marj)})")
         self._status.setStyleSheet("color: #81c784;" if gt.net_kar >= 0 else "color: #e57373;")
@@ -384,6 +417,12 @@ class GelirTablosuTab(QWidget):
             return
         self._status.setText(f"PDF kaydedildi: {Path(path).name}")
         self._status.setStyleSheet("color: #81c784;")
+
+    def _on_csv(self) -> None:
+        if not self._gt:
+            return
+        _csv_kaydet(self, self._status, f"gelir_tablosu_{self._gt.bas}_{self._gt.bit}.csv",
+                    gelir_tablosu_csv(self._gt))
 
 
 def _yakinda_tab(baslik: str, aciklama: str) -> QWidget:

@@ -79,6 +79,21 @@ def export_gelir_tablosu_pdf(gt: GelirTablosu, path: str | Path, firma: str = ""
                                     ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
     elems.append(baslik_row)
     elems.append(Spacer(1, 8))
+
+    if gt.maliyet_eksik:
+        uyari = Table([[Paragraph(
+            "⚠ Satışların Maliyeti (62) bu dönemde neredeyse sıfır — maliyet kapanışı yapılmamış "
+            "olabilir. Brüt ve net kâr gerçekte olduğundan yüksek görünür.",
+            ParagraphStyle("uy", fontName=FONT_B, fontSize=8, textColor=colors.HexColor("#8a1c1c"),
+                           leading=10))]], colWidths=[174 * mm])
+        uyari.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fdecec")),
+            ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#e3a0a0")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+        elems.append(uyari)
+        elems.append(Spacer(1, 8))
+
     elems.append(_govde(gt))
 
     elems.append(Spacer(1, 10))

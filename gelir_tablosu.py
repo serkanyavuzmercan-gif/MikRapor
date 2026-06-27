@@ -75,11 +75,17 @@ class GelirTablosu:
     bit: str = ""
     satirlar: list[GTSatir] = field(default_factory=list)
     net_satislar: float = 0.0
+    smm: float = 0.0           # Satışların Maliyeti (62), işaretli (negatif veya 0)
     brut_kar: float = 0.0
     faaliyet_kari: float = 0.0
     donem_kari: float = 0.0
     net_kar: float = 0.0
     hesap_sayisi: int = 0
+
+    @property
+    def maliyet_eksik(self) -> bool:
+        """Satış var ama SMM (62) ≈ 0 → maliyet kapanışı yapılmamış; kâr şişik görünür."""
+        return self.net_satislar > 0 and abs(self.smm) < 0.05 * self.net_satislar
 
     @property
     def brut_marj(self) -> float:
@@ -174,11 +180,34 @@ def build_gelir_tablosu(rows: list[dict], bas: str = "", bit: str = "") -> Gelir
     sonuc("DÖNEM NET KÂRI/ZARARI", net_kar)
 
     gt.net_satislar = net_satislar
+    gt.smm = grup_toplam("62")
     gt.brut_kar = brut_kar
     gt.faaliyet_kari = faaliyet_kari
     gt.donem_kari = donem_kari
     gt.net_kar = net_kar
     return gt
+
+
+def gelir_tablosu_csv(gt: GelirTablosu) -> str:
+    """Gelir tablosunu CSV'ye çevirir (; ayraç, Türkçe ondalık — TR Excel uyumlu)."""
+    def s(v: float) -> str:
+        return f"{v:.2f}".replace(".", ",")
+
+    out = ["Tür;Açıklama;Tutar (TL)"]
+    out.append(f"DÖNEM;{gt.bas} - {gt.bit};")
+    for r in gt.satirlar:
+        tip = {"bolum": "Bölüm", "hesap": "Hesap", "sonuc": "Sonuç"}.get(r.tip, r.tip)
+        tutar = "" if r.tutar is None else s(r.tutar)
+        # ; ve yeni satırları temizle (CSV bütünlüğü)
+        etiket = r.etiket.replace(";", ",").replace("\n", " ").strip()
+        out.append(f"{tip};{etiket};{tutar}")
+    out.append("")
+    out.append(f"Brüt marj;{yuzde(gt.brut_marj)};")
+    out.append(f"Faaliyet marj;{yuzde(gt.faaliyet_marj)};")
+    out.append(f"Net marj;{yuzde(gt.net_marj)};")
+    if gt.maliyet_eksik:
+        out.append("UYARI;Satışların Maliyeti (62) ~0 - maliyet kapanışı yapılmamış olabilir; kâr şişik;")
+    return "\r\n".join(out)
 
 
 # --- Metin raporu (CLI/doğrulama) ---
