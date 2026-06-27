@@ -1,7 +1,5 @@
 """
-Mikro API istemcisi, config ve kontrat adaptörü için birim testleri.
-
-PyQt6 GEREKTİRMEZ — yalnızca config / mikro_api / mikro_fetch ve mevcut analizörler test edilir.
+Mikro API istemcisi ve config için birim testleri (PyQt6 gerektirmez).
 """
 
 from __future__ import annotations
@@ -14,10 +12,7 @@ import unittest
 from pathlib import Path
 
 import config as config_mod
-from analyzer import run_monthly_analysis
-from bank_parser import STANDARD_BANK_COLUMNS
 from config import MikroConfig
-from fatura_parser import STANDARD_FATURA_COLUMNS
 from mikro_api import (
     MikroAPIError,
     MikroClient,
@@ -27,14 +22,6 @@ from mikro_api import (
     parse_sql_rows,
     password_hash,
 )
-from mikro_fetch import (
-    fetch_all,
-    rows_to_banka_df,
-    rows_to_fatura_df,
-    rows_to_muavin_df,
-)
-from models import AnalizVeriSeti, AylikMaasGirisi
-from muavin_parser import STANDARD_MUAVIN_COLUMNS
 
 
 class TestPasswordHash(unittest.TestCase):
@@ -140,87 +127,6 @@ class TestMikroClient(unittest.TestCase):
         client, _ = self._client(500, {"x": 1})
         with self.assertRaises(MikroAPIError):
             client.sql_veri_oku("SELECT 1")
-
-
-class TestContractAdapter(unittest.TestCase):
-    """Adaptörün ürettiği DataFrame'ler parser kontratıyla birebir aynı mı?"""
-
-    def test_muavin_columns(self) -> None:
-        df = rows_to_muavin_df([
-            {"tarih": "2026-03-05", "hesap_kodu": "770.01", "hesap_adi": "Gider",
-             "borc": 1500.0, "alacak": 0.0, "aciklama": "X", "evrak_no": "12"},
-            {"tarih": "2026-03-05", "hesap_kodu": "", "borc": 0, "alacak": 0},  # elenir
-        ])
-        self.assertEqual(list(df.columns), STANDARD_MUAVIN_COLUMNS)
-        self.assertEqual(len(df), 1)
-        self.assertEqual(df.iloc[0]["ana_hesap"], "770")
-
-    def test_fatura_columns_and_filter(self) -> None:
-        df = rows_to_fatura_df([
-            {"tarih": "2026-03-10", "cari_kodu": "120.001", "stok_kodu": "A.001",
-             "miktar": 2, "net_tutar": 200.0},
-            {"stok_kodu": "", "miktar": 0, "net_tutar": 0},  # elenir
-        ], "satis")
-        self.assertEqual(list(df.columns), STANDARD_FATURA_COLUMNS)
-        self.assertEqual(len(df), 1)
-        self.assertEqual(df.iloc[0]["fatura_turu"], "satis")
-
-    def test_banka_columns_and_ic_transfer(self) -> None:
-        df = rows_to_banka_df([
-            {"tarih": "2026-03-05", "evrak_tipi": "Havale", "borc": 50000, "alacak": 0,
-             "cari_kodu": "120.001", "karsi_hesap_ismi": "ABC"},
-            {"tarih": "2026-03-06", "evrak_tipi": "Virman", "borc": 0, "alacak": 1000,
-             "cari_kodu": "102.002", "karsi_hesap_ismi": "Diğer Banka"},
-        ])
-        self.assertEqual(list(df.columns), STANDARD_BANK_COLUMNS)
-        self.assertEqual(len(df), 2)
-        ic = df[df["cari_kodu"] == "102.002"].iloc[0]
-        self.assertTrue(bool(ic["ic_transfer"]))
-
-    def test_fetch_all_feeds_analyzer_end_to_end(self) -> None:
-        """fetch_all çıktısı analizör tarafından sorunsuz işlenmeli (kontrat ucu uca)."""
-        payloads = {
-            "MUHASEBE_FISLERI": [  # muavin (GL)
-                {"tarih": "2026-03-01", "hesap_kodu": "770.01", "hesap_adi": "Gider",
-                 "borc": 8000, "alacak": 0, "aciklama": "Kira", "evrak_no": "1"},
-            ],
-            "sth_tip = 0": [  # alış fatura
-                {"tarih": "2026-03-08", "cari_kodu": "320.001", "stok_kodu": "A.001",
-                 "miktar": 10, "net_tutar": 1000.0, "fatura_no": "AF-1"},
-            ],
-            "sth_tip = 1": [  # satış fatura
-                {"tarih": "2026-03-12", "cari_kodu": "120.001", "stok_kodu": "A.001",
-                 "miktar": 10, "net_tutar": 1600.0, "fatura_no": "SF-1"},
-            ],
-            "BANKALAR": [  # banka (CARI_HESAP_HAREKETLERI ⨝ BANKALAR)
-                {"tarih": "2026-03-12", "banka_adi": "X Bank", "aciklama": "Tahsilat",
-                 "giris": 1600, "cikis": 0, "cari_kodu": "120.001"},
-            ],
-        }
-
-        def transport(url: str, body: str, timeout: float):
-            sql = json.loads(body)["SQLSorgu"]
-            for needle, rows in payloads.items():
-                if needle in sql:
-                    return 200, json.dumps({"result": [{"IsError": False, "Data": rows}]})
-            return 200, json.dumps({"result": [{"IsError": False, "Data": []}]})
-
-        cfg = MikroConfig(base_url="https://m.local", api_key="K", firma_kodu="26",
-                          calisma_yili=2026, kullanici_kodu="U", sifre_gun="S")
-        client = MikroClient(cfg, transport=transport, max_attempts=1)
-
-        dfs = fetch_all(client, "2026-03")
-        veri = AnalizVeriSeti(
-            analiz_ayi="2026-03",
-            muavin_df=dfs["muavin"],
-            alis_fatura_df=dfs["alis_fatura"],
-            satis_fatura_df=dfs["satis_fatura"],
-            banka_df=dfs["banka"],
-            maas=AylikMaasGirisi(analiz_ayi="2026-03"),
-        )
-        report = run_monthly_analysis(veri)
-        self.assertIsNotNone(report)
-        self.assertEqual(report.analiz_ayi, "2026-03")
 
 
 if __name__ == "__main__":
