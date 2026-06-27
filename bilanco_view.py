@@ -92,11 +92,20 @@ def _tree() -> QTreeWidget:
     return t
 
 
+def _buyut(f: QFont, artis: float = 0.5) -> None:
+    """Punto/piksel — hangisi tanımlıysa onu büyüt. Stylesheet px font'ta pointSizeF()=-1
+    döner; doğrudan +0.5 yapmak 'Point size <= 0' uyarısı verir, o yüzden güvenli büyütme."""
+    if f.pointSizeF() > 0:
+        f.setPointSizeF(f.pointSizeF() + artis)
+    elif f.pixelSize() > 0:
+        f.setPixelSize(f.pixelSize() + 1)
+
+
 def _section(t: QTreeWidget, baslik: str) -> None:
     it = QTreeWidgetItem([baslik, ""])
     f = it.font(0)
     f.setBold(True)
-    f.setPointSizeF(f.pointSizeF() + 0.5)
+    _buyut(f)
     it.setFont(0, f)
     it.setForeground(0, QBrush(QColor(NAVY)))
     it.setFlags(Qt.ItemFlag.ItemIsEnabled)
@@ -113,7 +122,7 @@ def _row(t: QTreeWidget, ad: str, tutar: float, *, bold: bool = False,
             f = it.font(c)
             f.setBold(True)
             if big:
-                f.setPointSizeF(f.pointSizeF() + 0.5)
+                _buyut(f)
             it.setFont(c, f)
     if renk:
         br = QBrush(QColor(renk))
