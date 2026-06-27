@@ -33,10 +33,13 @@ from PyQt6.QtWidgets import (
 from bilanco_pdf import export_bilanco_pdf
 from bilanco_view import build_bilanco_widget
 from config import load_config
+from gelir_tablosu import GelirTablosu, build_gelir_tablosu, yuzde
+from gelir_tablosu_pdf import export_gelir_tablosu_pdf
+from gelir_tablosu_view import build_gelir_tablosu_widget
 from mikro_api import MikroAPIError, MikroClient
-from mikro_fetch import fetch_firma_adi, fetch_mizan
+from mikro_fetch import fetch_firma_adi, fetch_gelir_tablosu, fetch_mizan
 from mikro_settings_dialog import MikroAyarlarDialog
-from mizan_bilanco import Bilanco, build_bilanco
+from mizan_bilanco import Bilanco, build_bilanco, tl
 from resources import app_icon, app_logo_pixmap
 from styles import DARK_STYLESHEET
 
@@ -235,6 +238,154 @@ class BilancoTab(QWidget):
         self._status.setStyleSheet("color: #81c784;")
 
 
+def _hos_geldin(emoji: str, baslik: str, aciklama: str) -> QWidget:
+    """Sekme boşken gösterilen ortalanmış karşılama widget'ı."""
+    w = QWidget()
+    lay = QVBoxLayout(w)
+    lay.addStretch()
+    lbl = QLabel(
+        f"<div align='center' style='font-family:Segoe UI;'>"
+        f"<div style='font-size:46px;'>{emoji}</div>"
+        f"<div style='font-size:22px; font-weight:800; color:#374151; margin-top:6px;'>{baslik}</div>"
+        f"<div style='color:#6b7280; margin-top:12px; line-height:160%;'>{aciklama}</div>"
+        f"<div style='color:#94a3b8; margin-top:16px; font-size:12px;'>"
+        f"Dönemi seçin&nbsp; →&nbsp; <b style='color:#2f6fed;'>Getir</b>'e basın</div>"
+        f"</div>"
+    )
+    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    lbl.setWordWrap(True)
+    lay.addWidget(lbl)
+    lay.addStretch()
+    return w
+
+
+class GelirTablosuTab(QWidget):
+    """Dönem (başlangıç–bitiş) gelir tablosu üreten bağımsız rapor sekmesi."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._gt: GelirTablosu | None = None
+        self._firma: str = ""
+        self._build()
+
+    def _build(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(12)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(8)
+        controls.addWidget(QLabel("Dönem:"))
+        yil = load_config().calisma_yili or QDate.currentDate().year()
+        self._bas = QDateEdit()
+        self._bas.setCalendarPopup(True)
+        self._bas.setDisplayFormat("dd.MM.yyyy")
+        self._bas.setDate(QDate(yil, 1, 1))
+        self._bas.setFixedWidth(130)
+        controls.addWidget(self._bas)
+        controls.addWidget(QLabel("→"))
+        self._bit = QDateEdit()
+        self._bit.setCalendarPopup(True)
+        self._bit.setDisplayFormat("dd.MM.yyyy")
+        self._bit.setDate(QDate.currentDate())
+        self._bit.setFixedWidth(130)
+        controls.addWidget(self._bit)
+
+        self._btn_getir = QPushButton("Gelir Tablosu Getir")
+        self._btn_getir.setObjectName("primaryBtn")
+        self._btn_getir.clicked.connect(self._on_getir)
+        controls.addWidget(self._btn_getir)
+        self._btn_pdf = QPushButton("PDF Kaydet")
+        self._btn_pdf.setEnabled(False)
+        self._btn_pdf.clicked.connect(self._on_pdf)
+        controls.addWidget(self._btn_pdf)
+
+        self._status = QLabel("Dönem seçip «Gelir Tablosu Getir»e basın.")
+        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setWordWrap(True)
+        controls.addWidget(self._status, stretch=1)
+        layout.addLayout(controls)
+
+        self._empty = _hos_geldin("📈", "Gelir Tablosu",
+                                  "Seçtiğiniz dönemde satış, maliyet ve giderlerden<br>"
+                                  "kâr/zararın nasıl oluştuğunu gösterir.")
+        layout.addWidget(self._empty, stretch=1)
+        self._view = QScrollArea()
+        self._view.setWidgetResizable(True)
+        self._view.setFrameShape(QFrame.Shape.NoFrame)
+        self._view.setStyleSheet("QScrollArea { background: #f4f6f9; border: none; }")
+        self._view.setVisible(False)
+        layout.addWidget(self._view, stretch=1)
+
+    def _on_getir(self) -> None:
+        cfg = load_config()
+        if not cfg.is_complete():
+            cevap = QMessageBox.question(
+                self, "Mikro Ayarları Eksik",
+                "Mikro bağlantı bilgileri eksik. Üstteki «Mikro Ayarları»'ndan doldurun.\n\n"
+                "Şimdi açmak ister misiniz?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if cevap == QMessageBox.StandardButton.Yes:
+                MikroAyarlarDialog(self).exec()
+            return
+        if self._bas.date() > self._bit.date():
+            QMessageBox.warning(self, "Tarih Hatası", "Başlangıç tarihi bitişten sonra olamaz.")
+            return
+
+        bas = self._bas.date().toString("yyyy-MM-dd")
+        bit = self._bit.date().toString("yyyy-MM-dd")
+        self._btn_getir.setEnabled(False)
+        self._status.setText("Dönem gelir/gider hareketleri çekiliyor…")
+        self._status.setStyleSheet("color: #8b929e;")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        client = MikroClient(cfg)
+        try:
+            rows = fetch_gelir_tablosu(client, bas, bit)
+            self._gt = build_gelir_tablosu(rows, bas=bas, bit=bit)
+            firma = (cfg.firma_adi or "").strip()
+            if not firma:
+                try:
+                    firma = fetch_firma_adi(client)
+                except MikroAPIError:
+                    firma = ""
+            self._firma = firma
+        except MikroAPIError as exc:
+            QApplication.restoreOverrideCursor()
+            self._btn_getir.setEnabled(True)
+            self._status.setText("Gelir tablosu getirilemedi.")
+            self._status.setStyleSheet("color: #e57373;")
+            QMessageBox.warning(self, "Mikro Hatası", str(exc))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+            self._btn_getir.setEnabled(True)
+
+        gt = self._gt
+        self._empty.setVisible(False)
+        self._view.setVisible(True)
+        self._view.setWidget(build_gelir_tablosu_widget(gt, firma=self._firma))
+        self._btn_pdf.setEnabled(True)
+        self._status.setText(f"{gt.hesap_sayisi} gelir/gider hesabı · Net Kâr {tl(gt.net_kar)} "
+                             f"(net marj {yuzde(gt.net_marj)})")
+        self._status.setStyleSheet("color: #81c784;" if gt.net_kar >= 0 else "color: #e57373;")
+
+    def _on_pdf(self) -> None:
+        if not self._gt:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "PDF Kaydet", f"gelir_tablosu_{self._gt.bas}_{self._gt.bit}.pdf", "PDF (*.pdf)")
+        if not path:
+            return
+        try:
+            export_gelir_tablosu_pdf(self._gt, path, firma=self._firma)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "PDF Hatası", str(exc))
+            return
+        self._status.setText(f"PDF kaydedildi: {Path(path).name}")
+        self._status.setStyleSheet("color: #81c784;")
+
+
 def _yakinda_tab(baslik: str, aciklama: str) -> QWidget:
     """İleride eklenecek raporlar için 'yakında' yer tutucu sekmesi."""
     w = QWidget()
@@ -299,10 +450,7 @@ class MikRaporWindow(QMainWindow):
         # Sekmeler — her rapor kendi sekmesinde
         self._tabs = QTabWidget()
         self._tabs.addTab(BilancoTab(), "Anında Bilanço")
-        self._tabs.addTab(
-            _yakinda_tab("Gelir Tablosu", "Net Satış → Brüt Kâr → Faaliyet Giderleri → Dönem Kâr/Zarar"),
-            "Gelir Tablosu",
-        )
+        self._tabs.addTab(GelirTablosuTab(), "Gelir Tablosu")
         self._tabs.addTab(
             _yakinda_tab("Trend ve Oranlar", "Çok dönem karşılaştırma · cari oran · borçluluk · özkaynak"),
             "Trend ve Oranlar",

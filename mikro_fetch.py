@@ -22,7 +22,7 @@ Tasarım — iki katman bilinçli olarak ayrıldı:
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 
 import pandas as pd
@@ -323,6 +323,30 @@ def fetch_firma_adi(client: MikroClient) -> str:
         "SELECT TOP 1 fir_unvan FROM FIRMALAR WITH (NOLOCK) "
         "WHERE fir_unvan IS NOT NULL AND LTRIM(fir_unvan) <> ''"
     )
+
+
+def fetch_gelir_tablosu(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
+    """
+    Dönem (bas..bit, 'YYYY-MM-DD') için 6xx hesap hareketleri: hesap başına borç/alacak.
+
+    Gelir tablosu bir DÖNEM akışıdır (bilanço gibi kümülatif değil) → tarih aralığı. Bitiş günü
+    tam dahil edilsin diye < (bit+1gün). build_gelir_tablosu() bu satırları işler; en alt satır
+    (Dönem Net Kârı) bilançonun donem_kz'siyle aynı 6xx kümesinden gelir → mutabakat sağlar.
+    """
+    try:
+        bit_son = (date.fromisoformat(bit) + timedelta(days=1)).isoformat()
+    except ValueError:
+        bit_son = bit
+    sql = (
+        "SELECT fis_hesap_kod AS hesap_kodu, "
+        "SUM(CASE WHEN fis_meblag0 > 0 THEN fis_meblag0 ELSE 0 END) AS borc, "
+        "SUM(CASE WHEN fis_meblag0 < 0 THEN -fis_meblag0 ELSE 0 END) AS alacak "
+        "FROM MUHASEBE_FISLERI WITH (NOLOCK) "
+        "WHERE fis_iptal = 0 AND fis_hesap_kod LIKE '6%' "
+        f"AND fis_tarih >= '{bas}' AND fis_tarih < '{bit_son}' "
+        "GROUP BY fis_hesap_kod"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
 def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
