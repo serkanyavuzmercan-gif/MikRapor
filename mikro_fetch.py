@@ -119,8 +119,8 @@ def fetch_stok_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, A
     """
     Dönem (bas..bit) için STOK_HAREKETLERI özeti: hareket türü başına tutar/miktar/adet.
 
-    "Gerçek durum"un brüt marj ayağı buradan kurulur — mali müşavirin GL'de oynayabildiği
-    602/623 gibi kalemlerden bağımsız, FİİLEN depodan çıkan/giren mala dayanır.
+    Nakit & Kârlılık'ın brüt marj ayağı buradan kurulur — resmi GL'deki 602/623 gibi
+    sınıflama/kapanış kalemlerinden bağımsız, FİİLEN depodan çıkan/giren mala dayanır.
     sth_tip (0=giriş/alış, 1=çıkış/satış) + sth_evraktip ile sınıflanır (bkz. MIKRO-SEMA-NOTLARI):
       tip=1,evraktip=1 → satış irsaliyesi · tip=1,evraktip=4 → satış faturası
       tip=0,evraktip=3 → alış faturası   · tip=0,evraktip=12 → alış irsaliyesi/depo girişi
@@ -165,7 +165,7 @@ def fetch_nakit_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, 
     Banka tarafı satırı CARI_HESAP_HAREKETLERI ⨝ BANKALAR (cha_kod = ban_kod) ile alınır
     (çift sayım önlenir). cha_tip 0=giriş (para geldi), 1=çıkış (para gitti).
     TL = cha_meblag * ISNULL(cha_d_kur, 1). cha_iptal=0 şart. Bkz. MIKRO-SEMA-NOTLARI.
-    Nakit, tahakkuk oyunlarından bağımsız "gerçek durum" sinyalidir.
+    Nakit, tahakkuk zamanlamasından bağımsız fiili bir performans sinyalidir.
     """
     tl = _cha_tl_sql("c")
     sql = (
@@ -201,7 +201,7 @@ def fetch_bakiye_ozet(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     """
     Tarih (asof) itibarıyla nakit/alacak/borç ana hesap bakiyeleri (3 hane): SUM(fis_meblag0).
 
-    Gerçek durumun "param var mı / kim kime borçlu" ayağı: 10x (kasa/banka), 12x (alacaklar),
+    Nakit & Kârlılık'ın "param var mı / kim kime borçlu" ayağı: 10x (kasa/banka), 12x (alacaklar),
     32x (satıcı borçları). bakiye>0 = borç bakiyesi (varlık), bakiye<0 = alacak bakiyesi (borç).
     """
     sql = (

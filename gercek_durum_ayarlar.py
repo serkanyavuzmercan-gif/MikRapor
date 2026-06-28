@@ -1,5 +1,5 @@
 """
-Gerçek Durum sekmesi — firma bazlı hesaplama kuralları.
+Nakit & Kârlılık sekmesi — firma bazlı hesaplama kuralları.
 
 Varsayılan profil: irsaliyeli satış, alış faturası, nakit GL, alacak/borç cari.
   satış irsaliye+fatura, alış yalnız fatura, nakit GL, alacak/borç cari.
@@ -14,7 +14,7 @@ from config import _read_config_data, config_path, save_config_data
 
 @dataclass
 class GercekDurumAyarlar:
-    """Mikro kayıt tarzına göre Gerçek Durum motoru kuralları."""
+    """Mikro kayıt tarzına göre Nakit & Kârlılık motoru kuralları."""
 
     satis_bazi: str = "sevk"           # sevk | fatura
     alis_bazi: str = "fatura"          # fatura | irsaliye | ikisi

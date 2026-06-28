@@ -108,7 +108,7 @@ class TestGercekDurum(unittest.TestCase):
             stok_rows=_stok_ozet(), nakit_rows=_nakit_ozet(), bakiye_rows=_bakiye_ozet())
         csv = gercek_durum_csv(gd)
         self.assertIn("OPERASYONEL", csv)
-        self.assertIn("Gerçek Brüt Marj", csv)
+        self.assertIn("Fiili Brüt Marj", csv)
         self.assertIn("NAKİT", csv)
 
     def test_yuzde_format(self):

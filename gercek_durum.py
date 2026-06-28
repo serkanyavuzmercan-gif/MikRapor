@@ -1,17 +1,16 @@
 """
-Gerçek Durum motoru — Mikro'dan DOĞRUDAN, operasyonel gerçeği gösterir.
+Nakit & Kârlılık motoru — Mikro'dan DOĞRUDAN, işletmenin fiili performansını gösterir.
 
-Resmi tablolar (Bilanço / Gelir Tablosu) tek düzen hesap planı üzerinden kurulur ve mali
-müşavir 602/623 gibi "Diğer" kalemlerle, maliyet kapanışı zamanlamasıyla kâr marjını sektör
-ortalamasına çekebilir. Bu motor ise GL'nin oynanabilir kısmından bağımsız iki sert kaynağa
-dayanır:
+Resmi tablolar (Bilanço / Gelir Tablosu) tek düzen hesap planı üzerinden kurulur; 602/623 gibi
+"Diğer" kalemler ve maliyet kapanışı zamanlaması brüt marjı dönem içinde farklı gösterebilir.
+Bu motor ise resmi GL sınıflama/kapanış zamanlamasından bağımsız, iki sert kaynağa dayanır:
 
   1) STOK_HAREKETLERI → fiilen depodan çıkan satış / giren alış → operasyonel brüt marj
   2) Banka hareketleri (CARI_HESAP_HAREKETLERI ⨝ BANKALAR) → fiilen giren/çıkan nakit
   3) Cari hareket bakiyeleri (CARI_HESAP_HAREKETLERI) → nakit, alacak, borç
      (GL mizanı yerine — Mikro cari modülüyle aynı kaynak)
 
-Ayrıca resmi Gelir Tablosu (varsa) ile yan yana konup FARK (gizlenen marj) sayısallaştırılır.
+Ayrıca resmi Gelir Tablosu (varsa) ile yan yana konup FARK (mutabakat) sayısallaştırılır.
 
 İŞARET KURALI: STOK_HAREKETLERI.sth_tutar pozitif (satır tutarı); sınıflama sth_tip/sth_evraktip
 ile yapılır. Bakiye = SUM(fis_meblag0): poz=borç (varlık), neg=alacak (borç). Bkz. MIKRO-SEMA-NOTLARI.
@@ -186,7 +185,7 @@ class GercekDurum:
             self.gercek_satis == 0 and self.tum_cikis > 0
         )
 
-    # --- Resmi ile fark (gizlenen marj) ---
+    # --- Resmi ile fark (mutabakat) ---
     @property
     def marj_farki(self) -> float | None:
         if self.resmi_brut_marj is None:
@@ -195,7 +194,7 @@ class GercekDurum:
 
     @property
     def gizlenen_brut(self) -> float | None:
-        """Gerçek marj resmi net satışa uygulanınca ortaya çıkan ek brüt kâr (yaklaşık)."""
+        """Fiili marj resmi net satışa uygulanınca ortaya çıkan ek brüt kâr (yaklaşık)."""
         if self.resmi_brut_marj is None or self.resmi_net_satis is None:
             return None
         return (self.gercek_brut_marj - self.resmi_brut_marj) / 100 * self.resmi_net_satis
@@ -491,7 +490,7 @@ def build_gercek_durum(
     alis_bazi: str = "",
     ayarlar: GercekDurumAyarlar | None = None,
 ) -> GercekDurum:
-    """Mikro'dan çekilmiş ham satırlardan Gerçek Durum modelini kurar."""
+    """Mikro'dan çekilmiş ham satırlardan Nakit & Kârlılık modelini kurar."""
     a = ayarlar or GercekDurumAyarlar.varsayilan()
     if not satis_bazi:
         satis_bazi = a.satis_bazi
@@ -599,16 +598,16 @@ def build_gercek_durum(
 
 
 def gercek_durum_csv(gd: GercekDurum) -> str:
-    """Gerçek Durum özetini CSV'ye çevirir (; ayraç, Türkçe ondalık — TR Excel uyumlu)."""
+    """Nakit & Kârlılık özetini CSV'ye çevirir (; ayraç, Türkçe ondalık — TR Excel uyumlu)."""
     def s(v: float | None) -> str:
         return "" if v is None else f"{v:.2f}".replace(".", ",")
 
     out = ["Bölüm;Kalem;Tutar (TL)"]
     out.append(f"DÖNEM;{gd.bas} - {gd.bit} (satış bazı: {gd.satis_bazi});")
-    out.append(f"OPERASYONEL;Gerçek Satış;{s(gd.gercek_satis)}")
-    out.append(f"OPERASYONEL;Gerçek Alış;{s(gd.gercek_alis)}")
-    out.append(f"OPERASYONEL;Gerçek Brüt Kâr;{s(gd.gercek_brut_kar)}")
-    out.append(f"OPERASYONEL;Gerçek Brüt Marj;{yuzde(gd.gercek_brut_marj)}")
+    out.append(f"OPERASYONEL;Fiili Satış;{s(gd.gercek_satis)}")
+    out.append(f"OPERASYONEL;Fiili Alış;{s(gd.gercek_alis)}")
+    out.append(f"OPERASYONEL;Fiili Brüt Kâr;{s(gd.gercek_brut_kar)}")
+    out.append(f"OPERASYONEL;Fiili Brüt Marj;{yuzde(gd.gercek_brut_marj)}")
     out.append(f"NAKİT;Para Giren;{s(gd.nakit_giren)}")
     out.append(f"NAKİT;Para Çıkan;{s(gd.nakit_cikan)}")
     out.append(f"NAKİT;Net Nakit Akışı;{s(gd.nakit_net)}")
@@ -621,9 +620,9 @@ def gercek_durum_csv(gd: GercekDurum) -> str:
     out.append(f"BAKİYE;Net İşletme Sermayesi;{s(gd.net_isletme_sermayesi)}")
     if gd.resmi_brut_marj is not None:
         out.append(f"KARŞILAŞTIRMA;Resmi Brüt Marj;{yuzde(gd.resmi_brut_marj)}")
-        out.append(f"KARŞILAŞTIRMA;Gerçek Brüt Marj;{yuzde(gd.gercek_brut_marj)}")
+        out.append(f"KARŞILAŞTIRMA;Fiili Brüt Marj;{yuzde(gd.gercek_brut_marj)}")
         if gd.marj_farki is not None:
             out.append(f"KARŞILAŞTIRMA;Marj Farkı;{yuzde(gd.marj_farki)}")
         if gd.gizlenen_brut is not None:
-            out.append(f"KARŞILAŞTIRMA;Gizlenen Brüt (yaklaşık);{s(gd.gizlenen_brut)}")
+            out.append(f"KARŞILAŞTIRMA;Fiili − Resmi Brüt Farkı (yaklaşık);{s(gd.gizlenen_brut)}")
     return "\r\n".join(out)

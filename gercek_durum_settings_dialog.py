@@ -1,5 +1,5 @@
 """
-Gerçek Durum hesaplama ayarları (PyQt6).
+Nakit & Kârlılık hesaplama ayarları (PyQt6).
 
 Firma bazlı Mikro kayıt tarzına göre stok sınıflama ve bakiye kaynağı seçilir.
 Varsayılan profil MikRapor önerilen ayarlarıdır.
@@ -44,7 +44,7 @@ def _combo_secenekler(combo: QComboBox, secenekler: list[tuple[str, str]], secil
 class GercekDurumAyarlarDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Gerçek Durum Ayarları")
+        self.setWindowTitle("Nakit & Kârlılık Ayarları")
         self.setMinimumWidth(560)
         self._ayarlar = load_gercek_durum_ayarlar()
         self._build_ui()
@@ -54,7 +54,7 @@ class GercekDurumAyarlarDialog(QDialog):
 
         info = QLabel(
             "Mikro'da kayıt tarzı firmadan firmaya değişir. Bu kurallar yalnızca "
-            "«Gerçek Durum» sekmesini etkiler; Bilanço / Gelir Tablosu değişmez. "
+            "«Nakit & Kârlılık» sekmesini etkiler; Bilanço / Gelir Tablosu değişmez. "
             "Şüphede «stok_diag_cli» ve «cari_diag_cli» ile teşhis çalıştırın."
         )
         info.setWordWrap(True)

@@ -144,7 +144,7 @@ class DonemDurumu(QObject):
 
 
 def _donem_aralik_bagla(tab: QWidget, donem: DonemDurumu, bas: TarihSecici, bit: TarihSecici) -> None:
-    """İki tarihli sekmeyi ortak döneme bağlar (Gelir Tablosu, Gerçek Durum)."""
+    """İki tarihli sekmeyi ortak döneme bağlar (Gelir Tablosu, Nakit & Kârlılık)."""
     tab._donem_uzaktan = False  # noqa: SLF001
 
     def uygula() -> None:
@@ -519,7 +519,7 @@ class GelirTablosuTab(QWidget):
 
 
 class GercekDurumTab(QWidget):
-    """Operasyonel gerçeği (stok+banka) doğrudan Mikro'dan üreten bağımsız rapor sekmesi."""
+    """Fiili stok + banka hareketinden nakit & kârlılık üreten bağımsız rapor sekmesi."""
 
     def __init__(self, donem: DonemDurumu, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -547,7 +547,7 @@ class GercekDurumTab(QWidget):
         self._btn_ayarlar.clicked.connect(self._on_ayarlar)
         controls.addWidget(self._btn_ayarlar)
 
-        self._btn_getir = QPushButton("Gerçek Durumu Getir")
+        self._btn_getir = QPushButton("Nakit && Kârlılık Getir")
         self._btn_getir.setObjectName("primaryBtn")
         self._btn_getir.clicked.connect(self._on_getir)
         controls.addWidget(self._btn_getir)
@@ -557,16 +557,17 @@ class GercekDurumTab(QWidget):
         self._btn_csv.clicked.connect(self._on_csv)
         controls.addWidget(self._btn_csv)
 
-        self._status = QLabel("Dönem seçip «Gerçek Durumu Getir»e basın.")
+        self._status = QLabel("Dönem seçip «Nakit & Kârlılık Getir»e basın.")
         self._status.setStyleSheet("color: #8b929e;")
         self._status.setWordWrap(True)
         controls.addWidget(self._status, stretch=1)
         layout.addLayout(controls)
 
         self._empty = _hos_geldin(
-            "🛰️", "Gerçek Durum",
-            "Doğrudan Mikro'dan, fiili stok ve banka hareketine dayanarak<br>"
-            "gerçek brüt marjı, nakit akışını ve resmi tabloyla farkı gösterir.<br>"
+            "💰", "Nakit &amp; Kârlılık",
+            "Faturalar muhasebeleştirilmeden, deponuzdan geçen mal ve bankadan geçen<br>"
+            "para üzerinden işletmenin fiili brüt marjını, nakit akışını ve işletme<br>"
+            "sermayesini gösterir; resmi gelir tablosuyla mutabakatını yapar.<br>"
             "<span style='color:#9aa0a8;'>İlk kurulumda «⚙ Ayarlar» ile firma kayıt tarzını seçin.</span>")
         layout.addWidget(self._empty, stretch=1)
         self._view = QScrollArea()
@@ -615,7 +616,7 @@ class GercekDurumTab(QWidget):
             cari_bakiye_rows = fetch_cari_bakiye(client, bit)
             mizan_rows = fetch_mizan(client, bit)
             bilanco = build_bilanco(mizan_rows, asof=bit)
-            # Resmi GL (karşılaştırma için) — başarısız olsa da gerçek durum üretilir.
+            # Resmi GL (karşılaştırma için) — başarısız olsa da rapor üretilir.
             try:
                 gt = build_gelir_tablosu(fetch_gelir_tablosu(client, bas, bit), bas=bas, bit=bit)
             except MikroAPIError:
@@ -637,7 +638,7 @@ class GercekDurumTab(QWidget):
         except MikroAPIError as exc:
             QApplication.restoreOverrideCursor()
             self._btn_getir.setEnabled(True)
-            self._status.setText("Gerçek durum getirilemedi.")
+            self._status.setText("Rapor getirilemedi.")
             self._status.setStyleSheet("color: #e57373;")
             QMessageBox.warning(self, "Mikro Hatası", str(exc))
             return
@@ -652,7 +653,7 @@ class GercekDurumTab(QWidget):
         self._btn_csv.setEnabled(True)
         parts = [
             f"Stok {gd.stok_kirilim_sayisi} kırılım ({gd.stok_hareket_adet:,} hareket)".replace(",", "."),
-            f"Gerçek brüt marj {yuzde(gd.gercek_brut_marj)}",
+            f"Fiili brüt marj {yuzde(gd.gercek_brut_marj)}",
             f"Net nakit {tl(gd.nakit_net)}",
         ]
         if gd.ayar_ozet:
@@ -670,7 +671,7 @@ class GercekDurumTab(QWidget):
     def _on_csv(self) -> None:
         if not self._gd:
             return
-        _csv_kaydet(self, self._status, f"gercek_durum_{self._gd.bas}_{self._gd.bit}.csv",
+        _csv_kaydet(self, self._status, f"nakit_karlilik_{self._gd.bas}_{self._gd.bit}.csv",
                     gercek_durum_csv(self._gd))
 
 
@@ -720,7 +721,7 @@ class MikRaporWindow(QMainWindow):
         self._tabs = QTabWidget()
         self._tabs.addTab(BilancoTab(self._donem), "Anında Bilanço")
         self._tabs.addTab(GelirTablosuTab(self._donem), "Gelir Tablosu")
-        self._tabs.addTab(GercekDurumTab(self._donem), "Gerçek Durum")
+        self._tabs.addTab(GercekDurumTab(self._donem), "Nakit && Kârlılık")
         layout.addWidget(self._tabs, stretch=1)
 
     def _on_ayarlar(self) -> None:

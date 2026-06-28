@@ -1,10 +1,10 @@
 """
-Gerçek Durum — yerel Qt görünümü.
+Nakit & Kârlılık — yerel Qt görünümü.
 
-Resmi tabloların aksine operasyonel gerçeği gösterir: stok hareketinden gerçek brüt marj,
-banka hareketinden nakit akışı, 10x/12x/32x bakiyelerinden nakit/alacak/borç. Vurucu kısım
-"RESMİ vs GERÇEK" paneli: mali müşavirin marjı sektör ortalamasına çekerken gizlediği farkı
-sayısal gösterir. Aylık trend grafiği ek bağımlılık olmadan QPainter ile çizilir.
+İşletmenin fiili kârlılık ve nakit performansını gösterir: stok hareketinden fiili brüt marj,
+banka hareketinden nakit akışı, 10x/12x/32x bakiyelerinden nakit/alacak/borç. "RESMİ vs FİİLİ"
+paneli, resmi gelir tablosu ile fiili operasyonu yan yana koyup farkın mutabakatını yapar
+(SMM zamanlaması, 623 vb.). Aylık trend grafiği ek bağımlılık olmadan QPainter ile çizilir.
 """
 
 from __future__ import annotations
@@ -79,12 +79,12 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
         g.addWidget(_satir_label(deger, bold=bold, renk=renk, sag=True), r, 1)
 
     baz = "İrsaliye + Fatura" if gd.satis_bazi == "sevk" else "Yalnız Fatura"
-    satir(0, f"Gerçek Satış  ({baz})", tl(gd.gercek_satis), bold=True)
+    satir(0, f"Fiili Satış  ({baz})", tl(gd.gercek_satis), bold=True)
     g.addWidget(_satir_label(f"    • satış irsaliyesi", renk=FAINT, boyut=11), 1, 0)
     g.addWidget(_satir_label(tl(gd.satis_irsaliye), renk=FAINT, boyut=11, sag=True), 1, 1)
     g.addWidget(_satir_label(f"    • satış faturası", renk=FAINT, boyut=11), 2, 0)
     g.addWidget(_satir_label(tl(gd.satis_fatura), renk=FAINT, boyut=11, sag=True), 2, 1)
-    satir(3, "Gerçek Alış (−)", tl(-gd.gercek_alis))
+    satir(3, "Fiili Alış (−)", tl(-gd.gercek_alis))
     g.addWidget(_satir_label(f"    • alış faturası (toplam alış)", renk=FAINT, boyut=11), 4, 0)
     g.addWidget(_satir_label(tl(gd.alis_fatura), renk=FAINT, boyut=11, sag=True), 4, 1)
     r_extra = 5
@@ -100,8 +100,8 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
         r_brut = r_extra + 1
     else:
         r_brut = r_extra
-    satir(r_brut, "Gerçek Brüt Kâr", tl(gd.gercek_brut_kar), bold=True, renk=_renk(gd.gercek_brut_kar))
-    satir(r_brut + 1, "Gerçek Brüt Marj", yuzde(gd.gercek_brut_marj), bold=True,
+    satir(r_brut, "Fiili Brüt Kâr", tl(gd.gercek_brut_kar), bold=True, renk=_renk(gd.gercek_brut_kar))
+    satir(r_brut + 1, "Fiili Brüt Marj", yuzde(gd.gercek_brut_marj), bold=True,
           renk=_renk(gd.gercek_brut_marj))
     if gd.resmi_smm is not None and gd.smm_stok_farki is not None:
         not2 = _satir_label(
@@ -110,7 +110,7 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
             renk=FAINT, boyut=11)
         not2.setWordWrap(True)
         g.addWidget(not2, r_brut + 2, 0, 1, 2)
-    return _card("OPERASYONEL GERÇEK  (stok hareketinden)", inner)
+    return _card("OPERASYONEL KÂRLILIK  (stok hareketinden)", inner)
 
 
 def _karsilastirma_panel(gd: GercekDurum) -> QFrame:
@@ -122,7 +122,7 @@ def _karsilastirma_panel(gd: GercekDurum) -> QFrame:
     g.setVerticalSpacing(8)
     g.setColumnStretch(0, 1)
 
-    for c, baslik in ((1, "Resmi"), (2, "Gerçek"), (3, "Fark")):
+    for c, baslik in ((1, "Resmi"), (2, "Fiili"), (3, "Fark")):
         g.addWidget(_satir_label(baslik, renk=MUTED, boyut=11, bold=True, sag=True), 0, c)
 
     def kolon3(r: int, ad: str, resmi: str, gercek: str, fark: str, fark_renk: str) -> None:
@@ -133,7 +133,7 @@ def _karsilastirma_panel(gd: GercekDurum) -> QFrame:
 
     if gd.resmi_brut_marj is None:
         g.addWidget(_satir_label("Resmi gelir tablosu yüklenemedi.", renk=FAINT), 1, 0, 1, 4)
-        return _card("RESMİ vs GERÇEK", inner)
+        return _card("RESMİ vs FİİLİ", inner)
 
     mf = gd.marj_farki or 0.0
     kolon3(1, "Brüt Marj", yuzde(gd.resmi_brut_marj), yuzde(gd.gercek_brut_marj),
@@ -148,17 +148,18 @@ def _karsilastirma_panel(gd: GercekDurum) -> QFrame:
                tl(gd.resmi_smm), tl(gd.gercek_alis),
                ("+" if sf >= 0 else "") + tl(sf), _renk(-sf))
     if gd.gizlenen_brut is not None:
-        g.addWidget(_satir_label("Gizlenen brüt (yaklaşık)", bold=True), 4, 0)
+        g.addWidget(_satir_label("Fiili − resmi brüt farkı (yaklaşık)", bold=True), 4, 0)
         g.addWidget(_satir_label(("+" if gd.gizlenen_brut >= 0 else "") + tl(gd.gizlenen_brut),
                                  sag=True, bold=True, renk=_renk(gd.gizlenen_brut)), 4, 1, 1, 3)
 
     not_lbl = _satir_label(
-        "Gerçek marj = depodan çıkan − giren mal. Resmi SMM ayrıca 623 (navlun/gümrük vb.) ve "
-        "stok değişimini içerir; bu yüzden resmi brüt daha düşük görünür — alış 'eksik' değil.",
+        "Fiili marj = depodan çıkan − giren mal. Resmi SMM ek olarak 623 (navlun/gümrük vb.) ve "
+        "dönem stok değişimini içerir; iki rakam bu yüzden farklı çıkar. Fark muhasebe "
+        "zamanlamasıdır, bir tutarsızlık değildir.",
         renk=FAINT, boyut=11)
     not_lbl.setWordWrap(True)
     g.addWidget(not_lbl, 5, 0, 1, 4)
-    return _card("RESMİ vs GERÇEK  (gizlenen marj)", inner)
+    return _card("RESMİ vs FİİLİ  (mutabakat)", inner)
 
 
 def _nakit_panel(gd: GercekDurum) -> QFrame:
@@ -224,7 +225,7 @@ def _nakit_panel(gd: GercekDurum) -> QFrame:
                 renk="#b45309", boyut=10)
             not_gl.setWordWrap(True)
             g.addWidget(not_gl, r_nis + 1, 0, 1, 2)
-    return _card("NAKİT GERÇEĞİ & İŞLETME SERMAYESİ  (cari bakiye)", inner)
+    return _card("NAKİT & İŞLETME SERMAYESİ  (cari bakiye)", inner)
 
 
 def _cizgi() -> QFrame:
@@ -327,10 +328,11 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
         f"<br><span style='font-size:10px;'>Profil: {gd.ayar_ozet}</span>" if gd.ayar_ozet else ""
     )
     head = QLabel(
-        f"<span style='color:{MUTED}; font-size:11px;'>GERÇEK DURUM &nbsp;·&nbsp; "
+        f"<span style='color:{MUTED}; font-size:11px;'>NAKİT &amp; KÂRLILIK &nbsp;·&nbsp; "
         f"{gd.bas} → {gd.bit} dönemi{firma_str}</span><br>"
-        f"<span style='color:{FAINT}; font-size:11px;'>Doğrudan Mikro'dan — fiili stok ve banka "
-        f"hareketine dayanır; resmi GL'nin oynanabilir kalemlerinden bağımsızdır.{profil}</span>"
+        f"<span style='color:{FAINT}; font-size:11px;'>Doğrudan Mikro'dan — faturalar "
+        f"muhasebeleştirilmeden, deponuzdan geçen mal ve bankadan geçen para üzerinden "
+        f"işletmenin fiili kârlılığını ve nakdini hesaplar.{profil}</span>"
     )
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
@@ -364,9 +366,9 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
 
     kpi = QHBoxLayout()
     kpi.setSpacing(12)
-    kpi.addWidget(_kpi_card("GERÇEK SATIŞ", tl(gd.gercek_satis), "#eef4ff", "#1d4ed8"))
+    kpi.addWidget(_kpi_card("FİİLİ SATIŞ", tl(gd.gercek_satis), "#eef4ff", "#1d4ed8"))
     bk_bg, bk_vr = ("#e8f6ee", POZ) if gd.gercek_brut_kar >= 0 else ("#fdecec", NEG)
-    kpi.addWidget(_kpi_card(f"GERÇEK BRÜT MARJ  ·  {yuzde(gd.gercek_brut_marj)}",
+    kpi.addWidget(_kpi_card(f"FİİLİ BRÜT MARJ  ·  {yuzde(gd.gercek_brut_marj)}",
                             tl(gd.gercek_brut_kar), bk_bg, bk_vr))
     nk_bg, nk_vr = ("#e8f6ee", POZ) if gd.nakit_net >= 0 else ("#fdecec", NEG)
     kpi.addWidget(_kpi_card("NET NAKİT AKIŞI", tl(gd.nakit_net), nk_bg, nk_vr))

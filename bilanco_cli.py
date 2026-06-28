@@ -32,7 +32,7 @@ def main() -> None:
     b = build_bilanco(rows, asof=asof)
     print(bilanco_metni(b))
 
-    # Cari bakiye karşılaştırması (Gerçek Durum'un kullandığı kaynak)
+    # Cari bakiye karşılaştırması (Nakit & Kârlılık'ın kullandığı kaynak)
     try:
         from gercek_durum import _bakiye_bilancodan, _bakiye_caridan
         from mikro_fetch import fetch_cari_bakiye

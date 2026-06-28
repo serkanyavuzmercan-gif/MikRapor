@@ -1,5 +1,5 @@
 """
-Stok hareketi teşhisi — evraktip kırılımı (gerçek satış/alış neden şişiyor?).
+Stok hareketi teşhisi — evraktip kırılımı (fiili satış/alış neden şişiyor?).
 
     .\\.venv\\Scripts\\python.exe stok_diag_cli.py 2026-01-01 2026-06-28
 """
@@ -58,21 +58,21 @@ def main() -> None:
     for baz in ("sevk", "fatura"):
         s = _siniflandir_stok(rows, baz, "fatura")
         print(f"\nÖZET — satış bazı «{baz}», alış fatura:")
-        print(f"  Gerçek satış     {tl(s['satis']):>18}")
-        print(f"  Gerçek alış      {tl(s['alis']):>18}")
+        print(f"  Fiili satış     {tl(s['satis']):>18}")
+        print(f"  Fiili alış      {tl(s['alis']):>18}")
         print(f"  Brüt             {tl(s['satis'] - s['alis']):>18}")
 
     a = load_gercek_durum_ayarlar()
     s = _siniflandir_stok(rows, a.satis_bazi, a.alis_bazi)
     print(f"\nÖZET — kayıtlı ayarlar ({a.ozet()}):")
-    print(f"  Gerçek satış     {tl(s['satis']):>18}")
-    print(f"  Gerçek alış      {tl(s['alis']):>18}")
+    print(f"  Fiili satış     {tl(s['satis']):>18}")
+    print(f"  Fiili alış      {tl(s['alis']):>18}")
     print(f"  Brüt             {tl(s['satis'] - s['alis']):>18}")
     if a.alis_bazi != "ikisi" and s["alis_irsaliye"] > 0.005:
         print(f"  (alış irsaliyesi {tl(s['alis_irsaliye'])} — toplama dahil değil)")
 
     print("\nNOT: Mikro'da aynı mal hem irsaliye hem faturada stok hareketi oluşturursa")
-    print("     ikisini toplamak alışı ~2 kat şişirir. Gerçek Durum alışta yalnız faturayı sayar.")
+    print("     ikisini toplamak alışı ~2 kat şişirir. Nakit & Kârlılık alışta yalnız faturayı sayar.")
 
 
 if __name__ == "__main__":
