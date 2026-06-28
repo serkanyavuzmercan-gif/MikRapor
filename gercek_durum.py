@@ -1,0 +1,270 @@
+"""
+Gerçek Durum motoru — Mikro'dan DOĞRUDAN, operasyonel gerçeği gösterir.
+
+Resmi tablolar (Bilanço / Gelir Tablosu) tek düzen hesap planı üzerinden kurulur ve mali
+müşavir 602/623 gibi "Diğer" kalemlerle, maliyet kapanışı zamanlamasıyla kâr marjını sektör
+ortalamasına çekebilir. Bu motor ise GL'nin oynanabilir kısmından bağımsız iki sert kaynağa
+dayanır:
+
+  1) STOK_HAREKETLERI → fiilen depodan çıkan satış / giren alış → operasyonel brüt marj
+  2) Banka hareketleri (CARI_HESAP_HAREKETLERI ⨝ BANKALAR) → fiilen giren/çıkan nakit
+  3) 10x/12x/32x bakiyeleri → nakit mevcudu, alacak, borç
+
+Ayrıca resmi Gelir Tablosu (varsa) ile yan yana konup FARK (gizlenen marj) sayısallaştırılır.
+
+İŞARET KURALI: STOK_HAREKETLERI.sth_tutar pozitif (satır tutarı); sınıflama sth_tip/sth_evraktip
+ile yapılır. Bakiye = SUM(fis_meblag0): poz=borç (varlık), neg=alacak (borç). Bkz. MIKRO-SEMA-NOTLARI.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from dataclasses import dataclass, field
+
+# --- Hareket sınıflama (MIKRO-SEMA-NOTLARI ile doğrulanmış tip/evraktip kodları) ---
+SATIS_TIP = 1   # çıkış
+ALIS_TIP = 0    # giriş
+EVRAKTIP_SATIS_IRSALIYE = 1
+EVRAKTIP_SATIS_FATURA = 4
+EVRAKTIP_ALIS_FATURA = 3
+EVRAKTIP_ALIS_IRSALIYE = 12
+
+# Satış bazı: "sevk" = irsaliye+fatura (fiilen sevk edilen mal), "fatura" = yalnız fatura.
+SATIS_EVRAKTIPLERI = {
+    "sevk": {EVRAKTIP_SATIS_IRSALIYE, EVRAKTIP_SATIS_FATURA},
+    "fatura": {EVRAKTIP_SATIS_FATURA},
+}
+ALIS_EVRAKTIPLERI = {
+    "sevk": {EVRAKTIP_ALIS_FATURA, EVRAKTIP_ALIS_IRSALIYE},
+    "fatura": {EVRAKTIP_ALIS_FATURA},
+}
+
+
+def _f(v: object) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _i(v: object) -> int:
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return -1
+
+
+def yuzde(v: float) -> str:
+    """12.5 -> '%12,5' (Türkçe ondalık)."""
+    return ("%" + f"{v:.1f}").replace(".", ",")
+
+
+@dataclass
+class AyTrend:
+    """Bir ayın (YYYY-MM) operasyonel & nakit özeti — trend grafiği için."""
+    ay: str
+    satis: float = 0.0
+    alis: float = 0.0
+    nakit_giren: float = 0.0
+    nakit_cikan: float = 0.0
+
+    @property
+    def brut(self) -> float:
+        return self.satis - self.alis
+
+    @property
+    def nakit_net(self) -> float:
+        return self.nakit_giren - self.nakit_cikan
+
+
+@dataclass
+class GercekDurum:
+    bas: str = ""
+    bit: str = ""
+    satis_bazi: str = "sevk"  # "sevk" | "fatura"
+
+    # Operasyonel (stok hareketinden)
+    gercek_satis: float = 0.0
+    gercek_alis: float = 0.0
+    satis_irsaliye: float = 0.0
+    satis_fatura: float = 0.0
+
+    # Nakit (banka)
+    nakit_giren: float = 0.0
+    nakit_cikan: float = 0.0
+
+    # Bakiyeler (asof = bit)
+    nakit_mevcut: float = 0.0   # 10x
+    alacak: float = 0.0         # 12x (borç bakiyesi)
+    borc: float = 0.0           # 32x (alacak bakiyesi → pozitif borç)
+
+    # Resmi GL (varsa, karşılaştırma için)
+    resmi_brut_marj: float | None = None
+    resmi_net_marj: float | None = None
+    resmi_net_kar: float | None = None
+    resmi_net_satis: float | None = None
+    resmi_brut_kar: float | None = None
+
+    trend: list[AyTrend] = field(default_factory=list)
+
+    # --- Operasyonel sonuçlar ---
+    @property
+    def gercek_brut_kar(self) -> float:
+        return self.gercek_satis - self.gercek_alis
+
+    @property
+    def gercek_brut_marj(self) -> float:
+        return (self.gercek_brut_kar / self.gercek_satis * 100) if self.gercek_satis else 0.0
+
+    @property
+    def nakit_net(self) -> float:
+        return self.nakit_giren - self.nakit_cikan
+
+    @property
+    def net_isletme_sermayesi(self) -> float:
+        """Nakit + alacak − borç (kaba işletme sermayesi gücü)."""
+        return self.nakit_mevcut + self.alacak - self.borc
+
+    # --- Resmi ile fark (gizlenen marj) ---
+    @property
+    def marj_farki(self) -> float | None:
+        if self.resmi_brut_marj is None:
+            return None
+        return self.gercek_brut_marj - self.resmi_brut_marj
+
+    @property
+    def gizlenen_brut(self) -> float | None:
+        """Gerçek marj resmi net satışa uygulanınca ortaya çıkan ek brüt kâr (yaklaşık)."""
+        if self.resmi_brut_marj is None or self.resmi_net_satis is None:
+            return None
+        return (self.gercek_brut_marj - self.resmi_brut_marj) / 100 * self.resmi_net_satis
+
+
+def _siniflandir_stok(rows: list[dict], satis_bazi: str) -> dict[str, float]:
+    """STOK_HAREKETLERI ham kırılımını satış/alış toplamlarına indirger."""
+    sat_kume = SATIS_EVRAKTIPLERI.get(satis_bazi, SATIS_EVRAKTIPLERI["sevk"])
+    alis_kume = ALIS_EVRAKTIPLERI.get(satis_bazi, ALIS_EVRAKTIPLERI["sevk"])
+    out = {"satis": 0.0, "alis": 0.0, "satis_irsaliye": 0.0, "satis_fatura": 0.0}
+    for r in rows:
+        tip = _i(r.get("sth_tip", r.get("STH_TIP")))
+        ev = _i(r.get("sth_evraktip", r.get("STH_EVRAKTIP")))
+        tutar = _f(r.get("tutar", r.get("TUTAR")))
+        if tip == SATIS_TIP:
+            if ev == EVRAKTIP_SATIS_IRSALIYE:
+                out["satis_irsaliye"] += tutar
+            elif ev == EVRAKTIP_SATIS_FATURA:
+                out["satis_fatura"] += tutar
+            if ev in sat_kume:
+                out["satis"] += tutar
+        elif tip == ALIS_TIP:
+            if ev in alis_kume:
+                out["alis"] += tutar
+    return out
+
+
+def _aylik_trend(stok_aylik: list[dict], nakit_aylik: list[dict], satis_bazi: str) -> list[AyTrend]:
+    sat_kume = SATIS_EVRAKTIPLERI.get(satis_bazi, SATIS_EVRAKTIPLERI["sevk"])
+    alis_kume = ALIS_EVRAKTIPLERI.get(satis_bazi, ALIS_EVRAKTIPLERI["sevk"])
+    aylar: dict[str, AyTrend] = defaultdict(lambda: AyTrend(ay=""))
+    for r in stok_aylik:
+        ay = str(r.get("ay", r.get("AY")) or "")
+        if not ay:
+            continue
+        a = aylar[ay]
+        a.ay = ay
+        tip = _i(r.get("sth_tip", r.get("STH_TIP")))
+        ev = _i(r.get("sth_evraktip", r.get("STH_EVRAKTIP")))
+        tutar = _f(r.get("tutar", r.get("TUTAR")))
+        if tip == SATIS_TIP and ev in sat_kume:
+            a.satis += tutar
+        elif tip == ALIS_TIP and ev in alis_kume:
+            a.alis += tutar
+    for r in nakit_aylik:
+        ay = str(r.get("ay", r.get("AY")) or "")
+        if not ay:
+            continue
+        a = aylar[ay]
+        a.ay = ay
+        a.nakit_giren += _f(r.get("giren", r.get("GIREN")))
+        a.nakit_cikan += _f(r.get("cikan", r.get("CIKAN")))
+    return [aylar[k] for k in sorted(aylar)]
+
+
+def build_gercek_durum(
+    *,
+    stok_rows: list[dict] | None = None,
+    stok_aylik: list[dict] | None = None,
+    nakit_rows: list[dict] | None = None,
+    nakit_aylik: list[dict] | None = None,
+    bakiye_rows: list[dict] | None = None,
+    gelir_tablosu=None,
+    bas: str = "",
+    bit: str = "",
+    satis_bazi: str = "sevk",
+) -> GercekDurum:
+    """Mikro'dan çekilmiş ham satırlardan Gerçek Durum modelini kurar."""
+    gd = GercekDurum(bas=bas, bit=bit, satis_bazi=satis_bazi)
+
+    s = _siniflandir_stok(stok_rows or [], satis_bazi)
+    gd.gercek_satis = s["satis"]
+    gd.gercek_alis = s["alis"]
+    gd.satis_irsaliye = s["satis_irsaliye"]
+    gd.satis_fatura = s["satis_fatura"]
+
+    for r in (nakit_rows or []):
+        gd.nakit_giren += _f(r.get("giren", r.get("GIREN")))
+        gd.nakit_cikan += _f(r.get("cikan", r.get("CIKAN")))
+
+    nakit_bakiye = 0.0
+    alacak = 0.0
+    borc = 0.0
+    for r in (bakiye_rows or []):
+        ana = str(r.get("ana", r.get("ANA")) or "").strip()
+        bakiye = _f(r.get("bakiye", r.get("BAKIYE")))
+        if ana[:2] == "10":            # 100,101,102,103,108 → nakit/hazır değerler
+            nakit_bakiye += bakiye
+        elif ana[:2] == "12":          # 120,121 → alıcılar (borç bakiyesi = alacağımız)
+            alacak += bakiye
+        elif ana[:2] == "32":          # 320,321 → satıcılar (alacak bakiyesi = borcumuz)
+            borc += -bakiye
+    gd.nakit_mevcut = nakit_bakiye
+    gd.alacak = alacak
+    gd.borc = borc
+
+    if gelir_tablosu is not None:
+        gd.resmi_brut_marj = gelir_tablosu.brut_marj
+        gd.resmi_net_marj = gelir_tablosu.net_marj
+        gd.resmi_net_kar = gelir_tablosu.net_kar
+        gd.resmi_net_satis = gelir_tablosu.net_satislar
+        gd.resmi_brut_kar = gelir_tablosu.brut_kar
+
+    gd.trend = _aylik_trend(stok_aylik or [], nakit_aylik or [], satis_bazi)
+    return gd
+
+
+def gercek_durum_csv(gd: GercekDurum) -> str:
+    """Gerçek Durum özetini CSV'ye çevirir (; ayraç, Türkçe ondalık — TR Excel uyumlu)."""
+    def s(v: float | None) -> str:
+        return "" if v is None else f"{v:.2f}".replace(".", ",")
+
+    out = ["Bölüm;Kalem;Tutar (TL)"]
+    out.append(f"DÖNEM;{gd.bas} - {gd.bit} (satış bazı: {gd.satis_bazi});")
+    out.append(f"OPERASYONEL;Gerçek Satış;{s(gd.gercek_satis)}")
+    out.append(f"OPERASYONEL;Gerçek Alış;{s(gd.gercek_alis)}")
+    out.append(f"OPERASYONEL;Gerçek Brüt Kâr;{s(gd.gercek_brut_kar)}")
+    out.append(f"OPERASYONEL;Gerçek Brüt Marj;{yuzde(gd.gercek_brut_marj)}")
+    out.append(f"NAKİT;Para Giren;{s(gd.nakit_giren)}")
+    out.append(f"NAKİT;Para Çıkan;{s(gd.nakit_cikan)}")
+    out.append(f"NAKİT;Net Nakit Akışı;{s(gd.nakit_net)}")
+    out.append(f"BAKİYE;Nakit Mevcudu (10x);{s(gd.nakit_mevcut)}")
+    out.append(f"BAKİYE;Alacaklar (12x);{s(gd.alacak)}")
+    out.append(f"BAKİYE;Borçlar (32x);{s(gd.borc)}")
+    out.append(f"BAKİYE;Net İşletme Sermayesi;{s(gd.net_isletme_sermayesi)}")
+    if gd.resmi_brut_marj is not None:
+        out.append(f"KARŞILAŞTIRMA;Resmi Brüt Marj;{yuzde(gd.resmi_brut_marj)}")
+        out.append(f"KARŞILAŞTIRMA;Gerçek Brüt Marj;{yuzde(gd.gercek_brut_marj)}")
+        if gd.marj_farki is not None:
+            out.append(f"KARŞILAŞTIRMA;Marj Farkı;{yuzde(gd.marj_farki)}")
+        if gd.gizlenen_brut is not None:
+            out.append(f"KARŞILAŞTIRMA;Gizlenen Brüt (yaklaşık);{s(gd.gizlenen_brut)}")
+    return "\r\n".join(out)
