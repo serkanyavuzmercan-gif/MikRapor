@@ -307,16 +307,26 @@ def _cari_kovala(borc_h: float, alacak_h: float, hareket_tipi: int, baglanti_tip
     if borc_h < 0.005 and alacak_h < 0.005:
         return out
     ht, bt = hareket_tipi, baglanti_tipi
-    is_sup = ht == 2 or bt == 1
-    is_cus = ht == 1 or bt == 0
 
-    if is_sup and not is_cus:
+    if ht == 2:  # sadece alış
         if alacak_h > borc_h + 0.005:
             out["borc"] = alacak_h - borc_h
         elif borc_h > alacak_h + 0.005:
             out["borc"] = borc_h - alacak_h
         return out
-    if is_cus and not is_sup:
+    if ht == 1:  # sadece satış
+        if borc_h > alacak_h + 0.005:
+            out["alacak"] = borc_h - alacak_h
+        elif alacak_h > borc_h + 0.005:
+            out["musteri_avans"] = alacak_h - borc_h
+        return out
+    if bt == 1:  # satıcı
+        if alacak_h > borc_h + 0.005:
+            out["borc"] = alacak_h - borc_h
+        elif borc_h > alacak_h + 0.005:
+            out["borc"] = borc_h - alacak_h
+        return out
+    if bt == 0:  # müşteri
         if borc_h > alacak_h + 0.005:
             out["alacak"] = borc_h - alacak_h
         elif alacak_h > borc_h + 0.005:
