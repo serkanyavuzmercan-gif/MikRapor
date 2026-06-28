@@ -85,16 +85,21 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
     g.addWidget(_satir_label(f"    • satış faturası", renk=FAINT, boyut=11), 2, 0)
     g.addWidget(_satir_label(tl(gd.satis_fatura), renk=FAINT, boyut=11, sag=True), 2, 1)
     satir(3, "Gerçek Alış (−)", tl(-gd.gercek_alis))
-    g.addWidget(_satir_label(f"    • alış faturası", renk=FAINT, boyut=11), 4, 0)
+    g.addWidget(_satir_label(f"    • alış faturası (toplam alış)", renk=FAINT, boyut=11), 4, 0)
     g.addWidget(_satir_label(tl(gd.alis_fatura), renk=FAINT, boyut=11, sag=True), 4, 1)
-    g.addWidget(_satir_label(f"    • alış irsaliyesi", renk=FAINT, boyut=11), 5, 0)
-    g.addWidget(_satir_label(tl(gd.alis_irsaliye), renk=FAINT, boyut=11, sag=True), 5, 1)
+    r_extra = 5
+    if gd.alis_irsaliye > 0.005 and gd.satis_bazi == "sevk":
+        g.addWidget(_satir_label(
+            "    • alış irsaliyesi (bilgi — çift sayım olmasın diye toplama dahil değil)",
+            renk=FAINT, boyut=11), 5, 0)
+        g.addWidget(_satir_label(tl(gd.alis_irsaliye), renk=FAINT, boyut=11, sag=True), 5, 1)
+        r_extra = 6
     if gd.siniflandirilmayan_giris > 0.005:
-        g.addWidget(_satir_label(f"    • diğer giriş (evraktip?)", renk=FAINT, boyut=11), 6, 0)
-        g.addWidget(_satir_label(tl(gd.siniflandirilmayan_giris), renk=FAINT, boyut=11, sag=True), 6, 1)
-        r_brut = 7
+        g.addWidget(_satir_label(f"    • diğer giriş (evraktip?)", renk=FAINT, boyut=11), r_extra, 0)
+        g.addWidget(_satir_label(tl(gd.siniflandirilmayan_giris), renk=FAINT, boyut=11, sag=True), r_extra, 1)
+        r_brut = r_extra + 1
     else:
-        r_brut = 6
+        r_brut = r_extra
     satir(r_brut, "Gerçek Brüt Kâr", tl(gd.gercek_brut_kar), bold=True, renk=_renk(gd.gercek_brut_kar))
     satir(r_brut + 1, "Gerçek Brüt Marj", yuzde(gd.gercek_brut_marj), bold=True,
           renk=_renk(gd.gercek_brut_marj))
@@ -184,7 +189,8 @@ def _nakit_panel(gd: GercekDurum) -> QFrame:
     else:
         r_kaynak = 5
     kaynak = {
-        "cari": "Cari hareketlerinden (Mikro cari modülüyle aynı)",
+        "cari": "Alacak/borç: cari hareket · Nakit: cari",
+        "cari+gl": "Alacak/borç: cari hareket · Nakit: GL mizan (102/100)",
         "mizan": "GL mizanından (MUHASEBE_FISLERI 10x/12x/32x)",
         "bakiye_ozet": "GL özet bakiyelerinden",
     }.get(gd.bakiye_kaynagi, "")
@@ -208,7 +214,7 @@ def _nakit_panel(gd: GercekDurum) -> QFrame:
         r_nis = r_borc + 1
     satir(r_nis, "Net İşletme Sermayesi", tl(gd.net_isletme_sermayesi), bold=True,
           renk=_renk(gd.net_isletme_sermayesi))
-    if gd.gl_alacak is not None and gd.bakiye_kaynagi == "cari":
+    if gd.gl_alacak is not None and gd.bakiye_kaynagi in ("cari", "cari+gl"):
         fark = abs((gd.gl_alacak or 0) - gd.alacak) + abs((gd.gl_borc or 0) - gd.borc)
         if fark > 1000:
             not_gl = _satir_label(

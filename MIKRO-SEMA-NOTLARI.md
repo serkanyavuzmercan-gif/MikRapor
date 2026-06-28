@@ -37,6 +37,8 @@ Son 120 gün dağılımı (firma 26, doğrulanmış):
 > Firma çoğunlukla **irsaliye ile sevk edip toplu faturalıyor** → satış *faturası* satırı az.
 > MikRapor aylık P&L/nakit için **faturaları** baz alır (alış=3, satış=4). Eğer ciro çok düşük
 > görünürse, satışta irsaliyeyi (evraktip 1) baz almak ayrı bir karar olarak değerlendirilebilir.
+> **Gerçek Durum «sevk» modu:** satış = irsaliye+fatura (1+4), alış = **yalnız fatura (3)** —
+> alış irsaliyesi (12) aynı malın çift sayımına yol açar; irsaliye satırı yalnız bilgi amaçlı gösterilir.
 
 **Doğrulanmış kolonlar:** `sth_tarih`, `sth_belge_no`, `sth_cari_kodu`, `sth_stok_kod`,
 `sth_miktar`, `sth_tutar`, `sth_evrakno_seri`, `sth_evrakno_sira`, `sth_evraktip`, `sth_tip`,

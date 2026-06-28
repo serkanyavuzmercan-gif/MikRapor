@@ -39,9 +39,9 @@ class TestGercekDurum(unittest.TestCase):
     def test_satis_bazi_sevk(self):
         gd = build_gercek_durum(stok_rows=_stok_ozet(), satis_bazi="sevk")
         self.assertAlmostEqual(gd.gercek_satis, 42000.0, places=2)   # 37000 + 5000
-        self.assertAlmostEqual(gd.gercek_alis, 32000.0, places=2)    # 30000 + 2000
-        self.assertAlmostEqual(gd.gercek_brut_kar, 10000.0, places=2)
-        self.assertAlmostEqual(gd.gercek_brut_marj, 10000.0 / 42000.0 * 100, places=2)
+        self.assertAlmostEqual(gd.gercek_alis, 30000.0, places=2)    # yalnız alış fatura (irsaliye çift sayım)
+        self.assertAlmostEqual(gd.gercek_brut_kar, 12000.0, places=2)
+        self.assertAlmostEqual(gd.gercek_brut_marj, 12000.0 / 42000.0 * 100, places=2)
 
     def test_satis_bazi_fatura(self):
         gd = build_gercek_durum(stok_rows=_stok_ozet(), satis_bazi="fatura")
@@ -146,7 +146,22 @@ class TestGercekDurum(unittest.TestCase):
         gd = build_gercek_durum(cari_bakiye_rows=cari, bilanco=b)
         self.assertAlmostEqual(gd.alacak, 6000000.0, places=2)
         self.assertAlmostEqual(gd.gl_alacak, 100.0, places=2)
-        self.assertEqual(gd.bakiye_kaynagi, "cari")
+        self.assertEqual(gd.bakiye_kaynagi, "cari+gl")
+
+    def test_nakit_gl_hibrit(self):
+        """Nakit bakiyesi GL'den; alacak/borç cari'den."""
+        cari = [{"cins": 2, "hareket_tipi": 0, "baglanti_tipi": 2, "ban_muh_kod": "102.01",
+                 "ban_hesap_tip": 0, "kod": "102.003", "borc_h": 23_000_000.0, "alacak_h": 0.0}]
+        mizan = [
+            {"hesap_kodu": "102.01", "borc": 860_000.0, "alacak": 0},
+            {"hesap_kodu": "100.01", "borc": 187_000.0, "alacak": 0},
+        ]
+        b = build_bilanco(mizan)
+        gd = build_gercek_durum(cari_bakiye_rows=cari, bilanco=b)
+        self.assertEqual(gd.bakiye_kaynagi, "cari+gl")
+        self.assertAlmostEqual(gd.nakit_banka, 860_000.0, places=2)
+        self.assertAlmostEqual(gd.nakit_kasa, 187_000.0, places=2)
+        self.assertAlmostEqual(gd.nakit_mevcut, 1_047_000.0, places=2)
 
     def test_muh_kod_satıcı(self):
         cari = [{"cins": 0, "hareket_tipi": 1, "baglanti_tipi": 0, "cari_muh_kod": "320.01.001",

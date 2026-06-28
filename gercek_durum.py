@@ -32,13 +32,14 @@ EVRAKTIP_SATIS_FATURA = 4
 EVRAKTIP_ALIS_FATURA = 3
 EVRAKTIP_ALIS_IRSALIYE = 12
 
-# Satış bazı: "sevk" = irsaliye+fatura (fiilen sevk edilen mal), "fatura" = yalnız fatura.
+# Satış bazı: satışta irsaliye (+ küçük fatura); alışta YALNIZ fatura — irsaliye+fatura
+# birlikte sayılırsa Mikro'da aynı mal iki kez girer (çift sayım).
 SATIS_EVRAKTIPLERI = {
     "sevk": {EVRAKTIP_SATIS_IRSALIYE, EVRAKTIP_SATIS_FATURA},
     "fatura": {EVRAKTIP_SATIS_FATURA},
 }
 ALIS_EVRAKTIPLERI = {
-    "sevk": {EVRAKTIP_ALIS_FATURA, EVRAKTIP_ALIS_IRSALIYE},
+    "sevk": {EVRAKTIP_ALIS_FATURA},
     "fatura": {EVRAKTIP_ALIS_FATURA},
 }
 
@@ -270,7 +271,7 @@ def _aylik_trend(stok_aylik: list[dict], nakit_aylik: list[dict], satis_bazi: st
 
 def _bakiye_bilancodan(b: Bilanco) -> dict[str, float]:
     """Bilanço sekmesiyle birebir aynı nakit/alacak/borç (mizan → build_bilanco yolu)."""
-    nakit = sum(s.tutar for s in b.aktif if s.ana in _NAKIT_ANA)
+    nak = _nakit_gl_ayir(b)
     alacak = 0.0
     musteri_avans = 0.0
     for s in b.aktif:
@@ -288,14 +289,25 @@ def _bakiye_bilancodan(b: Bilanco) -> dict[str, float]:
         if s.tutar < 0:
             satici_avans += -s.tutar
     return {
-        "nakit_mevcut": nakit,
-        "nakit_banka": 0.0,
-        "nakit_kasa": 0.0,
+        "nakit_mevcut": nak["nakit_mevcut"],
+        "nakit_banka": nak["nakit_banka"],
+        "nakit_kasa": nak["nakit_kasa"],
         "alacak": alacak,
         "borc": borc,
         "musteri_avans": musteri_avans,
         "satici_avans": satici_avans,
     }
+
+
+def _nakit_gl_ayir(b: Bilanco) -> dict[str, float]:
+    """GL mizandan 100/101 kasa, 102/108 banka ayrımı."""
+    banka = kasa = 0.0
+    for s in b.aktif:
+        if s.ana in ("100", "101"):
+            kasa += s.tutar
+        elif s.ana in ("102", "108"):
+            banka += s.tutar
+    return {"nakit_mevcut": banka + kasa, "nakit_banka": banka, "nakit_kasa": kasa}
 
 
 def _muh_sinifi(muh_kod: str) -> str:
@@ -474,15 +486,22 @@ def build_gercek_durum(
 
     if cari_bakiye_rows is not None:
         bk = _bakiye_caridan(cari_bakiye_rows)
-        gd.nakit_mevcut = bk["nakit_mevcut"]
-        gd.nakit_banka = bk["nakit_banka"]
-        gd.nakit_kasa = bk["nakit_kasa"]
         gd.alacak = bk["alacak"]
         gd.borc = bk["borc"]
         gd.musteri_avans = bk["musteri_avans"]
         gd.satici_avans = bk["satici_avans"]
         gd.cari_hesap_sayisi = bk["cari_hesap_sayisi"]
-        gd.bakiye_kaynagi = "cari"
+        if bilanco is not None:
+            gl_nakit = _nakit_gl_ayir(bilanco)
+            gd.nakit_mevcut = gl_nakit["nakit_mevcut"]
+            gd.nakit_banka = gl_nakit["nakit_banka"]
+            gd.nakit_kasa = gl_nakit["nakit_kasa"]
+            gd.bakiye_kaynagi = "cari+gl"
+        else:
+            gd.nakit_mevcut = bk["nakit_mevcut"]
+            gd.nakit_banka = bk["nakit_banka"]
+            gd.nakit_kasa = bk["nakit_kasa"]
+            gd.bakiye_kaynagi = "cari"
     elif bilanco is not None:
         bk = _bakiye_bilancodan(bilanco)
         gd.nakit_mevcut = bk["nakit_mevcut"]
