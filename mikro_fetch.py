@@ -109,13 +109,18 @@ def fetch_stok_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, A
     sth_tip (0=giriş/alış, 1=çıkış/satış) + sth_evraktip ile sınıflanır (bkz. MIKRO-SEMA-NOTLARI):
       tip=1,evraktip=1 → satış irsaliyesi · tip=1,evraktip=4 → satış faturası
       tip=0,evraktip=3 → alış faturası   · tip=0,evraktip=12 → alış irsaliyesi/depo girişi
+    Tarih: belge tarihi doluysa onu, değilse hareket tarihini (sth_tarih) kullanır.
     Sınıflandırma analizöre (gercek_durum) bırakılır; burada yalnız ham kırılım döner.
     """
+    tarih = (
+        "CASE WHEN sth_belge_tarih IS NOT NULL AND sth_belge_tarih >= '2000-01-01' "
+        "THEN sth_belge_tarih ELSE sth_tarih END"
+    )
     sql = (
         "SELECT sth_tip, sth_evraktip, "
         "SUM(sth_tutar) AS tutar, SUM(sth_miktar) AS miktar, COUNT(*) AS adet "
         "FROM STOK_HAREKETLERI WITH (NOLOCK) "
-        f"WHERE sth_tarih >= '{bas}' AND sth_tarih < '{_bit_son(bit)}' "
+        f"WHERE {tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}' "
         "GROUP BY sth_tip, sth_evraktip"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
@@ -123,12 +128,16 @@ def fetch_stok_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, A
 
 def fetch_stok_aylik(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
     """Dönem içi STOK_HAREKETLERI'nin AYLIK kırılımı (trend için): ay × tip × evraktip → tutar."""
+    tarih = (
+        "CASE WHEN sth_belge_tarih IS NOT NULL AND sth_belge_tarih >= '2000-01-01' "
+        "THEN sth_belge_tarih ELSE sth_tarih END"
+    )
     sql = (
-        "SELECT CONVERT(char(7), sth_tarih, 126) AS ay, sth_tip, sth_evraktip, "
+        f"SELECT CONVERT(char(7), {tarih}, 126) AS ay, sth_tip, sth_evraktip, "
         "SUM(sth_tutar) AS tutar "
         "FROM STOK_HAREKETLERI WITH (NOLOCK) "
-        f"WHERE sth_tarih >= '{bas}' AND sth_tarih < '{_bit_son(bit)}' "
-        "GROUP BY CONVERT(char(7), sth_tarih, 126), sth_tip, sth_evraktip "
+        f"WHERE {tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}' "
+        f"GROUP BY CONVERT(char(7), {tarih}, 126), sth_tip, sth_evraktip "
         "ORDER BY ay"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))

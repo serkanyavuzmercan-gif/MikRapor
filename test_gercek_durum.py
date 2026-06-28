@@ -58,6 +58,15 @@ class TestGercekDurum(unittest.TestCase):
         self.assertAlmostEqual(gd.borc, 45000.0, places=2)
         self.assertAlmostEqual(gd.net_isletme_sermayesi, 37000.0, places=2)  # 22000+60000-45000
 
+    def test_musteri_avans_ayri_gosterilir(self):
+        gd = build_gercek_durum(bakiye_rows=[
+            {"ana": "120", "bakiye": -4839.61},
+            {"ana": "320", "bakiye": -168401.18},
+        ])
+        self.assertAlmostEqual(gd.alacak, 0.0, places=2)
+        self.assertAlmostEqual(gd.musteri_avans, 4839.61, places=2)
+        self.assertAlmostEqual(gd.borc, 168401.18, places=2)
+
     def test_resmi_karsilastirma(self):
         # Resmi GL: net satış 40000, SMM 35200 → brüt 4800 (%12); gerçek %23.8 → fark pozitif
         gl_rows = [
@@ -103,6 +112,16 @@ class TestGercekDurum(unittest.TestCase):
     def test_yuzde_format(self):
         self.assertEqual(yuzde(12.5), "%12,5")
         self.assertEqual(yuzde(-4.3), "%-4,3")
+
+    def test_siniflandirilmayan_fallback(self):
+        rows = [
+            {"sth_tip": 1, "sth_evraktip": 99, "tutar": 50000.0, "adet": 5},
+            {"sth_tip": 0, "sth_evraktip": 99, "tutar": 30000.0, "adet": 3},
+        ]
+        gd = build_gercek_durum(stok_rows=rows, satis_bazi="sevk")
+        self.assertAlmostEqual(gd.gercek_satis, 50000.0, places=2)
+        self.assertAlmostEqual(gd.gercek_alis, 30000.0, places=2)
+        self.assertTrue(gd.siniflandirma_fallback)
 
     def test_bos_veri_cokmez(self):
         gd = build_gercek_durum()

@@ -154,8 +154,18 @@ def _nakit_panel(gd: GercekDurum) -> QFrame:
     satir(4, "Nakit Mevcudu (kasa+banka)", tl(gd.nakit_mevcut), bold=True,
           renk=_renk(gd.nakit_mevcut))
     satir(5, "Alacaklar (müşteri 12x)", tl(gd.alacak))
-    satir(6, "Borçlar (satıcı 32x) (−)", tl(-gd.borc))
-    satir(7, "Net İşletme Sermayesi", tl(gd.net_isletme_sermayesi), bold=True,
+    if gd.musteri_avans > 0.005:
+        satir(6, "Müşteri avansı (12x alacak bak.) (−)", tl(-gd.musteri_avans), renk=NEG)
+        r_borc = 7
+    else:
+        r_borc = 6
+    satir(r_borc, "Borçlar (satıcı 32x)", tl(gd.borc), renk=NEG if gd.borc else "#374151")
+    if gd.satici_avans > 0.005:
+        satir(r_borc + 1, "Satıcı avansı (32x borç bak.)", tl(gd.satici_avans), renk=POZ)
+        r_nis = r_borc + 2
+    else:
+        r_nis = r_borc + 1
+    satir(r_nis, "Net İşletme Sermayesi", tl(gd.net_isletme_sermayesi), bold=True,
           renk=_renk(gd.net_isletme_sermayesi))
     return _card("NAKİT GERÇEĞİ & İŞLETME SERMAYESİ  (banka + bakiye)", inner)
 
@@ -265,6 +275,32 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
     root.addWidget(head)
+
+    if gd.stok_kirilim_sayisi == 0:
+        uyari = QLabel(
+            "⚠ <b>Bu dönemde stok hareketi bulunamadı.</b> Mikro'da veri olan yılı/dönemi seçin "
+            "(ör. 2025 tam yıl). Mikro Ayarları'ndaki <b>çalışma yılı</b> ile dönem tarihleri "
+            "aynı olmalı."
+        )
+        uyari.setWordWrap(True)
+        uyari.setTextFormat(Qt.TextFormat.RichText)
+        uyari.setStyleSheet(
+            "QLabel { background: #fdf3e0; border: 1px solid #f0d090; border-radius: 8px; "
+            "color: #8a5a00; padding: 11px 14px; font-size: 12px; }"
+        )
+        root.addWidget(uyari)
+    elif gd.siniflandirma_fallback:
+        uyari = QLabel(
+            "⚠ <b>Evrak tipi tanınmayan stok hareketleri var</b> — satış/alış toplamı tüm "
+            "çıkış/giriş hareketlerinden hesaplandı (bilinen irsaliye/fatura kodları dışı kalanlar)."
+        )
+        uyari.setWordWrap(True)
+        uyari.setTextFormat(Qt.TextFormat.RichText)
+        uyari.setStyleSheet(
+            "QLabel { background: #fdf3e0; border: 1px solid #f0d090; border-radius: 8px; "
+            "color: #8a5a00; padding: 11px 14px; font-size: 12px; }"
+        )
+        root.addWidget(uyari)
 
     kpi = QHBoxLayout()
     kpi.setSpacing(12)

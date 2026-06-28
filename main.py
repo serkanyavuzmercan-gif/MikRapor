@@ -568,9 +568,18 @@ class GercekDurumTab(QWidget):
         self._view.setVisible(True)
         self._view.setWidget(build_gercek_durum_widget(gd, firma=self._firma))
         self._btn_csv.setEnabled(True)
-        self._status.setText(
-            f"Gerçek brüt marj {yuzde(gd.gercek_brut_marj)} · Net nakit {tl(gd.nakit_net)}")
-        self._status.setStyleSheet("color: #81c784;" if gd.gercek_brut_kar >= 0 else "color: #e57373;")
+        parts = [
+            f"Stok {gd.stok_kirilim_sayisi} kırılım ({gd.stok_hareket_adet:,} hareket)".replace(",", "."),
+            f"Gerçek brüt marj {yuzde(gd.gercek_brut_marj)}",
+            f"Net nakit {tl(gd.nakit_net)}",
+        ]
+        if gd.stok_kirilim_sayisi == 0:
+            parts.insert(0, "⚠ stok verisi yok — dönem/yıl kontrol edin")
+        self._status.setText(" · ".join(parts))
+        self._status.setStyleSheet(
+            "color: #ffb74d;" if gd.veri_eksik else
+            ("color: #81c784;" if gd.gercek_brut_kar >= 0 else "color: #e57373;")
+        )
 
     def _on_csv(self) -> None:
         if not self._gd:

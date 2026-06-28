@@ -88,6 +88,13 @@ class GercekDurum:
     gercek_alis: float = 0.0
     satis_irsaliye: float = 0.0
     satis_fatura: float = 0.0
+    tum_cikis: float = 0.0          # tip=1 tüm çıkışlar (evraktip filtresiz)
+    tum_giris: float = 0.0          # tip=0 tüm girişler
+    siniflandirilmayan_cikis: float = 0.0
+    siniflandirilmayan_giris: float = 0.0
+    stok_kirilim_sayisi: int = 0
+    stok_hareket_adet: int = 0
+    siniflandirma_fallback: bool = False  # bilinen evraktip dışı → tüm çıkış/giriş kullanıldı
 
     # Nakit (banka)
     nakit_giren: float = 0.0
@@ -95,8 +102,10 @@ class GercekDurum:
 
     # Bakiyeler (asof = bit)
     nakit_mevcut: float = 0.0   # 10x
-    alacak: float = 0.0         # 12x (borç bakiyesi)
-    borc: float = 0.0           # 32x (alacak bakiyesi → pozitif borç)
+    alacak: float = 0.0         # 12x borç bakiyesi (müşteriden tahsil edilecek)
+    borc: float = 0.0           # 32x alacak bakiyesi (satıcıya ödenecek)
+    musteri_avans: float = 0.0  # 12x alacak bakiyesi (müşteriye borç/avans)
+    satici_avans: float = 0.0   # 32x borç bakiyesi (satıcıdan avans)
 
     # Resmi GL (varsa, karşılaştırma için)
     resmi_brut_marj: float | None = None
@@ -122,8 +131,15 @@ class GercekDurum:
 
     @property
     def net_isletme_sermayesi(self) -> float:
-        """Nakit + alacak − borç (kaba işletme sermayesi gücü)."""
-        return self.nakit_mevcut + self.alacak - self.borc
+        """Nakit + alacak − borç − müşteri avansı + satıcı avansı."""
+        return self.nakit_mevcut + self.alacak - self.borc - self.musteri_avans + self.satici_avans
+
+    @property
+    def veri_eksik(self) -> bool:
+        """Dönemde stok hareketi yok veya sınıflandırılamadı."""
+        return self.stok_kirilim_sayisi == 0 or (
+            self.gercek_satis == 0 and self.tum_cikis > 0
+        )
 
     # --- Resmi ile fark (gizlenen marj) ---
     @property
@@ -144,21 +160,40 @@ def _siniflandir_stok(rows: list[dict], satis_bazi: str) -> dict[str, float]:
     """STOK_HAREKETLERI ham kırılımını satış/alış toplamlarına indirger."""
     sat_kume = SATIS_EVRAKTIPLERI.get(satis_bazi, SATIS_EVRAKTIPLERI["sevk"])
     alis_kume = ALIS_EVRAKTIPLERI.get(satis_bazi, ALIS_EVRAKTIPLERI["sevk"])
-    out = {"satis": 0.0, "alis": 0.0, "satis_irsaliye": 0.0, "satis_fatura": 0.0}
+    out = {
+        "satis": 0.0, "alis": 0.0, "satis_irsaliye": 0.0, "satis_fatura": 0.0,
+        "tum_cikis": 0.0, "tum_giris": 0.0,
+        "siniflandirilmayan_cikis": 0.0, "siniflandirilmayan_giris": 0.0,
+        "hareket_adet": 0.0,
+    }
     for r in rows:
         tip = _i(r.get("sth_tip", r.get("STH_TIP")))
         ev = _i(r.get("sth_evraktip", r.get("STH_EVRAKTIP")))
         tutar = _f(r.get("tutar", r.get("TUTAR")))
+        out["hareket_adet"] += _f(r.get("adet", r.get("ADET")))
         if tip == SATIS_TIP:
+            out["tum_cikis"] += tutar
             if ev == EVRAKTIP_SATIS_IRSALIYE:
                 out["satis_irsaliye"] += tutar
             elif ev == EVRAKTIP_SATIS_FATURA:
                 out["satis_fatura"] += tutar
             if ev in sat_kume:
                 out["satis"] += tutar
+            else:
+                out["siniflandirilmayan_cikis"] += tutar
         elif tip == ALIS_TIP:
+            out["tum_giris"] += tutar
             if ev in alis_kume:
                 out["alis"] += tutar
+            else:
+                out["siniflandirilmayan_giris"] += tutar
+    # Bilinen evraktip dışı hareket varsa tüm çıkış/girişe düş (sıfır görünmesin)
+    if out["satis"] < 0.005 and out["tum_cikis"] > 0.005:
+        out["satis"] = out["tum_cikis"]
+        out["siniflandirma_fallback"] = 1.0
+    if out["alis"] < 0.005 and out["tum_giris"] > 0.005:
+        out["alis"] = out["tum_giris"]
+        out["siniflandirma_fallback"] = 1.0
     return out
 
 
@@ -210,6 +245,13 @@ def build_gercek_durum(
     gd.gercek_alis = s["alis"]
     gd.satis_irsaliye = s["satis_irsaliye"]
     gd.satis_fatura = s["satis_fatura"]
+    gd.tum_cikis = s["tum_cikis"]
+    gd.tum_giris = s["tum_giris"]
+    gd.siniflandirilmayan_cikis = s["siniflandirilmayan_cikis"]
+    gd.siniflandirilmayan_giris = s["siniflandirilmayan_giris"]
+    gd.stok_kirilim_sayisi = len(stok_rows or [])
+    gd.stok_hareket_adet = int(s["hareket_adet"])
+    gd.siniflandirma_fallback = bool(s.get("siniflandirma_fallback"))
 
     for r in (nakit_rows or []):
         gd.nakit_giren += _f(r.get("giren", r.get("GIREN")))
@@ -218,18 +260,28 @@ def build_gercek_durum(
     nakit_bakiye = 0.0
     alacak = 0.0
     borc = 0.0
+    musteri_avans = 0.0
+    satici_avans = 0.0
     for r in (bakiye_rows or []):
         ana = str(r.get("ana", r.get("ANA")) or "").strip()
         bakiye = _f(r.get("bakiye", r.get("BAKIYE")))
-        if ana[:2] == "10":            # 100,101,102,103,108 → nakit/hazır değerler
+        if ana[:2] == "10":
             nakit_bakiye += bakiye
-        elif ana[:2] == "12":          # 120,121 → alıcılar (borç bakiyesi = alacağımız)
-            alacak += bakiye
-        elif ana[:2] == "32":          # 320,321 → satıcılar (alacak bakiyesi = borcumuz)
-            borc += -bakiye
+        elif ana[:2] == "12":
+            if bakiye >= 0:
+                alacak += bakiye
+            else:
+                musteri_avans += -bakiye
+        elif ana[:2] == "32":
+            if bakiye <= 0:
+                borc += -bakiye
+            else:
+                satici_avans += bakiye
     gd.nakit_mevcut = nakit_bakiye
     gd.alacak = alacak
     gd.borc = borc
+    gd.musteri_avans = musteri_avans
+    gd.satici_avans = satici_avans
 
     if gelir_tablosu is not None:
         gd.resmi_brut_marj = gelir_tablosu.brut_marj
