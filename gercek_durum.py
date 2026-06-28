@@ -298,15 +298,42 @@ def _bakiye_bilancodan(b: Bilanco) -> dict[str, float]:
     }
 
 
-def _cari_kovala(borc_h: float, alacak_h: float, hareket_tipi: int, baglanti_tipi: int) -> dict[str, float]:
+def _muh_sinifi(muh_kod: str) -> str:
+    """cari_muh_kod / ban_muh_kod ön eki → müşteri veya satıcı."""
+    ana = str(muh_kod or "").strip().split(".")[0][:3]
+    if ana in ("320", "321", "329"):
+        return "supplier"
+    if ana in ("120", "121"):
+        return "customer"
+    return ""
+
+
+def _cari_kovala(
+    borc_h: float, alacak_h: float, hareket_tipi: int, baglanti_tipi: int,
+    *, muh_kod: str = "",
+) -> dict[str, float]:
     """
     Mikro cari listesi mantığı: borç/alacak kolonları ayrı toplanır.
-    Satıcı borcu hem standart (alacak>borç) hem ters kayıt (borç>alacak) ile gelebilir.
+    cari_muh_kod (120/320) kart tipinden önce gelir — hatalı kart tanımlarını düzeltir.
     """
     out = {"alacak": 0.0, "borc": 0.0, "musteri_avans": 0.0, "satici_avans": 0.0}
     if borc_h < 0.005 and alacak_h < 0.005:
         return out
+    muh = _muh_sinifi(muh_kod)
     ht, bt = hareket_tipi, baglanti_tipi
+
+    if muh == "supplier":
+        if alacak_h > borc_h + 0.005:
+            out["borc"] = alacak_h - borc_h
+        elif borc_h > alacak_h + 0.005:
+            out["borc"] = borc_h - alacak_h
+        return out
+    if muh == "customer":
+        if borc_h > alacak_h + 0.005:
+            out["alacak"] = borc_h - alacak_h
+        elif alacak_h > borc_h + 0.005:
+            out["musteri_avans"] = alacak_h - borc_h
+        return out
 
     if ht == 2:  # sadece alış
         if alacak_h > borc_h + 0.005:
@@ -365,6 +392,11 @@ def _bakiye_caridan(rows: list[dict]) -> dict[str, float]:
             continue
         out["cari_hesap_sayisi"] += 1
         if cins == _BANKA_CINS:
+            if _i(r.get("ban_hesap_tip", r.get("BAN_HESAP_TIP"))) == 1:
+                continue
+            muh = str(r.get("muh_kod", r.get("MUH_KOD")) or "")
+            if _muh_sinifi(muh) == "supplier" or muh.startswith("300"):
+                continue
             net = borc_h - alacak_h
             out["nakit_banka"] += net
             out["nakit_mevcut"] += net
@@ -380,6 +412,7 @@ def _bakiye_caridan(rows: list[dict]) -> dict[str, float]:
             borc_h, alacak_h,
             _i(r.get("hareket_tipi", r.get("HAREKET_TIPI"))),
             _i(r.get("baglanti_tipi", r.get("BAGLANTI_TIPI"))),
+            muh_kod=str(r.get("muh_kod", r.get("MUH_KOD")) or ""),
         )
         for key in ("alacak", "borc", "musteri_avans", "satici_avans"):
             out[key] += k[key]
