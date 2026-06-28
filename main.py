@@ -12,7 +12,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PyQt6.QtCore import QDate, Qt
+from PyQt6.QtCore import QDate, QObject, Qt, pyqtSignal
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
@@ -100,14 +100,103 @@ def _start_single_instance_server(window: QMainWindow) -> QLocalServer:
 
 
 # ---------------------------------------------------------------------------
+# Sekmeler arası ortak dönem (bas / bit)
+# ---------------------------------------------------------------------------
+
+class DonemDurumu(QObject):
+    """Tüm rapor sekmelerinde paylaşılan dönem. Bilanço bitiş tarihi = bit."""
+
+    degisti = pyqtSignal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        yil = load_config().calisma_yili or QDate.currentDate().year()
+        self._bas = QDate(yil, 1, 1)
+        bugun = QDate.currentDate()
+        self._bit = QDate(yil, 12, 31) if bugun.year() > yil else bugun
+
+    def bas_tarih(self) -> QDate:
+        return self._bas
+
+    def bit_tarih(self) -> QDate:
+        return self._bit
+
+    def donem_ayarla(
+        self,
+        *,
+        bas: QDate | None = None,
+        bit: QDate | None = None,
+        bitis_tek: QDate | None = None,
+    ) -> None:
+        """bitis_tek: bilanço tek tarihi → bit; bas = o yılın 1 Ocak."""
+        if bitis_tek is not None:
+            yeni_bit = bitis_tek
+            yeni_bas = QDate(bitis_tek.year(), 1, 1)
+        else:
+            yeni_bas = bas if bas is not None else self._bas
+            yeni_bit = bit if bit is not None else self._bit
+        if yeni_bas == self._bas and yeni_bit == self._bit:
+            return
+        self._bas, self._bit = yeni_bas, yeni_bit
+        self.degisti.emit()
+
+
+def _donem_aralik_bagla(tab: QWidget, donem: DonemDurumu, bas: QDateEdit, bit: QDateEdit) -> None:
+    """İki tarihli sekmeyi ortak döneme bağlar (Gelir Tablosu, Gerçek Durum)."""
+    tab._donem_uzaktan = False  # noqa: SLF001
+
+    def uygula() -> None:
+        tab._donem_uzaktan = True  # noqa: SLF001
+        bas.blockSignals(True)
+        bit.blockSignals(True)
+        bas.setDate(donem.bas_tarih())
+        bit.setDate(donem.bit_tarih())
+        bas.blockSignals(False)
+        bit.blockSignals(False)
+        tab._donem_uzaktan = False  # noqa: SLF001
+
+    def yayinla() -> None:
+        if tab._donem_uzaktan:  # noqa: SLF001
+            return
+        donem.donem_ayarla(bas=bas.date(), bit=bit.date())
+
+    donem.degisti.connect(uygula)
+    bas.dateChanged.connect(lambda _d: yayinla())
+    bit.dateChanged.connect(lambda _d: yayinla())
+    uygula()
+
+
+def _donem_tek_bagla(tab: QWidget, donem: DonemDurumu, tarih: QDateEdit) -> None:
+    """Tek tarihli bilanço sekmesini ortak dönemin bitişine bağlar."""
+    tab._donem_uzaktan = False  # noqa: SLF001
+
+    def uygula() -> None:
+        tab._donem_uzaktan = True  # noqa: SLF001
+        tarih.blockSignals(True)
+        tarih.setDate(donem.bit_tarih())
+        tarih.blockSignals(False)
+        tab._donem_uzaktan = False  # noqa: SLF001
+
+    def yayinla() -> None:
+        if tab._donem_uzaktan:  # noqa: SLF001
+            return
+        donem.donem_ayarla(bitis_tek=tarih.date())
+
+    donem.degisti.connect(uygula)
+    tarih.dateChanged.connect(lambda _d: yayinla())
+    uygula()
+
+
+# ---------------------------------------------------------------------------
 # Anında Bilanço sekmesi
 # ---------------------------------------------------------------------------
 
 class BilancoTab(QWidget):
     """Tarih itibarıyla bilanço üreten bağımsız rapor sekmesi."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, donem: DonemDurumu, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._donem = donem
         self._bilanco: Bilanco | None = None
         self._firma: str = ""
         self._build()
@@ -123,9 +212,10 @@ class BilancoTab(QWidget):
         self._date = QDateEdit()
         self._date.setCalendarPopup(True)
         self._date.setDisplayFormat("dd.MM.yyyy")
-        self._date.setDate(QDate.currentDate())
+        self._date.setDate(self._donem.bit_tarih())
         self._date.setFixedWidth(140)
         controls.addWidget(self._date)
+        _donem_tek_bagla(self, self._donem, self._date)
 
         self._btn_getir = QPushButton("Bilanço Getir")
         self._btn_getir.setObjectName("primaryBtn")
@@ -301,8 +391,9 @@ def _hos_geldin(emoji: str, baslik: str, aciklama: str) -> QWidget:
 class GelirTablosuTab(QWidget):
     """Dönem (başlangıç–bitiş) gelir tablosu üreten bağımsız rapor sekmesi."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, donem: DonemDurumu, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._donem = donem
         self._gt: GelirTablosu | None = None
         self._firma: str = ""
         self._build()
@@ -315,20 +406,20 @@ class GelirTablosuTab(QWidget):
         controls = QHBoxLayout()
         controls.setSpacing(8)
         controls.addWidget(QLabel("Dönem:"))
-        yil = load_config().calisma_yili or QDate.currentDate().year()
         self._bas = QDateEdit()
         self._bas.setCalendarPopup(True)
         self._bas.setDisplayFormat("dd.MM.yyyy")
-        self._bas.setDate(QDate(yil, 1, 1))
+        self._bas.setDate(self._donem.bas_tarih())
         self._bas.setFixedWidth(130)
         controls.addWidget(self._bas)
         controls.addWidget(QLabel("→"))
         self._bit = QDateEdit()
         self._bit.setCalendarPopup(True)
         self._bit.setDisplayFormat("dd.MM.yyyy")
-        self._bit.setDate(QDate.currentDate())
+        self._bit.setDate(self._donem.bit_tarih())
         self._bit.setFixedWidth(130)
         controls.addWidget(self._bit)
+        _donem_aralik_bagla(self, self._donem, self._bas, self._bit)
 
         self._btn_getir = QPushButton("Gelir Tablosu Getir")
         self._btn_getir.setObjectName("primaryBtn")
@@ -440,8 +531,9 @@ class GelirTablosuTab(QWidget):
 class GercekDurumTab(QWidget):
     """Operasyonel gerçeği (stok+banka) doğrudan Mikro'dan üreten bağımsız rapor sekmesi."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, donem: DonemDurumu, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._donem = donem
         self._gd: GercekDurum | None = None
         self._firma: str = ""
         self._build()
@@ -454,20 +546,20 @@ class GercekDurumTab(QWidget):
         controls = QHBoxLayout()
         controls.setSpacing(8)
         controls.addWidget(QLabel("Dönem:"))
-        yil = load_config().calisma_yili or QDate.currentDate().year()
         self._bas = QDateEdit()
         self._bas.setCalendarPopup(True)
         self._bas.setDisplayFormat("dd.MM.yyyy")
-        self._bas.setDate(QDate(yil, 1, 1))
+        self._bas.setDate(self._donem.bas_tarih())
         self._bas.setFixedWidth(130)
         controls.addWidget(self._bas)
         controls.addWidget(QLabel("→"))
         self._bit = QDateEdit()
         self._bit.setCalendarPopup(True)
         self._bit.setDisplayFormat("dd.MM.yyyy")
-        self._bit.setDate(QDate.currentDate())
+        self._bit.setDate(self._donem.bit_tarih())
         self._bit.setFixedWidth(130)
         controls.addWidget(self._bit)
+        _donem_aralik_bagla(self, self._donem, self._bas, self._bit)
 
         controls.addWidget(QLabel("Satış bazı:"))
         self._baz = QComboBox()
@@ -600,6 +692,7 @@ class MikRaporWindow(QMainWindow):
         self.setWindowIcon(app_icon())
         self.setMinimumSize(1080, 720)
         self.resize(1220, 840)
+        self._donem = DonemDurumu()
         self._build()
 
     def _build(self) -> None:
@@ -630,11 +723,11 @@ class MikRaporWindow(QMainWindow):
         header.addWidget(btn_ayar)
         layout.addLayout(header)
 
-        # Sekmeler — her rapor kendi sekmesinde
+        # Sekmeler — her rapor kendi sekmesinde (ortak dönem)
         self._tabs = QTabWidget()
-        self._tabs.addTab(BilancoTab(), "Anında Bilanço")
-        self._tabs.addTab(GelirTablosuTab(), "Gelir Tablosu")
-        self._tabs.addTab(GercekDurumTab(), "Gerçek Durum")
+        self._tabs.addTab(BilancoTab(self._donem), "Anında Bilanço")
+        self._tabs.addTab(GelirTablosuTab(self._donem), "Gelir Tablosu")
+        self._tabs.addTab(GercekDurumTab(self._donem), "Gerçek Durum")
         layout.addWidget(self._tabs, stretch=1)
 
     def _on_ayarlar(self) -> None:
