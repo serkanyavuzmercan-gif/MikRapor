@@ -245,14 +245,15 @@ def fetch_cari_bakiye(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     TL: cha_d_cins=0 ise kur çarpılmaz. Bkz. _cha_tl_sql.
     """
     tl = _cha_tl_sql("c")
-    bakiye = f"SUM(CASE WHEN c.cha_tip = 0 THEN {tl} ELSE -({tl}) END)"
+    borc_h = f"SUM(CASE WHEN c.cha_tip = 0 THEN {tl} ELSE 0 END)"
+    alacak_h = f"SUM(CASE WHEN c.cha_tip = 1 THEN {tl} ELSE 0 END)"
     sql = (
         "SELECT "
         "CASE WHEN b.ban_kod IS NOT NULL THEN 2 WHEN k.kas_kod IS NOT NULL THEN 4 ELSE 0 END AS cins, "
         "ISNULL(ch.cari_hareket_tipi, 0) AS hareket_tipi, "
         "ISNULL(ch.cari_baglanti_tipi, 2) AS baglanti_tipi, "
         "c.cha_kod AS kod, "
-        f"{bakiye} AS bakiye "
+        f"{borc_h} AS borc_h, {alacak_h} AS alacak_h "
         "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
         "LEFT JOIN BANKALAR b WITH (NOLOCK) ON b.ban_kod = c.cha_kod "
         "LEFT JOIN KASALAR k WITH (NOLOCK) ON k.kas_kod = c.cha_kod "
@@ -263,6 +264,6 @@ def fetch_cari_bakiye(client: MikroClient, asof: str) -> list[dict[str, Any]]:
         "GROUP BY "
         "CASE WHEN b.ban_kod IS NOT NULL THEN 2 WHEN k.kas_kod IS NOT NULL THEN 4 ELSE 0 END, "
         "ISNULL(ch.cari_hareket_tipi, 0), ISNULL(ch.cari_baglanti_tipi, 2), c.cha_kod "
-        f"HAVING ABS({bakiye}) >= 0.005"
+        f"HAVING ABS({borc_h} - {alacak_h}) >= 0.005"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))

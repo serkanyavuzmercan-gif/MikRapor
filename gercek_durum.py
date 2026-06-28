@@ -298,23 +298,35 @@ def _bakiye_bilancodan(b: Bilanco) -> dict[str, float]:
     }
 
 
-def _cari_satir_sinifla(bakiye: float, hareket_tipi: int, baglanti_tipi: int) -> tuple[str, float] | None:
-    """Tek cari hesabın bakiyesini alacak/borç/avans kovalarına ayırır."""
-    if abs(bakiye) < 0.005:
-        return None
+def _cari_kovala(borc_h: float, alacak_h: float, hareket_tipi: int, baglanti_tipi: int) -> dict[str, float]:
+    """
+    Mikro cari listesi mantığı: borç/alacak kolonları ayrı toplanır.
+    Satıcı borcu hem standart (alacak>borç) hem ters kayıt (borç>alacak) ile gelebilir.
+    """
+    out = {"alacak": 0.0, "borc": 0.0, "musteri_avans": 0.0, "satici_avans": 0.0}
+    if borc_h < 0.005 and alacak_h < 0.005:
+        return out
     ht, bt = hareket_tipi, baglanti_tipi
-    # Önce hareket tipi — kart "sadece alış/satış" tanımı bağlantı tipinden güvenilir
-    if ht == 2:  # sadece alış → satıcı
-        return ("satici_avans", bakiye) if bakiye > 0 else ("borc", -bakiye)
-    if ht == 1:  # sadece satış → müşteri
-        return ("alacak", bakiye) if bakiye > 0 else ("musteri_avans", -bakiye)
-    if bt == 1:  # Satıcı
-        return ("satici_avans", bakiye) if bakiye > 0 else ("borc", -bakiye)
-    if bt == 0:  # Müşteri
-        return ("alacak", bakiye) if bakiye > 0 else ("musteri_avans", -bakiye)
-    if bakiye > 0:
-        return ("alacak", bakiye)
-    return ("borc", -bakiye)
+    is_sup = ht == 2 or bt == 1
+    is_cus = ht == 1 or bt == 0
+
+    if is_sup and not is_cus:
+        if alacak_h > borc_h + 0.005:
+            out["borc"] = alacak_h - borc_h
+        elif borc_h > alacak_h + 0.005:
+            out["borc"] = borc_h - alacak_h
+        return out
+    if is_cus and not is_sup:
+        if borc_h > alacak_h + 0.005:
+            out["alacak"] = borc_h - alacak_h
+        elif alacak_h > borc_h + 0.005:
+            out["musteri_avans"] = alacak_h - borc_h
+        return out
+    if borc_h > alacak_h + 0.005:
+        out["alacak"] += borc_h - alacak_h
+    elif alacak_h > borc_h + 0.005:
+        out["borc"] += alacak_h - borc_h
+    return out
 
 
 def _bakiye_caridan(rows: list[dict]) -> dict[str, float]:
@@ -331,29 +343,36 @@ def _bakiye_caridan(rows: list[dict]) -> dict[str, float]:
     }
     for r in rows:
         cins = _i(r.get("cins", r.get("CINS")))
-        bakiye = _f(r.get("bakiye", r.get("BAKIYE")))
-        if abs(bakiye) < 0.005:
+        borc_h = _f(r.get("borc_h", r.get("BORC_H")))
+        alacak_h = _f(r.get("alacak_h", r.get("ALACAK_H")))
+        if borc_h < 0.005 and alacak_h < 0.005:
+            bakiye = _f(r.get("bakiye", r.get("BAKIYE")))
+            if abs(bakiye) < 0.005:
+                continue
+            borc_h = max(bakiye, 0.0)
+            alacak_h = max(-bakiye, 0.0)
+        if borc_h < 0.005 and alacak_h < 0.005:
             continue
         out["cari_hesap_sayisi"] += 1
         if cins == _BANKA_CINS:
-            out["nakit_banka"] += bakiye
-            out["nakit_mevcut"] += bakiye
+            net = borc_h - alacak_h
+            out["nakit_banka"] += net
+            out["nakit_mevcut"] += net
             continue
         if cins == _KASA_CINS:
-            out["nakit_kasa"] += bakiye
-            out["nakit_mevcut"] += bakiye
+            net = borc_h - alacak_h
+            out["nakit_kasa"] += net
+            out["nakit_mevcut"] += net
             continue
         if cins != _CARI_CINS:
             continue
-        sinif = _cari_satir_sinifla(
-            bakiye,
+        k = _cari_kovala(
+            borc_h, alacak_h,
             _i(r.get("hareket_tipi", r.get("HAREKET_TIPI"))),
             _i(r.get("baglanti_tipi", r.get("BAGLANTI_TIPI"))),
         )
-        if sinif is None:
-            continue
-        kova, tutar = sinif
-        out[kova] += tutar
+        for key in ("alacak", "borc", "musteri_avans", "satici_avans"):
+            out[key] += k[key]
     return out
 
 

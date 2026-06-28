@@ -116,12 +116,18 @@ class TestGercekDurum(unittest.TestCase):
 
     def test_cari_bakiyesi(self):
         cari = [
-            {"cins": 2, "hareket_tipi": 0, "baglanti_tipi": 2, "kod": "BNK01", "bakiye": 600000.0},
-            {"cins": 4, "hareket_tipi": 0, "baglanti_tipi": 2, "kod": "KAS01", "bakiye": 5000.0},
-            {"cins": 0, "hareket_tipi": 1, "baglanti_tipi": 0, "kod": "MUS01", "bakiye": 3000000.0},
-            {"cins": 0, "hareket_tipi": 1, "baglanti_tipi": 0, "kod": "MUS02", "bakiye": 3000000.0},
-            {"cins": 0, "hareket_tipi": 2, "baglanti_tipi": 1, "kod": "SAT01", "bakiye": -4000000.0},
-            {"cins": 0, "hareket_tipi": 2, "baglanti_tipi": 1, "kod": "SAT02", "bakiye": -2000000.0},
+            {"cins": 2, "hareket_tipi": 0, "baglanti_tipi": 2, "kod": "BNK01",
+             "borc_h": 600000.0, "alacak_h": 0.0},
+            {"cins": 4, "hareket_tipi": 0, "baglanti_tipi": 2, "kod": "KAS01",
+             "borc_h": 5000.0, "alacak_h": 0.0},
+            {"cins": 0, "hareket_tipi": 1, "baglanti_tipi": 0, "kod": "MUS01",
+             "borc_h": 3000000.0, "alacak_h": 0.0},
+            {"cins": 0, "hareket_tipi": 1, "baglanti_tipi": 0, "kod": "MUS02",
+             "borc_h": 3000000.0, "alacak_h": 0.0},
+            {"cins": 0, "hareket_tipi": 2, "baglanti_tipi": 1, "kod": "SAT01",
+             "borc_h": 0.0, "alacak_h": 4000000.0},
+            {"cins": 0, "hareket_tipi": 2, "baglanti_tipi": 1, "kod": "SAT02",
+             "borc_h": 0.0, "alacak_h": 2000000.0},
         ]
         gd = build_gercek_durum(cari_bakiye_rows=cari)
         self.assertEqual(gd.bakiye_kaynagi, "cari")
@@ -133,7 +139,8 @@ class TestGercekDurum(unittest.TestCase):
         self.assertEqual(gd.cari_hesap_sayisi, 6)
 
     def test_cari_oncelikli_gl_karsilastirma(self):
-        cari = [{"cins": 0, "hareket_tipi": 1, "baglanti_tipi": 0, "kod": "M1", "bakiye": 6000000.0}]
+        cari = [{"cins": 0, "hareket_tipi": 1, "baglanti_tipi": 0, "kod": "M1",
+                 "borc_h": 6_000_000.0, "alacak_h": 0.0}]
         mizan = [{"hesap_kodu": "120.01", "borc": 100, "alacak": 0}]
         b = build_bilanco(mizan)
         gd = build_gercek_durum(cari_bakiye_rows=cari, bilanco=b)
@@ -142,9 +149,10 @@ class TestGercekDurum(unittest.TestCase):
         self.assertEqual(gd.bakiye_kaynagi, "cari")
 
     def test_satici_hareket_tipi_oncelikli(self):
-        """Sadece alış kartı müşteri bağlantı tipinde olsa bile borç olarak sayılmalı."""
+        """Ters kayıt: alış faturası borç hareketi → yine borç sayılmalı."""
         cari = [
-            {"cins": 0, "hareket_tipi": 2, "baglanti_tipi": 0, "kod": "SAT01", "bakiye": -6_000_000.0},
+            {"cins": 0, "hareket_tipi": 2, "baglanti_tipi": 0, "kod": "SAT01",
+             "borc_h": 6_000_000.0, "alacak_h": 0.0},
         ]
         gd = build_gercek_durum(cari_bakiye_rows=cari)
         self.assertAlmostEqual(gd.borc, 6_000_000.0, places=2)
