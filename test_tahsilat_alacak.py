@@ -1,4 +1,4 @@
-"""Tahsilat & Alacak motoru testleri — FIFO yaşlandırma, vade takvimi, performans."""
+"""Tahsilat & Alacak motoru testleri — FIFO yaşlandırma, vade (cha_vade + plan), performans."""
 
 import unittest
 
@@ -12,27 +12,26 @@ from tahsilat_alacak import (
 )
 
 
-def _row(kod, muh, tip, vade, tutar, *, unvan="", donem=None, ht=0, bt=2):
+def _row(kod, tip, evrak, tutar, *, cha_vade=None, unvan="", donem=None):
     return {
-        "kod": kod, "unvan": unvan or kod, "muh_kod": muh,
-        "hareket_tipi": ht, "baglanti_tipi": bt,
-        "tip": tip, "vade": vade, "tutar": tutar,
-        "tutar_donem": tutar if donem is None else donem,
+        "kod": kod, "unvan": unvan or kod, "tip": tip,
+        "evrak_tarihi": evrak, "cha_vade": cha_vade,
+        "tutar": tutar, "tutar_donem": tutar if donem is None else donem,
     }
 
 
 def _veri():
     return [
-        # Müşteri A (120) — iki satış, kısmi tahsilat → FIFO eski borçtan düşer
-        _row("A", "120.01", 0, "2025-10-01", 100000, unvan="A Ltd"),
-        _row("A", "120.01", 0, "2025-12-15", 50000, unvan="A Ltd"),
-        _row("A", "120.01", 1, "2025-06-01", 60000, unvan="A Ltd"),
-        # Satıcı B (320) — bir alış, kısmi ödeme → kalan borç ileri vadeli
-        _row("B", "320.01", 1, "2026-02-01", 80000, unvan="B AŞ"),
-        _row("B", "320.01", 0, "2025-07-01", 30000, unvan="B AŞ"),
-        # Müşteri C — fazla tahsilat → avans (net 0, yaşlandırmaya girmez)
-        _row("C", "120.02", 0, "2025-11-01", 20000, unvan="C San"),
-        _row("C", "120.02", 1, "2025-11-05", 30000, unvan="C San"),
+        # Müşteri 120 — iki satış (cha_vade dolu), kısmi tahsilat → FIFO eski borçtan düşer
+        _row("120.01", 0, "2025-09-15", 100000, cha_vade="2025-10-01", unvan="A Ltd"),
+        _row("120.01", 0, "2025-12-01", 50000, cha_vade="2025-12-15", unvan="A Ltd"),
+        _row("120.01", 1, "2025-06-01", 60000, unvan="A Ltd"),
+        # Satıcı 320 — bir alış, kısmi ödeme → kalan borç ileri vadeli (vadesi gelmemiş)
+        _row("320.01", 1, "2025-12-20", 80000, cha_vade="2026-02-01", unvan="B AŞ"),
+        _row("320.01", 0, "2025-07-01", 30000, unvan="B AŞ"),
+        # Müşteri 120 — fazla tahsilat → avans (net 0, yaşlandırmaya girmez)
+        _row("120.02", 0, "2025-11-01", 20000, cha_vade="2025-11-01", unvan="C San"),
+        _row("120.02", 1, "2025-11-05", 30000, unvan="C San"),
     ]
 
 
@@ -45,12 +44,13 @@ class TestTahsilatAlacak(unittest.TestCase):
         self.assertAlmostEqual(self.ta.borc_toplam, 50000, places=2)
         self.assertAlmostEqual(self.ta.net_pozisyon, 40000, places=2)
         self.assertAlmostEqual(self.ta.musteri_avans, 10000, places=2)
-        self.assertEqual(self.ta.cari_sayisi, 2)  # A ve B; C net 0
+        self.assertEqual(self.ta.cari_sayisi, 2)  # 120.01 ve 320.01; 120.02 net 0
+        self.assertEqual(self.ta.vade_kaynagi, "vade")  # cha_vade dolu satırlar var
 
     def test_fifo_yaslandirma(self):
-        # 100000 satışın 60000'i kapandı → 40000 açık, vade 2025-10-01 (91 gün gecikmiş = 90+)
+        # 100000 satışın 60000'i kapandı → 40000 açık, vade 2025-10-01 (91 gün = 90+)
         self.assertAlmostEqual(self.ta.alacak_aging[AGING_KOVALAR[4]], 40000, places=2)
-        # 50000 satış açık, vade 2025-12-15 (16 gün gecikmiş = 1–30)
+        # 50000 satış açık, vade 2025-12-15 (16 gün = 1–30)
         self.assertAlmostEqual(self.ta.alacak_aging[AGING_KOVALAR[1]], 50000, places=2)
         self.assertAlmostEqual(self.ta.alacak_gecikmis, 90000, places=2)
 
@@ -61,14 +61,12 @@ class TestTahsilatAlacak(unittest.TestCase):
 
     def test_vade_takvimi(self):
         nv = self.ta.net_vade()
-        # Tüm alacaklar gecikmiş (girecek), borç yok → net = +90000
-        self.assertAlmostEqual(nv[VADE_KOVALAR[0]], 90000, places=2)
-        # Borç 32 gün sonra → Gelecek ay (31–60g) çıkacak
-        self.assertAlmostEqual(self.ta.borc_vade[VADE_KOVALAR[3]], 50000, places=2)
+        self.assertAlmostEqual(nv[VADE_KOVALAR[0]], 90000, places=2)        # gecikmiş alacak girecek
+        self.assertAlmostEqual(self.ta.borc_vade[VADE_KOVALAR[3]], 50000, places=2)  # 32g → gelecek ay
 
     def test_performans(self):
-        self.assertAlmostEqual(self.ta.donem_satis, 170000, places=2)   # A 150k + C 20k
-        self.assertAlmostEqual(self.ta.donem_tahsilat, 90000, places=2)  # A 60k + C 30k
+        self.assertAlmostEqual(self.ta.donem_satis, 170000, places=2)
+        self.assertAlmostEqual(self.ta.donem_tahsilat, 90000, places=2)
         self.assertAlmostEqual(self.ta.donem_alis, 80000, places=2)
         self.assertAlmostEqual(self.ta.donem_odeme, 30000, places=2)
         self.assertAlmostEqual(self.ta.tahsilat_orani, 90000 / 170000 * 100, places=1)
@@ -76,15 +74,32 @@ class TestTahsilatAlacak(unittest.TestCase):
         self.assertIsNotNone(self.ta.dpo)
 
     def test_top_listeler(self):
-        self.assertEqual(self.ta.top_alacak[0].kod, "A")
-        self.assertEqual(self.ta.top_borc[0].kod, "B")
+        self.assertEqual(self.ta.top_alacak[0].kod, "120.01")
+        self.assertEqual(self.ta.top_borc[0].kod, "320.01")
         self.assertAlmostEqual(self.ta.top_alacak[0].gecikmis, 90000, places=2)
 
-    def test_sinif_fallback_muh_koy_yok(self):
-        # muh_kod boş; baglanti_tipi=1 → satıcı kabul edilir
+    def test_vade_plan_ile_hesaplanir(self):
+        # cha_vade yok; vade = evrak tarihi + plan günü (30) → 2025-12-31 = asof → vadesi gelmemiş
+        rows = [_row("120.07", 0, "2025-12-01", 10000)]
+        ta = build_tahsilat_alacak(rows, vade_gun_map={"120.07": 30},
+                                   bas="2025-01-01", bit="2025-12-31")
+        self.assertAlmostEqual(ta.alacak_aging[AGING_KOVALAR[0]], 10000, places=2)
+        self.assertAlmostEqual(ta.alacak_gecikmis, 0, places=2)
+        self.assertEqual(ta.vade_kaynagi, "plan")
+
+    def test_plan_yoksa_evrak_tarihi(self):
+        # cha_vade yok, plan yok → vade = evrak tarihi → gecikmiş
+        rows = [_row("120.08", 0, "2025-01-15", 5000)]
+        ta = build_tahsilat_alacak(rows, bas="2025-01-01", bit="2025-12-31")
+        self.assertAlmostEqual(ta.alacak_gecikmis, 5000, places=2)
+        self.assertEqual(ta.vade_kaynagi, "tarih")
+
+    def test_sinif_kod_onekinden(self):
+        # 320 → satıcı; 120/320 dışı kod elenir
         rows = [
-            _row("X", "", 1, "2026-03-01", 5000, bt=1),
-            _row("X", "", 0, "2025-01-01", 1000, bt=1),
+            _row("320.99", 1, "2026-03-01", 5000, cha_vade="2026-03-01"),
+            _row("320.99", 0, "2025-01-01", 1000),
+            _row("999.00", 0, "2025-01-01", 7000),  # cari değil → atlanır
         ]
         ta = build_tahsilat_alacak(rows, bas="2025-01-01", bit="2025-12-31")
         self.assertAlmostEqual(ta.borc_toplam, 4000, places=2)
@@ -112,6 +127,19 @@ class TestTahsilatAlacak(unittest.TestCase):
         self.assertEqual(ta.cari_sayisi, 0)
         self.assertIsNone(ta.dso)
         self.assertAlmostEqual(ta.net_pozisyon, 0, places=2)
+
+
+class TestCariVade(unittest.TestCase):
+    def test_hesapla_vade_gun(self):
+        from cari_vade import hesapla_vade_gun, gun_from_plan_adi
+        self.assertEqual(hesapla_vade_gun(-60, None, None), 60)   # negatif plan = gün
+        self.assertEqual(hesapla_vade_gun(0, None, None), 0)      # peşin
+        self.assertEqual(hesapla_vade_gun(2, None, 45), 45)       # odp_ortgun öncelikli
+        self.assertEqual(hesapla_vade_gun(2, "30 GÜN", 0), 30)    # plan adından
+        self.assertEqual(hesapla_vade_gun(3, None, None), 60)     # bilinen plan no tablosu
+        self.assertEqual(gun_from_plan_adi("PEŞİN"), 0)
+        self.assertEqual(gun_from_plan_adi("90 gün vade"), 90)
+        self.assertIsNone(gun_from_plan_adi("bilinmeyen"))
 
 
 if __name__ == "__main__":

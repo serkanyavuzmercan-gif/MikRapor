@@ -17,6 +17,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from mikro_api import MikroAPIError, MikroClient, get_row_value, parse_sql_rows
+from cari_vade import hesapla_vade_gun
 
 
 def fetch_firma_adi(client: MikroClient) -> str:
@@ -285,36 +286,60 @@ def _fetch_cari_bakiye_sql(client: MikroClient, asof: str, *, genis: bool) -> li
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+def fetch_cari_vade_gun(client: MikroClient) -> dict[str, int]:
+    """
+    Cari kod → vade günü haritası (ödeme planından). cha_vade bu kurulumda boş olduğu için
+    vade = evrak tarihi + bu gün sayısıyla hesaplanır (ss/lib/mikro-api vade-takip ile aynı).
+
+    cari_odemeplan_no → ODEME_PLANLARI.odp_ortgun / odp_adi. Hata olursa boş harita döner
+    (vade = evrak tarihi'ne düşer; yaşlandırma yine çalışır, yalnız "gecikmiş" tarafa kayar).
+    """
+    sql = (
+        "SELECT cari_kod, CAST(cari_odemeplan_no AS int) AS plan_no, "
+        "(SELECT odp_ortgun FROM ODEME_PLANLARI WHERE odp_no = cari_odemeplan_no) AS ortgun, "
+        "(SELECT odp_adi FROM ODEME_PLANLARI WHERE odp_no = cari_odemeplan_no) AS plan_adi "
+        "FROM CARI_HESAPLAR WITH (NOLOCK) "
+        "WHERE cari_kod LIKE '120%' OR cari_kod LIKE '320%'"
+    )
+    out: dict[str, int] = {}
+    try:
+        rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=60, max_attempts=2))
+    except MikroAPIError:
+        return out
+    for r in rows:
+        kod = str(get_row_value(r, "cari_kod", "CARI_KOD") or "").strip()
+        if not kod:
+            continue
+        plan_no = _opt_int(get_row_value(r, "plan_no", "PLAN_NO"))
+        ortgun = _opt_int(get_row_value(r, "ortgun", "ORTGUN"))
+        plan_adi = get_row_value(r, "plan_adi", "PLAN_ADI")
+        vg = hesapla_vade_gun(plan_no, str(plan_adi) if plan_adi is not None else None, ortgun)
+        if vg is not None:
+            out[kod] = vg
+    return out
+
+
+def _opt_int(v: object) -> int | None:
+    if v is None or v == "":
+        return None
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return None
+
+
 def fetch_acik_kalemler(
     client: MikroClient, asof: str, bas: str, bit: str,
-) -> tuple[list[dict[str, Any]], str]:
-    """
-    Tahsilat & Alacak için cari açık kalemleri — CARI_HESAP_HAREKETLERI (banka/kasa hariç).
-
-    Her cari için (cha_tip, vade) kırılımında kümülatif tutar (asof itibarıyla) + dönem içi
-    tutar (bas..bit) döner; yaşlandırma/FIFO ve performans hesabı Python'da yapılır. Vade
-    cha_vade_tarihi'nden alınır; kolon yoksa veya boşsa cha_tarihi'ne düşülür (savunmacı).
-
-    Dönüş: (satırlar, vade_kaynagi)  →  vade_kaynagi ∈ {"vade", "tarih"}.
-    """
-    try:
-        rows = _fetch_acik_sql(client, asof, bas, bit, vade=True)
-        if rows:
-            return rows, "vade"
-    except MikroAPIError:
-        pass
-    return _fetch_acik_sql(client, asof, bas, bit, vade=False), "tarih"
-
-
-def _fetch_acik_sql(
-    client: MikroClient, asof: str, bas: str, bit: str, *, vade: bool,
 ) -> list[dict[str, Any]]:
+    """
+    Tahsilat & Alacak için cari açık kalemleri — CARI_HESAP_HAREKETLERI, 120/320 cariler.
+
+    Her cari için (cha_tip, evrak tarihi, cha_vade) kırılımında kümülatif tutar (asof) + dönem
+    içi tutar (bas..bit) döner. Vade Python'da hesaplanır: cha_vade doluysa o, yoksa evrak tarihi
+    + carinin ödeme planı günü (fetch_cari_vade_gun). 120.B* (özel) hariç. Banka/kasa zaten
+    120/320 önekiyle doğal olarak elenir.
+    """
     tl = _cha_tl_sql("c")
-    vade_expr = (
-        "CONVERT(date, CASE WHEN c.cha_vade_tarihi > '1900-01-01' "
-        "THEN c.cha_vade_tarihi ELSE c.cha_tarihi END)"
-        if vade else "CONVERT(date, c.cha_tarihi)"
-    )
     donem = (
         f"SUM(CASE WHEN c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{_bit_son(bit)}' "
         f"THEN {tl} ELSE 0 END)"
@@ -322,21 +347,18 @@ def _fetch_acik_sql(
     sql = (
         "SELECT c.cha_kod AS kod, "
         "MAX(ISNULL(ch.cari_unvan1, '')) AS unvan, "
-        "MAX(ISNULL(ch.cari_muh_kod, '')) AS muh_kod, "
-        "MAX(ISNULL(ch.cari_hareket_tipi, 0)) AS hareket_tipi, "
-        "MAX(ISNULL(ch.cari_baglanti_tipi, 2)) AS baglanti_tipi, "
         "c.cha_tip AS tip, "
-        f"{vade_expr} AS vade, "
+        "CONVERT(date, c.cha_tarihi) AS evrak_tarihi, "
+        "CONVERT(date, c.cha_vade) AS cha_vade, "
         f"SUM({tl}) AS tutar, "
         f"{donem} AS tutar_donem "
         "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
         "LEFT JOIN CARI_HESAPLAR ch WITH (NOLOCK) ON ch.cari_kod = c.cha_kod AND ch.cari_iptal = 0 "
-        "LEFT JOIN BANKALAR b WITH (NOLOCK) ON b.ban_kod = c.cha_kod "
-        "LEFT JOIN KASALAR k WITH (NOLOCK) ON k.kas_kod = c.cha_kod "
         "WHERE c.cha_iptal = 0 AND ISNULL(c.cha_hidden, 0) = 0 "
         f"AND c.cha_tarihi < '{_bit_son(asof)}' "
-        "AND b.ban_kod IS NULL AND k.kas_kod IS NULL AND c.cha_cari_cins = 0 "
-        f"GROUP BY c.cha_kod, c.cha_tip, {vade_expr} "
+        "AND (c.cha_kod LIKE '120%' OR c.cha_kod LIKE '320%') "
+        "AND c.cha_kod NOT LIKE '120.B%' AND ISNULL(c.cha_meblag, 0) <> 0 "
+        "GROUP BY c.cha_kod, c.cha_tip, CONVERT(date, c.cha_tarihi), CONVERT(date, c.cha_vade) "
         f"HAVING ABS(SUM({tl})) >= 0.005"
     )
-    return parse_sql_rows(client.sql_veri_oku(sql, timeout=150, max_attempts=2))
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))

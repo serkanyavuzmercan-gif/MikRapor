@@ -188,7 +188,11 @@ def build_tahsilat_alacak_widget(ta: TahsilatAlacak, firma: str = "") -> QWidget
     root.setSpacing(14)
 
     firma_str = f" &nbsp;·&nbsp; <b>{firma}</b>" if firma else ""
-    kaynak = "vade tarihi" if ta.vade_kaynagi == "vade" else "hareket tarihi (vade yok)"
+    kaynak = {
+        "vade": "vade tarihi",
+        "plan": "ödeme planı vadesi (evrak tarihi + cari vade günü)",
+        "tarih": "hareket tarihi (vade bilgisi yok)",
+    }.get(ta.vade_kaynagi, "vade tarihi")
     head = QLabel(
         f"<span style='color:{MUTED}; font-size:11px;'>TAHSİLAT &amp; ALACAK &nbsp;·&nbsp; "
         f"{ta.bit} itibarıyla{firma_str}</span><br>"

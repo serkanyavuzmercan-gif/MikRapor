@@ -44,6 +44,7 @@ from mikro_api import MikroAPIError, MikroClient
 from mikro_fetch import (
     fetch_acik_kalemler,
     fetch_cari_bakiye,
+    fetch_cari_vade_gun,
     fetch_firma_adi,
     fetch_gelir_tablosu,
     fetch_mizan,
@@ -756,9 +757,10 @@ class TahsilatAlacakTab(QWidget):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         client = MikroClient(cfg)
         try:
-            acik_rows, vade_kaynagi = fetch_acik_kalemler(client, bit, bas, bit)
+            vade_gun_map = fetch_cari_vade_gun(client)
+            acik_rows = fetch_acik_kalemler(client, bit, bas, bit)
             self._ta = build_tahsilat_alacak(
-                acik_rows, bas=bas, bit=bit, vade_kaynagi=vade_kaynagi)
+                acik_rows, vade_gun_map=vade_gun_map, bas=bas, bit=bit)
             firma = (cfg.firma_adi or "").strip()
             if not firma:
                 try:

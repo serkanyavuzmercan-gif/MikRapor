@@ -18,9 +18,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
-from gercek_durum import _muh_sinifi, _f, _i
+from gercek_durum import _f, _i
 
 # Yaşlandırma kovaları — vade gününe göre gecikme (asof − vade).
 AGING_KOVALAR = ("Vadesi gelmemiş", "1–30 gün", "31–60 gün", "61–90 gün", "90+ gün")
@@ -60,9 +60,11 @@ def _tarih(v: object) -> date | None:
         return None
     s = s.replace("T", " ").split(" ")[0]
     try:
-        return date.fromisoformat(s)
+        d = date.fromisoformat(s)
     except ValueError:
         return None
+    # Mikro boş tarihi 1899-12-30 sentinel'i olarak tutabilir → yok say.
+    return d if d.year >= 1900 else None
 
 
 def tl0(v: float) -> str:
@@ -154,16 +156,23 @@ class TahsilatAlacak:
         }
 
 
-def _sinif_belirle(muh_kod: str, hareket_tipi: int, baglanti_tipi: int) -> str:
-    """cari_muh_kod önceliği; yoksa hareket/bağlantı tipinden müşteri/satıcı."""
-    s = _muh_sinifi(muh_kod)
-    if s:
-        return s
-    if hareket_tipi == 1 or baglanti_tipi == 0:
+def _sinif_belirle(kod: str) -> str:
+    """Cari kod önekinden müşteri/satıcı (120 = müşteri, 320 = satıcı)."""
+    k = str(kod or "").strip()
+    if k.startswith("120") or k.startswith("121"):
         return "customer"
-    if hareket_tipi == 2 or baglanti_tipi == 1:
+    if k.startswith("320") or k.startswith("321") or k.startswith("329"):
         return "supplier"
     return ""
+
+
+def _vade_hesapla(cha_vade: date | None, evrak: date | None, vade_gun: int | None) -> date | None:
+    """cha_vade doluysa o; yoksa evrak tarihi + carinin ödeme planı günü."""
+    if cha_vade is not None:
+        return cha_vade
+    if evrak is None:
+        return None
+    return evrak + timedelta(days=vade_gun or 0)
 
 
 def _fifo_acik(charges: list[tuple[date | None, float]], odeme: float,
@@ -190,14 +199,17 @@ def _fifo_acik(charges: list[tuple[date | None, float]], odeme: float,
 def build_tahsilat_alacak(
     acik_rows: list[dict] | None = None,
     *,
+    vade_gun_map: dict | None = None,
     bas: str = "",
     bit: str = "",
-    vade_kaynagi: str = "vade",
     top_n: int = 8,
 ) -> TahsilatAlacak:
     """fetch_acik_kalemler satırlarından Tahsilat & Alacak modelini kurar."""
-    ta = TahsilatAlacak(bas=bas, bit=bit, vade_kaynagi=vade_kaynagi)
+    vade_gun_map = vade_gun_map or {}
+    ta = TahsilatAlacak(bas=bas, bit=bit)
     asof = _tarih(bit) or date.today()
+    _cha_vade_var = False
+    _plan_var = bool(vade_gun_map)
     bas_d = _tarih(bas)
     ta.donem_gun = ((asof - bas_d).days + 1) if (bas_d and asof >= bas_d) else 0
 
@@ -215,21 +227,13 @@ def build_tahsilat_alacak(
     satici: list[CariOzet] = []
 
     for kod, rows in gruplar.items():
-        if not kod:
-            continue
-        muh = ""
-        unvan = ""
-        ht = bt = -1
-        for r in rows:
-            muh = muh or str(r.get("muh_kod", r.get("MUH_KOD")) or "")
-            unvan = unvan or str(r.get("unvan", r.get("UNVAN")) or "")
-            if ht < 0:
-                ht = _i(r.get("hareket_tipi", r.get("HAREKET_TIPI")))
-            if bt < 0:
-                bt = _i(r.get("baglanti_tipi", r.get("BAGLANTI_TIPI")))
-        sinif = _sinif_belirle(muh, ht, bt)
+        sinif = _sinif_belirle(kod)
         if not sinif:
             continue
+        unvan = ""
+        for r in rows:
+            unvan = unvan or str(r.get("unvan", r.get("UNVAN")) or "")
+        vade_gun = vade_gun_map.get(kod)
 
         # Müşteride borç(tip0)=satış/charge, alacak(tip1)=tahsilat/ödeme.
         # Satıcıda alacak(tip1)=alış/charge, borç(tip0)=ödeme.
@@ -241,7 +245,11 @@ def build_tahsilat_alacak(
             tip = _i(r.get("tip", r.get("TIP")))
             tutar = _f(r.get("tutar", r.get("TUTAR")))
             tutar_donem = _f(r.get("tutar_donem", r.get("TUTAR_DONEM")))
-            vade = _tarih(r.get("vade", r.get("VADE")))
+            cha_vade = _tarih(r.get("cha_vade", r.get("CHA_VADE")))
+            evrak = _tarih(r.get("evrak_tarihi", r.get("EVRAK_TARIHI")))
+            if cha_vade is not None:
+                _cha_vade_var = True
+            vade = _vade_hesapla(cha_vade, evrak, vade_gun)
             if tip == charge_tip:
                 charges.append((vade, tutar))
                 donem_charge += tutar_donem
@@ -286,6 +294,7 @@ def build_tahsilat_alacak(
             ta.borc_gecikmis += gecikmis
             satici.append(ozet)
 
+    ta.vade_kaynagi = "vade" if _cha_vade_var else ("plan" if _plan_var else "tarih")
     ta.top_alacak = sorted(musteri, key=lambda c: c.net, reverse=True)[:top_n]
     ta.top_borc = sorted(satici, key=lambda c: c.net, reverse=True)[:top_n]
     return ta
