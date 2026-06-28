@@ -173,25 +173,51 @@ def _nakit_panel(gd: GercekDurum) -> QFrame:
     satir(1, "Para Çıkan (tediye) (−)", tl(-gd.nakit_cikan), renk=NEG)
     satir(2, "Net Nakit Akışı", tl(gd.nakit_net), bold=True, renk=_renk(gd.nakit_net))
     g.addWidget(_cizgi(), 3, 0, 1, 2)
-    satir(4, "Nakit Mevcudu (kasa+banka)", tl(gd.nakit_mevcut), bold=True,
+        satir(4, "Nakit Mevcudu (banka+kasa)", tl(gd.nakit_mevcut), bold=True,
           renk=_renk(gd.nakit_mevcut))
-    not_n = _satir_label("Bilanço sekmesiyle aynı mizan (100–102–108)", renk=FAINT, boyut=10)
-    g.addWidget(not_n, 5, 0, 1, 2)
-    satir(6, "Alacaklar (müşteri 12x)", tl(gd.alacak))
-    if gd.musteri_avans > 0.005:
-        satir(7, "Müşteri avansı (12x alacak bak.) (−)", tl(-gd.musteri_avans), renk=NEG)
-        r_borc = 8
+    if gd.nakit_banka > 0.005 or gd.nakit_kasa > 0.005:
+        g.addWidget(_satir_label("    • banka", renk=FAINT, boyut=11), 5, 0)
+        g.addWidget(_satir_label(tl(gd.nakit_banka), renk=FAINT, boyut=11, sag=True), 5, 1)
+        g.addWidget(_satir_label("    • kasa", renk=FAINT, boyut=11), 6, 0)
+        g.addWidget(_satir_label(tl(gd.nakit_kasa), renk=FAINT, boyut=11, sag=True), 6, 1)
+        r_kaynak = 7
     else:
-        r_borc = 7
-    satir(r_borc, "Borçlar (satıcı 32x)", tl(gd.borc), renk=NEG if gd.borc else "#374151")
+        r_kaynak = 5
+    kaynak = {
+        "cari": "Cari hareketlerinden (Mikro cari modülüyle aynı)",
+        "mizan": "GL mizanından (MUHASEBE_FISLERI 10x/12x/32x)",
+        "bakiye_ozet": "GL özet bakiyelerinden",
+    }.get(gd.bakiye_kaynagi, "")
+    if kaynak:
+        not_k = _satir_label(kaynak, renk=FAINT, boyut=10)
+        g.addWidget(not_k, r_kaynak, 0, 1, 2)
+        r_alacak = r_kaynak + 1
+    else:
+        r_alacak = r_kaynak
+    satir(r_alacak, "Alacaklar (müşteri)", tl(gd.alacak))
+    if gd.musteri_avans > 0.005:
+        satir(r_alacak + 1, "Müşteri avansı (−)", tl(-gd.musteri_avans), renk=NEG)
+        r_borc = r_alacak + 2
+    else:
+        r_borc = r_alacak + 1
+    satir(r_borc, "Borçlar (satıcı)", tl(gd.borc), renk=NEG if gd.borc else "#374151")
     if gd.satici_avans > 0.005:
-        satir(r_borc + 1, "Satıcı avansı (32x borç bak.)", tl(gd.satici_avans), renk=POZ)
+        satir(r_borc + 1, "Satıcı avansı", tl(gd.satici_avans), renk=POZ)
         r_nis = r_borc + 2
     else:
         r_nis = r_borc + 1
     satir(r_nis, "Net İşletme Sermayesi", tl(gd.net_isletme_sermayesi), bold=True,
           renk=_renk(gd.net_isletme_sermayesi))
-    return _card("NAKİT GERÇEĞİ & İŞLETME SERMAYESİ  (banka + bakiye)", inner)
+    if gd.gl_alacak is not None and gd.bakiye_kaynagi == "cari":
+        fark = abs((gd.gl_alacak or 0) - gd.alacak) + abs((gd.gl_borc or 0) - gd.borc)
+        if fark > 1000:
+            not_gl = _satir_label(
+                f"GL mizan farkı: alacak {tl(gd.gl_alacak)} · borç {tl(gd.gl_borc or 0)} "
+                f"· nakit {tl(gd.gl_nakit_mevcut or 0)} — cari ile GL uyumsuz olabilir.",
+                renk="#b45309", boyut=10)
+            not_gl.setWordWrap(True)
+            g.addWidget(not_gl, r_nis + 1, 0, 1, 2)
+    return _card("NAKİT GERÇEĞİ & İŞLETME SERMAYESİ  (cari bakiye)", inner)
 
 
 def _cizgi() -> QFrame:

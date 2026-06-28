@@ -49,6 +49,10 @@ Mikro'da **bankalar da "cari" gibi** tutulur. Bir hareketin **banka tarafı** sa
 `cha_kod = BANKALAR.ban_kod` olandır → `INNER JOIN BANKALAR ON ban_kod = cha_kod` çift
 sayımı önler (yalnız banka tarafı). Kaynak: `ss/lib/banka-bildirim.ts` (canlı, çalışıyor).
 
+**Gerçek Durum bakiyeleri** (nakit/alacak/borç) artık buradan okunur — GL mizanı değil.
+Mikro cari modülündeki bakiyelerle aynı kaynak: `fetch_cari_bakiye()` → `cha_cari_cins`
+0=Carimiz, 2=Bankamız, 4=Kasamız. Bakiye = Σ(borç hareket − alacak hareket) × kur.
+
 - `cha_tip = 0` → **bankaya giriş** (borç, "para geldi")
 - `cha_tip = 1` → **bankadan çıkış** (alacak, "para gitti")
 - `cha_meblag` → tutar (hesap dövizinde); TL için `cha_meblag * ISNULL(cha_d_kur, 1)`

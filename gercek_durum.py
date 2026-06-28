@@ -8,7 +8,8 @@ dayanır:
 
   1) STOK_HAREKETLERI → fiilen depodan çıkan satış / giren alış → operasyonel brüt marj
   2) Banka hareketleri (CARI_HESAP_HAREKETLERI ⨝ BANKALAR) → fiilen giren/çıkan nakit
-  3) 10x/12x/32x bakiyeleri → nakit mevcudu, alacak, borç
+  3) Cari hareket bakiyeleri (CARI_HESAP_HAREKETLERI) → nakit, alacak, borç
+     (GL mizanı yerine — Mikro cari modülüyle aynı kaynak)
 
 Ayrıca resmi Gelir Tablosu (varsa) ile yan yana konup FARK (gizlenen marj) sayısallaştırılır.
 
@@ -43,6 +44,11 @@ ALIS_EVRAKTIPLERI = {
 
 # Bilanço ile aynı nakit hesapları (103 Verilen Çekler hariç — kontra, nakit değil)
 _NAKIT_ANA = frozenset({"100", "101", "102", "108"})
+
+# Mikro cha_cari_cins
+_CARI_CINS = 0
+_BANKA_CINS = 2
+_KASA_CINS = 4
 
 
 def _f(v: object) -> float:
@@ -107,12 +113,21 @@ class GercekDurum:
     nakit_giren: float = 0.0
     nakit_cikan: float = 0.0
 
-    # Bakiyeler (asof = bit)
-    nakit_mevcut: float = 0.0   # 10x
-    alacak: float = 0.0         # 12x borç bakiyesi (müşteriden tahsil edilecek)
-    borc: float = 0.0           # 32x alacak bakiyesi (satıcıya ödenecek)
-    musteri_avans: float = 0.0  # 12x alacak bakiyesi (müşteriye borç/avans)
-    satici_avans: float = 0.0   # 32x borç bakiyesi (satıcıdan avans)
+    # Bakiyeler (asof = bit) — varsayılan kaynak: cari hareketleri
+    nakit_mevcut: float = 0.0   # banka + kasa
+    nakit_banka: float = 0.0
+    nakit_kasa: float = 0.0
+    alacak: float = 0.0         # müşteriden tahsil edilecek
+    borc: float = 0.0           # satıcıya ödenecek
+    musteri_avans: float = 0.0
+    satici_avans: float = 0.0
+    bakiye_kaynagi: str = ""    # "cari" | "mizan" | "bakiye_ozet"
+    cari_hesap_sayisi: int = 0
+
+    # GL mizan karşılaştırması (varsa)
+    gl_nakit_mevcut: float | None = None
+    gl_alacak: float | None = None
+    gl_borc: float | None = None
 
     # Resmi GL (varsa, karşılaştırma için)
     resmi_brut_marj: float | None = None
@@ -266,13 +281,79 @@ def _bakiye_bilancodan(b: Bilanco) -> dict[str, float]:
         else:
             musteri_avans += -s.tutar
     borc = sum(s.tutar for s in b.pasif if s.ana[:2] == "32")
+    satici_avans = 0.0
+    for s in b.pasif:
+        if s.ana[:2] != "32":
+            continue
+        if s.tutar < 0:
+            satici_avans += -s.tutar
     return {
         "nakit_mevcut": nakit,
+        "nakit_banka": 0.0,
+        "nakit_kasa": 0.0,
         "alacak": alacak,
         "borc": borc,
         "musteri_avans": musteri_avans,
-        "satici_avans": 0.0,
+        "satici_avans": satici_avans,
     }
+
+
+def _cari_satir_sinifla(bakiye: float, hareket_tipi: int, baglanti_tipi: int) -> tuple[str, float] | None:
+    """Tek cari hesabın bakiyesini alacak/borç/avans kovalarına ayırır."""
+    if abs(bakiye) < 0.005:
+        return None
+    ht, bt = hareket_tipi, baglanti_tipi
+    if bt == 0:  # Müşteri
+        return ("alacak", bakiye) if bakiye > 0 else ("musteri_avans", -bakiye)
+    if bt == 1:  # Satıcı
+        return ("satici_avans", bakiye) if bakiye > 0 else ("borc", -bakiye)
+    if ht == 1:  # yalnız satış
+        return ("alacak", bakiye) if bakiye > 0 else ("musteri_avans", -bakiye)
+    if ht == 2:  # yalnız alış
+        return ("satici_avans", bakiye) if bakiye > 0 else ("borc", -bakiye)
+    if bakiye > 0:
+        return ("alacak", bakiye)
+    return ("borc", -bakiye)
+
+
+def _bakiye_caridan(rows: list[dict]) -> dict[str, float]:
+    """CARI_HESAP_HAREKETLERI satırlarından operasyonel bakiye özeti."""
+    out = {
+        "nakit_mevcut": 0.0,
+        "nakit_banka": 0.0,
+        "nakit_kasa": 0.0,
+        "alacak": 0.0,
+        "borc": 0.0,
+        "musteri_avans": 0.0,
+        "satici_avans": 0.0,
+        "cari_hesap_sayisi": 0,
+    }
+    for r in rows:
+        cins = _i(r.get("cins", r.get("CINS")))
+        bakiye = _f(r.get("bakiye", r.get("BAKIYE")))
+        if abs(bakiye) < 0.005:
+            continue
+        out["cari_hesap_sayisi"] += 1
+        if cins == _BANKA_CINS:
+            out["nakit_banka"] += bakiye
+            out["nakit_mevcut"] += bakiye
+            continue
+        if cins == _KASA_CINS:
+            out["nakit_kasa"] += bakiye
+            out["nakit_mevcut"] += bakiye
+            continue
+        if cins != _CARI_CINS:
+            continue
+        sinif = _cari_satir_sinifla(
+            bakiye,
+            _i(r.get("hareket_tipi", r.get("HAREKET_TIPI"))),
+            _i(r.get("baglanti_tipi", r.get("BAGLANTI_TIPI"))),
+        )
+        if sinif is None:
+            continue
+        kova, tutar = sinif
+        out[kova] += tutar
+    return out
 
 
 def build_gercek_durum(
@@ -282,6 +363,7 @@ def build_gercek_durum(
     nakit_rows: list[dict] | None = None,
     nakit_aylik: list[dict] | None = None,
     bakiye_rows: list[dict] | None = None,
+    cari_bakiye_rows: list[dict] | None = None,
     bilanco: Bilanco | None = None,
     gelir_tablosu=None,
     bas: str = "",
@@ -311,12 +393,30 @@ def build_gercek_durum(
         gd.nakit_cikan += _f(r.get("cikan", r.get("CIKAN")))
 
     if bilanco is not None:
+        gl = _bakiye_bilancodan(bilanco)
+        gd.gl_nakit_mevcut = gl["nakit_mevcut"]
+        gd.gl_alacak = gl["alacak"]
+        gd.gl_borc = gl["borc"]
+
+    if cari_bakiye_rows is not None:
+        bk = _bakiye_caridan(cari_bakiye_rows)
+        gd.nakit_mevcut = bk["nakit_mevcut"]
+        gd.nakit_banka = bk["nakit_banka"]
+        gd.nakit_kasa = bk["nakit_kasa"]
+        gd.alacak = bk["alacak"]
+        gd.borc = bk["borc"]
+        gd.musteri_avans = bk["musteri_avans"]
+        gd.satici_avans = bk["satici_avans"]
+        gd.cari_hesap_sayisi = bk["cari_hesap_sayisi"]
+        gd.bakiye_kaynagi = "cari"
+    elif bilanco is not None:
         bk = _bakiye_bilancodan(bilanco)
         gd.nakit_mevcut = bk["nakit_mevcut"]
         gd.alacak = bk["alacak"]
         gd.borc = bk["borc"]
         gd.musteri_avans = bk["musteri_avans"]
         gd.satici_avans = bk["satici_avans"]
+        gd.bakiye_kaynagi = "mizan"
     else:
         nakit_bakiye = 0.0
         alacak = 0.0
@@ -343,6 +443,7 @@ def build_gercek_durum(
         gd.borc = borc
         gd.musteri_avans = musteri_avans
         gd.satici_avans = satici_avans
+        gd.bakiye_kaynagi = "bakiye_ozet"
 
     if gelir_tablosu is not None:
         gd.resmi_brut_marj = gelir_tablosu.brut_marj
@@ -370,9 +471,12 @@ def gercek_durum_csv(gd: GercekDurum) -> str:
     out.append(f"NAKİT;Para Giren;{s(gd.nakit_giren)}")
     out.append(f"NAKİT;Para Çıkan;{s(gd.nakit_cikan)}")
     out.append(f"NAKİT;Net Nakit Akışı;{s(gd.nakit_net)}")
-    out.append(f"BAKİYE;Nakit Mevcudu (10x);{s(gd.nakit_mevcut)}")
-    out.append(f"BAKİYE;Alacaklar (12x);{s(gd.alacak)}")
-    out.append(f"BAKİYE;Borçlar (32x);{s(gd.borc)}")
+    out.append(f"BAKİYE;Nakit Mevcudu (banka+kasa);{s(gd.nakit_mevcut)}")
+    if gd.nakit_banka > 0.005 or gd.nakit_kasa > 0.005:
+        out.append(f"BAKİYE;  • banka;{s(gd.nakit_banka)}")
+        out.append(f"BAKİYE;  • kasa;{s(gd.nakit_kasa)}")
+    out.append(f"BAKİYE;Alacaklar (müşteri);{s(gd.alacak)}")
+    out.append(f"BAKİYE;Borçlar (satıcı);{s(gd.borc)}")
     out.append(f"BAKİYE;Net İşletme Sermayesi;{s(gd.net_isletme_sermayesi)}")
     if gd.resmi_brut_marj is not None:
         out.append(f"KARŞILAŞTIRMA;Resmi Brüt Marj;{yuzde(gd.resmi_brut_marj)}")

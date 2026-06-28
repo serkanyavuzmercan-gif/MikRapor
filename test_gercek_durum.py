@@ -114,6 +114,33 @@ class TestGercekDurum(unittest.TestCase):
         self.assertEqual(yuzde(12.5), "%12,5")
         self.assertEqual(yuzde(-4.3), "%-4,3")
 
+    def test_cari_bakiyesi(self):
+        cari = [
+            {"cins": 2, "hareket_tipi": 0, "baglanti_tipi": 2, "kod": "BNK01", "bakiye": 600000.0},
+            {"cins": 4, "hareket_tipi": 0, "baglanti_tipi": 2, "kod": "KAS01", "bakiye": 5000.0},
+            {"cins": 0, "hareket_tipi": 1, "baglanti_tipi": 0, "kod": "MUS01", "bakiye": 3000000.0},
+            {"cins": 0, "hareket_tipi": 1, "baglanti_tipi": 0, "kod": "MUS02", "bakiye": 3000000.0},
+            {"cins": 0, "hareket_tipi": 2, "baglanti_tipi": 1, "kod": "SAT01", "bakiye": -4000000.0},
+            {"cins": 0, "hareket_tipi": 2, "baglanti_tipi": 1, "kod": "SAT02", "bakiye": -2000000.0},
+        ]
+        gd = build_gercek_durum(cari_bakiye_rows=cari)
+        self.assertEqual(gd.bakiye_kaynagi, "cari")
+        self.assertAlmostEqual(gd.nakit_banka, 600000.0, places=2)
+        self.assertAlmostEqual(gd.nakit_kasa, 5000.0, places=2)
+        self.assertAlmostEqual(gd.nakit_mevcut, 605000.0, places=2)
+        self.assertAlmostEqual(gd.alacak, 6000000.0, places=2)
+        self.assertAlmostEqual(gd.borc, 6000000.0, places=2)
+        self.assertEqual(gd.cari_hesap_sayisi, 6)
+
+    def test_cari_oncelikli_gl_karsilastirma(self):
+        cari = [{"cins": 0, "hareket_tipi": 1, "baglanti_tipi": 0, "kod": "M1", "bakiye": 6000000.0}]
+        mizan = [{"hesap_kodu": "120.01", "borc": 100, "alacak": 0}]
+        b = build_bilanco(mizan)
+        gd = build_gercek_durum(cari_bakiye_rows=cari, bilanco=b)
+        self.assertAlmostEqual(gd.alacak, 6000000.0, places=2)
+        self.assertAlmostEqual(gd.gl_alacak, 100.0, places=2)
+        self.assertEqual(gd.bakiye_kaynagi, "cari")
+
     def test_bilanco_bakiyesi(self):
         mizan = [
             {"hesap_kodu": "100.01", "borc": 1000, "alacak": 0},
@@ -124,6 +151,7 @@ class TestGercekDurum(unittest.TestCase):
         ]
         b = build_bilanco(mizan, asof="2025-12-31")
         gd = build_gercek_durum(bilanco=b)
+        self.assertEqual(gd.bakiye_kaynagi, "mizan")
         self.assertAlmostEqual(gd.nakit_mevcut, 5001000.0, places=2)  # 1000+5M, 103 hariç
         self.assertAlmostEqual(gd.alacak, 8000000.0, places=2)
         self.assertAlmostEqual(gd.borc, 2000000.0, places=2)

@@ -25,11 +25,29 @@ def main() -> None:
     if not cfg.is_complete():
         print("Ayarlar eksik:", cfg.eksik_alanlar())
         return
+    client = MikroClient(cfg)
     print(f"GL çekiliyor (… {asof} tarihine kadar, firma {cfg.firma_kodu}, yıl {cfg.calisma_yili})…")
-    rows = fetch_mizan(MikroClient(cfg), asof)
+    rows = fetch_mizan(client, asof)
     print(f"{len(rows)} hesap geldi.\n")
     b = build_bilanco(rows, asof=asof)
     print(bilanco_metni(b))
+
+    # Cari bakiye karşılaştırması (Gerçek Durum'un kullandığı kaynak)
+    try:
+        from gercek_durum import _bakiye_bilancodan, _bakiye_caridan
+        from mikro_fetch import fetch_cari_bakiye
+
+        cari_rows = fetch_cari_bakiye(client, asof)
+        gl = _bakiye_bilancodan(b)
+        cr = _bakiye_caridan(cari_rows)
+        print("\nKARŞILAŞTIRMA — Cari hareket vs GL mizan:")
+        print(f"   {'':20} {'Cari':>18} {'GL mizan':>18}")
+        print(f"   {'Nakit':20} {tl(cr['nakit_mevcut']):>18} {tl(gl['nakit_mevcut']):>18}")
+        print(f"   {'Alacak':20} {tl(cr['alacak']):>18} {tl(gl['alacak']):>18}")
+        print(f"   {'Borç':20} {tl(cr['borc']):>18} {tl(gl['borc']):>18}")
+        print(f"   ({cr['cari_hesap_sayisi']} cari/banka/kasa hesabı)")
+    except Exception as exc:  # noqa: BLE001
+        print(f"\nCari karşılaştırma atlandı: {exc}")
 
     # Teşhis: ana grup netleri + bilanço-dışı (8/9)
     print("\nTEŞHİS — ana grup netleri (bakiye = borç − alacak):")

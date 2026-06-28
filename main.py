@@ -40,7 +40,7 @@ from gercek_durum import GercekDurum, build_gercek_durum, gercek_durum_csv
 from gercek_durum_view import build_gercek_durum_widget
 from mikro_api import MikroAPIError, MikroClient
 from mikro_fetch import (
-    fetch_bakiye_ozet,
+    fetch_cari_bakiye,
     fetch_firma_adi,
     fetch_gelir_tablosu,
     fetch_mizan,
@@ -605,6 +605,7 @@ class GercekDurumTab(QWidget):
             stok_aylik = fetch_stok_aylik(client, bas, bit)
             nakit_rows = fetch_nakit_ozet(client, bas, bit)
             nakit_aylik = fetch_nakit_aylik(client, bas, bit)
+            cari_bakiye_rows = fetch_cari_bakiye(client, bit)
             mizan_rows = fetch_mizan(client, bit)
             bilanco = build_bilanco(mizan_rows, asof=bit)
             # Resmi GL (karşılaştırma için) — başarısız olsa da gerçek durum üretilir.
@@ -615,6 +616,7 @@ class GercekDurumTab(QWidget):
             self._gd = build_gercek_durum(
                 stok_rows=stok_rows, stok_aylik=stok_aylik,
                 nakit_rows=nakit_rows, nakit_aylik=nakit_aylik,
+                cari_bakiye_rows=cari_bakiye_rows,
                 bilanco=bilanco, gelir_tablosu=gt,
                 bas=bas, bit=bit, satis_bazi=satis_bazi,
             )
@@ -646,6 +648,8 @@ class GercekDurumTab(QWidget):
             f"Gerçek brüt marj {yuzde(gd.gercek_brut_marj)}",
             f"Net nakit {tl(gd.nakit_net)}",
         ]
+        if gd.cari_hesap_sayisi:
+            parts.append(f"Cari {gd.cari_hesap_sayisi} hesap · alacak {tl(gd.alacak)} · borç {tl(gd.borc)}")
         if gd.stok_kirilim_sayisi == 0:
             parts.insert(0, "⚠ stok verisi yok — dönem/yıl kontrol edin")
         self._status.setText(" · ".join(parts))
