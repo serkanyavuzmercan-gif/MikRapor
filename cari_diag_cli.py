@@ -11,10 +11,10 @@ import sys
 from datetime import date
 
 from config import load_config
-from gercek_durum import _bakiye_caridan
+from gercek_durum import _bakiye_bilancodan, _bakiye_caridan
 from mikro_api import MikroClient
-from mikro_fetch import fetch_cari_bakiye
-from mizan_bilanco import tl
+from mikro_fetch import fetch_cari_bakiye, fetch_mizan
+from mizan_bilanco import build_bilanco, tl
 
 
 def _f(v: object) -> float:
@@ -24,19 +24,35 @@ def _f(v: object) -> float:
         return 0.0
 
 
+def _gl_102_bakiye(mizan_rows: list[dict]) -> dict[str, float]:
+    """GL mizandan 102.* hesap bakiyeleri (muh_kod eşleştirmesi için)."""
+    out: dict[str, float] = {}
+    for r in mizan_rows:
+        kod = str(r.get("hesap_kodu", r.get("HESAP_KODU")) or "").strip()
+        if not kod.startswith("102"):
+            continue
+        borc = _f(r.get("borc", r.get("BORC")))
+        alacak = _f(r.get("alacak", r.get("ALACAK")))
+        bakiye = borc - alacak
+        if abs(bakiye) >= 0.005:
+            out[kod] = bakiye
+    return out
+
+
 def main() -> None:
     asof = sys.argv[1] if len(sys.argv) > 1 else date.today().isoformat()
     cfg = load_config()
     if not cfg.is_complete():
         print("Ayarlar eksik:", cfg.eksik_alanlar())
         return
+    client = MikroClient(cfg)
     print(f"Cari bakiye teşhisi — {asof} (firma {cfg.firma_kodu}, yıl {cfg.calisma_yili})\n")
-    rows = fetch_cari_bakiye(MikroClient(cfg), asof)
+    rows = fetch_cari_bakiye(client, asof)
     if not rows:
         print("UYARI: 0 satır döndü — Mikro SQL sessiz hata veya bu tarihte hareket yok.")
         print("       Stok/satış çalışıyorsa sorgu şeması uyumsuz olabilir; geliştiriciye bildirin.\n")
     oz = _bakiye_caridan(rows)
-    print("ÖZET:")
+    print("ÖZET (cari hareket):")
     print(f"  Banka net      {tl(oz['nakit_banka']):>18}")
     print(f"  Kasa net       {tl(oz['nakit_kasa']):>18}")
     print(f"  Alacak         {tl(oz['alacak']):>18}")
@@ -44,6 +60,25 @@ def main() -> None:
     print(f"  Müşteri avans  {tl(oz['musteri_avans']):>18}")
     print(f"  Satıcı avans   {tl(oz['satici_avans']):>18}")
     print(f"  Hesap sayısı   {oz['cari_hesap_sayisi']:>18}")
+
+    try:
+        mizan = fetch_mizan(client, asof)
+        b = build_bilanco(mizan, asof=asof)
+        gl = _bakiye_bilancodan(b)
+        gl_102 = _gl_102_bakiye(mizan)
+        gl_102_top = sum(gl_102.values())
+        print("\nGL MİZAN KARŞILAŞTIRMA (aynı tarih):")
+        print(f"   {'':20} {'Cari':>18} {'GL mizan':>18}")
+        print(f"   {'Nakit (100-102-108)':20} {tl(oz['nakit_mevcut']):>18} {tl(gl['nakit_mevcut']):>18}")
+        print(f"   {'  • yalnız 102.*':20} {tl(oz['nakit_banka']):>18} {tl(gl_102_top):>18}")
+        print(f"   {'Alacak (120)':20} {tl(oz['alacak']):>18} {tl(gl['alacak']):>18}")
+        print(f"   {'Borç (320)':20} {tl(oz['borc']):>18} {tl(gl['borc']):>18}")
+        if abs(oz["nakit_banka"] - gl_102_top) > 1000:
+            print("\n  ⚠ Cari banka ile GL 102 arasında büyük fark — muhtemelen cari hareket")
+            print("    muhasebeleşmemiş veya GL farklı hesaplara yazılmış.")
+    except Exception as exc:  # noqa: BLE001
+        print(f"\nGL karşılaştırma atlandı: {exc}")
+        gl_102 = {}
 
     bankalar_mev = []
     bankalar_kredi = []
@@ -57,21 +92,27 @@ def main() -> None:
         net = bh - ah
         tip = int(_f(r.get("ban_hesap_tip", r.get("BAN_HESAP_TIP"))))
         muh = str(r.get("ban_muh_kod", r.get("BAN_MUH_KOD")) or r.get("muh_kod", r.get("MUH_KOD")) or "")
+        isim = str(r.get("ban_ismi", r.get("BAN_ISMI")) or "").strip()
         kredi = tip == 1 or muh.startswith("300") or kod.upper().startswith("300")
-        (bankalar_kredi if kredi else bankalar_mev).append((kod, net, bh, ah, tip, muh))
+        gl_b = gl_102.get(muh) if muh else None
+        (bankalar_kredi if kredi else bankalar_mev).append((kod, net, tip, muh, isim, gl_b))
 
     bankalar_mev.sort(key=lambda x: -abs(x[1]))
     bankalar_kredi.sort(key=lambda x: -abs(x[1]))
-    print("\nEN BÜYÜK 10 MEVDUAT (nakitte sayılan):")
+    print(f"\nMEVDUAT: {len(bankalar_mev)} hesap, toplam net {tl(sum(x[1] for x in bankalar_mev))}")
+    print("EN BÜYÜK 10 (nakitte sayılan):")
     print("  [tip: 0=mevduat 1=kredi — 300.* kodları kredi sayılır]")
-    for kod, net, bh, ah, tip, muh in bankalar_mev[:10]:
-        print(f"  {kod:<12} net {tl(net):>14}  muh={muh}")
+    for kod, net, tip, muh, isim, gl_b in bankalar_mev[:10]:
+        gl_s = f"  GL={tl(gl_b)}" if gl_b is not None else ""
+        ad = f"  ({isim})" if isim else ""
+        print(f"  {kod:<12} net {tl(net):>14}  muh={muh}{ad}{gl_s}")
     if bankalar_kredi:
         kredi_top = sum(x[1] for x in bankalar_kredi)
         print(f"\nKREDİ / 300.* (nakitten hariç): {len(bankalar_kredi)} hesap, toplam net {tl(kredi_top)}")
 
     print("\nMikro'da Bankalar listesindeki bakiyeyle üstteki netleri kıyaslayın.")
     print("Fark varsa hangi ban_kod olduğunu not edin.")
+    print("Özellikle 102.009 gibi büyük hesapların Mikro'daki bakiyesini kontrol edin.")
 
 
 if __name__ == "__main__":

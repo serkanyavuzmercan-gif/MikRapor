@@ -260,6 +260,7 @@ def _fetch_cari_bakiye_sql(client: MikroClient, asof: str, *, genis: bool) -> li
             "MAX(ISNULL(ch.cari_muh_kod, '')) AS cari_muh_kod, "
             "MAX(ISNULL(b.ban_muh_kod, '')) AS ban_muh_kod, "
             "MAX(ISNULL(CAST(b.ban_hesap_tip AS int), -1)) AS ban_hesap_tip, "
+            "MAX(ISNULL(b.ban_ismi, '')) AS ban_ismi, "
         )
     sql = (
         "SELECT "
