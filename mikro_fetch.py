@@ -380,3 +380,40 @@ def _fetch_acik_sql(
         f"HAVING ABS(SUM({tl})) >= 0.005"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
+def fetch_nakit_akis_hareket(
+    client: MikroClient, bas: str, bit: str,
+) -> list[dict[str, Any]]:
+    """
+    Nakit Akış için banka + kasa hareketleri, ay + karşı taraf öneki + yön kırılımında.
+
+    Karşı taraf (ne için para girdi/çıktı): aynı evrak no'lu (seri+sira), banka/kasa OLMAYAN cari
+    satırın kod öneki (LEFT 3) — ss/banka-bildirim ile aynı OUTER APPLY mantığı. Banka↔banka/kasa
+    iç transferleri (aynı evrakta başka bir nakit satırı olanlar) elenir. cha_tip: 0=giriş, 1=çıkış.
+    """
+    tl = _cha_tl_sql("c")
+    bit_son = _bit_son(bit)
+    sql = (
+        "SELECT CONVERT(char(7), c.cha_tarihi, 23) AS ay, "
+        "c.cha_tip AS tip, "
+        "ISNULL(karsi.prefix, '') AS prefix, "
+        f"SUM({tl}) AS tutar "
+        "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
+        "OUTER APPLY ("
+        "SELECT TOP 1 LEFT(LTRIM(k.cha_kod), 3) AS prefix "
+        "FROM CARI_HESAP_HAREKETLERI k WITH (NOLOCK) "
+        "WHERE k.cha_evrakno_seri = c.cha_evrakno_seri "
+        "AND k.cha_evrakno_sira = c.cha_evrakno_sira "
+        "AND k.cha_Guid <> c.cha_Guid AND k.cha_iptal = 0 AND k.cha_cari_cins = 0"
+        ") karsi "
+        "WHERE c.cha_iptal = 0 AND ISNULL(c.cha_hidden, 0) = 0 "
+        "AND c.cha_cari_cins IN (2, 4) "
+        f"AND c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{bit_son}' "
+        "AND NOT EXISTS (SELECT 1 FROM CARI_HESAP_HAREKETLERI t WITH (NOLOCK) "
+        "WHERE t.cha_evrakno_seri = c.cha_evrakno_seri AND t.cha_evrakno_sira = c.cha_evrakno_sira "
+        "AND t.cha_Guid <> c.cha_Guid AND t.cha_iptal = 0 AND t.cha_cari_cins IN (2, 4)) "
+        "GROUP BY CONVERT(char(7), c.cha_tarihi, 23), c.cha_tip, ISNULL(karsi.prefix, '') "
+        f"HAVING ABS(SUM({tl})) >= 0.005"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
