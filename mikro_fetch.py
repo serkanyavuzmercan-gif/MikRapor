@@ -299,7 +299,7 @@ def fetch_cari_vade_gun(client: MikroClient) -> dict[str, int]:
         "(SELECT odp_ortgun FROM ODEME_PLANLARI WHERE odp_no = cari_odemeplan_no) AS ortgun, "
         "(SELECT odp_adi FROM ODEME_PLANLARI WHERE odp_no = cari_odemeplan_no) AS plan_adi "
         "FROM CARI_HESAPLAR WITH (NOLOCK) "
-        "WHERE cari_kod LIKE '120%' OR cari_kod LIKE '320%'"
+        "WHERE ISNULL(cari_iptal, 0) = 0"
     )
     out: dict[str, int] = {}
     try:
@@ -332,33 +332,51 @@ def fetch_acik_kalemler(
     client: MikroClient, asof: str, bas: str, bit: str,
 ) -> list[dict[str, Any]]:
     """
-    Tahsilat & Alacak için cari açık kalemleri — CARI_HESAP_HAREKETLERI, 120/320 cariler.
+    Tahsilat & Alacak için cari açık kalemleri — CARI_HESAP_HAREKETLERI (banka/kasa hariç).
 
-    Her cari için (cha_tip, evrak tarihi, cha_vade) kırılımında kümülatif tutar (asof) + dönem
-    içi tutar (bas..bit) döner. Vade Python'da hesaplanır: cha_vade doluysa o, yoksa evrak tarihi
-    + carinin ödeme planı günü (fetch_cari_vade_gun). 120.B* (özel) hariç. Banka/kasa zaten
-    120/320 önekiyle doğal olarak elenir.
+    cha_cari_cins=0 (cari) + banka/kasa LEFT JOIN ile elenir (Nakit & Kârlılık ile aynı, kanıtlı
+    veri yolu). Her cari için (cha_tip, evrak tarihi, cha_vade) kırılımında kümülatif tutar (asof)
+    + dönem içi tutar döner. Vade Python'da: cha_vade doluysa o, yoksa evrak tarihi + ödeme planı
+    günü. cha_vade kolonu yoksa/boşsa sorgu o kolon olmadan tekrarlanır (savunmacı).
     """
+    try:
+        rows = _fetch_acik_sql(client, asof, bas, bit, vade=True)
+        if rows:
+            return rows
+    except MikroAPIError:
+        pass
+    return _fetch_acik_sql(client, asof, bas, bit, vade=False)
+
+
+def _fetch_acik_sql(
+    client: MikroClient, asof: str, bas: str, bit: str, *, vade: bool,
+) -> list[dict[str, Any]]:
     tl = _cha_tl_sql("c")
     donem = (
         f"SUM(CASE WHEN c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{_bit_son(bit)}' "
         f"THEN {tl} ELSE 0 END)"
     )
+    vade_sel = "CONVERT(date, c.cha_vade) AS cha_vade, " if vade else ""
+    vade_grp = ", CONVERT(date, c.cha_vade)" if vade else ""
     sql = (
         "SELECT c.cha_kod AS kod, "
         "MAX(ISNULL(ch.cari_unvan1, '')) AS unvan, "
+        "MAX(ISNULL(ch.cari_muh_kod, '')) AS muh_kod, "
+        "MAX(ISNULL(ch.cari_hareket_tipi, 0)) AS hareket_tipi, "
+        "MAX(ISNULL(ch.cari_baglanti_tipi, 2)) AS baglanti_tipi, "
         "c.cha_tip AS tip, "
         "CONVERT(date, c.cha_tarihi) AS evrak_tarihi, "
-        "CONVERT(date, c.cha_vade) AS cha_vade, "
+        f"{vade_sel}"
         f"SUM({tl}) AS tutar, "
         f"{donem} AS tutar_donem "
         "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
+        "LEFT JOIN BANKALAR b WITH (NOLOCK) ON b.ban_kod = c.cha_kod "
+        "LEFT JOIN KASALAR k WITH (NOLOCK) ON k.kas_kod = c.cha_kod "
         "LEFT JOIN CARI_HESAPLAR ch WITH (NOLOCK) ON ch.cari_kod = c.cha_kod AND ch.cari_iptal = 0 "
         "WHERE c.cha_iptal = 0 AND ISNULL(c.cha_hidden, 0) = 0 "
         f"AND c.cha_tarihi < '{_bit_son(asof)}' "
-        "AND (c.cha_kod LIKE '120%' OR c.cha_kod LIKE '320%') "
-        "AND c.cha_kod NOT LIKE '120.B%' AND ISNULL(c.cha_meblag, 0) <> 0 "
-        "GROUP BY c.cha_kod, c.cha_tip, CONVERT(date, c.cha_tarihi), CONVERT(date, c.cha_vade) "
+        "AND b.ban_kod IS NULL AND k.kas_kod IS NULL AND c.cha_cari_cins = 0 "
+        f"GROUP BY c.cha_kod, c.cha_tip, CONVERT(date, c.cha_tarihi){vade_grp} "
         f"HAVING ABS(SUM({tl})) >= 0.005"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))

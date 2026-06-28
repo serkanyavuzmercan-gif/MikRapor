@@ -20,7 +20,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from gercek_durum import _f, _i
+from gercek_durum import _muh_sinifi, _f, _i
 
 # Yaşlandırma kovaları — vade gününe göre gecikme (asof − vade).
 AGING_KOVALAR = ("Vadesi gelmemiş", "1–30 gün", "31–60 gün", "61–90 gün", "90+ gün")
@@ -156,8 +156,18 @@ class TahsilatAlacak:
         }
 
 
-def _sinif_belirle(kod: str) -> str:
-    """Cari kod önekinden müşteri/satıcı (120 = müşteri, 320 = satıcı)."""
+def _sinif_belirle(muh_kod: str, hareket_tipi: int, baglanti_tipi: int, kod: str = "") -> str:
+    """
+    Müşteri/satıcı sınıfı: önce cari_muh_kod (120/320), yoksa hareket/bağlantı tipi,
+    son çare cari kod öneki. (Bu kurulumda muh_kod genelde dolu — kanıtlı yol.)
+    """
+    s = _muh_sinifi(muh_kod)
+    if s:
+        return s
+    if hareket_tipi == 1 or baglanti_tipi == 0:
+        return "customer"
+    if hareket_tipi == 2 or baglanti_tipi == 1:
+        return "supplier"
     k = str(kod or "").strip()
     if k.startswith("120") or k.startswith("121"):
         return "customer"
@@ -227,12 +237,21 @@ def build_tahsilat_alacak(
     satici: list[CariOzet] = []
 
     for kod, rows in gruplar.items():
-        sinif = _sinif_belirle(kod)
-        if not sinif:
+        if not kod:
             continue
         unvan = ""
+        muh = ""
+        ht = bt = -1
         for r in rows:
             unvan = unvan or str(r.get("unvan", r.get("UNVAN")) or "")
+            muh = muh or str(r.get("muh_kod", r.get("MUH_KOD")) or "")
+            if ht < 0:
+                ht = _i(r.get("hareket_tipi", r.get("HAREKET_TIPI")))
+            if bt < 0:
+                bt = _i(r.get("baglanti_tipi", r.get("BAGLANTI_TIPI")))
+        sinif = _sinif_belirle(muh, ht, bt, kod)
+        if not sinif:
+            continue
         vade_gun = vade_gun_map.get(kod)
 
         # Müşteride borç(tip0)=satış/charge, alacak(tip1)=tahsilat/ödeme.
