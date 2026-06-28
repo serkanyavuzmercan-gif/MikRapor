@@ -17,7 +17,6 @@ from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
-    QDateEdit,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -54,6 +53,7 @@ from mikro_settings_dialog import MikroAyarlarDialog
 from mizan_bilanco import Bilanco, bilanco_csv, build_bilanco, tl
 from resources import app_icon, app_logo_pixmap
 from styles import DARK_STYLESHEET
+from tarih_secici import TarihSecici
 
 INSTANCE_KEY = "MercanSoftware.MikRapor.SingleInstance"
 
@@ -141,7 +141,7 @@ class DonemDurumu(QObject):
         self.degisti.emit()
 
 
-def _donem_aralik_bagla(tab: QWidget, donem: DonemDurumu, bas: QDateEdit, bit: QDateEdit) -> None:
+def _donem_aralik_bagla(tab: QWidget, donem: DonemDurumu, bas: TarihSecici, bit: TarihSecici) -> None:
     """İki tarihli sekmeyi ortak döneme bağlar (Gelir Tablosu, Gerçek Durum)."""
     tab._donem_uzaktan = False  # noqa: SLF001
 
@@ -166,7 +166,7 @@ def _donem_aralik_bagla(tab: QWidget, donem: DonemDurumu, bas: QDateEdit, bit: Q
     uygula()
 
 
-def _donem_tek_bagla(tab: QWidget, donem: DonemDurumu, tarih: QDateEdit) -> None:
+def _donem_tek_bagla(tab: QWidget, donem: DonemDurumu, tarih: TarihSecici) -> None:
     """Tek tarihli bilanço sekmesini ortak dönemin bitişine bağlar."""
     tab._donem_uzaktan = False  # noqa: SLF001
 
@@ -209,11 +209,7 @@ class BilancoTab(QWidget):
         controls = QHBoxLayout()
         controls.setSpacing(10)
         controls.addWidget(QLabel("Tarih itibarıyla:"))
-        self._date = QDateEdit()
-        self._date.setCalendarPopup(True)
-        self._date.setDisplayFormat("dd.MM.yyyy")
-        self._date.setDate(self._donem.bit_tarih())
-        self._date.setFixedWidth(140)
+        self._date = TarihSecici(self._donem.bit_tarih(), genislik=140)
         controls.addWidget(self._date)
         _donem_tek_bagla(self, self._donem, self._date)
 
@@ -406,18 +402,10 @@ class GelirTablosuTab(QWidget):
         controls = QHBoxLayout()
         controls.setSpacing(8)
         controls.addWidget(QLabel("Dönem:"))
-        self._bas = QDateEdit()
-        self._bas.setCalendarPopup(True)
-        self._bas.setDisplayFormat("dd.MM.yyyy")
-        self._bas.setDate(self._donem.bas_tarih())
-        self._bas.setFixedWidth(130)
+        self._bas = TarihSecici(self._donem.bas_tarih(), genislik=130)
         controls.addWidget(self._bas)
         controls.addWidget(QLabel("→"))
-        self._bit = QDateEdit()
-        self._bit.setCalendarPopup(True)
-        self._bit.setDisplayFormat("dd.MM.yyyy")
-        self._bit.setDate(self._donem.bit_tarih())
-        self._bit.setFixedWidth(130)
+        self._bit = TarihSecici(self._donem.bit_tarih(), genislik=130)
         controls.addWidget(self._bit)
         _donem_aralik_bagla(self, self._donem, self._bas, self._bit)
 
@@ -546,18 +534,10 @@ class GercekDurumTab(QWidget):
         controls = QHBoxLayout()
         controls.setSpacing(8)
         controls.addWidget(QLabel("Dönem:"))
-        self._bas = QDateEdit()
-        self._bas.setCalendarPopup(True)
-        self._bas.setDisplayFormat("dd.MM.yyyy")
-        self._bas.setDate(self._donem.bas_tarih())
-        self._bas.setFixedWidth(130)
+        self._bas = TarihSecici(self._donem.bas_tarih(), genislik=130)
         controls.addWidget(self._bas)
         controls.addWidget(QLabel("→"))
-        self._bit = QDateEdit()
-        self._bit.setCalendarPopup(True)
-        self._bit.setDisplayFormat("dd.MM.yyyy")
-        self._bit.setDate(self._donem.bit_tarih())
-        self._bit.setFixedWidth(130)
+        self._bit = TarihSecici(self._donem.bit_tarih(), genislik=130)
         controls.addWidget(self._bit)
         _donem_aralik_bagla(self, self._donem, self._bas, self._bit)
 

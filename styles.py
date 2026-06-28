@@ -67,7 +67,35 @@ QLineEdit:focus, QComboBox:focus, QTextEdit:focus, QAbstractSpinBox:focus, QDate
     border: 1px solid #2f6fed;
 }
 QLineEdit:hover, QComboBox:hover, QDateEdit:hover, QAbstractSpinBox:hover { border-color: #9aa6b6; }
-QComboBox::drop-down, QDateEdit::drop-down { border: none; width: 24px; }
+QComboBox::drop-down, QDateEdit::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 28px;
+    border-left: 1px solid #cbd2dc;
+    background-color: #eef4ff;
+    border-top-right-radius: 7px;
+    border-bottom-right-radius: 7px;
+}
+QDateEdit#tarihEdit {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-right: none;
+    padding-right: 8px;
+}
+QPushButton#calBtn {
+    background-color: #eef4ff;
+    color: #1d4ed8;
+    border: 1px solid #cbd2dc;
+    border-left: none;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+    padding: 7px 4px;
+    font-size: 15px;
+}
+QPushButton#calBtn:hover { background-color: #dbe7ff; border-color: #9aa6b6; }
+QPushButton#calBtn:pressed { background-color: #c7d9fc; }
 QComboBox QAbstractItemView {
     background-color: #ffffff;
     color: #1f2937;
