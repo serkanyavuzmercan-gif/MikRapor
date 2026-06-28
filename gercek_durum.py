@@ -395,13 +395,13 @@ def _bakiye_caridan(rows: list[dict]) -> dict[str, float]:
             tip = _i(r.get("ban_hesap_tip", r.get("BAN_HESAP_TIP")))
             if tip == 1:
                 continue
+            kod = str(r.get("kod", r.get("KOD")) or "")
             muh = str(r.get("muh_kod", r.get("MUH_KOD")) or "")
             if not muh:
                 muh = str(r.get("ban_muh_kod", r.get("BAN_MUH_KOD")) or "")
-            if _muh_sinifi(muh) == "supplier" or muh.startswith("300"):
+            if _muh_sinifi(muh) == "supplier":
                 continue
-            kod = str(r.get("kod", r.get("KOD")) or "")
-            if kod.upper().startswith("300."):
+            if muh.startswith("300") or kod.upper().startswith("300"):
                 continue
             net = borc_h - alacak_h
             out["nakit_banka"] += net

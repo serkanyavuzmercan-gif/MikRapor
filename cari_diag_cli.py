@@ -45,7 +45,8 @@ def main() -> None:
     print(f"  Satıcı avans   {tl(oz['satici_avans']):>18}")
     print(f"  Hesap sayısı   {oz['cari_hesap_sayisi']:>18}")
 
-    bankalar = []
+    bankalar_mev = []
+    bankalar_kredi = []
     for r in rows:
         cins = int(_f(r.get("cins", r.get("CINS"))))
         if cins != 2:
@@ -56,14 +57,18 @@ def main() -> None:
         net = bh - ah
         tip = int(_f(r.get("ban_hesap_tip", r.get("BAN_HESAP_TIP"))))
         muh = str(r.get("ban_muh_kod", r.get("BAN_MUH_KOD")) or r.get("muh_kod", r.get("MUH_KOD")) or "")
-        bankalar.append((kod, net, bh, ah, tip, muh))
+        kredi = tip == 1 or muh.startswith("300") or kod.upper().startswith("300")
+        (bankalar_kredi if kredi else bankalar_mev).append((kod, net, bh, ah, tip, muh))
 
-    bankalar.sort(key=lambda x: -abs(x[1]))
-    print("\nEN BÜYÜK 10 BANKA (net = borç hareket − alacak hareket):")
-    print("  [tip: 0=mevduat 1=kredi — nakitte yalnızca mevduat sayılır]")
-    for kod, net, bh, ah, tip, muh in bankalar[:10]:
-        etiket = "KREDİ" if tip == 1 else "mevduat"
-        print(f"  {kod:<12} {etiket:<8} net {tl(net):>14}  muh={muh}")
+    bankalar_mev.sort(key=lambda x: -abs(x[1]))
+    bankalar_kredi.sort(key=lambda x: -abs(x[1]))
+    print("\nEN BÜYÜK 10 MEVDUAT (nakitte sayılan):")
+    print("  [tip: 0=mevduat 1=kredi — 300.* kodları kredi sayılır]")
+    for kod, net, bh, ah, tip, muh in bankalar_mev[:10]:
+        print(f"  {kod:<12} net {tl(net):>14}  muh={muh}")
+    if bankalar_kredi:
+        kredi_top = sum(x[1] for x in bankalar_kredi)
+        print(f"\nKREDİ / 300.* (nakitten hariç): {len(bankalar_kredi)} hesap, toplam net {tl(kredi_top)}")
 
     print("\nMikro'da Bankalar listesindeki bakiyeyle üstteki netleri kıyaslayın.")
     print("Fark varsa hangi ban_kod olduğunu not edin.")
