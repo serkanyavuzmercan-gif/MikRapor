@@ -92,6 +92,103 @@ def fetch_gelir_tablosu(client: MikroClient, bas: str, bit: str) -> list[dict[st
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+def _bit_son(bit: str) -> str:
+    """Bitiş gününü tam dahil etmek için < (bit+1gün) sınırı (datetime gün-içi saatleri kaçırmasın)."""
+    try:
+        return (date.fromisoformat(bit) + timedelta(days=1)).isoformat()
+    except ValueError:
+        return bit
+
+
+def fetch_stok_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
+    """
+    Dönem (bas..bit) için STOK_HAREKETLERI özeti: hareket türü başına tutar/miktar/adet.
+
+    "Gerçek durum"un brüt marj ayağı buradan kurulur — mali müşavirin GL'de oynayabildiği
+    602/623 gibi kalemlerden bağımsız, FİİLEN depodan çıkan/giren mala dayanır.
+    sth_tip (0=giriş/alış, 1=çıkış/satış) + sth_evraktip ile sınıflanır (bkz. MIKRO-SEMA-NOTLARI):
+      tip=1,evraktip=1 → satış irsaliyesi · tip=1,evraktip=4 → satış faturası
+      tip=0,evraktip=3 → alış faturası   · tip=0,evraktip=12 → alış irsaliyesi/depo girişi
+    Sınıflandırma analizöre (gercek_durum) bırakılır; burada yalnız ham kırılım döner.
+    """
+    sql = (
+        "SELECT sth_tip, sth_evraktip, "
+        "SUM(sth_tutar) AS tutar, SUM(sth_miktar) AS miktar, COUNT(*) AS adet "
+        "FROM STOK_HAREKETLERI WITH (NOLOCK) "
+        f"WHERE sth_tarih >= '{bas}' AND sth_tarih < '{_bit_son(bit)}' "
+        "GROUP BY sth_tip, sth_evraktip"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
+def fetch_stok_aylik(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
+    """Dönem içi STOK_HAREKETLERI'nin AYLIK kırılımı (trend için): ay × tip × evraktip → tutar."""
+    sql = (
+        "SELECT CONVERT(char(7), sth_tarih, 126) AS ay, sth_tip, sth_evraktip, "
+        "SUM(sth_tutar) AS tutar "
+        "FROM STOK_HAREKETLERI WITH (NOLOCK) "
+        f"WHERE sth_tarih >= '{bas}' AND sth_tarih < '{_bit_son(bit)}' "
+        "GROUP BY CONVERT(char(7), sth_tarih, 126), sth_tip, sth_evraktip "
+        "ORDER BY ay"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
+def fetch_nakit_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
+    """
+    Dönem (bas..bit) için banka nakit akışı: giren / çıkan (TL).
+
+    Banka tarafı satırı CARI_HESAP_HAREKETLERI ⨝ BANKALAR (cha_kod = ban_kod) ile alınır
+    (çift sayım önlenir). cha_tip 0=giriş (para geldi), 1=çıkış (para gitti).
+    TL = cha_meblag * ISNULL(cha_d_kur, 1). cha_iptal=0 şart. Bkz. MIKRO-SEMA-NOTLARI.
+    Nakit, tahakkuk oyunlarından bağımsız "gerçek durum" sinyalidir.
+    """
+    sql = (
+        "SELECT "
+        "SUM(CASE WHEN c.cha_tip = 0 THEN c.cha_meblag * ISNULL(c.cha_d_kur, 1) ELSE 0 END) AS giren, "
+        "SUM(CASE WHEN c.cha_tip = 1 THEN c.cha_meblag * ISNULL(c.cha_d_kur, 1) ELSE 0 END) AS cikan "
+        "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
+        "INNER JOIN BANKALAR b WITH (NOLOCK) ON b.ban_kod = c.cha_kod "
+        f"WHERE c.cha_iptal = 0 AND c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{_bit_son(bit)}'"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
+def fetch_nakit_aylik(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
+    """Dönem içi banka nakit akışının AYLIK kırılımı (trend için): ay → giren/çıkan (TL)."""
+    sql = (
+        "SELECT CONVERT(char(7), c.cha_tarihi, 126) AS ay, "
+        "SUM(CASE WHEN c.cha_tip = 0 THEN c.cha_meblag * ISNULL(c.cha_d_kur, 1) ELSE 0 END) AS giren, "
+        "SUM(CASE WHEN c.cha_tip = 1 THEN c.cha_meblag * ISNULL(c.cha_d_kur, 1) ELSE 0 END) AS cikan "
+        "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
+        "INNER JOIN BANKALAR b WITH (NOLOCK) ON b.ban_kod = c.cha_kod "
+        f"WHERE c.cha_iptal = 0 AND c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{_bit_son(bit)}' "
+        "GROUP BY CONVERT(char(7), c.cha_tarihi, 126) "
+        "ORDER BY ay"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
+def fetch_bakiye_ozet(client: MikroClient, asof: str) -> list[dict[str, Any]]:
+    """
+    Tarih (asof) itibarıyla nakit/alacak/borç ana hesap bakiyeleri (3 hane): SUM(fis_meblag0).
+
+    Gerçek durumun "param var mı / kim kime borçlu" ayağı: 10x (kasa/banka), 12x (alacaklar),
+    32x (satıcı borçları). bakiye>0 = borç bakiyesi (varlık), bakiye<0 = alacak bakiyesi (borç).
+    """
+    sql = (
+        "SELECT LEFT(fis_hesap_kod, 3) AS ana, SUM(fis_meblag0) AS bakiye "
+        "FROM MUHASEBE_FISLERI WITH (NOLOCK) "
+        f"WHERE fis_iptal = 0 AND fis_tarih < '{_bit_son(asof)}' AND ("
+        "fis_hesap_kod LIKE '100%' OR fis_hesap_kod LIKE '101%' OR fis_hesap_kod LIKE '102%' "
+        "OR fis_hesap_kod LIKE '103%' OR fis_hesap_kod LIKE '108%' "
+        "OR fis_hesap_kod LIKE '120%' OR fis_hesap_kod LIKE '121%' "
+        "OR fis_hesap_kod LIKE '320%' OR fis_hesap_kod LIKE '321%') "
+        "GROUP BY LEFT(fis_hesap_kod, 3)"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
 def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     """
     Belirli tarihe (asof = 'YYYY-MM-DD') kadar kümülatif mizan: hesap başına borç/alacak.
