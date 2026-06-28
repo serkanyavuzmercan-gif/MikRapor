@@ -1,7 +1,7 @@
 """
 Gerçek Durum sekmesi — firma bazlı hesaplama kuralları.
 
-Varsayılan profil Hidroteknik (firma 26) kalibrasyonuna göre:
+Varsayılan profil: irsaliyeli satış, alış faturası, nakit GL, alacak/borç cari.
   satış irsaliye+fatura, alış yalnız fatura, nakit GL, alacak/borç cari.
 """
 

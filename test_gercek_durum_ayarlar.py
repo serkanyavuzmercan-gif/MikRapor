@@ -13,7 +13,7 @@ from gercek_durum_ayarlar import GercekDurumAyarlar, load_gercek_durum_ayarlar, 
 
 
 class TestGercekDurumAyarlar(unittest.TestCase):
-    def test_varsayilan_hidroteknik(self) -> None:
+    def test_varsayilan_profil(self) -> None:
         a = GercekDurumAyarlar.varsayilan()
         self.assertEqual(a.satis_bazi, "sevk")
         self.assertEqual(a.alis_bazi, "fatura")

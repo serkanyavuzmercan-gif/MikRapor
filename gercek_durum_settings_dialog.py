@@ -2,7 +2,7 @@
 Gerçek Durum hesaplama ayarları (PyQt6).
 
 Firma bazlı Mikro kayıt tarzına göre stok sınıflama ve bakiye kaynağı seçilir.
-Varsayılan profil Hidroteknik kalibrasyonudur.
+Varsayılan profil MikRapor önerilen ayarlarıdır.
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ class GercekDurumAyarlarDialog(QDialog):
 
         layout.addLayout(form)
 
-        varsayilan = QPushButton("Varsayılana Dön (Hidroteknik profili)")
+        varsayilan = QPushButton("Varsayılana Dön")
         varsayilan.clicked.connect(self._on_varsayilan)
         layout.addWidget(varsayilan)
 
