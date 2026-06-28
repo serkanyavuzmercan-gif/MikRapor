@@ -241,25 +241,36 @@ def fetch_cari_bakiye(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     """
     Tarih (asof) itibarıyla cari/banka/kasa bakiyeleri — CARI_HESAP_HAREKETLERI üzerinden.
 
-    Banka → BANKALAR, kasa → KASALAR tablosuyla eşleştirilir (cha_cari_cins tek başına yetmez).
-    TL: cha_d_cins=0 ise kur çarpılmaz. Bkz. _cha_tl_sql.
+    Banka → BANKALAR, kasa → KASALAR. ban_hesap_tip / muh_kod Python'da filtrelenir.
+    Sorgu sade tutulur — bilinmeyen kolon Mikro'da sessiz boş sonuç döndürür.
     """
+    rows = _fetch_cari_bakiye_sql(client, asof, genis=True)
+    if rows:
+        return rows
+    return _fetch_cari_bakiye_sql(client, asof, genis=False)
+
+
+def _fetch_cari_bakiye_sql(client: MikroClient, asof: str, *, genis: bool) -> list[dict[str, Any]]:
     tl = _cha_tl_sql("c")
     borc_h = f"SUM(CASE WHEN c.cha_tip = 0 THEN {tl} ELSE 0 END)"
     alacak_h = f"SUM(CASE WHEN c.cha_tip = 1 THEN {tl} ELSE 0 END)"
+    ek = ""
+    if genis:
+        ek = (
+            "MAX(ISNULL(ch.cari_muh_kod, '')) AS cari_muh_kod, "
+            "MAX(ISNULL(b.ban_muh_kod, '')) AS ban_muh_kod, "
+            "MAX(ISNULL(CAST(b.ban_hesap_tip AS int), -1)) AS ban_hesap_tip, "
+        )
     sql = (
         "SELECT "
         "CASE WHEN b.ban_kod IS NOT NULL THEN 2 WHEN k.kas_kod IS NOT NULL THEN 4 ELSE 0 END AS cins, "
         "ISNULL(ch.cari_hareket_tipi, 0) AS hareket_tipi, "
         "ISNULL(ch.cari_baglanti_tipi, 2) AS baglanti_tipi, "
-        "ISNULL(ch.cari_muh_kod, ISNULL(b.ban_muh_kod, '')) AS muh_kod, "
-        "ISNULL(b.ban_hesap_tip, -1) AS ban_hesap_tip, "
-        "ISNULL(b.ban_ismi, '') AS ban_ismi, "
+        f"{ek}"
         "c.cha_kod AS kod, "
         f"{borc_h} AS borc_h, {alacak_h} AS alacak_h "
         "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
         "LEFT JOIN BANKALAR b WITH (NOLOCK) ON b.ban_kod = c.cha_kod "
-        "AND b.ban_iptal = 0 AND ISNULL(b.ban_hidden, 0) = 0 "
         "LEFT JOIN KASALAR k WITH (NOLOCK) ON k.kas_kod = c.cha_kod "
         "LEFT JOIN CARI_HESAPLAR ch WITH (NOLOCK) ON ch.cari_kod = c.cha_kod AND ch.cari_iptal = 0 "
         f"WHERE c.cha_iptal = 0 AND ISNULL(c.cha_hidden, 0) = 0 "
@@ -267,9 +278,7 @@ def fetch_cari_bakiye(client: MikroClient, asof: str) -> list[dict[str, Any]]:
         "AND (b.ban_kod IS NOT NULL OR k.kas_kod IS NOT NULL OR c.cha_cari_cins = 0) "
         "GROUP BY "
         "CASE WHEN b.ban_kod IS NOT NULL THEN 2 WHEN k.kas_kod IS NOT NULL THEN 4 ELSE 0 END, "
-        "ISNULL(ch.cari_hareket_tipi, 0), ISNULL(ch.cari_baglanti_tipi, 2), "
-        "ISNULL(ch.cari_muh_kod, ISNULL(b.ban_muh_kod, '')), "
-        "ISNULL(b.ban_hesap_tip, -1), ISNULL(b.ban_ismi, ''), c.cha_kod "
+        "ISNULL(ch.cari_hareket_tipi, 0), ISNULL(ch.cari_baglanti_tipi, 2), c.cha_kod "
         f"HAVING ABS({borc_h} - {alacak_h}) >= 0.005"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))

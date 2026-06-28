@@ -392,10 +392,16 @@ def _bakiye_caridan(rows: list[dict]) -> dict[str, float]:
             continue
         out["cari_hesap_sayisi"] += 1
         if cins == _BANKA_CINS:
-            if _i(r.get("ban_hesap_tip", r.get("BAN_HESAP_TIP"))) == 1:
+            tip = _i(r.get("ban_hesap_tip", r.get("BAN_HESAP_TIP")))
+            if tip == 1:
                 continue
             muh = str(r.get("muh_kod", r.get("MUH_KOD")) or "")
+            if not muh:
+                muh = str(r.get("ban_muh_kod", r.get("BAN_MUH_KOD")) or "")
             if _muh_sinifi(muh) == "supplier" or muh.startswith("300"):
+                continue
+            kod = str(r.get("kod", r.get("KOD")) or "")
+            if kod.upper().startswith("300."):
                 continue
             net = borc_h - alacak_h
             out["nakit_banka"] += net
@@ -412,7 +418,12 @@ def _bakiye_caridan(rows: list[dict]) -> dict[str, float]:
             borc_h, alacak_h,
             _i(r.get("hareket_tipi", r.get("HAREKET_TIPI"))),
             _i(r.get("baglanti_tipi", r.get("BAGLANTI_TIPI"))),
-            muh_kod=str(r.get("muh_kod", r.get("MUH_KOD")) or ""),
+            muh_kod=str(
+                r.get("muh_kod", r.get("MUH_KOD"))
+                or r.get("cari_muh_kod", r.get("CARI_MUH_KOD"))
+                or r.get("ban_muh_kod", r.get("BAN_MUH_KOD"))
+                or ""
+            ),
         )
         for key in ("alacak", "borc", "musteri_avans", "satici_avans"):
             out[key] += k[key]

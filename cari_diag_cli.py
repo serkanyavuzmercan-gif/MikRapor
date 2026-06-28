@@ -32,6 +32,9 @@ def main() -> None:
         return
     print(f"Cari bakiye teşhisi — {asof} (firma {cfg.firma_kodu}, yıl {cfg.calisma_yili})\n")
     rows = fetch_cari_bakiye(MikroClient(cfg), asof)
+    if not rows:
+        print("UYARI: 0 satır döndü — Mikro SQL sessiz hata veya bu tarihte hareket yok.")
+        print("       Stok/satış çalışıyorsa sorgu şeması uyumsuz olabilir; geliştiriciye bildirin.\n")
     oz = _bakiye_caridan(rows)
     print("ÖZET:")
     print(f"  Banka net      {tl(oz['nakit_banka']):>18}")
@@ -52,16 +55,15 @@ def main() -> None:
         ah = _f(r.get("alacak_h", r.get("ALACAK_H")))
         net = bh - ah
         tip = int(_f(r.get("ban_hesap_tip", r.get("BAN_HESAP_TIP"))))
-        isim = str(r.get("ban_ismi", r.get("BAN_ISMI")) or "")
-        muh = str(r.get("muh_kod", r.get("MUH_KOD")) or "")
-        bankalar.append((kod, net, bh, ah, tip, muh, isim))
+        muh = str(r.get("ban_muh_kod", r.get("BAN_MUH_KOD")) or r.get("muh_kod", r.get("MUH_KOD")) or "")
+        bankalar.append((kod, net, bh, ah, tip, muh))
 
     bankalar.sort(key=lambda x: -abs(x[1]))
     print("\nEN BÜYÜK 10 BANKA (net = borç hareket − alacak hareket):")
     print("  [tip: 0=mevduat 1=kredi — nakitte yalnızca mevduat sayılır]")
-    for kod, net, bh, ah, tip, muh, isim in bankalar[:10]:
+    for kod, net, bh, ah, tip, muh in bankalar[:10]:
         etiket = "KREDİ" if tip == 1 else "mevduat"
-        print(f"  {kod:<12} {etiket:<8} net {tl(net):>14}  muh={muh}  {isim[:30]}")
+        print(f"  {kod:<12} {etiket:<8} net {tl(net):>14}  muh={muh}")
 
     print("\nMikro'da Bankalar listesindeki bakiyeyle üstteki netleri kıyaslayın.")
     print("Fark varsa hangi ban_kod olduğunu not edin.")

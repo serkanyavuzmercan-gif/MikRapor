@@ -149,7 +149,7 @@ class TestGercekDurum(unittest.TestCase):
         self.assertEqual(gd.bakiye_kaynagi, "cari")
 
     def test_muh_kod_satıcı(self):
-        cari = [{"cins": 0, "hareket_tipi": 1, "baglanti_tipi": 0, "muh_kod": "320.01.001",
+        cari = [{"cins": 0, "hareket_tipi": 1, "baglanti_tipi": 0, "cari_muh_kod": "320.01.001",
                  "kod": "S1", "borc_h": 0.0, "alacak_h": 6_000_000.0}]
         gd = build_gercek_durum(cari_bakiye_rows=cari)
         self.assertAlmostEqual(gd.borc, 6_000_000.0, places=2)
@@ -157,9 +157,9 @@ class TestGercekDurum(unittest.TestCase):
 
     def test_kredi_bankasi_nakite_dahil_degil(self):
         cari = [
-            {"cins": 2, "hareket_tipi": 0, "baglanti_tipi": 2, "muh_kod": "300.01",
+            {"cins": 2, "hareket_tipi": 0, "baglanti_tipi": 2, "ban_muh_kod": "300.01",
              "ban_hesap_tip": 1, "kod": "300.K003", "borc_h": 6_000_000.0, "alacak_h": 0.0},
-            {"cins": 2, "hareket_tipi": 0, "baglanti_tipi": 2, "muh_kod": "102.01",
+            {"cins": 2, "hareket_tipi": 0, "baglanti_tipi": 2, "ban_muh_kod": "102.01",
              "ban_hesap_tip": 0, "kod": "102.003", "borc_h": 600_000.0, "alacak_h": 0.0},
         ]
         gd = build_gercek_durum(cari_bakiye_rows=cari)
