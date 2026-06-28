@@ -80,7 +80,19 @@ QDateEdit#tarihEdit {
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
     border-right: none;
-    padding-right: 8px;
+    padding-right: 10px;
+}
+QDateEdit#tarihEdit::drop-down {
+    width: 0px;
+    height: 0px;
+    border: none;
+    background: transparent;
+    image: none;
+}
+QWidget#calPopup {
+    background-color: #ffffff;
+    border: 1px solid #cbd2dc;
+    border-radius: 10px;
 }
 QPushButton#calBtn {
     background-color: #eef4ff;
@@ -91,8 +103,10 @@ QPushButton#calBtn {
     border-bottom-left-radius: 0;
     border-top-right-radius: 8px;
     border-bottom-right-radius: 8px;
-    padding: 7px 4px;
-    font-size: 15px;
+    padding: 0;
+    font-size: 16px;
+    min-height: 34px;
+    max-height: 34px;
 }
 QPushButton#calBtn:hover { background-color: #dbe7ff; border-color: #9aa6b6; }
 QPushButton#calBtn:pressed { background-color: #c7d9fc; }
