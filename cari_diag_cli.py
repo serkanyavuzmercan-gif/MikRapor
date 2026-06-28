@@ -8,6 +8,7 @@ Cari bakiye teşhisi — Mikro cari modülüyle kıyas için.
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from datetime import date
 
 from config import load_config
@@ -39,6 +40,31 @@ def _gl_102_bakiye(mizan_rows: list[dict]) -> dict[str, float]:
     return out
 
 
+def _asof_yili(asof: str) -> int | None:
+    try:
+        return date.fromisoformat(asof).year
+    except ValueError:
+        return None
+
+
+def _gl_karsilastir(
+    client: MikroClient, asof: str, oz: dict[str, float], *, etiket: str,
+) -> tuple[dict[str, float], float]:
+    """GL mizan vs cari tablosu; gl_102 sözlüğü ve 102 toplamını döndürür."""
+    mizan = fetch_mizan(client, asof)
+    b = build_bilanco(mizan, asof=asof)
+    gl = _bakiye_bilancodan(b)
+    gl_102 = _gl_102_bakiye(mizan)
+    gl_102_top = sum(gl_102.values())
+    print(f"\nGL MİZAN KARŞILAŞTIRMA — {etiket}:")
+    print(f"   {'':20} {'Cari':>18} {'GL mizan':>18}")
+    print(f"   {'Nakit (100-102-108)':20} {tl(oz['nakit_mevcut']):>18} {tl(gl['nakit_mevcut']):>18}")
+    print(f"   {'  • yalnız 102.*':20} {tl(oz['nakit_banka']):>18} {tl(gl_102_top):>18}")
+    print(f"   {'Alacak (120)':20} {tl(oz['alacak']):>18} {tl(gl['alacak']):>18}")
+    print(f"   {'Borç (320)':20} {tl(oz['borc']):>18} {tl(gl['borc']):>18}")
+    return gl_102, gl_102_top
+
+
 def main() -> None:
     asof = sys.argv[1] if len(sys.argv) > 1 else date.today().isoformat()
     cfg = load_config()
@@ -61,21 +87,31 @@ def main() -> None:
     print(f"  Satıcı avans   {tl(oz['satici_avans']):>18}")
     print(f"  Hesap sayısı   {oz['cari_hesap_sayisi']:>18}")
 
+    asof_yil = _asof_yili(asof)
+    cfg_yil = cfg.calisma_yili or date.today().year
+    gl_102: dict[str, float] = {}
+    if asof_yil and asof_yil != cfg_yil:
+        print(
+            f"\n⚠ ÇALIŞMA YILI UYUMSUZ: tarih {asof_yil}, Mikro ayarı {cfg_yil}."
+            f"\n  GL mizan {cfg_yil} defterinden gelir — yeni yıl defteri boş veya eksik olabilir."
+            f"\n  {asof_yil} bakiyesi için Mikro Ayarları'nda çalışma yılını {asof_yil} yapın."
+        )
+
     try:
-        mizan = fetch_mizan(client, asof)
-        b = build_bilanco(mizan, asof=asof)
-        gl = _bakiye_bilancodan(b)
-        gl_102 = _gl_102_bakiye(mizan)
-        gl_102_top = sum(gl_102.values())
-        print("\nGL MİZAN KARŞILAŞTIRMA (aynı tarih):")
-        print(f"   {'':20} {'Cari':>18} {'GL mizan':>18}")
-        print(f"   {'Nakit (100-102-108)':20} {tl(oz['nakit_mevcut']):>18} {tl(gl['nakit_mevcut']):>18}")
-        print(f"   {'  • yalnız 102.*':20} {tl(oz['nakit_banka']):>18} {tl(gl_102_top):>18}")
-        print(f"   {'Alacak (120)':20} {tl(oz['alacak']):>18} {tl(gl['alacak']):>18}")
-        print(f"   {'Borç (320)':20} {tl(oz['borc']):>18} {tl(gl['borc']):>18}")
+        gl_102, gl_102_top = _gl_karsilastir(
+            client, asof, oz, etiket=f"çalışma yılı {cfg_yil}",
+        )
+        if asof_yil and asof_yil != cfg_yil:
+            cfg_duz = replace(cfg.normalized(), calisma_yili=asof_yil)
+            gl_102, gl_102_top = _gl_karsilastir(
+                MikroClient(cfg_duz), asof, oz, etiket=f"tarih yılı {asof_yil} (otomatik)",
+            )
         if abs(oz["nakit_banka"] - gl_102_top) > 1000:
-            print("\n  ⚠ Cari banka ile GL 102 arasında büyük fark — muhtemelen cari hareket")
-            print("    muhasebeleşmemiş veya GL farklı hesaplara yazılmış.")
+            print(
+                "\n  ⚠ Cari banka ile GL 102 arasında büyük fark."
+                "\n    • Çalışma yılı tarihle uyumlu mu kontrol edin."
+                "\n    • Uyumluysa cari hareketler muhasebeleşmemiş olabilir."
+            )
     except Exception as exc:  # noqa: BLE001
         print(f"\nGL karşılaştırma atlandı: {exc}")
         gl_102 = {}
