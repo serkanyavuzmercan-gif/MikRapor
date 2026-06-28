@@ -533,7 +533,8 @@ class GercekDurumTab(QWidget):
             stok_aylik = fetch_stok_aylik(client, bas, bit)
             nakit_rows = fetch_nakit_ozet(client, bas, bit)
             nakit_aylik = fetch_nakit_aylik(client, bas, bit)
-            bakiye_rows = fetch_bakiye_ozet(client, bit)
+            mizan_rows = fetch_mizan(client, bit)
+            bilanco = build_bilanco(mizan_rows, asof=bit)
             # Resmi GL (karşılaştırma için) — başarısız olsa da gerçek durum üretilir.
             try:
                 gt = build_gelir_tablosu(fetch_gelir_tablosu(client, bas, bit), bas=bas, bit=bit)
@@ -542,7 +543,7 @@ class GercekDurumTab(QWidget):
             self._gd = build_gercek_durum(
                 stok_rows=stok_rows, stok_aylik=stok_aylik,
                 nakit_rows=nakit_rows, nakit_aylik=nakit_aylik,
-                bakiye_rows=bakiye_rows, gelir_tablosu=gt,
+                bilanco=bilanco, gelir_tablosu=gt,
                 bas=bas, bit=bit, satis_bazi=satis_bazi,
             )
             firma = (cfg.firma_adi or "").strip()

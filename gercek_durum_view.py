@@ -85,9 +85,26 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
     g.addWidget(_satir_label(f"    • satış faturası", renk=FAINT, boyut=11), 2, 0)
     g.addWidget(_satir_label(tl(gd.satis_fatura), renk=FAINT, boyut=11, sag=True), 2, 1)
     satir(3, "Gerçek Alış (−)", tl(-gd.gercek_alis))
-    satir(4, "Gerçek Brüt Kâr", tl(gd.gercek_brut_kar), bold=True, renk=_renk(gd.gercek_brut_kar))
-    satir(5, "Gerçek Brüt Marj", yuzde(gd.gercek_brut_marj), bold=True,
+    g.addWidget(_satir_label(f"    • alış faturası", renk=FAINT, boyut=11), 4, 0)
+    g.addWidget(_satir_label(tl(gd.alis_fatura), renk=FAINT, boyut=11, sag=True), 4, 1)
+    g.addWidget(_satir_label(f"    • alış irsaliyesi", renk=FAINT, boyut=11), 5, 0)
+    g.addWidget(_satir_label(tl(gd.alis_irsaliye), renk=FAINT, boyut=11, sag=True), 5, 1)
+    if gd.siniflandirilmayan_giris > 0.005:
+        g.addWidget(_satir_label(f"    • diğer giriş (evraktip?)", renk=FAINT, boyut=11), 6, 0)
+        g.addWidget(_satir_label(tl(gd.siniflandirilmayan_giris), renk=FAINT, boyut=11, sag=True), 6, 1)
+        r_brut = 7
+    else:
+        r_brut = 6
+    satir(r_brut, "Gerçek Brüt Kâr", tl(gd.gercek_brut_kar), bold=True, renk=_renk(gd.gercek_brut_kar))
+    satir(r_brut + 1, "Gerçek Brüt Marj", yuzde(gd.gercek_brut_marj), bold=True,
           renk=_renk(gd.gercek_brut_marj))
+    if gd.resmi_smm is not None and gd.smm_stok_farki is not None:
+        not2 = _satir_label(
+            f"Resmi SMM (GL 62xx) {tl(gd.resmi_smm)} − stok alış {tl(gd.gercek_alis)} "
+            f"= {tl(gd.smm_stok_farki)} fark (623, stok değişimi, maliyet kapanışı).",
+            renk=FAINT, boyut=11)
+        not2.setWordWrap(True)
+        g.addWidget(not2, r_brut + 2, 0, 1, 2)
     return _card("OPERASYONEL GERÇEK  (stok hareketinden)", inner)
 
 
@@ -120,17 +137,22 @@ def _karsilastirma_panel(gd: GercekDurum) -> QFrame:
         bk_fark = gd.gercek_brut_kar - gd.resmi_brut_kar
         kolon3(2, "Brüt Kâr", tl(gd.resmi_brut_kar), tl(gd.gercek_brut_kar),
                ("+" if bk_fark >= 0 else "") + tl(bk_fark), _renk(bk_fark))
+    if gd.resmi_smm is not None:
+        sf = gd.smm_stok_farki or 0.0
+        kolon3(3, "Maliyet (SMM / Stok Alış)",
+               tl(gd.resmi_smm), tl(gd.gercek_alis),
+               ("+" if sf >= 0 else "") + tl(sf), _renk(-sf))
     if gd.gizlenen_brut is not None:
-        g.addWidget(_satir_label("Gizlenen brüt (yaklaşık)", bold=True), 3, 0)
+        g.addWidget(_satir_label("Gizlenen brüt (yaklaşık)", bold=True), 4, 0)
         g.addWidget(_satir_label(("+" if gd.gizlenen_brut >= 0 else "") + tl(gd.gizlenen_brut),
-                                 sag=True, bold=True, renk=_renk(gd.gizlenen_brut)), 3, 1, 1, 3)
+                                 sag=True, bold=True, renk=_renk(gd.gizlenen_brut)), 4, 1, 1, 3)
 
     not_lbl = _satir_label(
-        "Operasyonel marj (Satış − Alış) stok değişimini içermez; resmi brüt karla farkı "
-        "genelde stok hareketi + 602/623 'Diğer' kalemlerinden gelir.",
+        "Gerçek marj = depodan çıkan − giren mal. Resmi SMM ayrıca 623 (navlun/gümrük vb.) ve "
+        "stok değişimini içerir; bu yüzden resmi brüt daha düşük görünür — alış 'eksik' değil.",
         renk=FAINT, boyut=11)
     not_lbl.setWordWrap(True)
-    g.addWidget(not_lbl, 4, 0, 1, 4)
+    g.addWidget(not_lbl, 5, 0, 1, 4)
     return _card("RESMİ vs GERÇEK  (gizlenen marj)", inner)
 
 
@@ -153,12 +175,14 @@ def _nakit_panel(gd: GercekDurum) -> QFrame:
     g.addWidget(_cizgi(), 3, 0, 1, 2)
     satir(4, "Nakit Mevcudu (kasa+banka)", tl(gd.nakit_mevcut), bold=True,
           renk=_renk(gd.nakit_mevcut))
-    satir(5, "Alacaklar (müşteri 12x)", tl(gd.alacak))
+    not_n = _satir_label("Bilanço sekmesiyle aynı mizan (100–102–108)", renk=FAINT, boyut=10)
+    g.addWidget(not_n, 5, 0, 1, 2)
+    satir(6, "Alacaklar (müşteri 12x)", tl(gd.alacak))
     if gd.musteri_avans > 0.005:
-        satir(6, "Müşteri avansı (12x alacak bak.) (−)", tl(-gd.musteri_avans), renk=NEG)
-        r_borc = 7
+        satir(7, "Müşteri avansı (12x alacak bak.) (−)", tl(-gd.musteri_avans), renk=NEG)
+        r_borc = 8
     else:
-        r_borc = 6
+        r_borc = 7
     satir(r_borc, "Borçlar (satıcı 32x)", tl(gd.borc), renk=NEG if gd.borc else "#374151")
     if gd.satici_avans > 0.005:
         satir(r_borc + 1, "Satıcı avansı (32x borç bak.)", tl(gd.satici_avans), renk=POZ)

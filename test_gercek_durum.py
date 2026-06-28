@@ -8,6 +8,7 @@ import unittest
 
 from gelir_tablosu import build_gelir_tablosu
 from gercek_durum import build_gercek_durum, gercek_durum_csv, yuzde
+from mizan_bilanco import build_bilanco
 
 
 def _stok_ozet():
@@ -53,10 +54,10 @@ class TestGercekDurum(unittest.TestCase):
         gd = build_gercek_durum(
             stok_rows=_stok_ozet(), nakit_rows=_nakit_ozet(), bakiye_rows=_bakiye_ozet())
         self.assertAlmostEqual(gd.nakit_net, 15000.0, places=2)
-        self.assertAlmostEqual(gd.nakit_mevcut, 22000.0, places=2)   # 5000+20000-3000
+        self.assertAlmostEqual(gd.nakit_mevcut, 25000.0, places=2)   # 5000+20000; 103 kontra hariç
         self.assertAlmostEqual(gd.alacak, 60000.0, places=2)
         self.assertAlmostEqual(gd.borc, 45000.0, places=2)
-        self.assertAlmostEqual(gd.net_isletme_sermayesi, 37000.0, places=2)  # 22000+60000-45000
+        self.assertAlmostEqual(gd.net_isletme_sermayesi, 40000.0, places=2)  # 25000+60000-45000
 
     def test_musteri_avans_ayri_gosterilir(self):
         gd = build_gercek_durum(bakiye_rows=[
@@ -112,6 +113,34 @@ class TestGercekDurum(unittest.TestCase):
     def test_yuzde_format(self):
         self.assertEqual(yuzde(12.5), "%12,5")
         self.assertEqual(yuzde(-4.3), "%-4,3")
+
+    def test_bilanco_bakiyesi(self):
+        mizan = [
+            {"hesap_kodu": "100.01", "borc": 1000, "alacak": 0},
+            {"hesap_kodu": "102.001", "borc": 5000000, "alacak": 0},
+            {"hesap_kodu": "103.01", "borc": 0, "alacak": 4999000},  # verilen çek — nakite dahil değil
+            {"hesap_kodu": "120.01", "borc": 8000000, "alacak": 0},
+            {"hesap_kodu": "320.01", "borc": 0, "alacak": 2000000},
+        ]
+        b = build_bilanco(mizan, asof="2025-12-31")
+        gd = build_gercek_durum(bilanco=b)
+        self.assertAlmostEqual(gd.nakit_mevcut, 5001000.0, places=2)  # 1000+5M, 103 hariç
+        self.assertAlmostEqual(gd.alacak, 8000000.0, places=2)
+        self.assertAlmostEqual(gd.borc, 2000000.0, places=2)
+
+    def test_smm_stok_farki(self):
+        gl_rows = [
+            {"hesap_kodu": "600.01", "borc": 0, "alacak": 40000000},
+            {"hesap_kodu": "621.01", "borc": 28944256, "alacak": 0},
+            {"hesap_kodu": "623.01", "borc": 7341626, "alacak": 0},
+        ]
+        gt = build_gelir_tablosu(gl_rows)
+        stok = [{"sth_tip": 1, "sth_evraktip": 1, "tutar": 40000000.0, "adet": 1},
+                {"sth_tip": 0, "sth_evraktip": 3, "tutar": 32625307.0, "adet": 1}]
+        gd = build_gercek_durum(stok_rows=stok, gelir_tablosu=gt)
+        self.assertAlmostEqual(gd.resmi_smm, 36285882.0, places=0)
+        self.assertAlmostEqual(gd.smm_stok_farki, 3660575.0, places=0)
+        self.assertAlmostEqual(gd.stok_degisim_etkisi, gd.gercek_brut_kar - gt.brut_kar, places=0)
 
     def test_siniflandirilmayan_fallback(self):
         rows = [
