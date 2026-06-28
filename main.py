@@ -16,6 +16,7 @@ from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
+    QComboBox,
     QDateEdit,
     QFileDialog,
     QFrame,
@@ -36,8 +37,19 @@ from config import load_config
 from gelir_tablosu import GelirTablosu, build_gelir_tablosu, gelir_tablosu_csv, yuzde
 from gelir_tablosu_pdf import export_gelir_tablosu_pdf
 from gelir_tablosu_view import build_gelir_tablosu_widget
+from gercek_durum import GercekDurum, build_gercek_durum, gercek_durum_csv
+from gercek_durum_view import build_gercek_durum_widget
 from mikro_api import MikroAPIError, MikroClient
-from mikro_fetch import fetch_firma_adi, fetch_gelir_tablosu, fetch_mizan
+from mikro_fetch import (
+    fetch_bakiye_ozet,
+    fetch_firma_adi,
+    fetch_gelir_tablosu,
+    fetch_mizan,
+    fetch_nakit_aylik,
+    fetch_nakit_ozet,
+    fetch_stok_aylik,
+    fetch_stok_ozet,
+)
 from mikro_settings_dialog import MikroAyarlarDialog
 from mizan_bilanco import Bilanco, bilanco_csv, build_bilanco, tl
 from resources import app_icon, app_logo_pixmap
@@ -425,24 +437,146 @@ class GelirTablosuTab(QWidget):
                     gelir_tablosu_csv(self._gt))
 
 
-def _yakinda_tab(baslik: str, aciklama: str) -> QWidget:
-    """İleride eklenecek raporlar için 'yakında' yer tutucu sekmesi."""
-    w = QWidget()
-    lay = QVBoxLayout(w)
-    lay.addStretch()
-    lbl = QLabel(
-        f"<div align='center' style='font-family:Segoe UI;'>"
-        f"<div style='font-size:40px;'>🛠️</div>"
-        f"<div style='font-size:20px; font-weight:800; color:#374151; margin-top:8px;'>{baslik}</div>"
-        f"<div style='color:#6b7280; margin-top:10px; line-height:160%;'>{aciklama}</div>"
-        f"<div style='color:#94a3b8; margin-top:12px; font-size:12px;'>yakında eklenecek</div>"
-        f"</div>"
-    )
-    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    lbl.setWordWrap(True)
-    lay.addWidget(lbl)
-    lay.addStretch()
-    return w
+class GercekDurumTab(QWidget):
+    """Operasyonel gerçeği (stok+banka) doğrudan Mikro'dan üreten bağımsız rapor sekmesi."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._gd: GercekDurum | None = None
+        self._firma: str = ""
+        self._build()
+
+    def _build(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(12)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(8)
+        controls.addWidget(QLabel("Dönem:"))
+        yil = load_config().calisma_yili or QDate.currentDate().year()
+        self._bas = QDateEdit()
+        self._bas.setCalendarPopup(True)
+        self._bas.setDisplayFormat("dd.MM.yyyy")
+        self._bas.setDate(QDate(yil, 1, 1))
+        self._bas.setFixedWidth(130)
+        controls.addWidget(self._bas)
+        controls.addWidget(QLabel("→"))
+        self._bit = QDateEdit()
+        self._bit.setCalendarPopup(True)
+        self._bit.setDisplayFormat("dd.MM.yyyy")
+        self._bit.setDate(QDate.currentDate())
+        self._bit.setFixedWidth(130)
+        controls.addWidget(self._bit)
+
+        controls.addWidget(QLabel("Satış bazı:"))
+        self._baz = QComboBox()
+        self._baz.addItem("İrsaliye + Fatura", "sevk")
+        self._baz.addItem("Yalnız Fatura", "fatura")
+        self._baz.setFixedWidth(150)
+        controls.addWidget(self._baz)
+
+        self._btn_getir = QPushButton("Gerçek Durumu Getir")
+        self._btn_getir.setObjectName("primaryBtn")
+        self._btn_getir.clicked.connect(self._on_getir)
+        controls.addWidget(self._btn_getir)
+
+        self._btn_csv = QPushButton("CSV Kaydet")
+        self._btn_csv.setEnabled(False)
+        self._btn_csv.clicked.connect(self._on_csv)
+        controls.addWidget(self._btn_csv)
+
+        self._status = QLabel("Dönem seçip «Gerçek Durumu Getir»e basın.")
+        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setWordWrap(True)
+        controls.addWidget(self._status, stretch=1)
+        layout.addLayout(controls)
+
+        self._empty = _hos_geldin(
+            "🛰️", "Gerçek Durum",
+            "Doğrudan Mikro'dan, fiili stok ve banka hareketine dayanarak<br>"
+            "gerçek brüt marjı, nakit akışını ve resmi tabloyla farkı gösterir.")
+        layout.addWidget(self._empty, stretch=1)
+        self._view = QScrollArea()
+        self._view.setWidgetResizable(True)
+        self._view.setFrameShape(QFrame.Shape.NoFrame)
+        self._view.setStyleSheet("QScrollArea { background: #f4f6f9; border: none; }")
+        self._view.setVisible(False)
+        layout.addWidget(self._view, stretch=1)
+
+    def _on_getir(self) -> None:
+        cfg = load_config()
+        if not cfg.is_complete():
+            cevap = QMessageBox.question(
+                self, "Mikro Ayarları Eksik",
+                "Mikro bağlantı bilgileri eksik. Üstteki «Mikro Ayarları»'ndan doldurun.\n\n"
+                "Şimdi açmak ister misiniz?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if cevap == QMessageBox.StandardButton.Yes:
+                MikroAyarlarDialog(self).exec()
+            return
+        if self._bas.date() > self._bit.date():
+            QMessageBox.warning(self, "Tarih Hatası", "Başlangıç tarihi bitişten sonra olamaz.")
+            return
+
+        bas = self._bas.date().toString("yyyy-MM-dd")
+        bit = self._bit.date().toString("yyyy-MM-dd")
+        satis_bazi = self._baz.currentData() or "sevk"
+        self._btn_getir.setEnabled(False)
+        self._status.setText("Stok, banka ve bakiye hareketleri çekiliyor…")
+        self._status.setStyleSheet("color: #8b929e;")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        client = MikroClient(cfg)
+        try:
+            stok_rows = fetch_stok_ozet(client, bas, bit)
+            stok_aylik = fetch_stok_aylik(client, bas, bit)
+            nakit_rows = fetch_nakit_ozet(client, bas, bit)
+            nakit_aylik = fetch_nakit_aylik(client, bas, bit)
+            bakiye_rows = fetch_bakiye_ozet(client, bit)
+            # Resmi GL (karşılaştırma için) — başarısız olsa da gerçek durum üretilir.
+            try:
+                gt = build_gelir_tablosu(fetch_gelir_tablosu(client, bas, bit), bas=bas, bit=bit)
+            except MikroAPIError:
+                gt = None
+            self._gd = build_gercek_durum(
+                stok_rows=stok_rows, stok_aylik=stok_aylik,
+                nakit_rows=nakit_rows, nakit_aylik=nakit_aylik,
+                bakiye_rows=bakiye_rows, gelir_tablosu=gt,
+                bas=bas, bit=bit, satis_bazi=satis_bazi,
+            )
+            firma = (cfg.firma_adi or "").strip()
+            if not firma:
+                try:
+                    firma = fetch_firma_adi(client)
+                except MikroAPIError:
+                    firma = ""
+            self._firma = firma
+        except MikroAPIError as exc:
+            QApplication.restoreOverrideCursor()
+            self._btn_getir.setEnabled(True)
+            self._status.setText("Gerçek durum getirilemedi.")
+            self._status.setStyleSheet("color: #e57373;")
+            QMessageBox.warning(self, "Mikro Hatası", str(exc))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+            self._btn_getir.setEnabled(True)
+
+        gd = self._gd
+        self._empty.setVisible(False)
+        self._view.setVisible(True)
+        self._view.setWidget(build_gercek_durum_widget(gd, firma=self._firma))
+        self._btn_csv.setEnabled(True)
+        self._status.setText(
+            f"Gerçek brüt marj {yuzde(gd.gercek_brut_marj)} · Net nakit {tl(gd.nakit_net)}")
+        self._status.setStyleSheet("color: #81c784;" if gd.gercek_brut_kar >= 0 else "color: #e57373;")
+
+    def _on_csv(self) -> None:
+        if not self._gd:
+            return
+        _csv_kaydet(self, self._status, f"gercek_durum_{self._gd.bas}_{self._gd.bit}.csv",
+                    gercek_durum_csv(self._gd))
 
 
 # ---------------------------------------------------------------------------
@@ -490,10 +624,7 @@ class MikRaporWindow(QMainWindow):
         self._tabs = QTabWidget()
         self._tabs.addTab(BilancoTab(), "Anında Bilanço")
         self._tabs.addTab(GelirTablosuTab(), "Gelir Tablosu")
-        self._tabs.addTab(
-            _yakinda_tab("Trend ve Oranlar", "Çok dönem karşılaştırma · cari oran · borçluluk · özkaynak"),
-            "Trend ve Oranlar",
-        )
+        self._tabs.addTab(GercekDurumTab(), "Gerçek Durum")
         layout.addWidget(self._tabs, stretch=1)
 
     def _on_ayarlar(self) -> None:
