@@ -173,7 +173,7 @@ def _nakit_panel(gd: GercekDurum) -> QFrame:
     satir(1, "Para Çıkan (tediye) (−)", tl(-gd.nakit_cikan), renk=NEG)
     satir(2, "Net Nakit Akışı", tl(gd.nakit_net), bold=True, renk=_renk(gd.nakit_net))
     g.addWidget(_cizgi(), 3, 0, 1, 2)
-        satir(4, "Nakit Mevcudu (banka+kasa)", tl(gd.nakit_mevcut), bold=True,
+    satir(4, "Nakit Mevcudu (banka+kasa)", tl(gd.nakit_mevcut), bold=True,
           renk=_renk(gd.nakit_mevcut))
     if gd.nakit_banka > 0.005 or gd.nakit_kasa > 0.005:
         g.addWidget(_satir_label("    • banka", renk=FAINT, boyut=11), 5, 0)
