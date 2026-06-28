@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 
 from mizan_bilanco import Bilanco
 
+from gercek_durum_ayarlar import GercekDurumAyarlar
+
 # --- Hareket sınıflama (MIKRO-SEMA-NOTLARI ile doğrulanmış tip/evraktip kodları) ---
 SATIS_TIP = 1   # çıkış
 ALIS_TIP = 0    # giriş
@@ -32,16 +34,19 @@ EVRAKTIP_SATIS_FATURA = 4
 EVRAKTIP_ALIS_FATURA = 3
 EVRAKTIP_ALIS_IRSALIYE = 12
 
-# Satış bazı: satışta irsaliye (+ küçük fatura); alışta YALNIZ fatura — irsaliye+fatura
-# birlikte sayılırsa Mikro'da aynı mal iki kez girer (çift sayım).
+# Satış / alış evraktip kümeleri — ayrı seçilir (Mikro kayıt tarzı firmaya göre değişir).
 SATIS_EVRAKTIPLERI = {
     "sevk": {EVRAKTIP_SATIS_IRSALIYE, EVRAKTIP_SATIS_FATURA},
     "fatura": {EVRAKTIP_SATIS_FATURA},
 }
-ALIS_EVRAKTIPLERI = {
-    "sevk": {EVRAKTIP_ALIS_FATURA},
-    "fatura": {EVRAKTIP_ALIS_FATURA},
-}
+
+
+def _alis_evraktip_kumesi(alis_bazi: str) -> set[int]:
+    if alis_bazi == "irsaliye":
+        return {EVRAKTIP_ALIS_IRSALIYE}
+    if alis_bazi == "ikisi":
+        return {EVRAKTIP_ALIS_FATURA, EVRAKTIP_ALIS_IRSALIYE}
+    return {EVRAKTIP_ALIS_FATURA}
 
 # Bilanço ile aynı nakit hesapları (103 Verilen Çekler hariç — kontra, nakit değil)
 _NAKIT_ANA = frozenset({"100", "101", "102", "108"})
@@ -122,8 +127,10 @@ class GercekDurum:
     borc: float = 0.0           # satıcıya ödenecek
     musteri_avans: float = 0.0
     satici_avans: float = 0.0
-    bakiye_kaynagi: str = ""    # "cari" | "mizan" | "bakiye_ozet"
+    bakiye_kaynagi: str = ""    # "cari" | "cari+gl" | "mizan" | "bakiye_ozet"
     cari_hesap_sayisi: int = 0
+    musteri_avans_goster: bool = True
+    ayar_ozet: str = ""
 
     # GL mizan karşılaştırması (varsa)
     gl_nakit_mevcut: float | None = None
@@ -194,10 +201,12 @@ class GercekDurum:
         return (self.gercek_brut_marj - self.resmi_brut_marj) / 100 * self.resmi_net_satis
 
 
-def _siniflandir_stok(rows: list[dict], satis_bazi: str) -> dict[str, float]:
+def _siniflandir_stok(
+    rows: list[dict], satis_bazi: str, alis_bazi: str = "fatura",
+) -> dict[str, float]:
     """STOK_HAREKETLERI ham kırılımını satış/alış toplamlarına indirger."""
     sat_kume = SATIS_EVRAKTIPLERI.get(satis_bazi, SATIS_EVRAKTIPLERI["sevk"])
-    alis_kume = ALIS_EVRAKTIPLERI.get(satis_bazi, ALIS_EVRAKTIPLERI["sevk"])
+    alis_kume = _alis_evraktip_kumesi(alis_bazi)
     out = {
         "satis": 0.0, "alis": 0.0,
         "satis_irsaliye": 0.0, "satis_fatura": 0.0,
@@ -241,9 +250,12 @@ def _siniflandir_stok(rows: list[dict], satis_bazi: str) -> dict[str, float]:
     return out
 
 
-def _aylik_trend(stok_aylik: list[dict], nakit_aylik: list[dict], satis_bazi: str) -> list[AyTrend]:
+def _aylik_trend(
+    stok_aylik: list[dict], nakit_aylik: list[dict],
+    satis_bazi: str, alis_bazi: str = "fatura",
+) -> list[AyTrend]:
     sat_kume = SATIS_EVRAKTIPLERI.get(satis_bazi, SATIS_EVRAKTIPLERI["sevk"])
-    alis_kume = ALIS_EVRAKTIPLERI.get(satis_bazi, ALIS_EVRAKTIPLERI["sevk"])
+    alis_kume = _alis_evraktip_kumesi(alis_bazi)
     aylar: dict[str, AyTrend] = defaultdict(lambda: AyTrend(ay=""))
     for r in stok_aylik:
         ay = str(r.get("ay", r.get("AY")) or "")
@@ -378,7 +390,7 @@ def _cari_kovala(
     return out
 
 
-def _bakiye_caridan(rows: list[dict]) -> dict[str, float]:
+def _bakiye_caridan(rows: list[dict], *, banka_kredi_haric: bool = True) -> dict[str, float]:
     """CARI_HESAP_HAREKETLERI satırlarından operasyonel bakiye özeti."""
     out = {
         "nakit_mevcut": 0.0,
@@ -405,15 +417,15 @@ def _bakiye_caridan(rows: list[dict]) -> dict[str, float]:
         out["cari_hesap_sayisi"] += 1
         if cins == _BANKA_CINS:
             tip = _i(r.get("ban_hesap_tip", r.get("BAN_HESAP_TIP")))
-            if tip == 1:
+            if banka_kredi_haric and tip == 1:
                 continue
             kod = str(r.get("kod", r.get("KOD")) or "")
             muh = str(r.get("muh_kod", r.get("MUH_KOD")) or "")
             if not muh:
                 muh = str(r.get("ban_muh_kod", r.get("BAN_MUH_KOD")) or "")
-            if _muh_sinifi(muh) == "supplier":
+            if banka_kredi_haric and _muh_sinifi(muh) == "supplier":
                 continue
-            if muh.startswith("300") or kod.upper().startswith("300"):
+            if banka_kredi_haric and (muh.startswith("300") or kod.upper().startswith("300")):
                 continue
             net = borc_h - alacak_h
             out["nakit_banka"] += net
@@ -442,6 +454,27 @@ def _bakiye_caridan(rows: list[dict]) -> dict[str, float]:
     return out
 
 
+def _nakit_kaynak_uygula(
+    bk: dict[str, float], bilanco: Bilanco | None, nakit_kaynak: str,
+) -> tuple[dict[str, float], str]:
+    """Nakit bakiyesini ayara göre cari veya GL'den seçer."""
+    if bilanco is None:
+        return bk, "cari"
+    gl_n = _nakit_gl_ayir(bilanco)
+    kaynak = nakit_kaynak
+    if kaynak == "otomatik":
+        cari_n = bk["nakit_mevcut"]
+        gl_nakit = gl_n["nakit_mevcut"]
+        kaynak = "gl" if cari_n > max(gl_nakit * 2, 1000) and gl_nakit >= 0 else "cari"
+    if kaynak == "gl":
+        out = dict(bk)
+        out["nakit_mevcut"] = gl_n["nakit_mevcut"]
+        out["nakit_banka"] = gl_n["nakit_banka"]
+        out["nakit_kasa"] = gl_n["nakit_kasa"]
+        return out, "cari+gl" if bk["nakit_mevcut"] != gl_n["nakit_mevcut"] else "gl"
+    return bk, "cari"
+
+
 def build_gercek_durum(
     *,
     stok_rows: list[dict] | None = None,
@@ -454,12 +487,21 @@ def build_gercek_durum(
     gelir_tablosu=None,
     bas: str = "",
     bit: str = "",
-    satis_bazi: str = "sevk",
+    satis_bazi: str = "",
+    alis_bazi: str = "",
+    ayarlar: GercekDurumAyarlar | None = None,
 ) -> GercekDurum:
     """Mikro'dan çekilmiş ham satırlardan Gerçek Durum modelini kurar."""
+    a = ayarlar or GercekDurumAyarlar.varsayilan()
+    if not satis_bazi:
+        satis_bazi = a.satis_bazi
+    if not alis_bazi:
+        alis_bazi = a.alis_bazi
     gd = GercekDurum(bas=bas, bit=bit, satis_bazi=satis_bazi)
+    gd.musteri_avans_goster = a.musteri_avans_goster
+    gd.ayar_ozet = a.ozet()
 
-    s = _siniflandir_stok(stok_rows or [], satis_bazi)
+    s = _siniflandir_stok(stok_rows or [], satis_bazi, alis_bazi)
     gd.gercek_satis = s["satis"]
     gd.gercek_alis = s["alis"]
     gd.satis_irsaliye = s["satis_irsaliye"]
@@ -485,23 +527,29 @@ def build_gercek_durum(
         gd.gl_borc = gl["borc"]
 
     if cari_bakiye_rows is not None:
-        bk = _bakiye_caridan(cari_bakiye_rows)
-        gd.alacak = bk["alacak"]
-        gd.borc = bk["borc"]
-        gd.musteri_avans = bk["musteri_avans"]
-        gd.satici_avans = bk["satici_avans"]
-        gd.cari_hesap_sayisi = bk["cari_hesap_sayisi"]
-        if bilanco is not None:
-            gl_nakit = _nakit_gl_ayir(bilanco)
-            gd.nakit_mevcut = gl_nakit["nakit_mevcut"]
-            gd.nakit_banka = gl_nakit["nakit_banka"]
-            gd.nakit_kasa = gl_nakit["nakit_kasa"]
-            gd.bakiye_kaynagi = "cari+gl"
+        bk = _bakiye_caridan(cari_bakiye_rows, banka_kredi_haric=a.banka_kredi_haric)
+        if bilanco is not None and a.alacak_borc_kaynak == "gl":
+            gl_bk = _bakiye_bilancodan(bilanco)
+            gd.alacak = gl_bk["alacak"]
+            gd.borc = gl_bk["borc"]
+            gd.musteri_avans = gl_bk["musteri_avans"]
+            gd.satici_avans = gl_bk["satici_avans"]
+            gd.bakiye_kaynagi = "mizan"
         else:
-            gd.nakit_mevcut = bk["nakit_mevcut"]
-            gd.nakit_banka = bk["nakit_banka"]
-            gd.nakit_kasa = bk["nakit_kasa"]
+            gd.alacak = bk["alacak"]
+            gd.borc = bk["borc"]
+            gd.musteri_avans = bk["musteri_avans"]
+            gd.satici_avans = bk["satici_avans"]
             gd.bakiye_kaynagi = "cari"
+        gd.cari_hesap_sayisi = bk["cari_hesap_sayisi"]
+        nak_bk, nak_etiket = _nakit_kaynak_uygula(bk, bilanco, a.nakit_kaynak)
+        gd.nakit_mevcut = nak_bk["nakit_mevcut"]
+        gd.nakit_banka = nak_bk["nakit_banka"]
+        gd.nakit_kasa = nak_bk["nakit_kasa"]
+        if a.alacak_borc_kaynak == "cari" and nak_etiket in ("cari+gl", "gl"):
+            gd.bakiye_kaynagi = nak_etiket
+        elif gd.bakiye_kaynagi == "cari" and nak_etiket == "gl":
+            gd.bakiye_kaynagi = "gl"
     elif bilanco is not None:
         bk = _bakiye_bilancodan(bilanco)
         gd.nakit_mevcut = bk["nakit_mevcut"]
@@ -546,7 +594,7 @@ def build_gercek_durum(
         gd.resmi_brut_kar = gelir_tablosu.brut_kar
         gd.resmi_smm = abs(gelir_tablosu.smm)
 
-    gd.trend = _aylik_trend(stok_aylik or [], nakit_aylik or [], satis_bazi)
+    gd.trend = _aylik_trend(stok_aylik or [], nakit_aylik or [], satis_bazi, alis_bazi)
     return gd
 
 

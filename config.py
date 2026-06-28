@@ -35,6 +35,27 @@ def config_path() -> Path:
     return config_dir() / CONFIG_FILE_NAME
 
 
+def _read_config_data() -> dict:
+    """config.json ham içeriği (Mikro + gercek_durum vb.)."""
+    path = config_path()
+    if path.is_file():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+        except (json.JSONDecodeError, OSError, TypeError):
+            pass
+    return {}
+
+
+def save_config_data(data: dict) -> Path:
+    """Tüm config.json içeriğini yazar (mevcut gercek_durum vb. korunur)."""
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
 @dataclass
 class MikroConfig:
     """Mikro REST API bağlantı bilgileri (ss ortam değişkenleriyle birebir karşılık)."""
@@ -99,29 +120,25 @@ def _from_env() -> MikroConfig:
 
 def load_config() -> MikroConfig:
     """Yerel config dosyasını okur; yoksa veya bozuksa ortam değişkenlerine düşer."""
-    path = config_path()
-    if path.is_file():
+    data = _read_config_data()
+    if data:
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                return MikroConfig(
-                    base_url=data.get("base_url", ""),
-                    api_key=data.get("api_key", ""),
-                    firma_kodu=str(data.get("firma_kodu", "")),
-                    calisma_yili=_int_or_zero(data.get("calisma_yili")),
-                    kullanici_kodu=data.get("kullanici_kodu", ""),
-                    sifre_gun=data.get("sifre_gun", ""),
-                    firma_adi=data.get("firma_adi", ""),
-                ).normalized()
-        except (json.JSONDecodeError, OSError, TypeError):
+            return MikroConfig(
+                base_url=data.get("base_url", ""),
+                api_key=data.get("api_key", ""),
+                firma_kodu=str(data.get("firma_kodu", "")),
+                calisma_yili=_int_or_zero(data.get("calisma_yili")),
+                kullanici_kodu=data.get("kullanici_kodu", ""),
+                sifre_gun=data.get("sifre_gun", ""),
+                firma_adi=data.get("firma_adi", ""),
+            ).normalized()
+        except (TypeError, ValueError):
             pass
     return _from_env()
 
 
 def save_config(cfg: MikroConfig) -> Path:
-    """Config'i yerel diske JSON olarak yazar ve dosya yolunu döndürür."""
-    path = config_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = asdict(cfg.normalized())
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return path
+    """Mikro alanlarını kaydeder; gercek_durum vb. diğer anahtarları silmez."""
+    data = _read_config_data()
+    data.update(asdict(cfg.normalized()))
+    return save_config_data(data)

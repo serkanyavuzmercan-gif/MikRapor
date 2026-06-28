@@ -11,6 +11,7 @@ from datetime import date
 
 from config import load_config
 from gercek_durum import _siniflandir_stok
+from gercek_durum_ayarlar import load_gercek_durum_ayarlar
 from mikro_api import MikroClient
 from mikro_fetch import fetch_stok_ozet
 from mizan_bilanco import tl
@@ -55,13 +56,20 @@ def main() -> None:
         print(f"  {tip:>3} {ev:>5}  {adet:>8}  {tl(tutar):>18}  {ad}")
 
     for baz in ("sevk", "fatura"):
-        s = _siniflandir_stok(rows, baz)
-        print(f"\nÖZET — satış bazı «{baz}»:")
+        s = _siniflandir_stok(rows, baz, "fatura")
+        print(f"\nÖZET — satış bazı «{baz}», alış fatura:")
         print(f"  Gerçek satış     {tl(s['satis']):>18}")
         print(f"  Gerçek alış      {tl(s['alis']):>18}")
         print(f"  Brüt             {tl(s['satis'] - s['alis']):>18}")
-        if baz == "sevk":
-            print(f"  (alış irsaliyesi {tl(s['alis_irsaliye'])} toplama DAHİL DEĞİL — çift sayım önlenir)")
+
+    a = load_gercek_durum_ayarlar()
+    s = _siniflandir_stok(rows, a.satis_bazi, a.alis_bazi)
+    print(f"\nÖZET — kayıtlı ayarlar ({a.ozet()}):")
+    print(f"  Gerçek satış     {tl(s['satis']):>18}")
+    print(f"  Gerçek alış      {tl(s['alis']):>18}")
+    print(f"  Brüt             {tl(s['satis'] - s['alis']):>18}")
+    if a.alis_bazi != "ikisi" and s["alis_irsaliye"] > 0.005:
+        print(f"  (alış irsaliyesi {tl(s['alis_irsaliye'])} — toplama dahil değil)")
 
     print("\nNOT: Mikro'da aynı mal hem irsaliye hem faturada stok hareketi oluşturursa")
     print("     ikisini toplamak alışı ~2 kat şişirir. Gerçek Durum alışta yalnız faturayı sayar.")

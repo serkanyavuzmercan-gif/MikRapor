@@ -8,6 +8,7 @@ import unittest
 
 from gelir_tablosu import build_gelir_tablosu
 from gercek_durum import build_gercek_durum, gercek_durum_csv, yuzde
+from gercek_durum_ayarlar import GercekDurumAyarlar
 from mizan_bilanco import build_bilanco
 
 
@@ -146,7 +147,7 @@ class TestGercekDurum(unittest.TestCase):
         gd = build_gercek_durum(cari_bakiye_rows=cari, bilanco=b)
         self.assertAlmostEqual(gd.alacak, 6000000.0, places=2)
         self.assertAlmostEqual(gd.gl_alacak, 100.0, places=2)
-        self.assertEqual(gd.bakiye_kaynagi, "cari+gl")
+        self.assertEqual(gd.bakiye_kaynagi, "gl")
 
     def test_nakit_gl_hibrit(self):
         """Nakit bakiyesi GL'den; alacak/borç cari'den."""
@@ -157,7 +158,10 @@ class TestGercekDurum(unittest.TestCase):
             {"hesap_kodu": "100.01", "borc": 187_000.0, "alacak": 0},
         ]
         b = build_bilanco(mizan)
-        gd = build_gercek_durum(cari_bakiye_rows=cari, bilanco=b)
+        gd = build_gercek_durum(
+            cari_bakiye_rows=cari, bilanco=b,
+            ayarlar=GercekDurumAyarlar(nakit_kaynak="gl"),
+        )
         self.assertEqual(gd.bakiye_kaynagi, "cari+gl")
         self.assertAlmostEqual(gd.nakit_banka, 860_000.0, places=2)
         self.assertAlmostEqual(gd.nakit_kasa, 187_000.0, places=2)

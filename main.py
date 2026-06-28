@@ -37,6 +37,8 @@ from gelir_tablosu import GelirTablosu, build_gelir_tablosu, gelir_tablosu_csv, 
 from gelir_tablosu_pdf import export_gelir_tablosu_pdf
 from gelir_tablosu_view import build_gelir_tablosu_widget
 from gercek_durum import GercekDurum, build_gercek_durum, gercek_durum_csv
+from gercek_durum_ayarlar import load_gercek_durum_ayarlar
+from gercek_durum_settings_dialog import GercekDurumAyarlarDialog
 from gercek_durum_view import build_gercek_durum_widget
 from mikro_api import MikroAPIError, MikroClient
 from mikro_fetch import (
@@ -541,12 +543,9 @@ class GercekDurumTab(QWidget):
         controls.addWidget(self._bit)
         _donem_aralik_bagla(self, self._donem, self._bas, self._bit)
 
-        controls.addWidget(QLabel("Satış bazı:"))
-        self._baz = QComboBox()
-        self._baz.addItem("İrsaliye + Fatura", "sevk")
-        self._baz.addItem("Yalnız Fatura", "fatura")
-        self._baz.setFixedWidth(150)
-        controls.addWidget(self._baz)
+        self._btn_ayarlar = QPushButton("⚙ Ayarlar")
+        self._btn_ayarlar.clicked.connect(self._on_ayarlar)
+        controls.addWidget(self._btn_ayarlar)
 
         self._btn_getir = QPushButton("Gerçek Durumu Getir")
         self._btn_getir.setObjectName("primaryBtn")
@@ -567,7 +566,8 @@ class GercekDurumTab(QWidget):
         self._empty = _hos_geldin(
             "🛰️", "Gerçek Durum",
             "Doğrudan Mikro'dan, fiili stok ve banka hareketine dayanarak<br>"
-            "gerçek brüt marjı, nakit akışını ve resmi tabloyla farkı gösterir.")
+            "gerçek brüt marjı, nakit akışını ve resmi tabloyla farkı gösterir.<br>"
+            "<span style='color:#9aa0a8;'>İlk kurulumda «⚙ Ayarlar» ile firma kayıt tarzını seçin.</span>")
         layout.addWidget(self._empty, stretch=1)
         self._view = QScrollArea()
         self._view.setWidgetResizable(True)
@@ -575,6 +575,13 @@ class GercekDurumTab(QWidget):
         self._view.setStyleSheet("QScrollArea { background: #f4f6f9; border: none; }")
         self._view.setVisible(False)
         layout.addWidget(self._view, stretch=1)
+
+    def _on_ayarlar(self) -> None:
+        dlg = GercekDurumAyarlarDialog(self)
+        if dlg.exec():
+            a = dlg.ayarlar()
+            self._status.setText(f"Ayarlar kaydedildi — {a.ozet()}")
+            self._status.setStyleSheet("color: #81c784;")
 
     def _on_getir(self) -> None:
         cfg = load_config()
@@ -594,7 +601,7 @@ class GercekDurumTab(QWidget):
 
         bas = self._bas.date().toString("yyyy-MM-dd")
         bit = self._bit.date().toString("yyyy-MM-dd")
-        satis_bazi = self._baz.currentData() or "sevk"
+        ayarlar = load_gercek_durum_ayarlar()
         self._btn_getir.setEnabled(False)
         self._status.setText("Stok, banka ve bakiye hareketleri çekiliyor…")
         self._status.setStyleSheet("color: #8b929e;")
@@ -618,7 +625,7 @@ class GercekDurumTab(QWidget):
                 nakit_rows=nakit_rows, nakit_aylik=nakit_aylik,
                 cari_bakiye_rows=cari_bakiye_rows,
                 bilanco=bilanco, gelir_tablosu=gt,
-                bas=bas, bit=bit, satis_bazi=satis_bazi,
+                bas=bas, bit=bit, ayarlar=ayarlar,
             )
             firma = (cfg.firma_adi or "").strip()
             if not firma:
@@ -648,6 +655,8 @@ class GercekDurumTab(QWidget):
             f"Gerçek brüt marj {yuzde(gd.gercek_brut_marj)}",
             f"Net nakit {tl(gd.nakit_net)}",
         ]
+        if gd.ayar_ozet:
+            parts.append(gd.ayar_ozet)
         if gd.cari_hesap_sayisi:
             parts.append(f"Cari {gd.cari_hesap_sayisi} hesap · alacak {tl(gd.alacak)} · borç {tl(gd.borc)}")
         if gd.stok_kirilim_sayisi == 0:

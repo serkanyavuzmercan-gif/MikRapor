@@ -88,7 +88,7 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
     g.addWidget(_satir_label(f"    • alış faturası (toplam alış)", renk=FAINT, boyut=11), 4, 0)
     g.addWidget(_satir_label(tl(gd.alis_fatura), renk=FAINT, boyut=11, sag=True), 4, 1)
     r_extra = 5
-    if gd.alis_irsaliye > 0.005 and gd.satis_bazi == "sevk":
+    if gd.alis_irsaliye > 0.005 and gd.gercek_alis != gd.alis_irsaliye:
         g.addWidget(_satir_label(
             "    • alış irsaliyesi (bilgi — çift sayım olmasın diye toplama dahil değil)",
             renk=FAINT, boyut=11), 5, 0)
@@ -189,9 +189,10 @@ def _nakit_panel(gd: GercekDurum) -> QFrame:
     else:
         r_kaynak = 5
     kaynak = {
-        "cari": "Alacak/borç: cari hareket · Nakit: cari",
-        "cari+gl": "Alacak/borç: cari hareket · Nakit: GL mizan (102/100)",
-        "mizan": "GL mizanından (MUHASEBE_FISLERI 10x/12x/32x)",
+        "cari": "Alacak/borç: cari · Nakit: cari",
+        "cari+gl": "Alacak/borç: cari · Nakit: GL mizan",
+        "gl": "Alacak/borç: cari · Nakit: GL mizan",
+        "mizan": "Alacak/borç ve nakit: GL mizan",
         "bakiye_ozet": "GL özet bakiyelerinden",
     }.get(gd.bakiye_kaynagi, "")
     if kaynak:
@@ -201,7 +202,7 @@ def _nakit_panel(gd: GercekDurum) -> QFrame:
     else:
         r_alacak = r_kaynak
     satir(r_alacak, "Alacaklar (müşteri)", tl(gd.alacak))
-    if gd.musteri_avans > 0.005:
+    if gd.musteri_avans > 0.005 and gd.musteri_avans_goster:
         satir(r_alacak + 1, "Müşteri avansı (−)", tl(-gd.musteri_avans), renk=NEG)
         r_borc = r_alacak + 2
     else:
@@ -214,7 +215,7 @@ def _nakit_panel(gd: GercekDurum) -> QFrame:
         r_nis = r_borc + 1
     satir(r_nis, "Net İşletme Sermayesi", tl(gd.net_isletme_sermayesi), bold=True,
           renk=_renk(gd.net_isletme_sermayesi))
-    if gd.gl_alacak is not None and gd.bakiye_kaynagi in ("cari", "cari+gl"):
+    if gd.gl_alacak is not None and gd.bakiye_kaynagi in ("cari", "cari+gl", "gl"):
         fark = abs((gd.gl_alacak or 0) - gd.alacak) + abs((gd.gl_borc or 0) - gd.borc)
         if fark > 1000:
             not_gl = _satir_label(
@@ -322,11 +323,14 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
     root.setSpacing(14)
 
     firma_str = f" &nbsp;·&nbsp; <b>{firma}</b>" if firma else ""
+    profil = (
+        f"<br><span style='font-size:10px;'>Profil: {gd.ayar_ozet}</span>" if gd.ayar_ozet else ""
+    )
     head = QLabel(
         f"<span style='color:{MUTED}; font-size:11px;'>GERÇEK DURUM &nbsp;·&nbsp; "
         f"{gd.bas} → {gd.bit} dönemi{firma_str}</span><br>"
         f"<span style='color:{FAINT}; font-size:11px;'>Doğrudan Mikro'dan — fiili stok ve banka "
-        f"hareketine dayanır; resmi GL'nin oynanabilir kalemlerinden bağımsızdır.</span>"
+        f"hareketine dayanır; resmi GL'nin oynanabilir kalemlerinden bağımsızdır.{profil}</span>"
     )
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
