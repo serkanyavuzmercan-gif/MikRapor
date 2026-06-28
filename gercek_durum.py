@@ -303,14 +303,15 @@ def _cari_satir_sinifla(bakiye: float, hareket_tipi: int, baglanti_tipi: int) ->
     if abs(bakiye) < 0.005:
         return None
     ht, bt = hareket_tipi, baglanti_tipi
-    if bt == 0:  # Müşteri
+    # Önce hareket tipi — kart "sadece alış/satış" tanımı bağlantı tipinden güvenilir
+    if ht == 2:  # sadece alış → satıcı
+        return ("satici_avans", bakiye) if bakiye > 0 else ("borc", -bakiye)
+    if ht == 1:  # sadece satış → müşteri
         return ("alacak", bakiye) if bakiye > 0 else ("musteri_avans", -bakiye)
     if bt == 1:  # Satıcı
         return ("satici_avans", bakiye) if bakiye > 0 else ("borc", -bakiye)
-    if ht == 1:  # yalnız satış
+    if bt == 0:  # Müşteri
         return ("alacak", bakiye) if bakiye > 0 else ("musteri_avans", -bakiye)
-    if ht == 2:  # yalnız alış
-        return ("satici_avans", bakiye) if bakiye > 0 else ("borc", -bakiye)
     if bakiye > 0:
         return ("alacak", bakiye)
     return ("borc", -bakiye)

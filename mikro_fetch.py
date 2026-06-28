@@ -100,6 +100,21 @@ def _bit_son(bit: str) -> str:
         return bit
 
 
+def _cha_tl_sql(alias: str = "c") -> str:
+    """
+    Cari hareket tutarını TL'ye çevirir.
+
+    cha_meblag orijinal döviz cinsindendir; TL hesaplarda (cha_d_cins=0) kur ile çarpılmaz.
+    Her harekete cha_d_kur uygulamak banka bakiyesini onlarca kat şişirebilir.
+    """
+    a = alias
+    return (
+        f"CASE WHEN {a}.cha_meblag_ana_doviz_icin_gecersiz_fl = 1 THEN 0 "
+        f"WHEN {a}.cha_d_cins = 0 THEN {a}.cha_meblag "
+        f"ELSE {a}.cha_meblag * ISNULL(NULLIF({a}.cha_d_kur, 0), 1) END"
+    )
+
+
 def fetch_stok_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
     """
     Dönem (bas..bit) için STOK_HAREKETLERI özeti: hareket türü başına tutar/miktar/adet.
@@ -152,26 +167,30 @@ def fetch_nakit_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, 
     TL = cha_meblag * ISNULL(cha_d_kur, 1). cha_iptal=0 şart. Bkz. MIKRO-SEMA-NOTLARI.
     Nakit, tahakkuk oyunlarından bağımsız "gerçek durum" sinyalidir.
     """
+    tl = _cha_tl_sql("c")
     sql = (
         "SELECT "
-        "SUM(CASE WHEN c.cha_tip = 0 THEN c.cha_meblag * ISNULL(c.cha_d_kur, 1) ELSE 0 END) AS giren, "
-        "SUM(CASE WHEN c.cha_tip = 1 THEN c.cha_meblag * ISNULL(c.cha_d_kur, 1) ELSE 0 END) AS cikan "
+        f"SUM(CASE WHEN c.cha_tip = 0 THEN {tl} ELSE 0 END) AS giren, "
+        f"SUM(CASE WHEN c.cha_tip = 1 THEN {tl} ELSE 0 END) AS cikan "
         "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
         "INNER JOIN BANKALAR b WITH (NOLOCK) ON b.ban_kod = c.cha_kod "
-        f"WHERE c.cha_iptal = 0 AND c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{_bit_son(bit)}'"
+        f"WHERE c.cha_iptal = 0 AND ISNULL(c.cha_hidden, 0) = 0 "
+        f"AND c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{_bit_son(bit)}'"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
 def fetch_nakit_aylik(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
     """Dönem içi banka nakit akışının AYLIK kırılımı (trend için): ay → giren/çıkan (TL)."""
+    tl = _cha_tl_sql("c")
     sql = (
         "SELECT CONVERT(char(7), c.cha_tarihi, 126) AS ay, "
-        "SUM(CASE WHEN c.cha_tip = 0 THEN c.cha_meblag * ISNULL(c.cha_d_kur, 1) ELSE 0 END) AS giren, "
-        "SUM(CASE WHEN c.cha_tip = 1 THEN c.cha_meblag * ISNULL(c.cha_d_kur, 1) ELSE 0 END) AS cikan "
+        f"SUM(CASE WHEN c.cha_tip = 0 THEN {tl} ELSE 0 END) AS giren, "
+        f"SUM(CASE WHEN c.cha_tip = 1 THEN {tl} ELSE 0 END) AS cikan "
         "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
         "INNER JOIN BANKALAR b WITH (NOLOCK) ON b.ban_kod = c.cha_kod "
-        f"WHERE c.cha_iptal = 0 AND c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{_bit_son(bit)}' "
+        f"WHERE c.cha_iptal = 0 AND ISNULL(c.cha_hidden, 0) = 0 "
+        f"AND c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{_bit_son(bit)}' "
         "GROUP BY CONVERT(char(7), c.cha_tarihi, 126) "
         "ORDER BY ay"
     )
@@ -222,27 +241,28 @@ def fetch_cari_bakiye(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     """
     Tarih (asof) itibarıyla cari/banka/kasa bakiyeleri — CARI_HESAP_HAREKETLERI üzerinden.
 
-    Mikro'da müşteri/satıcı/banka bakiyeleri cari modülünde tutulur; GL mizanı (120/320/102)
-  her zaman güncel olmayabilir. Gerçek Durum bu kaynağı kullanır.
-    cha_tip 0=borç, 1=alacak · TL = cha_meblag * ISNULL(cha_d_kur, 1).
-    cha_cari_cins: 0=Carimiz, 2=Bankamız, 4=Kasamız.
+    Banka → BANKALAR, kasa → KASALAR tablosuyla eşleştirilir (cha_cari_cins tek başına yetmez).
+    TL: cha_d_cins=0 ise kur çarpılmaz. Bkz. _cha_tl_sql.
     """
-    tl = "c.cha_meblag * ISNULL(NULLIF(c.cha_d_kur, 0), 1)"
-    bakiye = (
-        f"SUM(CASE WHEN c.cha_tip = 0 THEN {tl} ELSE -({tl}) END)"
-    )
+    tl = _cha_tl_sql("c")
+    bakiye = f"SUM(CASE WHEN c.cha_tip = 0 THEN {tl} ELSE -({tl}) END)"
     sql = (
-        "SELECT c.cha_cari_cins AS cins, "
+        "SELECT "
+        "CASE WHEN b.ban_kod IS NOT NULL THEN 2 WHEN k.kas_kod IS NOT NULL THEN 4 ELSE 0 END AS cins, "
         "ISNULL(ch.cari_hareket_tipi, 0) AS hareket_tipi, "
         "ISNULL(ch.cari_baglanti_tipi, 2) AS baglanti_tipi, "
         "c.cha_kod AS kod, "
         f"{bakiye} AS bakiye "
         "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
-        "LEFT JOIN CARI_HESAPLAR ch WITH (NOLOCK) ON ch.cari_kod = c.cha_kod "
-        f"WHERE c.cha_iptal = 0 AND c.cha_tarihi < '{_bit_son(asof)}' "
-        "AND c.cha_cari_cins IN (0, 2, 4) "
-        "GROUP BY c.cha_cari_cins, ISNULL(ch.cari_hareket_tipi, 0), "
-        "ISNULL(ch.cari_baglanti_tipi, 2), c.cha_kod "
+        "LEFT JOIN BANKALAR b WITH (NOLOCK) ON b.ban_kod = c.cha_kod "
+        "LEFT JOIN KASALAR k WITH (NOLOCK) ON k.kas_kod = c.cha_kod "
+        "LEFT JOIN CARI_HESAPLAR ch WITH (NOLOCK) ON ch.cari_kod = c.cha_kod AND ch.cari_iptal = 0 "
+        f"WHERE c.cha_iptal = 0 AND ISNULL(c.cha_hidden, 0) = 0 "
+        f"AND c.cha_tarihi < '{_bit_son(asof)}' "
+        "AND (b.ban_kod IS NOT NULL OR k.kas_kod IS NOT NULL OR c.cha_cari_cins = 0) "
+        "GROUP BY "
+        "CASE WHEN b.ban_kod IS NOT NULL THEN 2 WHEN k.kas_kod IS NOT NULL THEN 4 ELSE 0 END, "
+        "ISNULL(ch.cari_hareket_tipi, 0), ISNULL(ch.cari_baglanti_tipi, 2), c.cha_kod "
         f"HAVING ABS({bakiye}) >= 0.005"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))

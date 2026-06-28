@@ -141,6 +141,15 @@ class TestGercekDurum(unittest.TestCase):
         self.assertAlmostEqual(gd.gl_alacak, 100.0, places=2)
         self.assertEqual(gd.bakiye_kaynagi, "cari")
 
+    def test_satici_hareket_tipi_oncelikli(self):
+        """Sadece alış kartı müşteri bağlantı tipinde olsa bile borç olarak sayılmalı."""
+        cari = [
+            {"cins": 0, "hareket_tipi": 2, "baglanti_tipi": 0, "kod": "SAT01", "bakiye": -6_000_000.0},
+        ]
+        gd = build_gercek_durum(cari_bakiye_rows=cari)
+        self.assertAlmostEqual(gd.borc, 6_000_000.0, places=2)
+        self.assertAlmostEqual(gd.alacak, 0.0, places=2)
+
     def test_bilanco_bakiyesi(self):
         mizan = [
             {"hesap_kodu": "100.01", "borc": 1000, "alacak": 0},
