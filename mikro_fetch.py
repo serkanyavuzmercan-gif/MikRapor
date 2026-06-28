@@ -283,3 +283,60 @@ def _fetch_cari_bakiye_sql(client: MikroClient, asof: str, *, genis: bool) -> li
         f"HAVING ABS({borc_h} - {alacak_h}) >= 0.005"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
+def fetch_acik_kalemler(
+    client: MikroClient, asof: str, bas: str, bit: str,
+) -> tuple[list[dict[str, Any]], str]:
+    """
+    Tahsilat & Alacak için cari açık kalemleri — CARI_HESAP_HAREKETLERI (banka/kasa hariç).
+
+    Her cari için (cha_tip, vade) kırılımında kümülatif tutar (asof itibarıyla) + dönem içi
+    tutar (bas..bit) döner; yaşlandırma/FIFO ve performans hesabı Python'da yapılır. Vade
+    cha_vade_tarihi'nden alınır; kolon yoksa veya boşsa cha_tarihi'ne düşülür (savunmacı).
+
+    Dönüş: (satırlar, vade_kaynagi)  →  vade_kaynagi ∈ {"vade", "tarih"}.
+    """
+    try:
+        rows = _fetch_acik_sql(client, asof, bas, bit, vade=True)
+        if rows:
+            return rows, "vade"
+    except MikroAPIError:
+        pass
+    return _fetch_acik_sql(client, asof, bas, bit, vade=False), "tarih"
+
+
+def _fetch_acik_sql(
+    client: MikroClient, asof: str, bas: str, bit: str, *, vade: bool,
+) -> list[dict[str, Any]]:
+    tl = _cha_tl_sql("c")
+    vade_expr = (
+        "CONVERT(date, CASE WHEN c.cha_vade_tarihi > '1900-01-01' "
+        "THEN c.cha_vade_tarihi ELSE c.cha_tarihi END)"
+        if vade else "CONVERT(date, c.cha_tarihi)"
+    )
+    donem = (
+        f"SUM(CASE WHEN c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{_bit_son(bit)}' "
+        f"THEN {tl} ELSE 0 END)"
+    )
+    sql = (
+        "SELECT c.cha_kod AS kod, "
+        "MAX(ISNULL(ch.cari_unvan1, '')) AS unvan, "
+        "MAX(ISNULL(ch.cari_muh_kod, '')) AS muh_kod, "
+        "MAX(ISNULL(ch.cari_hareket_tipi, 0)) AS hareket_tipi, "
+        "MAX(ISNULL(ch.cari_baglanti_tipi, 2)) AS baglanti_tipi, "
+        "c.cha_tip AS tip, "
+        f"{vade_expr} AS vade, "
+        f"SUM({tl}) AS tutar, "
+        f"{donem} AS tutar_donem "
+        "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
+        "LEFT JOIN CARI_HESAPLAR ch WITH (NOLOCK) ON ch.cari_kod = c.cha_kod AND ch.cari_iptal = 0 "
+        "LEFT JOIN BANKALAR b WITH (NOLOCK) ON b.ban_kod = c.cha_kod "
+        "LEFT JOIN KASALAR k WITH (NOLOCK) ON k.kas_kod = c.cha_kod "
+        "WHERE c.cha_iptal = 0 AND ISNULL(c.cha_hidden, 0) = 0 "
+        f"AND c.cha_tarihi < '{_bit_son(asof)}' "
+        "AND b.ban_kod IS NULL AND k.kas_kod IS NULL AND c.cha_cari_cins = 0 "
+        f"GROUP BY c.cha_kod, c.cha_tip, {vade_expr} "
+        f"HAVING ABS(SUM({tl})) >= 0.005"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=150, max_attempts=2))

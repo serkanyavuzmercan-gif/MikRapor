@@ -42,6 +42,7 @@ from gercek_durum_settings_dialog import GercekDurumAyarlarDialog
 from gercek_durum_view import build_gercek_durum_widget
 from mikro_api import MikroAPIError, MikroClient
 from mikro_fetch import (
+    fetch_acik_kalemler,
     fetch_cari_bakiye,
     fetch_firma_adi,
     fetch_gelir_tablosu,
@@ -51,6 +52,8 @@ from mikro_fetch import (
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
+from tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak, tahsilat_alacak_csv
+from tahsilat_alacak_view import build_tahsilat_alacak_widget
 from mikro_settings_dialog import MikroAyarlarDialog
 from mizan_bilanco import Bilanco, bilanco_csv, build_bilanco, tl
 from resources import app_icon, app_logo_pixmap
@@ -675,6 +678,132 @@ class GercekDurumTab(QWidget):
                     gercek_durum_csv(self._gd))
 
 
+class TahsilatAlacakTab(QWidget):
+    """Cari hareketten alacak/borç yaşlandırma, vade takvimi ve tahsilat performansı sekmesi."""
+
+    def __init__(self, donem: DonemDurumu, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._donem = donem
+        self._ta: TahsilatAlacak | None = None
+        self._firma: str = ""
+        self._build()
+
+    def _build(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(12)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(8)
+        controls.addWidget(QLabel("Dönem:"))
+        self._bas = TarihSecici(self._donem.bas_tarih(), genislik=130)
+        controls.addWidget(self._bas)
+        controls.addWidget(QLabel("→"))
+        self._bit = TarihSecici(self._donem.bit_tarih(), genislik=130)
+        controls.addWidget(self._bit)
+        _donem_aralik_bagla(self, self._donem, self._bas, self._bit)
+
+        self._btn_getir = QPushButton("Tahsilat && Alacak Getir")
+        self._btn_getir.setObjectName("primaryBtn")
+        self._btn_getir.clicked.connect(self._on_getir)
+        controls.addWidget(self._btn_getir)
+
+        self._btn_csv = QPushButton("CSV Kaydet")
+        self._btn_csv.setEnabled(False)
+        self._btn_csv.clicked.connect(self._on_csv)
+        controls.addWidget(self._btn_csv)
+
+        self._status = QLabel("Dönem seçip «Tahsilat & Alacak Getir»e basın.")
+        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setWordWrap(True)
+        controls.addWidget(self._status, stretch=1)
+        layout.addLayout(controls)
+
+        self._empty = _hos_geldin(
+            "📒", "Tahsilat &amp; Alacak",
+            "Cari hareketlerden — açık alacak ve borçların vadeye göre yaşlandırması,<br>"
+            "dönem tahsilat/ödeme performansı (DSO/DPO) ve ileriye dönük net vade<br>"
+            "takvimi (ne girecek − ne çıkacak). Resmi GL'ye dokunmaz.")
+        layout.addWidget(self._empty, stretch=1)
+        self._view = QScrollArea()
+        self._view.setWidgetResizable(True)
+        self._view.setFrameShape(QFrame.Shape.NoFrame)
+        self._view.setStyleSheet("QScrollArea { background: #f4f6f9; border: none; }")
+        self._view.setVisible(False)
+        layout.addWidget(self._view, stretch=1)
+
+    def _on_getir(self) -> None:
+        cfg = load_config()
+        if not cfg.is_complete():
+            cevap = QMessageBox.question(
+                self, "Mikro Ayarları Eksik",
+                "Mikro bağlantı bilgileri eksik. Üstteki «Mikro Ayarları»'ndan doldurun.\n\n"
+                "Şimdi açmak ister misiniz?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if cevap == QMessageBox.StandardButton.Yes:
+                MikroAyarlarDialog(self).exec()
+            return
+        if self._bas.date() > self._bit.date():
+            QMessageBox.warning(self, "Tarih Hatası", "Başlangıç tarihi bitişten sonra olamaz.")
+            return
+
+        bas = self._bas.date().toString("yyyy-MM-dd")
+        bit = self._bit.date().toString("yyyy-MM-dd")
+        self._btn_getir.setEnabled(False)
+        self._status.setText("Cari açık kalemler çekiliyor…")
+        self._status.setStyleSheet("color: #8b929e;")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        client = MikroClient(cfg)
+        try:
+            acik_rows, vade_kaynagi = fetch_acik_kalemler(client, bit, bas, bit)
+            self._ta = build_tahsilat_alacak(
+                acik_rows, bas=bas, bit=bit, vade_kaynagi=vade_kaynagi)
+            firma = (cfg.firma_adi or "").strip()
+            if not firma:
+                try:
+                    firma = fetch_firma_adi(client)
+                except MikroAPIError:
+                    firma = ""
+            self._firma = firma
+        except MikroAPIError as exc:
+            QApplication.restoreOverrideCursor()
+            self._btn_getir.setEnabled(True)
+            self._status.setText("Tahsilat & alacak getirilemedi.")
+            self._status.setStyleSheet("color: #e57373;")
+            QMessageBox.warning(self, "Mikro Hatası", str(exc))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+            self._btn_getir.setEnabled(True)
+
+        ta = self._ta
+        self._empty.setVisible(False)
+        self._view.setVisible(True)
+        self._view.setWidget(build_tahsilat_alacak_widget(ta, firma=self._firma))
+        self._btn_csv.setEnabled(True)
+        parts = [
+            f"{ta.cari_sayisi} cari hesap",
+            f"Alacak {tl(ta.alacak_toplam)} (gecikmiş {tl(ta.alacak_gecikmis)})",
+            f"Borç {tl(ta.borc_toplam)}",
+        ]
+        if ta.dso is not None:
+            parts.append(f"DSO {ta.dso:.0f}g")
+        if ta.cari_sayisi == 0:
+            parts.insert(0, "⚠ açık bakiye yok — dönem/yıl kontrol edin")
+        self._status.setText(" · ".join(parts))
+        self._status.setStyleSheet(
+            "color: #ffb74d;" if ta.cari_sayisi == 0 else
+            ("color: #e57373;" if ta.alacak_gecikmis > 0.005 else "color: #81c784;")
+        )
+
+    def _on_csv(self) -> None:
+        if not self._ta:
+            return
+        _csv_kaydet(self, self._status, f"tahsilat_alacak_{self._ta.bas}_{self._ta.bit}.csv",
+                    tahsilat_alacak_csv(self._ta))
+
+
 # ---------------------------------------------------------------------------
 # Ana pencere
 # ---------------------------------------------------------------------------
@@ -722,6 +851,7 @@ class MikRaporWindow(QMainWindow):
         self._tabs.addTab(BilancoTab(self._donem), "Anında Bilanço")
         self._tabs.addTab(GelirTablosuTab(self._donem), "Gelir Tablosu")
         self._tabs.addTab(GercekDurumTab(self._donem), "Nakit && Kârlılık")
+        self._tabs.addTab(TahsilatAlacakTab(self._donem), "Tahsilat && Alacak")
         layout.addWidget(self._tabs, stretch=1)
 
     def _on_ayarlar(self) -> None:
