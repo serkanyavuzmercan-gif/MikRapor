@@ -56,7 +56,8 @@ def _ozet_panel(na: NakitAkis) -> QFrame:
     return _card("NAKİT AKIŞ ÖZETİ", inner)
 
 
-def _kategori_panel(baslik: str, kategori: dict, toplam: float, renk: str) -> QFrame:
+def _kategori_panel(baslik: str, kategori: dict, toplam: float, renk: str,
+                    diger_kirilim: list | None = None, diger_etiket: str = "Diğer") -> QFrame:
     inner = QWidget()
     inner.setStyleSheet("background: transparent;")
     g = QGridLayout(inner)
@@ -76,6 +77,12 @@ def _kategori_panel(baslik: str, kategori: dict, toplam: float, renk: str) -> QF
         g.addWidget(_oran_bar(tutar / enb, renk), r, 1)
         g.addWidget(_satir_label(tl(tutar), sag=True, bold=True, renk=renk), r, 2)
         r += 1
+        # "Diğer" satırının altına karşı-taraf kodu kırılımını döker (saklı kalmasın)
+        if ad == diger_etiket and diger_kirilim:
+            for prefix, t in diger_kirilim:
+                g.addWidget(_satir_label(f"    ◦ {prefix or '?'} hesabı", renk=FAINT, boyut=11), r, 0)
+                g.addWidget(_satir_label(tl(t), renk=FAINT, boyut=11, sag=True), r, 2)
+                r += 1
     g.addWidget(_cizgi(), r, 0, 1, 3)
     r += 1
     g.addWidget(_satir_label("Toplam", bold=True), r, 0)
@@ -226,8 +233,10 @@ def build_nakit_akis_widget(na: NakitAkis, firma: str = "") -> QWidget:
 
     row1 = QHBoxLayout()
     row1.setSpacing(20)
-    row1.addWidget(_kategori_panel("GİRİŞLER", na.giris_kategori, na.toplam_giris, POZ), 1)
-    row1.addWidget(_kategori_panel("ÇIKIŞLAR", na.cikis_kategori, na.toplam_cikis, NEG), 1)
+    row1.addWidget(_kategori_panel("GİRİŞLER", na.giris_kategori, na.toplam_giris, POZ,
+                                   na.diger_giris_kirilim, "Diğer girişler"), 1)
+    row1.addWidget(_kategori_panel("ÇIKIŞLAR", na.cikis_kategori, na.toplam_cikis, NEG,
+                                   na.diger_cikis_kirilim, "Diğer çıkışlar"), 1)
     root.addLayout(row1)
 
     row2 = QHBoxLayout()

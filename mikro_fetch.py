@@ -386,34 +386,102 @@ def fetch_nakit_akis_hareket(
     client: MikroClient, bas: str, bit: str,
 ) -> list[dict[str, Any]]:
     """
-    Nakit Akış için banka + kasa hareketleri, ay + karşı taraf öneki + yön kırılımında.
+    Nakit Akış için NAKİT hesap (kasa + normal banka) hareketleri; ay + karşı taraf + yön.
 
-    Karşı taraf (ne için para girdi/çıktı): aynı evrak no'lu (seri+sira), banka/kasa OLMAYAN cari
-    satırın kod öneki (LEFT 3) — ss/banka-bildirim ile aynı OUTER APPLY mantığı. Banka↔banka/kasa
-    iç transferleri (aynı evrakta başka bir nakit satırı olanlar) elenir. cha_tip: 0=giriş, 1=çıkış.
+    NAKİT hesap = kasa (cins 4) veya normal banka (cins 2, ban_hesap_tip<>1). KREDİ hesabı
+    (ban_hesap_tip=1) nakit sayılmaz → ona giden/gelen para 'KRD' (kredi) olarak işaretlenir,
+    iç transfer DEĞİL. Karşı taraf aynı evrak no'lu satırdan bulunur (cari ise kod öneki, kredi
+    bankası ise 'KRD'). Nakit↔nakit transferleri elenir. cha_tip: 0=giriş, 1=çıkış.
+    Kredi ayrımı başarısız olursa (ör. ban_hesap_tip yok) sade sürüme düşülür.
     """
+    try:
+        rows = _fetch_nakit_akis_sql(client, bas, bit, kredi_ayir=True)
+        if rows:
+            return rows
+    except MikroAPIError:
+        pass
+    return _fetch_nakit_akis_sql(client, bas, bit, kredi_ayir=False)
+
+
+def _fetch_nakit_akis_sql(
+    client: MikroClient, bas: str, bit: str, *, kredi_ayir: bool,
+) -> list[dict[str, Any]]:
     tl = _cha_tl_sql("c")
     bit_son = _bit_son(bit)
+    if kredi_ayir:
+        nakit_kosul = "(c.cha_cari_cins = 4 OR (c.cha_cari_cins = 2 AND ISNULL(cb.ban_hesap_tip, 0) <> 1))"
+        prefix_expr = (
+            "CASE WHEN karsi.kcins = 2 AND karsi.kban = 1 THEN 'KRD' "
+            "WHEN karsi.kcins = 0 THEN karsi.kprefix ELSE '' END"
+        )
+        ic_transfer = "(karsi.kcins = 4 OR (karsi.kcins = 2 AND karsi.kban <> 1))"
+        apply_join = (
+            "OUTER APPLY ("
+            "SELECT TOP 1 k.cha_cari_cins AS kcins, LEFT(LTRIM(k.cha_kod), 3) AS kprefix, "
+            "ISNULL(kb.ban_hesap_tip, -1) AS kban "
+            "FROM CARI_HESAP_HAREKETLERI k WITH (NOLOCK) "
+            "LEFT JOIN BANKALAR kb WITH (NOLOCK) ON kb.ban_kod = k.cha_kod "
+            "WHERE k.cha_evrakno_seri = c.cha_evrakno_seri AND k.cha_evrakno_sira = c.cha_evrakno_sira "
+            "AND k.cha_Guid <> c.cha_Guid AND k.cha_iptal = 0 "
+            "ORDER BY CASE WHEN k.cha_cari_cins = 0 THEN 0 ELSE 1 END"
+            ") karsi "
+        )
+        cb_join = "LEFT JOIN BANKALAR cb WITH (NOLOCK) ON cb.ban_kod = c.cha_kod "
+    else:
+        nakit_kosul = "c.cha_cari_cins IN (2, 4)"
+        prefix_expr = "ISNULL(karsi.kprefix, '')"
+        ic_transfer = (
+            "EXISTS (SELECT 1 FROM CARI_HESAP_HAREKETLERI t WITH (NOLOCK) "
+            "WHERE t.cha_evrakno_seri = c.cha_evrakno_seri AND t.cha_evrakno_sira = c.cha_evrakno_sira "
+            "AND t.cha_Guid <> c.cha_Guid AND t.cha_iptal = 0 AND t.cha_cari_cins IN (2, 4))"
+        )
+        apply_join = (
+            "OUTER APPLY ("
+            "SELECT TOP 1 LEFT(LTRIM(k.cha_kod), 3) AS kprefix "
+            "FROM CARI_HESAP_HAREKETLERI k WITH (NOLOCK) "
+            "WHERE k.cha_evrakno_seri = c.cha_evrakno_seri AND k.cha_evrakno_sira = c.cha_evrakno_sira "
+            "AND k.cha_Guid <> c.cha_Guid AND k.cha_iptal = 0 AND k.cha_cari_cins = 0"
+            ") karsi "
+        )
+        cb_join = ""
     sql = (
-        "SELECT CONVERT(char(7), c.cha_tarihi, 23) AS ay, "
-        "c.cha_tip AS tip, "
-        "ISNULL(karsi.prefix, '') AS prefix, "
-        f"SUM({tl}) AS tutar "
+        f"SELECT CONVERT(char(7), c.cha_tarihi, 23) AS ay, c.cha_tip AS tip, "
+        f"{prefix_expr} AS prefix, SUM({tl}) AS tutar "
         "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
-        "OUTER APPLY ("
-        "SELECT TOP 1 LEFT(LTRIM(k.cha_kod), 3) AS prefix "
-        "FROM CARI_HESAP_HAREKETLERI k WITH (NOLOCK) "
-        "WHERE k.cha_evrakno_seri = c.cha_evrakno_seri "
-        "AND k.cha_evrakno_sira = c.cha_evrakno_sira "
-        "AND k.cha_Guid <> c.cha_Guid AND k.cha_iptal = 0 AND k.cha_cari_cins = 0"
-        ") karsi "
+        f"{cb_join}{apply_join}"
         "WHERE c.cha_iptal = 0 AND ISNULL(c.cha_hidden, 0) = 0 "
-        "AND c.cha_cari_cins IN (2, 4) "
+        f"AND {nakit_kosul} "
         f"AND c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{bit_son}' "
-        "AND NOT EXISTS (SELECT 1 FROM CARI_HESAP_HAREKETLERI t WITH (NOLOCK) "
-        "WHERE t.cha_evrakno_seri = c.cha_evrakno_seri AND t.cha_evrakno_sira = c.cha_evrakno_sira "
-        "AND t.cha_Guid <> c.cha_Guid AND t.cha_iptal = 0 AND t.cha_cari_cins IN (2, 4)) "
-        "GROUP BY CONVERT(char(7), c.cha_tarihi, 23), c.cha_tip, ISNULL(karsi.prefix, '') "
+        f"AND NOT {ic_transfer} "
+        f"GROUP BY CONVERT(char(7), c.cha_tarihi, 23), c.cha_tip, {prefix_expr} "
         f"HAVING ABS(SUM({tl})) >= 0.005"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
+def fetch_nakit_delta(client: MikroClient, bas: str, bit: str) -> float:
+    """
+    Dönem (bas..bit) içi NAKİT hesap (kasa + normal banka, kredi hariç) net hareketi (giren−çıkan).
+
+    Açılış nakit = kapanış − bu delta (devir/yıl-açılış tarihlemesinden bağımsız, kesin reconcile).
+    """
+    tl = _cha_tl_sql("c")
+    sql = (
+        f"SELECT SUM(CASE WHEN c.cha_tip = 0 THEN {tl} ELSE -({tl}) END) AS delta "
+        "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
+        "LEFT JOIN BANKALAR cb WITH (NOLOCK) ON cb.ban_kod = c.cha_kod "
+        "WHERE c.cha_iptal = 0 AND ISNULL(c.cha_hidden, 0) = 0 "
+        "AND (c.cha_cari_cins = 4 OR (c.cha_cari_cins = 2 AND ISNULL(cb.ban_hesap_tip, 0) <> 1)) "
+        f"AND c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{_bit_son(bit)}'"
+    )
+    rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+    if rows:
+        return _f_local(get_row_value(rows[0], "delta", "DELTA"))
+    return 0.0
+
+
+def _f_local(v: object) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0

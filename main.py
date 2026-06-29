@@ -17,7 +17,9 @@ from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -25,6 +27,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -49,6 +52,7 @@ from mikro_fetch import (
     fetch_gelir_tablosu,
     fetch_mizan,
     fetch_nakit_akis_hareket,
+    fetch_nakit_delta,
     fetch_nakit_aylik,
     fetch_nakit_ozet,
     fetch_stok_aylik,
@@ -56,8 +60,10 @@ from mikro_fetch import (
 )
 from tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak, tahsilat_alacak_csv
 from tahsilat_alacak_view import build_tahsilat_alacak_widget
-from nakit_akis import NakitAkis, build_nakit_akis, nakit_akis_csv
+from nakit_akis import NakitAkis, build_nakit_akis, nakit_akis_csv, _nakit_bakiye
 from nakit_akis_view import build_nakit_akis_widget
+from tahmin import Tahmin, TahminVarsayim, build_tahmin, oner_varsayim, tahmin_csv
+from tahmin_view import build_tahmin_widget
 from mikro_settings_dialog import MikroAyarlarDialog
 from mizan_bilanco import Bilanco, bilanco_csv, build_bilanco, tl
 from resources import app_icon, app_logo_pixmap
@@ -881,7 +887,6 @@ class NakitAkisTab(QWidget):
 
         bas = self._bas.date().toString("yyyy-MM-dd")
         bit = self._bit.date().toString("yyyy-MM-dd")
-        bas_oncesi = self._bas.date().addDays(-1).toString("yyyy-MM-dd")
         self._btn_getir.setEnabled(False)
         self._status.setText("Banka/kasa hareketleri çekiliyor…")
         self._status.setStyleSheet("color: #8b929e;")
@@ -889,11 +894,11 @@ class NakitAkisTab(QWidget):
         client = MikroClient(cfg)
         try:
             hareket_rows = fetch_nakit_akis_hareket(client, bas, bit)
-            acilis_rows = fetch_cari_bakiye(client, bas_oncesi)
             kapanis_rows = fetch_cari_bakiye(client, bit)
+            donem_delta = fetch_nakit_delta(client, bas, bit)
             self._na = build_nakit_akis(
-                hareket_rows, bakiye_acilis_rows=acilis_rows,
-                bakiye_kapanis_rows=kapanis_rows, bas=bas, bit=bit)
+                hareket_rows, bakiye_kapanis_rows=kapanis_rows,
+                donem_delta=donem_delta, bas=bas, bit=bit)
             firma = (cfg.firma_adi or "").strip()
             if not firma:
                 try:
@@ -937,6 +942,209 @@ class NakitAkisTab(QWidget):
             return
         _csv_kaydet(self, self._status, f"nakit_akis_{self._na.bas}_{self._na.bit}.csv",
                     nakit_akis_csv(self._na))
+
+
+def _para_spin(maks: float = 1e12) -> QDoubleSpinBox:
+    sp = QDoubleSpinBox()
+    sp.setRange(-maks, maks)
+    sp.setDecimals(0)
+    sp.setSingleStep(10000)
+    sp.setGroupSeparatorShown(True)
+    sp.setSuffix(" TL")
+    sp.setMinimumWidth(150)
+    return sp
+
+
+def _yuzde_spin(alt: float, ust: float) -> QDoubleSpinBox:
+    sp = QDoubleSpinBox()
+    sp.setRange(alt, ust)
+    sp.setDecimals(1)
+    sp.setSingleStep(0.5)
+    sp.setSuffix(" %")
+    sp.setMinimumWidth(90)
+    return sp
+
+
+class TahminTab(QWidget):
+    """Geçmiş trendden otomatik önerip kullanıcının düzenlediği ileriye dönük projeksiyon."""
+
+    def __init__(self, donem: DonemDurumu, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._donem = donem
+        self._t: Tahmin | None = None
+        self._firma: str = ""
+        self._build()
+
+    def _build(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(8)
+        controls.addWidget(QLabel("Geçmiş veri dönemi:"))
+        self._bas = TarihSecici(self._donem.bas_tarih(), genislik=120)
+        controls.addWidget(self._bas)
+        controls.addWidget(QLabel("→"))
+        self._bit = TarihSecici(self._donem.bit_tarih(), genislik=120)
+        controls.addWidget(self._bit)
+        _donem_aralik_bagla(self, self._donem, self._bas, self._bit)
+        self._btn_doldur = QPushButton("Geçmişten Doldur")
+        self._btn_doldur.setObjectName("primaryBtn")
+        self._btn_doldur.clicked.connect(self._on_doldur)
+        controls.addWidget(self._btn_doldur)
+        self._btn_csv = QPushButton("CSV Kaydet")
+        self._btn_csv.setEnabled(False)
+        self._btn_csv.clicked.connect(self._on_csv)
+        controls.addWidget(self._btn_csv)
+        self._status = QLabel("«Geçmişten Doldur» ile başla; sonra varsayımları düzenle.")
+        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setWordWrap(True)
+        controls.addWidget(self._status, stretch=1)
+        layout.addLayout(controls)
+
+        # Varsayım formu (senaryo) — düzenlenebilir
+        form_box = QFrame()
+        form_box.setObjectName("tahminForm")
+        form_box.setStyleSheet(
+            "QFrame#tahminForm { background: #f7f9fc; border: 1px solid #e3e8ef; border-radius: 10px; }")
+        fl = QHBoxLayout(form_box)
+        fl.setContentsMargins(14, 10, 14, 10)
+        fl.setSpacing(18)
+        self._sp_nakit = _para_spin()
+        self._sp_ciro = _para_spin()
+        self._sp_gider = _para_spin()
+        self._sp_buyume = _yuzde_spin(-50.0, 100.0)
+        self._sp_marj = _yuzde_spin(0.0, 100.0)
+        self._sp_ufuk = QSpinBox()
+        self._sp_ufuk.setRange(1, 36)
+        self._sp_ufuk.setValue(12)
+        self._sp_ufuk.setSuffix(" ay")
+        for etiket, w in (
+            ("Başlangıç nakit", self._sp_nakit), ("Baz aylık ciro", self._sp_ciro),
+            ("Aylık büyüme", self._sp_buyume), ("Brüt marj", self._sp_marj),
+            ("Aylık sabit gider", self._sp_gider), ("Ufuk", self._sp_ufuk),
+        ):
+            col = QFormLayout()
+            col.setContentsMargins(0, 0, 0, 0)
+            lbl = QLabel(etiket)
+            lbl.setStyleSheet("color: #6b7280; font-size: 11px;")
+            col.addRow(lbl, w)
+            fl.addLayout(col)
+        self._btn_projekte = QPushButton("Projekte Et")
+        self._btn_projekte.clicked.connect(self._on_projekte)
+        fl.addWidget(self._btn_projekte)
+        layout.addWidget(form_box)
+
+        self._empty = _hos_geldin(
+            "🔮", "Tahmin",
+            "Geçmiş trendden otomatik tahmin üretir; varsayımları (büyüme, marj,<br>"
+            "gider) düzenleyip senaryonu görebilirsin: tahmini ciro, kâr ve nakit.<br>"
+            "<span style='color:#9aa0a8;'>Önce «Geçmişten Doldur», sonra istediğini değiştir.</span>")
+        layout.addWidget(self._empty, stretch=1)
+        self._view = QScrollArea()
+        self._view.setWidgetResizable(True)
+        self._view.setFrameShape(QFrame.Shape.NoFrame)
+        self._view.setStyleSheet("QScrollArea { background: #f4f6f9; border: none; }")
+        self._view.setVisible(False)
+        layout.addWidget(self._view, stretch=1)
+
+    def _on_doldur(self) -> None:
+        cfg = load_config()
+        if not cfg.is_complete():
+            cevap = QMessageBox.question(
+                self, "Mikro Ayarları Eksik",
+                "Mikro bağlantı bilgileri eksik. Üstteki «Mikro Ayarları»'ndan doldurun.\n\n"
+                "Şimdi açmak ister misiniz?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if cevap == QMessageBox.StandardButton.Yes:
+                MikroAyarlarDialog(self).exec()
+            return
+        if self._bas.date() > self._bit.date():
+            QMessageBox.warning(self, "Tarih Hatası", "Başlangıç tarihi bitişten sonra olamaz.")
+            return
+
+        bas = self._bas.date().toString("yyyy-MM-dd")
+        bit = self._bit.date().toString("yyyy-MM-dd")
+        self._btn_doldur.setEnabled(False)
+        self._status.setText("Geçmiş veri çekiliyor (satış, marj, nakit, gider)…")
+        self._status.setStyleSheet("color: #8b929e;")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        client = MikroClient(cfg)
+        try:
+            stok_rows = fetch_stok_ozet(client, bas, bit)
+            stok_aylik = fetch_stok_aylik(client, bas, bit)
+            gd = build_gercek_durum(stok_rows=stok_rows, stok_aylik=stok_aylik, bas=bas, bit=bit)
+            kapanis_rows = fetch_cari_bakiye(client, bit)
+            baslangic_nakit = _nakit_bakiye(kapanis_rows)
+            hareket_rows = fetch_nakit_akis_hareket(client, bas, bit)
+            donem_delta = fetch_nakit_delta(client, bas, bit)
+            na = build_nakit_akis(hareket_rows, bakiye_kapanis_rows=kapanis_rows,
+                                  donem_delta=donem_delta, bas=bas, bit=bit)
+            firma = (cfg.firma_adi or "").strip()
+            if not firma:
+                try:
+                    firma = fetch_firma_adi(client)
+                except MikroAPIError:
+                    firma = ""
+            self._firma = firma
+        except MikroAPIError as exc:
+            QApplication.restoreOverrideCursor()
+            self._btn_doldur.setEnabled(True)
+            self._status.setText("Geçmiş veri getirilemedi.")
+            self._status.setStyleSheet("color: #e57373;")
+            QMessageBox.warning(self, "Mikro Hatası", str(exc))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+            self._btn_doldur.setEnabled(True)
+
+        satis_serisi = [a.satis for a in gd.trend]
+        ay_sayisi = max(1, len(na.aylik))
+        sabit_gider = (na.toplam_cikis
+                       - na.cikis_kategori.get("Satıcı ödemesi", 0.0)
+                       - na.kredi_odeme) / ay_sayisi
+        v = oner_varsayim(
+            satis_serisi=satis_serisi, brut_marj_yuzde=gd.gercek_brut_marj,
+            baslangic_nakit=baslangic_nakit, aylik_sabit_gider=sabit_gider,
+            baslangic_ay=bit[:7], ufuk_ay=self._sp_ufuk.value(),
+        )
+        self._sp_nakit.setValue(v.baslangic_nakit)
+        self._sp_ciro.setValue(v.baz_ciro)
+        self._sp_buyume.setValue(v.buyume_yuzde)
+        self._sp_marj.setValue(v.marj_yuzde)
+        self._sp_gider.setValue(v.sabit_gider)
+        self._status.setText("Geçmişten dolduruldu — varsayımları düzenleyip «Projekte Et»e basabilirsin.")
+        self._status.setStyleSheet("color: #81c784;")
+        self._on_projekte()
+
+    def _on_projekte(self) -> None:
+        v = TahminVarsayim(
+            baslangic_ay=self._bit.date().toString("yyyy-MM"),
+            baslangic_nakit=self._sp_nakit.value(),
+            baz_ciro=self._sp_ciro.value(),
+            buyume_yuzde=self._sp_buyume.value(),
+            marj_yuzde=self._sp_marj.value(),
+            sabit_gider=self._sp_gider.value(),
+            ufuk_ay=self._sp_ufuk.value(),
+        )
+        self._t = build_tahmin(v)
+        self._empty.setVisible(False)
+        self._view.setVisible(True)
+        self._view.setWidget(build_tahmin_widget(self._t, firma=self._firma))
+        self._btn_csv.setEnabled(True)
+        self._status.setText(
+            f"Tahmin: {self._sp_ufuk.value()} ay · toplam ciro {tl(self._t.toplam_ciro)} · "
+            f"dönem sonu nakit {tl(self._t.son_nakit)}")
+        self._status.setStyleSheet(
+            "color: #e57373;" if self._t.en_dusuk_nakit < 0 else "color: #81c784;")
+
+    def _on_csv(self) -> None:
+        if not self._t:
+            return
+        _csv_kaydet(self, self._status, f"tahmin_{self._t.varsayim.baslangic_ay}.csv",
+                    tahmin_csv(self._t))
 
 
 # ---------------------------------------------------------------------------
@@ -988,6 +1196,7 @@ class MikRaporWindow(QMainWindow):
         self._tabs.addTab(GercekDurumTab(self._donem), "Nakit && Kârlılık")
         self._tabs.addTab(TahsilatAlacakTab(self._donem), "Tahsilat && Alacak")
         self._tabs.addTab(NakitAkisTab(self._donem), "Nakit Akış")
+        self._tabs.addTab(TahminTab(self._donem), "Tahmin")
         layout.addWidget(self._tabs, stretch=1)
 
     def _on_ayarlar(self) -> None:
