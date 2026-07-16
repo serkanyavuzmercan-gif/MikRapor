@@ -191,7 +191,7 @@ class EmptyState(QWidget):
             btn.clicked.connect(on_cta)
             lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-        lay.addStretch(2)
+        lay.addSpacing(10)
         self._body_genislik_ayarla()
 
     def _body_genislik_ayarla(self) -> None:
