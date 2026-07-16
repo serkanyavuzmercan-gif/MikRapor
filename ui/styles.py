@@ -98,6 +98,10 @@ QLabel#toolbarHint {{
 QWidget#emptyState {{
     background-color: {SURFACE};
     border: none;
+    border-radius: 12px;
+}}
+QWidget#emptyOverlay {{
+    background: transparent;
 }}
 
 /* ---- Sekmeler ---- */

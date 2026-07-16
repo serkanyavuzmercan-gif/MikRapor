@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-        datas=[('assets\\icon.ico', 'assets'), ('assets\\logo.png', 'assets'), ('assets\\logo-mark.png', 'assets'), ('assets\\empty-hero.png', 'assets'), ('assets\\empty-bilanco.png', 'assets')],
+        datas=[('assets\\icon.ico', 'assets'), ('assets\\logo.png', 'assets'), ('assets\\logo-mark.png', 'assets'), ('assets\\empty-hero.png', 'assets'), ('assets\\empty-bilanco.png', 'assets'), ('assets\\anasayfalogo.png', 'assets'), ('assets\\mikrapor-hero-illustration.png', 'assets')],
     hiddenimports=['matplotlib.backends.backend_qtagg', 'reportlab', 'PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets', 'PyQt6.QtNetwork'],
     hookspath=[],
     hooksconfig={},
