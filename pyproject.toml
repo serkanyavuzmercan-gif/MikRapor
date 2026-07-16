@@ -23,9 +23,8 @@ dev = [
     "mypy>=1.10",
 ]
 
-[tool.setuptools]
-# Uygulama düz (flat) modül düzeninde; paketlenmiş dağıtım PyInstaller ile yapılır.
-py-modules = []
+[tool.setuptools.packages.find]
+include = ["domain*", "infra*", "ui*"]
 
 [tool.ruff]
 line-length = 120

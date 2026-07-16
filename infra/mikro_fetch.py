@@ -19,6 +19,18 @@ from typing import Any
 from domain.cari_vade import hesapla_vade_gun
 from domain.ortak import to_float as _f_local
 from infra.mikro_api import MikroAPIError, MikroClient, get_row_value, parse_sql_rows
+from infra.sql_params import firma_kodu_guvenli, iso_tarih, sql_string
+
+
+def _aralik(bas: str, bit: str) -> tuple[str, str]:
+    """Dönem başlangıç/bitiş tarihlerini ISO olarak doğrular."""
+    return iso_tarih(bas, alan="başlangıç tarihi"), iso_tarih(bit, alan="bitiş tarihi")
+
+
+def _bit_son(bit: str) -> str:
+    """Bitiş gününü tam dahil etmek için < (bit+1gün) sınırı (datetime gün-içi saatleri kaçırmasın)."""
+    d = iso_tarih(bit, alan="bitiş tarihi")
+    return (date.fromisoformat(d) + timedelta(days=1)).isoformat()
 
 
 def fetch_firma_adi(client: MikroClient) -> str:
@@ -41,12 +53,16 @@ def fetch_firma_adi(client: MikroClient) -> str:
                 return str(v).strip()
         return ""
 
-    fk = str(client.cfg.firma_kodu or "").strip()
+    try:
+        fk = firma_kodu_guvenli(client.cfg.firma_kodu)
+    except ValueError:
+        fk = ""
     if fk:
+        lit = sql_string(fk)
         for kol in ("fir_kod", "fir_no", "fir_firmano", "fir_DBCno", "fir_sirano"):
             ad = _oku(
                 f"SELECT TOP 1 fir_unvan FROM FIRMALAR WITH (NOLOCK) "
-                f"WHERE [{kol}] = '{fk}' AND fir_unvan IS NOT NULL AND LTRIM(fir_unvan) <> ''"
+                f"WHERE [{kol}] = {lit} AND fir_unvan IS NOT NULL AND LTRIM(fir_unvan) <> ''"
             )
             if ad:
                 return ad
@@ -70,10 +86,8 @@ def fetch_gelir_tablosu(client: MikroClient, bas: str, bit: str) -> list[dict[st
     seçilirse seçilsin gerçek dönem sonucu gelir; yıl sonu maliyet/kur/vergi kayıtları korunur.
     (Yevmiye no güvenilmezse alt sorgu boş döner → eski davranışa zarafetle düşer.)
     """
-    try:
-        bit_son = (date.fromisoformat(bit) + timedelta(days=1)).isoformat()
-    except ValueError:
-        bit_son = bit
+    bas, bit = _aralik(bas, bit)
+    bit_son = _bit_son(bit)
     kapanis_haric = (
         "AND fis_yevmiye_no NOT IN ("
         "SELECT fis_yevmiye_no FROM MUHASEBE_FISLERI WITH (NOLOCK) "
@@ -92,14 +106,6 @@ def fetch_gelir_tablosu(client: MikroClient, bas: str, bit: str) -> list[dict[st
         "GROUP BY fis_hesap_kod"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
-
-
-def _bit_son(bit: str) -> str:
-    """Bitiş gününü tam dahil etmek için < (bit+1gün) sınırı (datetime gün-içi saatleri kaçırmasın)."""
-    try:
-        return (date.fromisoformat(bit) + timedelta(days=1)).isoformat()
-    except ValueError:
-        return bit
 
 
 def _cha_tl_sql(alias: str = "c") -> str:
@@ -129,6 +135,7 @@ def fetch_stok_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, A
     Tarih: belge tarihi doluysa onu, değilse hareket tarihini (sth_tarih) kullanır.
     Sınıflandırma analizöre (gercek_durum) bırakılır; burada yalnız ham kırılım döner.
     """
+    bas, bit = _aralik(bas, bit)
     tarih = (
         "CASE WHEN sth_belge_tarih IS NOT NULL AND sth_belge_tarih >= '2000-01-01' "
         "THEN sth_belge_tarih ELSE sth_tarih END"
@@ -145,6 +152,7 @@ def fetch_stok_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, A
 
 def fetch_stok_aylik(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
     """Dönem içi STOK_HAREKETLERI'nin AYLIK kırılımı (trend için): ay × tip × evraktip → tutar."""
+    bas, bit = _aralik(bas, bit)
     tarih = (
         "CASE WHEN sth_belge_tarih IS NOT NULL AND sth_belge_tarih >= '2000-01-01' "
         "THEN sth_belge_tarih ELSE sth_tarih END"
@@ -169,6 +177,7 @@ def fetch_nakit_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, 
     TL = cha_meblag * ISNULL(cha_d_kur, 1). cha_iptal=0 şart. Bkz. MIKRO-SEMA-NOTLARI.
     Nakit, tahakkuk zamanlamasından bağımsız fiili bir performans sinyalidir.
     """
+    bas, bit = _aralik(bas, bit)
     tl = _cha_tl_sql("c")
     sql = (
         "SELECT "
@@ -184,6 +193,7 @@ def fetch_nakit_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, 
 
 def fetch_nakit_aylik(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
     """Dönem içi banka nakit akışının AYLIK kırılımı (trend için): ay → giren/çıkan (TL)."""
+    bas, bit = _aralik(bas, bit)
     tl = _cha_tl_sql("c")
     sql = (
         "SELECT CONVERT(char(7), c.cha_tarihi, 126) AS ay, "
@@ -206,6 +216,7 @@ def fetch_bakiye_ozet(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     Nakit & Kârlılık'ın "param var mı / kim kime borçlu" ayağı: 10x (kasa/banka), 12x (alacaklar),
     32x (satıcı borçları). bakiye>0 = borç bakiyesi (varlık), bakiye<0 = alacak bakiyesi (borç).
     """
+    asof = iso_tarih(asof, alan="tarih")
     sql = (
         "SELECT LEFT(fis_hesap_kod, 3) AS ana, SUM(fis_meblag0) AS bakiye "
         "FROM MUHASEBE_FISLERI WITH (NOLOCK) "
@@ -228,6 +239,7 @@ def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     Bitiş günü tam dahil: fis_tarih < (asof+1gün) — datetime'da <= asof gün-içi saatleri kaçırır.
     Dönüş: [{'hesap_kodu','borc','alacak'}, ...] — mizan_bilanco.build_bilanco() bunu yer.
     """
+    asof = iso_tarih(asof, alan="tarih")
     sql = (
         "SELECT fis_hesap_kod AS hesap_kodu, "
         "SUM(CASE WHEN fis_meblag0 > 0 THEN fis_meblag0 ELSE 0 END) AS borc, "
@@ -246,6 +258,7 @@ def fetch_cari_bakiye(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     Banka → BANKALAR, kasa → KASALAR. ban_hesap_tip / muh_kod Python'da filtrelenir.
     Sorgu sade tutulur — bilinmeyen kolon Mikro'da sessiz boş sonuç döndürür.
     """
+    asof = iso_tarih(asof, alan="tarih")
     rows = _fetch_cari_bakiye_sql(client, asof, genis=True)
     if rows:
         return rows
@@ -253,6 +266,7 @@ def fetch_cari_bakiye(client: MikroClient, asof: str) -> list[dict[str, Any]]:
 
 
 def _fetch_cari_bakiye_sql(client: MikroClient, asof: str, *, genis: bool) -> list[dict[str, Any]]:
+    asof = iso_tarih(asof, alan="tarih")
     tl = _cha_tl_sql("c")
     borc_h = f"SUM(CASE WHEN c.cha_tip = 0 THEN {tl} ELSE 0 END)"
     alacak_h = f"SUM(CASE WHEN c.cha_tip = 1 THEN {tl} ELSE 0 END)"
@@ -340,6 +354,8 @@ def fetch_acik_kalemler(
     + dönem içi tutar döner. Vade Python'da: cha_vade doluysa o, yoksa evrak tarihi + ödeme planı
     günü. cha_vade kolonu yoksa/boşsa sorgu o kolon olmadan tekrarlanır (savunmacı).
     """
+    asof = iso_tarih(asof, alan="tarih")
+    bas, bit = _aralik(bas, bit)
     try:
         rows = _fetch_acik_sql(client, asof, bas, bit, vade=True)
         if rows:
@@ -352,6 +368,8 @@ def fetch_acik_kalemler(
 def _fetch_acik_sql(
     client: MikroClient, asof: str, bas: str, bit: str, *, vade: bool,
 ) -> list[dict[str, Any]]:
+    asof = iso_tarih(asof, alan="tarih")
+    bas, bit = _aralik(bas, bit)
     tl = _cha_tl_sql("c")
     donem = (
         f"SUM(CASE WHEN c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{_bit_son(bit)}' "
@@ -395,6 +413,7 @@ def fetch_nakit_akis_hareket(
     bankası ise 'KRD'). Nakit↔nakit transferleri elenir. cha_tip: 0=giriş, 1=çıkış.
     Kredi ayrımı başarısız olursa (ör. ban_hesap_tip yok) sade sürüme düşülür.
     """
+    bas, bit = _aralik(bas, bit)
     try:
         rows = _fetch_nakit_akis_sql(client, bas, bit, kredi_ayir=True)
         if rows:
@@ -407,6 +426,7 @@ def fetch_nakit_akis_hareket(
 def _fetch_nakit_akis_sql(
     client: MikroClient, bas: str, bit: str, *, kredi_ayir: bool,
 ) -> list[dict[str, Any]]:
+    bas, bit = _aralik(bas, bit)
     tl = _cha_tl_sql("c")
     bit_son = _bit_son(bit)
     if kredi_ayir:
@@ -466,6 +486,7 @@ def fetch_nakit_delta(client: MikroClient, bas: str, bit: str) -> float:
 
     Açılış nakit = kapanış − bu delta (devir/yıl-açılış tarihlemesinden bağımsız, kesin reconcile).
     """
+    bas, bit = _aralik(bas, bit)
     tl = _cha_tl_sql("c")
     sql = (
         f"SELECT SUM(CASE WHEN c.cha_tip = 0 THEN {tl} ELSE -({tl}) END) AS delta "

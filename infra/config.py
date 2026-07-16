@@ -16,12 +16,15 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlparse
 
 from domain.gercek_durum_ayarlar import GercekDurumAyarlar
 from infra import gizli
 
 APP_DIR_NAME = "MikRapor"
 CONFIG_FILE_NAME = "config.json"
+
+_LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
 def config_dir() -> Path:
@@ -107,6 +110,35 @@ class MikroConfig:
     def is_complete(self) -> bool:
         return not self.eksik_alanlar()
 
+    def base_url_hatalari(self) -> list[str]:
+        """base_url biçim / şema hataları (kayıt öncesi doğrulama)."""
+        return base_url_dogrula(self.normalized().base_url)
+
+
+def base_url_dogrula(url: str) -> list[str]:
+    """
+    Mikro API adresini doğrular.
+
+    - http:// veya https:// zorunlu
+    - http yalnızca loopback (localhost / 127.0.0.1 / ::1) için kabul;
+      LAN/uzak host'ta https gerekir (kimlik bilgisi düz metin gitmesin)
+    """
+    s = (url or "").strip()
+    if not s:
+        return ["Mikro API adresi boş"]
+    parsed = urlparse(s)
+    if parsed.scheme not in ("http", "https"):
+        return ["Mikro API adresi http:// veya https:// ile başlamalı"]
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return ["Mikro API adresinde host adı yok"]
+    if parsed.scheme == "http" and host not in _LOOPBACK:
+        return [
+            "Uzak/LAN adreslerde https:// kullanın "
+            f"(http yalnızca localhost için; şu an: {host})"
+        ]
+    return []
+
 
 def _int_or_zero(value: object) -> int:
     try:
@@ -159,7 +191,7 @@ def load_config() -> MikroConfig:
 def save_config(cfg: MikroConfig) -> Path:
     """Mikro alanlarını kaydeder; gercek_durum vb. diğer anahtarları silmez.
 
-    Sırlar (api_key, sifre_gun) Windows'ta DPAPI ile şifrelenerek yazılır (infra.gizli).
+    Sırlar (api_key, sifre_gun) DPAPI (Windows) veya yerel şifre (Linux/macOS) ile yazılır.
     """
     data = _read_config_data()
     kayit = asdict(cfg.normalized())

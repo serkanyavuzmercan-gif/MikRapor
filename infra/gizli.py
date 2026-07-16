@@ -1,21 +1,29 @@
 """
 Yerel sır saklama — API anahtarı gibi değerlerin config.json'da şifreli tutulması.
 
-Windows'ta DPAPI (CryptProtectData) kullanılır: şifre yalnızca AYNI Windows kullanıcısı
-tarafından çözülebilir; anahtar yönetimi işletim sistemine aittir (ek bağımlılık yok, ctypes).
-Diğer platformlarda şifreleme yapılmaz (düz metin) — dosya zaten kullanıcının ev dizinindedir.
+Windows: DPAPI (CryptProtectData) — yalnızca aynı Windows kullanıcısı çözer.
+Diğer platformlar: makine+kullanıcı türevli anahtarla yerel şifreleme (`local:` öneki);
+dosya zaten 0600, ek olarak diskte düz metin tutulmaz.
 
-Biçim: şifreli değerler "dpapi:<base64>" önekiyle yazılır. Öneksiz değerler düz metin kabul
-edilir (geriye dönük uyumluluk: eski config.json'lar okunmaya devam eder ve ilk kayıtta
-şifreli biçime geçer).
+Biçimler:
+  - `dpapi:<base64>` — Windows DPAPI
+  - `local:<base64>` — nonce||hmac||ciphertext (SHA-256 keystream + HMAC)
+  - öneksiz — düz metin (eski kayıt; okunur, sonraki kayıtta şifrelenir)
 """
 
 from __future__ import annotations
 
 import base64
+import getpass
+import hashlib
+import hmac
+import os
 import sys
+from pathlib import Path
 
-_PREFIX = "dpapi:"
+_PREFIX_DPAPI = "dpapi:"
+_PREFIX_LOCAL = "local:"
+_APP_SALT = b"MikRapor.local.v1"
 
 
 def _dpapi(func_adi: str, veri: bytes) -> bytes:
@@ -38,27 +46,92 @@ def _dpapi(func_adi: str, veri: bytes) -> bytes:
         ctypes.windll.kernel32.LocalFree(cikti.pbData)  # type: ignore[attr-defined]
 
 
-def sifrele(deger: str) -> str:
-    """Değeri diske yazılacak biçime çevirir (Windows: DPAPI+base64, diğerleri: düz)."""
-    if not deger or deger.startswith(_PREFIX):
-        return deger
-    if not sys.platform.startswith("win"):
-        return deger
+def _machine_material() -> bytes:
+    """Makine + kullanıcı kimliği (taşınabilir olmayan yerel anahtar malzemesi)."""
+    parcalar: list[str] = []
+    for yol in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+        try:
+            mid = Path(yol).read_text(encoding="utf-8").strip()
+            if mid:
+                parcalar.append(mid)
+                break
+        except OSError:
+            continue
+    if not parcalar:
+        # macOS / fallback: host adı + home yolu
+        parcalar.append(os.uname().nodename if hasattr(os, "uname") else "host")
+        parcalar.append(str(Path.home()))
     try:
-        blob = _dpapi("CryptProtectData", deger.encode("utf-8"))
-    except Exception:  # noqa: BLE001 — şifreleme başarısızsa düz metne düş (veri kaybı olmasın)
+        parcalar.append(getpass.getuser())
+    except Exception:  # noqa: BLE001
+        parcalar.append("user")
+    parcalar.append("MikRapor")
+    return "|".join(parcalar).encode("utf-8")
+
+
+def _local_key() -> bytes:
+    return hashlib.pbkdf2_hmac("sha256", _machine_material(), _APP_SALT, 120_000, dklen=32)
+
+
+def _keystream(key: bytes, nonce: bytes, n: int) -> bytes:
+    out = bytearray()
+    counter = 0
+    while len(out) < n:
+        out.extend(hashlib.sha256(key + nonce + counter.to_bytes(8, "big")).digest())
+        counter += 1
+    return bytes(out[:n])
+
+
+def _local_sifrele(deger: str) -> str:
+    key = _local_key()
+    nonce = os.urandom(16)
+    plain = deger.encode("utf-8")
+    ct = bytes(a ^ b for a, b in zip(plain, _keystream(key, nonce, len(plain)), strict=True))
+    mac = hmac.new(key, nonce + ct, hashlib.sha256).digest()
+    return _PREFIX_LOCAL + base64.b64encode(nonce + mac + ct).decode("ascii")
+
+
+def _local_coz(deger: str) -> str:
+    try:
+        raw = base64.b64decode(deger[len(_PREFIX_LOCAL) :])
+        if len(raw) < 16 + 32:
+            return ""
+        nonce, mac, ct = raw[:16], raw[16:48], raw[48:]
+        key = _local_key()
+        beklenen = hmac.new(key, nonce + ct, hashlib.sha256).digest()
+        if not hmac.compare_digest(mac, beklenen):
+            return ""
+        plain = bytes(a ^ b for a, b in zip(ct, _keystream(key, nonce, len(ct)), strict=True))
+        return plain.decode("utf-8")
+    except Exception:  # noqa: BLE001 — bozuk/yabancı kayıt
+        return ""
+
+
+def sifrele(deger: str) -> str:
+    """Değeri diske yazılacak biçime çevirir."""
+    if not deger or deger.startswith(_PREFIX_DPAPI) or deger.startswith(_PREFIX_LOCAL):
         return deger
-    return _PREFIX + base64.b64encode(blob).decode("ascii")
+    if sys.platform.startswith("win"):
+        try:
+            blob = _dpapi("CryptProtectData", deger.encode("utf-8"))
+        except Exception:  # noqa: BLE001 — şifreleme başarısızsa yerel forma düş
+            return _local_sifrele(deger)
+        return _PREFIX_DPAPI + base64.b64encode(blob).decode("ascii")
+    return _local_sifrele(deger)
 
 
 def coz(deger: str) -> str:
     """Diskten okunan değeri çözer. Öneksiz (düz) değer olduğu gibi döner."""
-    if not deger or not deger.startswith(_PREFIX):
+    if not deger:
         return deger
-    if not sys.platform.startswith("win"):
-        return ""  # başka makinede/platformda çözülemez
-    try:
-        blob = base64.b64decode(deger[len(_PREFIX):])
-        return _dpapi("CryptUnprotectData", blob).decode("utf-8")
-    except Exception:  # noqa: BLE001 — bozuk/yabancı kayıt: boş dön (kullanıcı yeniden girer)
-        return ""
+    if deger.startswith(_PREFIX_DPAPI):
+        if not sys.platform.startswith("win"):
+            return ""  # başka platformda çözülemez
+        try:
+            blob = base64.b64decode(deger[len(_PREFIX_DPAPI) :])
+            return _dpapi("CryptUnprotectData", blob).decode("utf-8")
+        except Exception:  # noqa: BLE001
+            return ""
+    if deger.startswith(_PREFIX_LOCAL):
+        return _local_coz(deger)
+    return deger

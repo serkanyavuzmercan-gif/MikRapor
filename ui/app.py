@@ -9,6 +9,7 @@ from __future__ import annotations
 import sys
 
 from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
@@ -205,6 +206,13 @@ class MikRaporWindow(QMainWindow):
     def _on_ayarlar(self) -> None:
         if MikroAyarlarDialog(self).exec():
             self._refresh_conn_status()
+
+    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 — Qt API
+        for i in range(self._tabs.count()):
+            w = self._tabs.widget(i)
+            if isinstance(w, RaporTab):
+                w.iptal_ve_bekle()
+        event.accept()
 
 
 def _ekrani_orantili_ac(window: QMainWindow, *, oran: float = 0.80) -> None:

@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QFormLayout, QFrame, QHBoxLayout, QLabel, QPushButto
 
 from domain.gercek_durum import build_gercek_durum
 from domain.mizan_bilanco import tl
-from domain.nakit_akis import _nakit_bakiye, build_nakit_akis
+from domain.nakit_akis import build_nakit_akis, nakit_bakiye
 from domain.tahmin import Tahmin, TahminVarsayim, build_tahmin, oner_varsayim, tahmin_csv
 from infra.config import MikroConfig
 from infra.mikro_api import MikroClient
@@ -89,7 +89,7 @@ class TahminTab(RaporTab):
             gd = build_gercek_durum(stok_rows=stok_rows, stok_aylik=stok_aylik, bas=bas, bit=bit)
             bildir("Nakit bakiyesi ve hareketleri çekiliyor…")
             kapanis_rows = fetch_cari_bakiye(client, bit)
-            baslangic_nakit = _nakit_bakiye(kapanis_rows)
+            baslangic_nakit = nakit_bakiye(kapanis_rows)
             hareket_rows = fetch_nakit_akis_hareket(client, bas, bit)
             donem_delta = fetch_nakit_delta(client, bas, bit)
             na = build_nakit_akis(hareket_rows, bakiye_kapanis_rows=kapanis_rows,
@@ -121,8 +121,9 @@ class TahminTab(RaporTab):
         self._on_projekte()
 
     def _on_projekte(self) -> None:
+        bit = self._donem.bit_tarih()
         v = TahminVarsayim(
-            baslangic_ay=self._bit.date().toString("yyyy-MM"),
+            baslangic_ay=f"{bit.year():04d}-{bit.month():02d}",
             baslangic_nakit=self._sp_nakit.value(),
             baz_ciro=self._sp_ciro.value(),
             buyume_yuzde=self._sp_buyume.value(),
@@ -132,7 +133,8 @@ class TahminTab(RaporTab):
         )
         self._t = build_tahmin(v)
         self._icerik_koy(build_tahmin_widget(self._t, firma=self._firma))
-        self._btn_csv.setEnabled(True)
+        if self._chrome is not None:
+            self._chrome.set_csv_aktif(True)
         self._durum(
             f"Tahmin: {self._sp_ufuk.value()} ay · toplam ciro {tl(self._t.toplam_ciro)} · "
             f"dönem sonu nakit {tl(self._t.son_nakit)}",

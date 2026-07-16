@@ -87,7 +87,7 @@ class ChromeToolbar(QFrame):
         lay.addWidget(self._status)
 
     def set_aktif_tab(self, tab: object | None) -> None:
-        """Chrome'u hangi sekmenin kontrol ettiğini kaydet."""
+        """Chrome'u hangi sekmenin kontrol ettiğini kaydet (yalnız o sekme buton/status günceller)."""
         self._aktif_tab = tab
 
     def aktif_tab(self) -> object | None:
