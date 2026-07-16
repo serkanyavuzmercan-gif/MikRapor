@@ -3,6 +3,9 @@ Ortak rapor sekmesi iskeleti (RaporTab) + arka plan çalıştırma.
 
 Design A: dönem/Getir/PDF/CSV üst chrome toolbar'dadır (ui.chrome_toolbar).
 Bu sınıf içerik + empty state + worker yönetir; chrome app.py üzerinden bağlanır.
+
+Chrome paylaşımlı olduğu için yalnız aktif sekme (chrome.aktif_tab) buton/status günceller;
+arka planda biten işler yalnızca kendi içerik alanını doldurur.
 """
 
 from __future__ import annotations
@@ -67,6 +70,7 @@ class RaporTab(QWidget):
     def bagla_chrome(self, chrome: ChromeToolbar) -> None:
         """Üst chrome toolbar'a bağlanır (aktif sekme olduğunda çağrılır)."""
         self._chrome = chrome
+        chrome.set_aktif_tab(self)
         self._status = chrome.status_label()
         chrome.set_tek_tarih(self.TEK_TARIH)
         chrome.set_getir_etiket(self.GETIR_ETIKET)
@@ -84,6 +88,10 @@ class RaporTab(QWidget):
             chrome.status_label().setStyleSheet(f"color: {OK}; font-weight: 600;")
         chrome.set_getir_aktif(self._worker is None)
         chrome.set_iptal_gorunur(self._worker is not None)
+
+    def _chrome_aktif(self) -> bool:
+        """Bu sekme chrome'un sahibi mi? (paylaşılan toolbar kirlenmesin)."""
+        return self._chrome is not None and self._chrome.aktif_tab() is self
 
     def _build(self) -> None:
         layout = QVBoxLayout(self)
@@ -136,7 +144,7 @@ class RaporTab(QWidget):
         raise NotImplementedError
 
     def _durum(self, mesaj: str, tur: str = "notr") -> None:
-        if self._status is not None:
+        if self._chrome_aktif() and self._status is not None:
             durum_yaz(self._status, mesaj, tur)
 
     def _icerik_koy(self, widget: QWidget) -> None:
@@ -186,7 +194,8 @@ class RaporTab(QWidget):
             except TypeError:
                 pass
             self._worker = None
-        if self._chrome is not None:
+        if self._chrome_aktif():
+            assert self._chrome is not None
             self._chrome.set_getir_aktif(False)
             self._chrome.set_iptal_gorunur(True)
         self._durum(self.BASLARKEN)
@@ -207,7 +216,7 @@ class RaporTab(QWidget):
     def _on_bitti(self, sonuc: object) -> None:
         if self.sender() is not None and self.sender() is not self._worker:
             return
-        if self._chrome is not None:
+        if self._chrome_aktif() and self._chrome is not None:
             self._chrome.set_csv_aktif(True)
             if self.PDF_DESTEK:
                 self._chrome.set_pdf_aktif(True)
@@ -222,7 +231,7 @@ class RaporTab(QWidget):
     def _on_worker_bitti(self, worker: RaporWorker) -> None:
         if worker is self._worker:
             self._worker = None
-            if self._chrome is not None:
+            if self._chrome_aktif() and self._chrome is not None:
                 self._chrome.set_getir_aktif(True)
                 self._chrome.set_iptal_gorunur(False)
         worker.deleteLater()
@@ -231,10 +240,25 @@ class RaporTab(QWidget):
         if self._worker is not None:
             self._worker.iptal_et()
             self._worker = None
-        if self._chrome is not None:
+        if self._chrome_aktif() and self._chrome is not None:
             self._chrome.set_getir_aktif(True)
             self._chrome.set_iptal_gorunur(False)
         self._durum("İptal edildi.", "uyari")
+
+    def iptal_ve_bekle(self, timeout_ms: int = 8000) -> None:
+        """Uygulama kapanırken çalışan worker'ı iptal edip bekle."""
+        if self._worker is None:
+            return
+        w = self._worker
+        w.iptal_et()
+        try:
+            w.bitti.disconnect(self._on_bitti)
+            w.hata.disconnect(self._on_hata)
+            w.ilerleme.disconnect(self._on_ilerleme)
+        except TypeError:
+            pass
+        self._worker = None
+        w.wait(timeout_ms)
 
     def _on_csv(self) -> None:
         icerik = self._csv_icerik()

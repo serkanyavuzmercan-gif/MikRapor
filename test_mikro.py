@@ -166,5 +166,59 @@ class TestSqlParams(unittest.TestCase):
             fetch_mizan(client, "2026-07-16'; x--")
 
 
+class TestBaseUrl(unittest.TestCase):
+    def test_https_ok(self) -> None:
+        from infra.config import base_url_dogrula
+
+        self.assertEqual(base_url_dogrula("https://192.168.1.50:443"), [])
+
+    def test_http_localhost_ok(self) -> None:
+        from infra.config import base_url_dogrula
+
+        self.assertEqual(base_url_dogrula("http://localhost:8080"), [])
+        self.assertEqual(base_url_dogrula("http://127.0.0.1"), [])
+
+    def test_http_remote_rejected(self) -> None:
+        from infra.config import base_url_dogrula
+
+        hatalar = base_url_dogrula("http://192.168.1.50")
+        self.assertTrue(hatalar)
+        self.assertTrue(any("https" in h.lower() for h in hatalar))
+
+    def test_scheme_required(self) -> None:
+        from infra.config import base_url_dogrula
+
+        self.assertTrue(base_url_dogrula("192.168.1.50:443"))
+
+
+class TestGizliLocal(unittest.TestCase):
+    def test_roundtrip(self) -> None:
+        from infra import gizli
+
+        orijinal = "gizli-api-anahtari-123"
+        sifreli = gizli.sifrele(orijinal)
+        self.assertTrue(sifreli.startswith("local:") or sifreli.startswith("dpapi:"))
+        self.assertNotEqual(sifreli, orijinal)
+        self.assertEqual(gizli.coz(sifreli), orijinal)
+
+    def test_plaintext_passthrough(self) -> None:
+        from infra import gizli
+
+        self.assertEqual(gizli.coz("duz-metin"), "duz-metin")
+
+
+class TestCancelToken(unittest.TestCase):
+    def test_iptal_mi(self) -> None:
+        from infra.cancel import CancelToken, aktif_iptal, iptal_baglam
+
+        t = CancelToken()
+        self.assertFalse(t.iptal_mi())
+        t.iptal()
+        self.assertTrue(t.iptal_mi())
+        with iptal_baglam(t):
+            self.assertIs(aktif_iptal(), t)
+        self.assertIsNone(aktif_iptal())
+
+
 if __name__ == "__main__":
     unittest.main()

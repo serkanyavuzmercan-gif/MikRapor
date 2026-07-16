@@ -48,7 +48,8 @@ class MikroAyarlarDialog(QDialog):
         info = QLabel(
             "Bu bilgiler yalnızca bu bilgisayarda saklanır ve doğrudan kendi Mikro "
             "sunucunuza bağlanmak için kullanılır. Hiçbir bilgi dışarı gönderilmez. "
-            "API anahtarı ve şifre tuzu Windows'ta DPAPI ile şifrelenerek kaydedilir."
+            "API anahtarı ve şifre tuzu Windows'ta DPAPI, Linux/macOS'ta yerel anahtarla "
+            "şifrelenerek kaydedilir. Uzak adreslerde https:// zorunludur."
         )
         info.setWordWrap(True)
         info.setStyleSheet("color: #9aa0a8;")
@@ -56,7 +57,7 @@ class MikroAyarlarDialog(QDialog):
 
         form = QFormLayout()
         self._base_url = QLineEdit(self._cfg.base_url)
-        self._base_url.setPlaceholderText("https://192.168.1.50:443  veya  Tailscale adresi")
+        self._base_url.setPlaceholderText("https://192.168.1.50:443  (http yalnız localhost)")
         self._api_key = QLineEdit(self._cfg.api_key)
         self._api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self._firma_kodu = QLineEdit(self._cfg.firma_kodu)
@@ -242,6 +243,10 @@ class MikroAyarlarDialog(QDialog):
             firma_kodu_guvenli(cfg.firma_kodu)
         except ValueError as exc:
             QMessageBox.warning(self, "Geçersiz Firma Kodu", str(exc))
+            return
+        url_hatalari = cfg.base_url_hatalari()
+        if url_hatalari:
+            QMessageBox.warning(self, "Geçersiz API Adresi", "\n".join(url_hatalari))
             return
         if not cfg.tls_dogrula:
             cevap = QMessageBox.question(

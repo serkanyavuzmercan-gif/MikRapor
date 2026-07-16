@@ -18,16 +18,19 @@ Test edilebilmesi için `transport` enjekte edilebilir (network'süz birim testl
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import logging
 import ssl
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from infra.cancel import aktif_iptal
 from infra.config import MikroConfig
 
 _log = logging.getLogger(__name__)
@@ -42,6 +45,10 @@ Transport = Callable[[str, str, float], "tuple[int, str]"]
 
 class MikroAPIError(Exception):
     """Mikro API hata (HTTP, çözümleme veya API seviyesi IsError)."""
+
+
+class MikroIptalError(MikroAPIError):
+    """Kullanıcı / worker iptali — retry edilmez, UI'ya hata olarak gösterilmez."""
 
 
 def password_hash(sifre_gun: str, today: str | None = None) -> str:
@@ -77,29 +84,69 @@ def _ssl_context(dogrula: bool) -> ssl.SSLContext:
     return ctx
 
 
+def _iptal_kontrol() -> None:
+    token = aktif_iptal()
+    if token is not None and token.iptal_mi():
+        raise MikroIptalError("İptal edildi")
+
+
 def _urllib_transport_factory(dogrula: bool) -> Transport:
+    """http.client tabanlı transport — CancelToken ile bağlantı kesilebilir."""
     ctx = _ssl_context(dogrula)
 
     def _transport(url: str, body: str, timeout: float) -> tuple[int, str]:
-        req = urllib.request.Request(
-            url,
-            data=body.encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+        _iptal_kontrol()
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            raise MikroAPIError(f"Geçersiz Mikro URL: {url!r}")
+        host = parsed.hostname
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+
+        if parsed.scheme == "https":
+            conn: http.client.HTTPConnection = http.client.HTTPSConnection(
+                host, port=port, context=ctx, timeout=timeout,
+            )
+        else:
+            conn = http.client.HTTPConnection(host, port=port, timeout=timeout)
+
+        token = aktif_iptal()
+        if token is not None:
+            token.bagla(conn)
         try:
-            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
-                status = getattr(resp, "status", None) or resp.getcode()
-                return int(status), resp.read().decode("utf-8", errors="replace")
-        except urllib.error.HTTPError as exc:
-            body_text = exc.read().decode("utf-8", errors="replace") if exc.fp else str(exc)
-            return int(exc.code), body_text
+            _iptal_kontrol()
+            conn.request(
+                "POST",
+                path,
+                body=body.encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            _iptal_kontrol()
+            resp = conn.getresponse()
+            text = resp.read().decode("utf-8", errors="replace")
+            return int(resp.status), text
+        except MikroIptalError:
+            raise
+        except Exception:
+            _iptal_kontrol()  # iptal kaynaklı socket hatası → MikroIptalError
+            raise
+        finally:
+            if token is not None:
+                token.birak()
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     return _transport
 
 
 def _is_retryable(err: Exception) -> bool:
-    """Geçici ağ hataları retry edilir; HTTP/IsError/çözümleme hataları edilmez."""
+    """Geçici ağ hataları retry edilir; HTTP/IsError/iptal/çözümleme hataları edilmez."""
+    if isinstance(err, MikroIptalError):
+        return False
     if isinstance(err, MikroAPIError):
         return False
     if isinstance(err, (TimeoutError, ssl.SSLError, urllib.error.URLError, ConnectionError, OSError)):
@@ -194,16 +241,23 @@ class MikroClient:
         last_err: Exception | None = None
         for attempt in range(attempts):
             try:
+                _iptal_kontrol()
                 status, text = self._transport(url, body_str, to)
                 if status < 200 or status >= 300:
                     raise MikroAPIError(f"Mikro HTTP {status}: {text[:400]}")
                 return self._extract_data(text)
+            except MikroIptalError:
+                raise
             except MikroAPIError:
                 raise
             except Exception as exc:  # noqa: BLE001 — ağ hatalarını sınıflandırıp retry ediyoruz
                 last_err = exc
                 if attempt < attempts - 1 and _is_retryable(exc):
-                    time.sleep(2 * (attempt + 1))
+                    # İptal edilebilir bekleme (2s / 4s / 8s — 0.2s dilimler)
+                    bekle = 2 * (attempt + 1)
+                    for _ in range(int(bekle / 0.2)):
+                        _iptal_kontrol()
+                        time.sleep(0.2)
                     continue
                 raise MikroAPIError(f"Mikro bağlantı hatası: {exc}") from exc
         raise MikroAPIError(f"Mikro bağlantı hatası: {last_err}")
