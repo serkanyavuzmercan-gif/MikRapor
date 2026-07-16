@@ -8,7 +8,7 @@ Bu yüzden gövde yerel widget'larla çizilir: AKTİF | PASİF iki `QTreeWidget`
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QBrush, QColor, QFont
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -35,7 +35,6 @@ from ui.styles import (
     OK,
     PAGE_BG,
     PANEL_BG,
-    SUBINK,
     WARN,
 )
 
@@ -55,14 +54,6 @@ __all__ = [
     "_section",
     "_fit_height",
 ]
-
-_ALT_TOPLAM_ETIKET = {
-    "1": "Dönen Varlıklar Toplamı",
-    "2": "Duran Varlıklar Toplamı",
-    "3": "Kısa Vadeli Yab. Kaynaklar Toplamı",
-    "4": "Uzun Vadeli Yab. Kaynaklar Toplamı",
-    "5": "Özkaynaklar Toplamı",
-}
 
 _TREE_QSS = f"""
 QTreeWidget {{
@@ -116,16 +107,38 @@ def _buyut(f: QFont, artis: float = 0.5) -> None:
         f.setPixelSize(f.pixelSize() + 1)
 
 
-def _section(t: QTreeWidget, baslik: str) -> None:
-    it = QTreeWidgetItem([baslik, ""])
-    f = it.font(0)
-    f.setBold(True)
-    _buyut(f)
-    it.setFont(0, f)
-    it.setForeground(0, QBrush(QColor(NAVY)))
+def _section(t: QTreeWidget, baslik: str, toplam: float | None = None) -> None:
+    """Koyu lacivert dolu bölüm başlığı bar'ı; sağda (varsa) bölüm toplamı (mockup 2).
+
+    QSS'li QTreeWidget'ta item arka planı ezildiği için başlık, gerçek bir navy
+    widget (setItemWidget) ile çizilir — böylece dolu bar güvenilir görünür.
+    """
+    it = QTreeWidgetItem(["", ""])
     it.setFlags(Qt.ItemFlag.ItemIsEnabled)
+    it.setSizeHint(0, QSize(0, 36))
     t.addTopLevelItem(it)
     it.setFirstColumnSpanned(True)
+
+    bar = QWidget()
+    bar.setObjectName("sectionBar")
+    bar.setStyleSheet(f"QWidget#sectionBar {{ background: {NAVY}; }}")
+    h = QHBoxLayout(bar)
+    h.setContentsMargins(12, 0, 14, 0)
+    h.setSpacing(8)
+    sol = QLabel(baslik)
+    sol.setStyleSheet(
+        "color: #ffffff; font-size: 13px; font-weight: 800; "
+        "letter-spacing: 0.2px; background: transparent;"
+    )
+    h.addWidget(sol)
+    h.addStretch(1)
+    if toplam is not None:
+        sag = QLabel(tl(toplam))
+        sag.setStyleSheet(
+            "color: #ffffff; font-size: 13px; font-weight: 800; background: transparent;"
+        )
+        h.addWidget(sag)
+    t.setItemWidget(it, 0, bar)
 
 
 def _row(t: QTreeWidget, ad: str, tutar: float, *, bold: bool = False,
@@ -166,15 +179,15 @@ def _doldur(t: QTreeWidget, b: Bilanco, taraf: str) -> None:
         ds = [s for s in satirlar if s.ana[:1] == d]
         if not ds and not (taraf == "pasif" and d == "5"):
             continue
-        _section(t, baslik)
-        alt = 0.0
-        for s in ds:
-            _row(t, f"   {s.ana}   {s.ad}", s.tutar)
-            alt += s.tutar
+        alt = sum(s.tutar for s in ds)
         if taraf == "pasif" and d == "5":
-            _row(t, "   Dönem Net Kârı/Zararı", b.donem_kz, bold=True)
             alt += b.donem_kz
-        _row(t, _ALT_TOPLAM_ETIKET[d], alt, bold=True, renk=SUBINK)
+        # Bölüm toplamı koyu lacivert başlık bar'ının sağında (mockup 2)
+        _section(t, baslik, alt)
+        for s in ds:
+            _row(t, f"  ›   {s.ana}   {s.ad}", s.tutar)
+        if taraf == "pasif" and d == "5":
+            _row(t, "  ›   Dönem Net Kârı/Zararı", b.donem_kz, bold=True)
 
     _row(t, toplam_etiket, toplam, big=True, renk=NAVY)
     _fit_height(t)

@@ -23,8 +23,8 @@ from PyQt6.QtWidgets import (
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _kpi_card
-from ui.styles import PRIMARY_SOFT
 from ui.gercek_durum_view import NEG, POZ, _card, _cizgi, _renk, _satir_label
+from ui.styles import PRIMARY_SOFT
 from ui.tahsilat_alacak_view import _oran_bar
 
 

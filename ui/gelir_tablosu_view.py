@@ -11,7 +11,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from domain.gelir_tablosu import GelirTablosu, yuzde
-from ui.styles import ACCENT, PRIMARY_SOFT
 from domain.mizan_bilanco import tl
 from ui.bilanco_view import (
     FAINT,
@@ -25,6 +24,7 @@ from ui.bilanco_view import (
     _section,
     _tree,
 )
+from ui.styles import ACCENT, PRIMARY_SOFT
 
 
 def _doldur(t, gt: GelirTablosu) -> None:
