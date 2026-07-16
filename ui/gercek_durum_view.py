@@ -23,8 +23,10 @@ from PyQt6.QtWidgets import (
 
 from domain.gercek_durum import GercekDurum, yuzde
 from domain.mizan_bilanco import tl
-from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _kpi_card
-from ui.styles import BAD as NEG, BORDER, OK as POZ, PANEL_BG
+from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG
+from ui.styles import BAD as NEG
+from ui.styles import BORDER, PANEL_BG
+from ui.styles import OK as POZ
 
 
 def _renk(v: float) -> str:

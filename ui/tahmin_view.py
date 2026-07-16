@@ -22,8 +22,8 @@ from PyQt6.QtWidgets import (
 from domain.mizan_bilanco import tl
 from domain.tahmin import Tahmin
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _kpi_card
-from ui.styles import PRIMARY_SOFT
 from ui.gercek_durum_view import NEG, POZ, _card, _renk, _satir_label
+from ui.styles import PRIMARY_SOFT
 
 
 def _tablo_panel(t: Tahmin) -> QFrame:

@@ -21,8 +21,8 @@ from PyQt6.QtWidgets import (
 from domain.mizan_bilanco import tl
 from domain.tahsilat_alacak import AGING_KOVALAR, VADE_KOVALAR, TahsilatAlacak
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _kpi_card
-from ui.styles import PRIMARY_SOFT
 from ui.gercek_durum_view import NEG, POZ, _card, _cizgi, _renk, _satir_label
+from ui.styles import PRIMARY_SOFT
 
 # Yaşlandırma kovası → renk (vadesi gelmemiş yeşil → 90+ kırmızı)
 _AGING_RENK = {
