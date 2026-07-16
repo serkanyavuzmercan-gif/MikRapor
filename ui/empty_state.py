@@ -124,10 +124,10 @@ class EmptyState(QWidget):
         self._overlay.setStyleSheet("background: transparent;")
 
         lay = QVBoxLayout(self._overlay)
-        lay.setContentsMargins(48, 28, 48, 36)
+        lay.setContentsMargins(48, 20, 48, 28)
         lay.setSpacing(0)
-        # Üstte görsel alan; marka/başlık/CTA alt banda
-        lay.addStretch(6)
+        # Üstte görsel; marka/başlık/CTA biraz daha yukarı (önce stretch 6 → alt band)
+        lay.addStretch(3)
 
         brand_row = QHBoxLayout()
         brand_row.setSpacing(12)
@@ -187,7 +187,7 @@ class EmptyState(QWidget):
             btn.clicked.connect(on_cta)
             lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-        lay.addSpacing(10)
+        lay.addStretch(2)
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
