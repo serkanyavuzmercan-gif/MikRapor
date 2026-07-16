@@ -194,6 +194,7 @@ QPushButton#ghostBtn {{
     background-color: transparent;
     color: {SUBINK};
     border: 1px solid {BORDER_STRONG};
+    text-align: center;
 }}
 
 /* ---- Girdiler ---- */
