@@ -82,7 +82,7 @@ class MikRaporWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("MikRapor — Finansal Raporlama")
         self.setWindowIcon(app_icon())
-        self.setMinimumSize(1080, 720)
+        self.setMinimumSize(960, 640)
         self.resize(1220, 840)
         self._donem = DonemDurumu()
         self._build()
@@ -206,6 +206,22 @@ class MikRaporWindow(QMainWindow):
             self._refresh_conn_status()
 
 
+def _ekrani_orantili_ac(window: QMainWindow, *, oran: float = 0.80) -> None:
+    """Pencereyi ekranın ~oran kadarında, ortalanmış aç (tam ekran değil)."""
+    screen = QApplication.primaryScreen()
+    if screen is None:
+        window.resize(1220, 840)
+        window.show()
+        return
+    geo = screen.availableGeometry()
+    w = min(geo.width(), max(window.minimumWidth(), int(geo.width() * oran)))
+    h = min(geo.height(), max(window.minimumHeight(), int(geo.height() * oran)))
+    x = geo.x() + (geo.width() - w) // 2
+    y = geo.y() + (geo.height() - h) // 2
+    window.setGeometry(x, y, w, h)
+    window.show()
+
+
 def main() -> int:
     app = QApplication(sys.argv)
     app.setStyleSheet(APP_STYLESHEET)
@@ -215,5 +231,5 @@ def main() -> int:
     window = MikRaporWindow()
     # QLocalServer yaşam süresi uygulama kadar olmalı — del edilirse GC dinlemeyi keser
     window._single_instance_server = _start_single_instance_server(window)  # noqa: SLF001
-    window.showMaximized()
+    _ekrani_orantili_ac(window, oran=0.80)
     return app.exec()
