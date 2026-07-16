@@ -100,7 +100,7 @@ class NakitAkis:
         return self.kredi_kullanim - self.kredi_odeme
 
 
-def _nakit_bakiye(bakiye_rows: list[dict] | None) -> float:
+def nakit_bakiye(bakiye_rows: list[dict] | None) -> float:
     """fetch_cari_bakiye satırlarından banka+kasa nakit mevcudu (kredi bankaları hariç)."""
     total = 0.0
     for r in (bakiye_rows or []):
@@ -111,6 +111,10 @@ def _nakit_bakiye(bakiye_rows: list[dict] | None) -> float:
             continue
         total += _f(r.get("borc_h", r.get("BORC_H"))) - _f(r.get("alacak_h", r.get("ALACAK_H")))
     return total
+
+
+# Geriye uyumluluk
+_nakit_bakiye = nakit_bakiye
 
 
 def build_nakit_akis(
@@ -125,7 +129,7 @@ def build_nakit_akis(
 ) -> NakitAkis:
     """Banka/kasa hareketleri + kapanış bakiyesi + dönem deltasından Nakit Akış modelini kurar."""
     na = NakitAkis(bas=bas, bit=bit)
-    na.kapanis_nakit = kapanis_nakit if kapanis_nakit is not None else _nakit_bakiye(bakiye_kapanis_rows)
+    na.kapanis_nakit = kapanis_nakit if kapanis_nakit is not None else nakit_bakiye(bakiye_kapanis_rows)
 
     giris: dict[str, float] = defaultdict(float)
     cikis: dict[str, float] = defaultdict(float)

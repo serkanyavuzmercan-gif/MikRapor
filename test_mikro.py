@@ -129,5 +129,42 @@ class TestMikroClient(unittest.TestCase):
             client.sql_veri_oku("SELECT 1")
 
 
+class TestSqlParams(unittest.TestCase):
+    def test_iso_tarih_ok(self) -> None:
+        from infra.sql_params import iso_tarih
+
+        self.assertEqual(iso_tarih("2026-07-16"), "2026-07-16")
+
+    def test_iso_tarih_rejects_injection(self) -> None:
+        from infra.sql_params import iso_tarih
+
+        with self.assertRaises(ValueError):
+            iso_tarih("2026-07-16'; DROP TABLE x--")
+        with self.assertRaises(ValueError):
+            iso_tarih("not-a-date")
+        with self.assertRaises(ValueError):
+            iso_tarih("2026-13-40")
+
+    def test_firma_kodu_and_sql_string(self) -> None:
+        from infra.sql_params import firma_kodu_guvenli, sql_string
+
+        self.assertEqual(firma_kodu_guvenli("01"), "01")
+        self.assertEqual(firma_kodu_guvenli("FIRM-A"), "FIRM-A")
+        with self.assertRaises(ValueError):
+            firma_kodu_guvenli("01'; DROP--")
+        with self.assertRaises(ValueError):
+            firma_kodu_guvenli("a' OR '1'='1")
+        self.assertEqual(sql_string("O'Brien"), "'O''Brien'")
+
+    def test_fetch_mizan_rejects_bad_date(self) -> None:
+        from infra.mikro_fetch import fetch_mizan
+
+        cfg = MikroConfig(base_url="https://m.local", api_key="K", firma_kodu="26",
+                          calisma_yili=2026, kullanici_kodu="U", sifre_gun="S")
+        client = MikroClient(cfg, transport=lambda *a: (200, "{}"), max_attempts=1)
+        with self.assertRaises(ValueError):
+            fetch_mizan(client, "2026-07-16'; x--")
+
+
 if __name__ == "__main__":
     unittest.main()

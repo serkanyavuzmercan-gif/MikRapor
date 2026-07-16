@@ -1,5 +1,6 @@
 # MikRapor — tek dosya Windows .exe
 # Kullanım: .\build_exe.ps1
+# Derleme tanımı: MikRapor.spec (tek kaynak — asset / hiddenimport / exclude listesi orada).
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -12,6 +13,7 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
 
 try {
     & .\.venv\Scripts\python.exe -m pip install -q -r requirements.txt *> $null
+    & .\.venv\Scripts\python.exe -m pip install -q "pyinstaller>=6.3.0" *> $null
 } catch {
     Write-Warning "pip install uyarisi (devam ediliyor)."
 }
@@ -29,41 +31,13 @@ Get-Process -Name "Mikrapor" -ErrorAction SilentlyContinue | Stop-Process -Force
 Get-Process -Name "MizanAnaliz" -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 1
 
+if (-not (Test-Path "MikRapor.spec")) {
+    Write-Error "MikRapor.spec bulunamadi."
+}
+
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
-& .\.venv\Scripts\pyinstaller.exe `
-    --onefile `
-    --windowed `
-    --noconsole `
-    --noupx `
-    --name MikRapor `
-    --icon "assets\icon.ico" `
-    --add-data "assets\icon.ico;assets" `
-    --add-data "assets\logo.png;assets" `
-    --add-data "assets\logo-mark.png;assets" `
-    --add-data "assets\empty-hero.png;assets" `
-    --add-data "assets\empty-bilanco.png;assets" `
-    --add-data "assets\anasayfalogo.png;assets" `
-    --add-data "assets\mikrapor-hero-illustration.png;assets" `
-    --hidden-import matplotlib.backends.backend_qtagg `
-    --hidden-import reportlab `
-    --hidden-import PyQt6.QtCore `
-    --hidden-import PyQt6.QtGui `
-    --hidden-import PyQt6.QtWidgets `
-    --hidden-import PyQt6.QtNetwork `
-    --exclude-module PyQt6.Qt3DAnimation `
-    --exclude-module PyQt6.Qt3DCore `
-    --exclude-module PyQt6.Qt3DExtras `
-    --exclude-module PyQt6.Qt3DInput `
-    --exclude-module PyQt6.Qt3DLogic `
-    --exclude-module PyQt6.Qt3DRender `
-    --exclude-module PyQt6.QtWebEngine `
-    --exclude-module PyQt6.QtWebEngineCore `
-    --exclude-module PyQt6.QtWebEngineWidgets `
-    --exclude-module PyQt6.QtQml `
-    --exclude-module PyQt6.QtQuick `
-    --clean `
-    main.py 2>&1 | Out-Host
+& .\.venv\Scripts\pyinstaller.exe --clean --noconfirm MikRapor.spec 2>&1 | Out-Host
 $pyExit = $LASTEXITCODE
 $ErrorActionPreference = $prevEap
 if ($pyExit -ne 0) {

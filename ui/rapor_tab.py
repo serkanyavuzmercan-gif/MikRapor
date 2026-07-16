@@ -177,7 +177,14 @@ class RaporTab(QWidget):
 
     def _calistir(self, is_fn: IsFonksiyonu) -> None:
         if self._worker is not None:
-            self._worker.iptal_et()
+            eski = self._worker
+            eski.iptal_et()
+            try:
+                eski.bitti.disconnect(self._on_bitti)
+                eski.hata.disconnect(self._on_hata)
+                eski.ilerleme.disconnect(self._on_ilerleme)
+            except TypeError:
+                pass
             self._worker = None
         if self._chrome is not None:
             self._chrome.set_getir_aktif(False)
@@ -193,9 +200,13 @@ class RaporTab(QWidget):
         worker.start()
 
     def _on_ilerleme(self, mesaj: str) -> None:
+        if self.sender() is not None and self.sender() is not self._worker:
+            return
         self._durum(mesaj)
 
     def _on_bitti(self, sonuc: object) -> None:
+        if self.sender() is not None and self.sender() is not self._worker:
+            return
         if self._chrome is not None:
             self._chrome.set_csv_aktif(True)
             if self.PDF_DESTEK:
@@ -203,6 +214,8 @@ class RaporTab(QWidget):
         self._goster(sonuc)
 
     def _on_hata(self, mesaj: str) -> None:
+        if self.sender() is not None and self.sender() is not self._worker:
+            return
         self._durum("Rapor getirilemedi.", "hata")
         QMessageBox.warning(self, "Mikro Hatası", mesaj)
 

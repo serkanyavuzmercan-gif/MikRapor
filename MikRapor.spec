@@ -1,16 +1,43 @@
 # -*- mode: python ; coding: utf-8 -*-
-
+# Tek kaynak: build_exe.ps1 bu spec'i çağırır. Asset / hiddenimport / exclude buradan yönetilir.
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-        datas=[('assets\\icon.ico', 'assets'), ('assets\\logo.png', 'assets'), ('assets\\logo-mark.png', 'assets'), ('assets\\empty-hero.png', 'assets'), ('assets\\empty-bilanco.png', 'assets'), ('assets\\anasayfalogo.png', 'assets'), ('assets\\mikrapor-hero-illustration.png', 'assets')],
-    hiddenimports=['matplotlib.backends.backend_qtagg', 'reportlab', 'PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets', 'PyQt6.QtNetwork'],
+    datas=[
+        ('assets\\icon.ico', 'assets'),
+        ('assets\\logo.png', 'assets'),
+        ('assets\\logo-mark.png', 'assets'),
+        ('assets\\empty-hero.png', 'assets'),
+        ('assets\\empty-bilanco.png', 'assets'),
+        ('assets\\anasayfalogo.png', 'assets'),
+        ('assets\\mikrapor-hero-illustration.png', 'assets'),
+    ],
+    hiddenimports=[
+        'matplotlib.backends.backend_qtagg',
+        'reportlab',
+        'PyQt6.QtCore',
+        'PyQt6.QtGui',
+        'PyQt6.QtWidgets',
+        'PyQt6.QtNetwork',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['PyQt6.Qt3DAnimation', 'PyQt6.Qt3DCore', 'PyQt6.Qt3DExtras', 'PyQt6.Qt3DInput', 'PyQt6.Qt3DLogic', 'PyQt6.Qt3DRender', 'PyQt6.QtWebEngine', 'PyQt6.QtWebEngineCore', 'PyQt6.QtWebEngineWidgets', 'PyQt6.QtQml', 'PyQt6.QtQuick'],
+    excludes=[
+        'PyQt6.Qt3DAnimation',
+        'PyQt6.Qt3DCore',
+        'PyQt6.Qt3DExtras',
+        'PyQt6.Qt3DInput',
+        'PyQt6.Qt3DLogic',
+        'PyQt6.Qt3DRender',
+        'PyQt6.QtWebEngine',
+        'PyQt6.QtWebEngineCore',
+        'PyQt6.QtWebEngineWidgets',
+        'PyQt6.QtQml',
+        'PyQt6.QtQuick',
+    ],
     noarchive=False,
     optimize=0,
 )

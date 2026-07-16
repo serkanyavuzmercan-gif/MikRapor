@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import ssl
 import time
 import urllib.error
@@ -28,6 +29,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from infra.config import MikroConfig
+
+_log = logging.getLogger(__name__)
+_tls_uyari_verildi = False
 
 DEFAULT_TIMEOUT = 60.0
 DEFAULT_MAX_ATTEMPTS = 4
@@ -160,6 +164,14 @@ class MikroClient:
         max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     ) -> None:
         self.cfg = cfg.normalized()
+        global _tls_uyari_verildi
+        if not self.cfg.tls_dogrula and not _tls_uyari_verildi:
+            _tls_uyari_verildi = True
+            _log.warning(
+                "TLS sertifika doğrulaması kapalı (tls_dogrula=False). "
+                "Self-signed Mikro kurulumları için yaygın; geçerli sertifika varsa "
+                "Mikro Ayarları'ndan doğrulamayı açın."
+            )
         self._transport = transport or _urllib_transport_factory(self.cfg.tls_dogrula)
         self.timeout = timeout
         self.max_attempts = max_attempts
@@ -220,7 +232,9 @@ class MikroClient:
         """SqlVeriOkuV2 ile salt-okunur ham SQL çalıştırır."""
         auth = build_auth(self.cfg)
         if firma_kodu is not None:
-            auth = {**auth, "FirmaKodu": str(firma_kodu).strip()}
+            from infra.sql_params import firma_kodu_guvenli
+
+            auth = {**auth, "FirmaKodu": firma_kodu_guvenli(str(firma_kodu))}
         body = {"Mikro": auth, "SQLSorgu": sql}
         return self.request("SqlVeriOkuV2", body, timeout=timeout, max_attempts=max_attempts)
 
