@@ -138,6 +138,7 @@ QPushButton {{
     border-radius: 8px;
     padding: 9px 16px;
     font-weight: 600;
+    text-align: center;
 }}
 QPushButton:hover {{ background-color: #f3f5f8; border-color: #9aa6b6; }}
 QPushButton:pressed {{ background-color: #e9edf3; }}
@@ -147,6 +148,7 @@ QPushButton#primaryBtn {{
     background-color: {ACCENT};
     color: #ffffff;
     border: 1px solid {ACCENT};
+    text-align: center;
 }}
 QPushButton#primaryBtn:hover {{
     background-color: {ACCENT_HOVER};
@@ -162,7 +164,7 @@ QPushButton#primaryBtn:disabled {{
     border-color: #99d5cf;
 }}
 
-/* Empty-state CTA — dolu teal (mockup A); widget QSS app stillerini ezmesin diye ayrı id */
+/* Empty-state CTA — dolu teal; içerik _EmptyCtaButton ile ortalanır */
 QPushButton#emptyCtaBtn {{
     background-color: {ACCENT};
     color: #ffffff;
@@ -170,9 +172,12 @@ QPushButton#emptyCtaBtn {{
     border-radius: 10px;
     font-size: 15px;
     font-weight: 700;
-    padding: 14px 36px;
-    min-width: 240px;
+    padding: 0;
+    min-width: 300px;
+    max-width: 300px;
     min-height: 48px;
+    max-height: 48px;
+    text-align: center;
 }}
 QPushButton#emptyCtaBtn:hover {{
     background-color: {ACCENT_HOVER};

@@ -60,7 +60,7 @@ class ChromeToolbar(QFrame):
         self._btn_iptal.clicked.connect(self.iptal_clicked.emit)
         lay.addWidget(self._btn_iptal)
 
-        self._btn_pdf = QPushButton(" PDF")
+        self._btn_pdf = QPushButton("PDF")
         self._btn_pdf.setObjectName("ghostBtn")
         self._btn_pdf.setIcon(icon_pdf(15))
         self._btn_pdf.setIconSize(QSize(15, 15))
@@ -68,7 +68,7 @@ class ChromeToolbar(QFrame):
         self._btn_pdf.clicked.connect(self.pdf_clicked.emit)
         lay.addWidget(self._btn_pdf)
 
-        self._btn_csv = QPushButton(" CSV")
+        self._btn_csv = QPushButton("CSV")
         self._btn_csv.setObjectName("ghostBtn")
         self._btn_csv.setIcon(icon_csv(15))
         self._btn_csv.setIconSize(QSize(15, 15))
