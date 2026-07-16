@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from PyQt6.QtWidgets import QFormLayout, QFrame, QHBoxLayout, QLabel, QPushButton, QSpinBox, QVBoxLayout
+from PyQt6.QtWidgets import (
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QSpinBox,
+    QVBoxLayout,
+)
 
 from domain.gercek_durum import build_gercek_durum
 from domain.mizan_bilanco import tl
@@ -21,6 +32,7 @@ from infra.mikro_fetch import (
 )
 from ui.bilesenler import para_spin, yuzde_spin
 from ui.rapor_tab import RaporTab, firma_getir
+from ui.tahmin_pdf import export_tahmin_pdf
 from ui.tahmin_view import build_tahmin_widget
 from ui.worker import IsFonksiyonu
 
@@ -38,6 +50,7 @@ class TahminTab(RaporTab):
     BASLARKEN = "Geçmiş veri çekiliyor (satış, marj, nakit, gider)…"
     DONEM_ETIKET = "Geçmiş veri dönemi:"
     TARIH_GENISLIK = 120
+    PDF_DESTEK = True
 
     _t: Tahmin | None = None
 
@@ -135,11 +148,26 @@ class TahminTab(RaporTab):
         self._icerik_koy(build_tahmin_widget(self._t, firma=self._firma))
         if self._chrome is not None:
             self._chrome.set_csv_aktif(True)
+            self._chrome.set_pdf_aktif(True)
         self._durum(
             f"Tahmin: {self._sp_ufuk.value()} ay · toplam ciro {tl(self._t.toplam_ciro)} · "
             f"dönem sonu nakit {tl(self._t.son_nakit)}",
             "hata" if self._t.en_dusuk_nakit < 0 else "iyi",
         )
+
+    def _on_pdf(self) -> None:
+        if not self._t:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "PDF Kaydet", f"tahmin_{self._t.varsayim.baslangic_ay}.pdf", "PDF (*.pdf)")
+        if not path:
+            return
+        try:
+            export_tahmin_pdf(self._t, path, firma=self._firma)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "PDF Hatası", str(exc))
+            return
+        self._durum(f"PDF kaydedildi: {Path(path).name}", "iyi")
 
     def _csv_dosya_adi(self) -> str:
         return f"tahmin_{self._t.varsayim.baslangic_ay}.csv" if self._t else "tahmin.csv"

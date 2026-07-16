@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+
+from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
 from domain.gelir_tablosu import build_gelir_tablosu
 from domain.gercek_durum import GercekDurum, build_gercek_durum, gercek_durum_csv
@@ -19,6 +22,7 @@ from infra.mikro_fetch import (
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
+from ui.gercek_durum_pdf import export_gercek_durum_pdf
 from ui.gercek_durum_settings_dialog import GercekDurumAyarlarDialog
 from ui.gercek_durum_view import build_gercek_durum_widget
 from ui.rapor_tab import RaporTab, firma_getir
@@ -37,6 +41,7 @@ class GercekDurumTab(RaporTab):
     )
     GETIR_ETIKET = "Analizi Getir"
     BASLARKEN = "Stok, banka ve bakiye hareketleri çekiliyor…"
+    PDF_DESTEK = True
 
     EKSTRA_ETIKET = "Ayarlar"
 
@@ -108,6 +113,20 @@ class GercekDurumTab(RaporTab):
             " · ".join(parts),
             "uyari" if gd.veri_eksik else ("iyi" if gd.gercek_brut_kar >= 0 else "hata"),
         )
+
+    def _on_pdf(self) -> None:
+        if not self._gd:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "PDF Kaydet", f"nakit_karlilik_{self._gd.bas}_{self._gd.bit}.pdf", "PDF (*.pdf)")
+        if not path:
+            return
+        try:
+            export_gercek_durum_pdf(self._gd, path, firma=self._firma)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "PDF Hatası", str(exc))
+            return
+        self._durum(f"PDF kaydedildi: {Path(path).name}", "iyi")
 
     def _csv_dosya_adi(self) -> str:
         return f"nakit_karlilik_{self._gd.bas}_{self._gd.bit}.csv" if self._gd else "nakit_karlilik.csv"

@@ -92,12 +92,28 @@ class TestUiSmoke(unittest.TestCase):
             buyume_yuzde=2.0, marj_yuzde=20.0, sabit_gider=50000.0, ufuk_ay=6))
         self.assertIsNotNone(build_tahmin_widget(t, firma="Test A.Ş."))
 
+    def test_trend_view(self) -> None:
+        from domain.gercek_durum import AyTrend
+        from domain.mizan_bilanco import build_bilanco
+        from domain.trend import build_trend
+        from ui.trend_view import build_trend_widget
+        b = build_bilanco([
+            {"hesap_kodu": "102", "borc": 10000.0, "alacak": 0.0},
+            {"hesap_kodu": "320", "borc": 0.0, "alacak": 4000.0},
+            {"hesap_kodu": "500", "borc": 0.0, "alacak": 6000.0},
+        ], asof="2026-06-30")
+        tr = build_trend(
+            aylik=[AyTrend(ay="2026-01", satis=10000, alis=6000, nakit_giren=8000, nakit_cikan=5000)],
+            bilanco=b, bas="2026-01-01", bit="2026-06-30",
+        )
+        self.assertIsNotNone(build_trend_widget(tr, firma="Test A.Ş."))
+
     # ------------------------------------------------- pencere ve diyaloglar
     def test_ana_pencere(self) -> None:
         from ui.app import MikRaporWindow
         w = MikRaporWindow()
         try:
-            self.assertEqual(w._tabs.count(), 6)  # 6 rapor sekmesi
+            self.assertEqual(w._tabs.count(), 7)  # 7 rapor sekmesi
         finally:
             w.close()
 

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+
+from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
 from domain.mizan_bilanco import tl
 from domain.tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak, tahsilat_alacak_csv
@@ -10,6 +13,7 @@ from infra.config import MikroConfig
 from infra.mikro_api import MikroClient
 from infra.mikro_fetch import fetch_acik_kalemler, fetch_cari_vade_gun
 from ui.rapor_tab import RaporTab, firma_getir
+from ui.tahsilat_alacak_pdf import export_tahsilat_alacak_pdf
 from ui.tahsilat_alacak_view import build_tahsilat_alacak_widget
 from ui.worker import IsFonksiyonu
 
@@ -25,6 +29,7 @@ class TahsilatAlacakTab(RaporTab):
         "takvimi (ne girecek − ne çıkacak). Resmi GL'ye dokunmaz.")
     GETIR_ETIKET = "Tahsilat && Alacak Getir"
     BASLARKEN = "Cari açık kalemler çekiliyor…"
+    PDF_DESTEK = True
 
     _ta: TahsilatAlacak | None = None
 
@@ -63,6 +68,21 @@ class TahsilatAlacakTab(RaporTab):
             "uyari" if ta.cari_sayisi == 0 else
             ("hata" if ta.alacak_gecikmis > 0.005 else "iyi"),
         )
+
+    def _on_pdf(self) -> None:
+        if not self._ta:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "PDF Kaydet",
+            f"tahsilat_alacak_{self._ta.bas}_{self._ta.bit}.pdf", "PDF (*.pdf)")
+        if not path:
+            return
+        try:
+            export_tahsilat_alacak_pdf(self._ta, path, firma=self._firma)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "PDF Hatası", str(exc))
+            return
+        self._durum(f"PDF kaydedildi: {Path(path).name}", "iyi")
 
     def _csv_dosya_adi(self) -> str:
         return f"tahsilat_alacak_{self._ta.bas}_{self._ta.bit}.csv" if self._ta else "tahsilat_alacak.csv"

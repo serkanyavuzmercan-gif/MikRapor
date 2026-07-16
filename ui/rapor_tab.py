@@ -192,6 +192,7 @@ class RaporTab(QWidget):
             except TypeError:
                 pass
             self._worker = None
+            eski.wait(3000)
         if self._chrome_aktif():
             assert self._chrome is not None
             self._chrome.set_getir_aktif(False)
@@ -236,8 +237,17 @@ class RaporTab(QWidget):
 
     def _on_iptal(self) -> None:
         if self._worker is not None:
-            self._worker.iptal_et()
+            w = self._worker
+            w.iptal_et()
+            try:
+                w.bitti.disconnect(self._on_bitti)
+                w.hata.disconnect(self._on_hata)
+                w.ilerleme.disconnect(self._on_ilerleme)
+            except TypeError:
+                pass
             self._worker = None
+            w.wait(3000)
+            w.deleteLater()
         if self._chrome_aktif() and self._chrome is not None:
             self._chrome.set_getir_aktif(True)
             self._chrome.set_iptal_gorunur(False)

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+
+from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis, build_nakit_akis, nakit_akis_csv
 from infra.config import MikroConfig
 from infra.mikro_api import MikroClient
 from infra.mikro_fetch import fetch_cari_bakiye, fetch_nakit_akis_hareket, fetch_nakit_delta
+from ui.nakit_akis_pdf import export_nakit_akis_pdf
 from ui.nakit_akis_view import build_nakit_akis_widget
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.worker import IsFonksiyonu
@@ -25,6 +29,7 @@ class NakitAkisTab(RaporTab):
         "<span style='color:#9aa0a8;'>Açılış → girişler − çıkışlar → kapanış + aylık trend.</span>")
     GETIR_ETIKET = "Nakit Akışı Getir"
     BASLARKEN = "Banka/kasa hareketleri çekiliyor…"
+    PDF_DESTEK = True
 
     _na: NakitAkis | None = None
 
@@ -62,6 +67,20 @@ class NakitAkisTab(RaporTab):
             " · ".join(parts),
             "uyari" if na.hareket_sayisi == 0 else ("iyi" if na.net_akis >= 0 else "hata"),
         )
+
+    def _on_pdf(self) -> None:
+        if not self._na:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "PDF Kaydet", f"nakit_akis_{self._na.bas}_{self._na.bit}.pdf", "PDF (*.pdf)")
+        if not path:
+            return
+        try:
+            export_nakit_akis_pdf(self._na, path, firma=self._firma)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "PDF Hatası", str(exc))
+            return
+        self._durum(f"PDF kaydedildi: {Path(path).name}", "iyi")
 
     def _csv_dosya_adi(self) -> str:
         return f"nakit_akis_{self._na.bas}_{self._na.bit}.csv" if self._na else "nakit_akis.csv"

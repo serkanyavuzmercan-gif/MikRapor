@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 
-from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
@@ -23,7 +23,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from infra.config import load_config
+from infra.config import MikroConfig, load_config
+from infra.mikro_api import MikroClient
 from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
 from ui.icons import icon_gear
@@ -37,6 +38,8 @@ from ui.tabs.gercek_durum_tab import GercekDurumTab
 from ui.tabs.nakit_akis_tab import NakitAkisTab
 from ui.tabs.tahmin_tab import TahminTab
 from ui.tabs.tahsilat_alacak_tab import TahsilatAlacakTab
+from ui.tabs.trend_tab import TrendTab
+from ui.worker import RaporWorker
 
 INSTANCE_KEY = "MercanSoftware.MikRapor.SingleInstance"
 
@@ -86,7 +89,9 @@ class MikRaporWindow(QMainWindow):
         self.setMinimumSize(960, 640)
         self.resize(1220, 840)
         self._donem = DonemDurumu()
+        self._ping_worker: RaporWorker | None = None
         self._build()
+        QTimer.singleShot(400, self._refresh_conn_status)
 
     def _build(self) -> None:
         central = QWidget()
@@ -132,7 +137,8 @@ class MikRaporWindow(QMainWindow):
         self._conn.setObjectName("connStatus")
         header.addWidget(self._conn)
         layout.addWidget(brand_bar)
-        self._refresh_conn_status()
+        self._conn.setText("○  Bağlantı kontrol ediliyor…")
+        self._conn.setProperty("connected", False)
 
         # 2) Ortak chrome toolbar (Design A — sekmelerin ÜSTÜNDE)
         self._chrome = ChromeToolbar(self._donem)
@@ -151,6 +157,7 @@ class MikRaporWindow(QMainWindow):
         self._tabs.addTab(TahsilatAlacakTab(self._donem), "Tahsilat && Alacak")
         self._tabs.addTab(NakitAkisTab(self._donem), "Nakit Akış")
         self._tabs.addTab(TahminTab(self._donem), "Tahmin")
+        self._tabs.addTab(TrendTab(self._donem), "Trend && Oranlar")
         self._tabs.currentChanged.connect(self._on_tab_degisti)
         layout.addWidget(self._tabs, stretch=1)
         self._on_tab_degisti(0)
@@ -189,25 +196,59 @@ class MikRaporWindow(QMainWindow):
         if tab is not None:
             tab._on_ekstra()
 
-    def _refresh_conn_status(self) -> None:
-        cfg = load_config()
-        if cfg.is_complete():
-            kod = cfg.firma_kodu or "—"
-            ad = (cfg.firma_adi or "").strip()
-            label = f"●  Bağlı · Firma {kod}" + (f" · {ad[:28]}" if ad else "")
-            self._conn.setText(label)
-            self._conn.setProperty("connected", True)
-        else:
-            self._conn.setText("○  Bağlantı ayarlanmadı")
-            self._conn.setProperty("connected", False)
+    def _set_conn(self, text: str, connected: bool) -> None:
+        self._conn.setText(text)
+        self._conn.setProperty("connected", connected)
         self._conn.style().unpolish(self._conn)
         self._conn.style().polish(self._conn)
+
+    def _refresh_conn_status(self) -> None:
+        """Ayarlar eksikse ayarlanmadı; doluysa arka planda Mikro ping ile doğrula."""
+        cfg = load_config()
+        if not cfg.is_complete():
+            self._set_conn("○  Bağlantı ayarlanmadı", False)
+            return
+        self._set_conn("◌  Kontrol ediliyor…", False)
+        if self._ping_worker is not None and self._ping_worker.isRunning():
+            self._ping_worker.iptal_et()
+            self._ping_worker.wait(2000)
+
+        def is_fn(bildir) -> MikroConfig:
+            bildir("Ping…")
+            MikroClient(cfg).ping()
+            return cfg
+
+        worker = RaporWorker(is_fn, self)
+        self._ping_worker = worker
+        worker.bitti.connect(self._on_ping_ok)
+        worker.hata.connect(self._on_ping_hata)
+        worker.finished.connect(lambda w=worker: self._on_ping_bitti(w))
+        worker.start()
+
+    def _on_ping_ok(self, cfg: object) -> None:
+        if not isinstance(cfg, MikroConfig):
+            return
+        kod = cfg.firma_kodu or "—"
+        ad = (cfg.firma_adi or "").strip()
+        label = f"●  Bağlı · Firma {kod}" + (f" · {ad[:28]}" if ad else "")
+        self._set_conn(label, True)
+
+    def _on_ping_hata(self, _msg: str) -> None:
+        self._set_conn("○  Bağlanılamadı", False)
+
+    def _on_ping_bitti(self, worker: RaporWorker) -> None:
+        if worker is self._ping_worker:
+            self._ping_worker = None
+        worker.deleteLater()
 
     def _on_ayarlar(self) -> None:
         if MikroAyarlarDialog(self).exec():
             self._refresh_conn_status()
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 — Qt API
+        if self._ping_worker is not None and self._ping_worker.isRunning():
+            self._ping_worker.iptal_et()
+            self._ping_worker.wait(3000)
         for i in range(self._tabs.count()):
             w = self._tabs.widget(i)
             if isinstance(w, RaporTab):

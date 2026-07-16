@@ -1,6 +1,6 @@
 # MikRapor
 
-Mikro ERP'den **anında finansal tablolar** üreten masaüstü uygulaması (PyQt6). Genel muhasebe verinizden, seçtiğiniz tarih/dönem için **bilanço**, **gelir tablosu**, fiili **nakit & kârlılık**, **tahsilat & alacak**, **nakit akış** ve geleceğe dönük **tahmin** raporlarını saniyeler içinde hazırlar; kurumsal **PDF** ve **CSV** olarak dışa aktarır.
+Mikro ERP'den **anında finansal tablolar** üreten masaüstü uygulaması (PyQt6). Genel muhasebe verinizden, seçtiğiniz tarih/dönem için **bilanço**, **gelir tablosu**, fiili **nakit & kârlılık**, **tahsilat & alacak**, **nakit akış**, **tahmin** ve **trend & oranlar** raporlarını saniyeler içinde hazırlar; kurumsal **PDF** ve **CSV** olarak dışa aktarır.
 
 Her kullanıcı uygulamayı **kendi ağında** çalıştırır ve **kendi Mikro sunucusuna** bağlanır. Bağlantı bilgileri yalnızca o bilgisayarda saklanır, dışarı gönderilmez.
 
@@ -12,7 +12,7 @@ Her kullanıcı uygulamayı **kendi ağında** çalıştırır ve **kendi Mikro 
 - **Tahsilat & Alacak** — cari hareketlerden alacak/borç yaşlandırması (vadeye göre FIFO açık kalem), dönem tahsilat/ödeme performansı (tahsilat oranı, DSO/DPO) ve ileriye dönük net vade takvimi (ne girecek − ne çıkacak). En çok alacaklı/borçlu cariler.
 - **Nakit Akış** — banka ve kasadan fiilen geçen para, karşı tarafına göre kategorize: müşteri tahsilatı, satıcı ödemesi, kredi kullanım/ödemesi, vergi, SGK, personel/maaş, genel giderler. Açılış → girişler − çıkışlar → kapanış nakit (devirden bağımsız reconcile), kredi özeti, "diğer" kalemin hesap-kodu kırılımı ve aylık trend. Banka↔banka/kasa iç transferleri hariç; kredi hesabına giden para kredi ödemesi sayılır.
 - **Tahmin** — geçmiş trendden otomatik önerilen ama düzenlenebilir varsayımlarla (aylık ciro, büyüme %, brüt marj %, sabit gider) ileriye dönük projeksiyon: tahmini ciro, brüt/net kâr ve kümülatif nakit; nakit eksiye düşerse uyarı. Ufuk 1–36 ay.
-- **Trend ve Oranlar** — *(yakında)* çok dönem karşılaştırma + finansal oranlar.
+- **Trend ve Oranlar** — aylık fiili satış/alış/nakit trendi + bilanço finansal oranları (cari, asit-test, borç/özkaynak).
 
 ## Özellikler
 
