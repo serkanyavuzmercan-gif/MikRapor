@@ -32,18 +32,19 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.resources import app_logo_pixmap, asset_path
-from ui.styles import ACCENT, ACCENT_HOVER, ACCENT_PRESSED, MUTED, NAVY
+from ui.styles import ACCENT, ACCENT_HOVER, ACCENT_PRESSED, NAVY
 
 _MARK_SIZE = 44
 _COL_W = 480
 _TITLE_MAX_W = 360
 _BODY_MAX_W = 480
-_BODY_H = 44          # sabit 2 satır bandı — yükseklik sekmeden sekmeye değişmez
+_BODY_H = 48          # sabit 2 satır — Tahmin (referans) satır aralığı
+_BODY_COLOR = "#5c6b7a"  # referans açıklama gri (Tahmin empty)
 _CTA_W = 300
 _CTA_H = 48
 _CTA_ICON = 16
 _CTA_GAP = 8
-_BOTTOM_PAD = 36      # alt kenardan boşluk
+_BOTTOM_PAD = 36
 _GAP_BRAND_TITLE = 14
 _GAP_TITLE_BODY = 10
 _GAP_BODY_CTA = 24
@@ -154,14 +155,19 @@ class _HScaleLabel(QWidget):
 
 
 class _HScaleBody(QWidget):
-    """Açıklama: sabit yükseklik (2 satır). Uzun metin önce daha geniş satıra yazılır,
-    sonra yatay ölçeklenerek banda sığdırılır — dikey layout değişmez."""
+    """Açıklama — Tahmin empty referans stili: 14px regular, gri, ortalı, 2 satır.
+
+    Sabit yükseklik; metin önce normal genişlikte kaydırılır (kısa/uzun aynı stil).
+    2 satıra sığmazsa yatay ölçeklenir — dikey cluster kaymaz.
+    """
 
     def __init__(self, text: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._text = " ".join((text or "").split())
         self._font = QFont()
         self._font.setPixelSize(14)
+        self._font.setWeight(QFont.Weight.Normal)
+        self._font.setBold(False)
         self.setFixedSize(_BODY_MAX_W, _BODY_H)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
@@ -171,20 +177,26 @@ class _HScaleBody(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         p.setFont(self._font)
-        p.setPen(QColor(MUTED))
+        p.setPen(QColor(_BODY_COLOR))
         fm = QFontMetrics(self._font)
-        line_h = fm.height()
-        # 2 satıra sığacak sanal genişlik bul (yatay ölçek için)
-        lo, hi = _BODY_MAX_W, max(_BODY_MAX_W, fm.horizontalAdvance(self._text) + 8)
+        flags = int(Qt.AlignmentFlag.AlignHCenter | Qt.TextFlag.TextWordWrap)
+
+        # 1) Normal: sabit banda kelime kaydır (Tahmin stili — ölçek yok)
+        br = fm.boundingRect(QRect(0, 0, _BODY_MAX_W, 10_000), flags, self._text)
+        if br.height() <= _BODY_H + 2:
+            opt = QTextOption(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+            opt.setWrapMode(QTextOption.WrapMode.WordWrap)
+            p.drawText(QRectF(0, 0, _BODY_MAX_W, _BODY_H), self._text, opt)
+            p.end()
+            return
+
+        # 2) Uzun metin: 2 satıra sığacak daha geniş sanal satır → yatay ölçek
+        lo, hi = _BODY_MAX_W, max(_BODY_MAX_W * 2, fm.horizontalAdvance(self._text) + 8)
         best = hi
         while lo <= hi:
             mid = (lo + hi) // 2
-            br = fm.boundingRect(
-                QRect(0, 0, mid, 10_000),
-                int(Qt.AlignmentFlag.AlignHCenter | Qt.TextFlag.TextWordWrap),
-                self._text,
-            )
-            if br.height() <= _BODY_H + 2:
+            mid_br = fm.boundingRect(QRect(0, 0, mid, 10_000), flags, self._text)
+            if mid_br.height() <= _BODY_H + 2:
                 best = mid
                 hi = mid - 1
             else:
