@@ -31,9 +31,12 @@ def build_empty_state(
     art.setAlignment(Qt.AlignmentFlag.AlignHCenter)
     art.setObjectName("emptyArt")
     art.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-    pix = QPixmap(str(asset_path("empty-hero.png")))
-    if pix.isNull():
-        pix = QPixmap(str(asset_path("empty-bilanco.png")))
+    # Öncelik sırası: kullanıcının koyduğu anasayfalogo → paketteki hero → bilanço.
+    pix = QPixmap()
+    for ad in ("anasayfalogo.png", "empty-hero.png", "empty-bilanco.png"):
+        pix = QPixmap(str(asset_path(ad)))
+        if not pix.isNull():
+            break
     if not pix.isNull():
         art.setPixmap(
             pix.scaled(
@@ -90,8 +93,8 @@ def build_empty_state(
         btn.setMinimumWidth(230)
         btn.setMinimumHeight(48)
         btn.setStyleSheet(
-            f"QPushButton#primaryBtn {{ font-size: 15px; font-weight: 700; "
-            f"padding: 12px 28px; border-radius: 10px; }}"
+            "QPushButton#primaryBtn { font-size: 15px; font-weight: 700; "
+            "padding: 12px 28px; border-radius: 10px; }"
         )
         btn.clicked.connect(on_cta)
         lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignHCenter)
