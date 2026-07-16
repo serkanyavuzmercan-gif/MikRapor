@@ -80,9 +80,7 @@ class RaporTab(QWidget):
         else:
             chrome.set_csv_aktif(False)
             chrome.set_pdf_aktif(False)
-            chrome.set_durum_mesaj("Hazır")
-            from ui.styles import OK
-            chrome.status_label().setStyleSheet(f"color: {OK}; font-weight: 600;")
+            chrome.set_durum_mesaj("")
         chrome.set_getir_aktif(self._worker is None)
         chrome.set_iptal_gorunur(self._worker is not None)
 

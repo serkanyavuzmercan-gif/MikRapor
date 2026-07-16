@@ -78,10 +78,12 @@ class ChromeToolbar(QFrame):
 
         lay.addStretch(1)
 
-        self._status = QLabel("Hazır")
+        # Rapor durumu: boşta gizli; çekim/ilerleme/sonuç/hata mesajı gelince dolar
+        self._status = QLabel("")
         self._status.setObjectName("toolbarHint")
         self._status.setStyleSheet(f"color: {OK}; font-weight: 600;")
         self._status.setWordWrap(False)
+        self._status.setVisible(False)
         lay.addWidget(self._status)
 
     def set_aktif_tab(self, tab: object | None) -> None:
@@ -122,4 +124,6 @@ class ChromeToolbar(QFrame):
         self._btn_ekstra.setVisible(gorunur)
 
     def set_durum_mesaj(self, mesaj: str) -> None:
-        self._status.setText(mesaj)
+        text = (mesaj or "").strip()
+        self._status.setText(text)
+        self._status.setVisible(bool(text))

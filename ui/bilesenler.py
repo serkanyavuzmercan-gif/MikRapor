@@ -27,8 +27,10 @@ DURUM_RENK = {
 
 
 def durum_yaz(label: QLabel, mesaj: str, tur: str = "notr") -> None:
-    label.setText(mesaj)
-    label.setStyleSheet(f"color: {DURUM_RENK.get(tur, DURUM_RENK['notr'])};")
+    text = (mesaj or "").strip()
+    label.setText(text)
+    label.setStyleSheet(f"color: {DURUM_RENK.get(tur, DURUM_RENK['notr'])}; font-weight: 600;")
+    label.setVisible(bool(text))
 
 
 def hos_geldin(
