@@ -1,32 +1,31 @@
 """
 Ortak küçük UI bileşenleri — durum renkleri, karşılama ekranı, CSV kaydetme, sayı girişleri.
 
-Sekmelerde kopyalanan yardımcılar tek yerde: renk paleti styles.py'deki açık temayla uyumludur.
+Sekmelerde kopyalanan yardımcılar tek yerde: renk paleti styles.py Teal A temasıyla uyumludur.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QLabel,
     QMessageBox,
-    QVBoxLayout,
     QWidget,
 )
 
-# Durum etiketi renkleri (açık tema — styles.py paletiyle uyumlu)
-DURUM_RENK = {
-    "notr": "#6b7280",
-    "iyi": "#15803d",
-    "uyari": "#b45309",
-    "hata": "#b91c1c",
-}
+from ui.empty_state import build_empty_state
+from ui.styles import BAD, MUTED, OK, WARN
 
-_FONT = "'Segoe UI', system-ui, sans-serif"  # Linux/macOS için fallback zinciri
+# Durum etiketi renkleri (Teal A)
+DURUM_RENK = {
+    "notr": MUTED,
+    "iyi": OK,
+    "uyari": WARN,
+    "hata": BAD,
+}
 
 
 def durum_yaz(label: QLabel, mesaj: str, tur: str = "notr") -> None:
@@ -36,24 +35,19 @@ def durum_yaz(label: QLabel, mesaj: str, tur: str = "notr") -> None:
 
 
 def hos_geldin(emoji: str, baslik: str, aciklama: str, ipucu: str = "") -> QWidget:
-    """Sekme boşken gösterilen ortalanmış karşılama widget'ı."""
-    ipucu = ipucu or "Dönemi seçin&nbsp; →&nbsp; <b style='color:#2f6fed;'>Getir</b>'e basın"
-    w = QWidget()
-    lay = QVBoxLayout(w)
-    lay.addStretch()
-    lbl = QLabel(
-        f"<div align='center' style='font-family:{_FONT};'>"
-        f"<div style='font-size:46px;'>{emoji}</div>"
-        f"<div style='font-size:22px; font-weight:800; color:#374151; margin-top:6px;'>{baslik}</div>"
-        f"<div style='color:#6b7280; margin-top:12px; line-height:160%;'>{aciklama}</div>"
-        f"<div style='color:#94a3b8; margin-top:16px; font-size:12px;'>{ipucu}</div>"
-        f"</div>"
-    )
-    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    lbl.setWordWrap(True)
-    lay.addWidget(lbl)
-    lay.addStretch()
-    return w
+    """Sekme boşken karşılama — Teal A (emoji yok; ipucu CTA metnine çevrilir)."""
+    del emoji  # geriye uyumluluk: sekmeler hâlâ EMOJI sabitini geçirir
+    cta = "Getir"
+    # İpucundan kalın CTA metnini çıkarmaya çalış
+    if "Bilanço Getir" in (ipucu or ""):
+        cta = "Bilanço Getir"
+    elif "Gelir Tablosu" in (ipucu or ""):
+        cta = "Gelir Tablosu Getir"
+    elif ipucu and "«" in ipucu:
+        pass
+    # HTML <br> temizle
+    aciklama_duz = (aciklama or "").replace("<br>", " ").replace("<br/>", " ")
+    return build_empty_state(baslik, aciklama_duz, cta_hint=cta)
 
 
 def csv_kaydet(parent: QWidget, status: QLabel, varsayilan_ad: str, icerik: str) -> None:

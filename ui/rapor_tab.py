@@ -80,7 +80,10 @@ class RaporTab(QWidget):
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(12)
 
-        controls = QHBoxLayout()
+        controls_host = QFrame()
+        controls_host.setObjectName("tabToolbar")
+        controls = QHBoxLayout(controls_host)
+        controls.setContentsMargins(14, 10, 14, 10)
         controls.setSpacing(8)
         controls.addWidget(QLabel(self.DONEM_ETIKET))
         if self.TEK_TARIH:
@@ -103,36 +106,39 @@ class RaporTab(QWidget):
         controls.addWidget(self._btn_getir)
 
         self._btn_iptal = QPushButton("İptal")
+        self._btn_iptal.setObjectName("ghostBtn")
         self._btn_iptal.setVisible(False)
         self._btn_iptal.clicked.connect(self._on_iptal)
         controls.addWidget(self._btn_iptal)
 
         if self.PDF_DESTEK:
             self._btn_pdf = QPushButton("PDF Kaydet")
+            self._btn_pdf.setObjectName("ghostBtn")
             self._btn_pdf.setEnabled(False)
             self._btn_pdf.clicked.connect(self._on_pdf)
             controls.addWidget(self._btn_pdf)
 
         self._btn_csv = QPushButton("CSV Kaydet")
+        self._btn_csv.setObjectName("ghostBtn")
         self._btn_csv.setEnabled(False)
         self._btn_csv.clicked.connect(self._on_csv)
         controls.addWidget(self._btn_csv)
 
         self._status = QLabel(self._ilk_mesaj())
-        self._status.setStyleSheet("color: #6b7280;")
+        self._status.setObjectName("toolbarHint")
+        self._status.setStyleSheet("color: #64748b;")
         self._status.setWordWrap(True)
         controls.addWidget(self._status, stretch=1)
-        layout.addLayout(controls)
+        layout.addWidget(controls_host)
 
         self._ust_alan(layout)
 
         self._empty = hos_geldin(self.EMOJI, self.BASLIK, self.ACIKLAMA, self.IPUCU)
         layout.addWidget(self._empty, stretch=1)
-        # Rapor gövdesi yerel widget'larla çizilir; dış scroll tüm sayfayı birlikte kaydırır.
         self._view = QScrollArea()
         self._view.setWidgetResizable(True)
         self._view.setFrameShape(QFrame.Shape.NoFrame)
-        self._view.setStyleSheet("QScrollArea { background: #f4f6f9; border: none; }")
+        self._view.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         self._view.setVisible(False)
         layout.addWidget(self._view, stretch=1)
 

@@ -13,6 +13,7 @@ import sys
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -22,10 +23,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from infra.config import load_config
 from ui.donem import DonemDurumu
 from ui.mikro_settings_dialog import MikroAyarlarDialog
 from ui.resources import app_icon, app_logo_pixmap
-from ui.styles import LIGHT_STYLESHEET
+from ui.styles import APP_STYLESHEET
 from ui.tabs.bilanco_tab import BilancoTab
 from ui.tabs.gelir_tablosu_tab import GelirTablosuTab
 from ui.tabs.gercek_durum_tab import GercekDurumTab
@@ -35,10 +37,6 @@ from ui.tabs.tahsilat_alacak_tab import TahsilatAlacakTab
 
 INSTANCE_KEY = "MercanSoftware.MikRapor.SingleInstance"
 
-
-# ---------------------------------------------------------------------------
-# Tek örnek (single instance)
-# ---------------------------------------------------------------------------
 
 def _try_activate_existing_instance() -> bool:
     socket = QLocalSocket()
@@ -77,10 +75,6 @@ def _start_single_instance_server(window: QMainWindow) -> QLocalServer:
     return server
 
 
-# ---------------------------------------------------------------------------
-# Ana pencere
-# ---------------------------------------------------------------------------
-
 class MikRaporWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -99,27 +93,38 @@ class MikRaporWindow(QMainWindow):
         layout.setContentsMargins(18, 14, 18, 14)
         layout.setSpacing(10)
 
-        # Üst bar: logo + MikRapor + global Mikro Ayarları
-        header = QHBoxLayout()
+        brand_bar = QFrame()
+        brand_bar.setObjectName("brandBar")
+        header = QHBoxLayout(brand_bar)
+        header.setContentsMargins(4, 2, 4, 8)
+        header.setSpacing(12)
         logo = QLabel()
-        pm = app_logo_pixmap(40)
+        pm = app_logo_pixmap(48)
         if not pm.isNull():
             logo.setPixmap(pm)
-            logo.setFixedSize(40, 40)
+            logo.setFixedSize(48, 48)
         header.addWidget(logo)
+        titles = QVBoxLayout()
+        titles.setSpacing(0)
+        titles.setContentsMargins(0, 0, 0, 0)
         baslik = QLabel("MikRapor")
         baslik.setObjectName("titleLabel")
-        header.addWidget(baslik)
-        alt = QLabel("Finansal Raporlama")
-        alt.setStyleSheet("color: #6b7280; font-size: 12px; margin-left: 4px;")
-        header.addWidget(alt)
+        titles.addWidget(baslik)
+        alt = QLabel("Mikro finansal raporlar")
+        alt.setObjectName("brandSubtitle")
+        titles.addWidget(alt)
+        header.addLayout(titles)
         header.addStretch()
+        self._conn = QLabel()
+        self._conn.setObjectName("connStatus")
+        header.addWidget(self._conn)
         btn_ayar = QPushButton("Mikro Ayarları")
+        btn_ayar.setObjectName("ghostBtn")
         btn_ayar.clicked.connect(self._on_ayarlar)
         header.addWidget(btn_ayar)
-        layout.addLayout(header)
+        layout.addWidget(brand_bar)
+        self._refresh_conn_status()
 
-        # Sekmeler — her rapor kendi modülünde (ortak dönem)
         self._tabs = QTabWidget()
         self._tabs.addTab(BilancoTab(self._donem), "Anında Bilanço")
         self._tabs.addTab(GelirTablosuTab(self._donem), "Gelir Tablosu")
@@ -129,13 +134,28 @@ class MikRaporWindow(QMainWindow):
         self._tabs.addTab(TahminTab(self._donem), "Tahmin")
         layout.addWidget(self._tabs, stretch=1)
 
+    def _refresh_conn_status(self) -> None:
+        cfg = load_config()
+        if cfg.is_complete():
+            kod = cfg.firma_kodu or "—"
+            ad = (cfg.firma_adi or "").strip()
+            label = f"Bağlı · Firma {kod}" + (f" · {ad[:28]}" if ad else "")
+            self._conn.setText(label)
+            self._conn.setProperty("connected", True)
+        else:
+            self._conn.setText("Bağlantı ayarlanmadı")
+            self._conn.setProperty("connected", False)
+        self._conn.style().unpolish(self._conn)
+        self._conn.style().polish(self._conn)
+
     def _on_ayarlar(self) -> None:
-        MikroAyarlarDialog(self).exec()
+        if MikroAyarlarDialog(self).exec():
+            self._refresh_conn_status()
 
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setStyleSheet(LIGHT_STYLESHEET)
+    app.setStyleSheet(APP_STYLESHEET)
     app.setWindowIcon(app_icon())
     if _try_activate_existing_instance():
         return 0

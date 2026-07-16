@@ -24,7 +24,7 @@ class BilancoTab(RaporTab):
     BASLIK = "Anında Bilanço"
     ACIKLAMA = ("Mikro genel muhasebe verinizden, seçtiğiniz tarih itibarıyla<br>"
                 "bilançoyu saniyeler içinde üretir.")
-    IPUCU = "Tarihi seçin&nbsp; →&nbsp; <b style='color:#2f6fed;'>Bilanço Getir</b>'e basın"
+    IPUCU = "Tarihi seçin&nbsp; →&nbsp; <b style='color:#0f766e;'>Bilanço Getir</b>'e basın"
     GETIR_ETIKET = "Bilanço Getir"
     BASLARKEN = "GL mizan çekiliyor…"
     DONEM_ETIKET = "Tarih itibarıyla:"
