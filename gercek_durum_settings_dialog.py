@@ -23,9 +23,9 @@ from config import config_path
 from gercek_durum_ayarlar import (
     ALACAK_BORC_SECENEKLERI,
     ALIS_BAZI_SECENEKLERI,
-    GercekDurumAyarlar,
     NAKIT_KAYNAK_SECENEKLERI,
     SATIS_BAZI_SECENEKLERI,
+    GercekDurumAyarlar,
     load_gercek_durum_ayarlar,
     save_gercek_durum_ayarlar,
 )

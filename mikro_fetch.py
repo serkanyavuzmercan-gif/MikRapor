@@ -16,8 +16,9 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
-from mikro_api import MikroAPIError, MikroClient, get_row_value, parse_sql_rows
 from cari_vade import hesapla_vade_gun
+from mikro_api import MikroAPIError, MikroClient, get_row_value, parse_sql_rows
+from ortak import to_float as _f_local
 
 
 def fetch_firma_adi(client: MikroClient) -> str:
@@ -478,10 +479,3 @@ def fetch_nakit_delta(client: MikroClient, bas: str, bit: str) -> float:
     if rows:
         return _f_local(get_row_value(rows[0], "delta", "DELTA"))
     return 0.0
-
-
-def _f_local(v: object) -> float:
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return 0.0

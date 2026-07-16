@@ -21,6 +21,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from mizan_bilanco import ana_hesap, tl
+from ortak import csv_sayi, yuzde
+from ortak import to_float as _f
 
 HESAP_ADLARI_GELIR: dict[str, str] = {
     "600": "Yurtiçi Satışlar", "601": "Yurtdışı Satışlar", "602": "Diğer Gelirler",
@@ -45,20 +47,8 @@ HESAP_ADLARI_GELIR: dict[str, str] = {
 }
 
 
-def _f(v: object) -> float:
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return 0.0
-
-
 def _hesap_adi(kod: str) -> str:
     return HESAP_ADLARI_GELIR.get(kod, f"{kod} Hesabı")
-
-
-def yuzde(v: float) -> str:
-    """12.5 -> '%12,5' (Türkçe ondalık)."""
-    return ("%" + f"{v:.1f}").replace(".", ",")
 
 
 @dataclass
@@ -190,8 +180,7 @@ def build_gelir_tablosu(rows: list[dict], bas: str = "", bit: str = "") -> Gelir
 
 def gelir_tablosu_csv(gt: GelirTablosu) -> str:
     """Gelir tablosunu CSV'ye çevirir (; ayraç, Türkçe ondalık — TR Excel uyumlu)."""
-    def s(v: float) -> str:
-        return f"{v:.2f}".replace(".", ",")
+    s = csv_sayi
 
     out = ["Tür;Açıklama;Tutar (TL)"]
     out.append(f"DÖNEM;{gt.bas} - {gt.bit};")

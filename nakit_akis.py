@@ -16,7 +16,9 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from gercek_durum import _f, _i
+from ortak import csv_sayi
+from ortak import to_float as _f
+from ortak import to_int as _i
 
 # Karşı taraf kod öneki (3 hane) → kategori. 'KRD' = kredi hesabı sentinel'i (fetch'ten gelir).
 _PREFIX_KATEGORI = {
@@ -172,8 +174,7 @@ def build_nakit_akis(
 
 def nakit_akis_csv(na: NakitAkis) -> str:
     """Nakit Akış özetini CSV'ye çevirir (; ayraç, Türkçe ondalık — TR Excel uyumlu)."""
-    def s(v: float) -> str:
-        return f"{v:.2f}".replace(".", ",")
+    s = csv_sayi
 
     out = ["Bölüm;Kalem;Tutar (TL)"]
     out.append(f"DÖNEM;{na.bas} - {na.bit};")

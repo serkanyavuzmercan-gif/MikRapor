@@ -20,7 +20,10 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from gercek_durum import _muh_sinifi, _f, _i
+from ortak import csv_sayi
+from ortak import muh_sinifi as _muh_sinifi
+from ortak import to_float as _f
+from ortak import to_int as _i
 
 # Yaşlandırma kovaları — vade gününe göre gecikme (asof − vade).
 AGING_KOVALAR = ("Vadesi gelmemiş", "1–30 gün", "31–60 gün", "61–90 gün", "90+ gün")
@@ -65,11 +68,6 @@ def _tarih(v: object) -> date | None:
         return None
     # Mikro boş tarihi 1899-12-30 sentinel'i olarak tutabilir → yok say.
     return d if d.year >= 1900 else None
-
-
-def tl0(v: float) -> str:
-    """Yuvarlanmış TL gösterimi (Türkçe binlik) — view dışı CLI/test için."""
-    return f"{v:,.0f}".replace(",", ".")
 
 
 @dataclass
@@ -325,8 +323,7 @@ def _gun(v: float | None) -> str:
 
 def tahsilat_alacak_csv(ta: TahsilatAlacak) -> str:
     """Tahsilat & Alacak özetini CSV'ye çevirir (; ayraç, Türkçe ondalık — TR Excel uyumlu)."""
-    def s(v: float | None) -> str:
-        return "" if v is None else f"{v:.2f}".replace(".", ",")
+    s = csv_sayi
 
     out = ["Bölüm;Kalem;Tutar (TL)"]
     out.append(f"DÖNEM;{ta.bas} - {ta.bit} ({ta.donem_gun} gün);")

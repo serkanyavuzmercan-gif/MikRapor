@@ -21,9 +21,12 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from mizan_bilanco import Bilanco
-
 from gercek_durum_ayarlar import GercekDurumAyarlar
+from mizan_bilanco import Bilanco
+from ortak import csv_sayi, yuzde
+from ortak import muh_sinifi as _muh_sinifi
+from ortak import to_float as _f
+from ortak import to_int as _i
 
 # --- Hareket sınıflama (MIKRO-SEMA-NOTLARI ile doğrulanmış tip/evraktip kodları) ---
 SATIS_TIP = 1   # çıkış
@@ -54,25 +57,6 @@ _NAKIT_ANA = frozenset({"100", "101", "102", "108"})
 _CARI_CINS = 0
 _BANKA_CINS = 2
 _KASA_CINS = 4
-
-
-def _f(v: object) -> float:
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _i(v: object) -> int:
-    try:
-        return int(float(v))
-    except (TypeError, ValueError):
-        return -1
-
-
-def yuzde(v: float) -> str:
-    """12.5 -> '%12,5' (Türkçe ondalık)."""
-    return ("%" + f"{v:.1f}").replace(".", ",")
 
 
 @dataclass
@@ -319,16 +303,6 @@ def _nakit_gl_ayir(b: Bilanco) -> dict[str, float]:
         elif s.ana in ("102", "108"):
             banka += s.tutar
     return {"nakit_mevcut": banka + kasa, "nakit_banka": banka, "nakit_kasa": kasa}
-
-
-def _muh_sinifi(muh_kod: str) -> str:
-    """cari_muh_kod / ban_muh_kod ön eki → müşteri veya satıcı."""
-    ana = str(muh_kod or "").strip().split(".")[0][:3]
-    if ana in ("320", "321", "329"):
-        return "supplier"
-    if ana in ("120", "121"):
-        return "customer"
-    return ""
 
 
 def _cari_kovala(
@@ -599,8 +573,7 @@ def build_gercek_durum(
 
 def gercek_durum_csv(gd: GercekDurum) -> str:
     """Nakit & Kârlılık özetini CSV'ye çevirir (; ayraç, Türkçe ondalık — TR Excel uyumlu)."""
-    def s(v: float | None) -> str:
-        return "" if v is None else f"{v:.2f}".replace(".", ",")
+    s = csv_sayi
 
     out = ["Bölüm;Kalem;Tutar (TL)"]
     out.append(f"DÖNEM;{gd.bas} - {gd.bit} (satış bazı: {gd.satis_bazi});")

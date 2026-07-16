@@ -16,7 +16,6 @@ from PyQt6.QtCore import QDate, QObject, Qt, pyqtSignal
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
-    QComboBox,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
@@ -52,22 +51,22 @@ from mikro_fetch import (
     fetch_gelir_tablosu,
     fetch_mizan,
     fetch_nakit_akis_hareket,
-    fetch_nakit_delta,
     fetch_nakit_aylik,
+    fetch_nakit_delta,
     fetch_nakit_ozet,
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
-from tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak, tahsilat_alacak_csv
-from tahsilat_alacak_view import build_tahsilat_alacak_widget
-from nakit_akis import NakitAkis, build_nakit_akis, nakit_akis_csv, _nakit_bakiye
-from nakit_akis_view import build_nakit_akis_widget
-from tahmin import Tahmin, TahminVarsayim, build_tahmin, oner_varsayim, tahmin_csv
-from tahmin_view import build_tahmin_widget
 from mikro_settings_dialog import MikroAyarlarDialog
 from mizan_bilanco import Bilanco, bilanco_csv, build_bilanco, tl
+from nakit_akis import NakitAkis, _nakit_bakiye, build_nakit_akis, nakit_akis_csv
+from nakit_akis_view import build_nakit_akis_widget
 from resources import app_icon, app_logo_pixmap
 from styles import DARK_STYLESHEET
+from tahmin import Tahmin, TahminVarsayim, build_tahmin, oner_varsayim, tahmin_csv
+from tahmin_view import build_tahmin_widget
+from tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak, tahsilat_alacak_csv
+from tahsilat_alacak_view import build_tahsilat_alacak_widget
 from tarih_secici import TarihSecici
 
 INSTANCE_KEY = "MercanSoftware.MikRapor.SingleInstance"

@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ortak import csv_sayi
+
 
 def _ay_ekle(yyyymm: str, k: int) -> str:
     """'2026-06' + k ay → 'YYYY-MM'."""
@@ -131,8 +133,7 @@ def oner_varsayim(
 
 def tahmin_csv(t: Tahmin) -> str:
     """Tahmin projeksiyonunu CSV'ye çevirir (; ayraç, Türkçe ondalık)."""
-    def s(v: float) -> str:
-        return f"{v:.2f}".replace(".", ",")
+    s = csv_sayi
 
     v = t.varsayim
     out = ["Bölüm;Kalem;Değer"]
@@ -141,7 +142,7 @@ def tahmin_csv(t: Tahmin) -> str:
     out.append(f"VARSAYIM;Aylık Büyüme %;{s(v.buyume_yuzde)}")
     out.append(f"VARSAYIM;Brüt Marj %;{s(v.marj_yuzde)}")
     out.append(f"VARSAYIM;Aylık Sabit Gider;{s(v.sabit_gider)}")
-    out.append("PROJEKSİYON;Ay;Ciro;Brüt Kâr;Net Kâr;Nakit".replace(";", ";"))
+    out.append("PROJEKSİYON;Ay;Ciro;Brüt Kâr;Net Kâr;Nakit")
     for a in t.aylar:
         out.append(f"AY;{a.ay};{s(a.ciro)};{s(a.brut_kar)};{s(a.net_kar)};{s(a.nakit)}")
     out.append(f"TOPLAM;Ciro;{s(t.toplam_ciro)}")

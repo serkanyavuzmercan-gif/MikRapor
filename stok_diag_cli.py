@@ -15,6 +15,7 @@ from gercek_durum_ayarlar import load_gercek_durum_ayarlar
 from mikro_api import MikroClient
 from mikro_fetch import fetch_stok_ozet
 from mizan_bilanco import tl
+from ortak import to_float as _f
 
 _EVRAK_AD = {
     (0, 3): "alış faturası",
@@ -23,13 +24,6 @@ _EVRAK_AD = {
     (1, 4): "satış faturası",
     (1, 16): "sarf fişi",
 }
-
-
-def _f(v: object) -> float:
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def main() -> None:

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from config import _read_config_data, config_path, save_config_data
+from config import _read_config_data, save_config_data
 
 
 @dataclass

@@ -55,14 +55,14 @@ def _card(baslik: str, inner: QWidget) -> QFrame:
 
 def _satir_label(text: str, *, renk: str = "#374151", bold: bool = False,
                  boyut: int = 12, sag: bool = False) -> QLabel:
-    l = QLabel(text)
+    lbl = QLabel(text)
     w = "800" if bold else "400"
-    l.setStyleSheet(
+    lbl.setStyleSheet(
         f"color: {renk}; font-size: {boyut}px; font-weight: {w}; background: transparent;"
     )
     if sag:
-        l.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-    return l
+        lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    return lbl
 
 
 def _operasyonel_panel(gd: GercekDurum) -> QFrame:
@@ -80,12 +80,12 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
 
     baz = "İrsaliye + Fatura" if gd.satis_bazi == "sevk" else "Yalnız Fatura"
     satir(0, f"Fiili Satış  ({baz})", tl(gd.gercek_satis), bold=True)
-    g.addWidget(_satir_label(f"    • satış irsaliyesi", renk=FAINT, boyut=11), 1, 0)
+    g.addWidget(_satir_label("    • satış irsaliyesi", renk=FAINT, boyut=11), 1, 0)
     g.addWidget(_satir_label(tl(gd.satis_irsaliye), renk=FAINT, boyut=11, sag=True), 1, 1)
-    g.addWidget(_satir_label(f"    • satış faturası", renk=FAINT, boyut=11), 2, 0)
+    g.addWidget(_satir_label("    • satış faturası", renk=FAINT, boyut=11), 2, 0)
     g.addWidget(_satir_label(tl(gd.satis_fatura), renk=FAINT, boyut=11, sag=True), 2, 1)
     satir(3, "Fiili Alış (−)", tl(-gd.gercek_alis))
-    g.addWidget(_satir_label(f"    • alış faturası (toplam alış)", renk=FAINT, boyut=11), 4, 0)
+    g.addWidget(_satir_label("    • alış faturası (toplam alış)", renk=FAINT, boyut=11), 4, 0)
     g.addWidget(_satir_label(tl(gd.alis_fatura), renk=FAINT, boyut=11, sag=True), 4, 1)
     r_extra = 5
     if gd.alis_irsaliye > 0.005 and gd.gercek_alis != gd.alis_irsaliye:
@@ -95,7 +95,7 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
         g.addWidget(_satir_label(tl(gd.alis_irsaliye), renk=FAINT, boyut=11, sag=True), 5, 1)
         r_extra = 6
     if gd.siniflandirilmayan_giris > 0.005:
-        g.addWidget(_satir_label(f"    • diğer giriş (evraktip?)", renk=FAINT, boyut=11), r_extra, 0)
+        g.addWidget(_satir_label("    • diğer giriş (evraktip?)", renk=FAINT, boyut=11), r_extra, 0)
         g.addWidget(_satir_label(tl(gd.siniflandirilmayan_giris), renk=FAINT, boyut=11, sag=True), r_extra, 1)
         r_brut = r_extra + 1
     else:

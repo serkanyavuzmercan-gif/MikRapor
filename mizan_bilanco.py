@@ -15,6 +15,9 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from html import escape
 
+from ortak import csv_metin, csv_sayi, tl
+from ortak import to_float as _f
+
 # Tek Düzen Hesap Planı — yaygın ana hesap adları (bilinmeyen kod numarasıyla görünür)
 HESAP_ADLARI: dict[str, str] = {
     # 1 — Dönen Varlıklar
@@ -77,19 +80,6 @@ def ana_hesap(kod: object) -> str:
 
 def hesap_adi(ana: str) -> str:
     return HESAP_ADLARI.get(ana, f"{ana} Hesabı")
-
-
-def tl(v: float) -> str:
-    """1234567.8 -> '1.234.567,80'."""
-    s = f"{abs(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    return f"{'-' if v < 0 else ''}{s}"
-
-
-def _f(v: object) -> float:
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return 0.0
 
 
 @dataclass
@@ -197,11 +187,8 @@ def bilanco_metni(b: Bilanco) -> str:
 
 def bilanco_csv(b: Bilanco) -> str:
     """Bilançoyu CSV'ye çevirir (; ayraç, Türkçe ondalık — TR Excel uyumlu)."""
-    def s(v: float) -> str:
-        return f"{v:.2f}".replace(".", ",")
-
-    def ad(x: str) -> str:
-        return x.replace(";", ",").replace("\n", " ").strip()
+    s = csv_sayi
+    ad = csv_metin
 
     out = ["Taraf;Bölüm;Hesap;Tutar (TL)"]
     out.append(f"BİLANÇO;{b.asof} tarihi itibarıyla;;")

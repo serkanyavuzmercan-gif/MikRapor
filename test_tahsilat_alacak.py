@@ -5,10 +5,10 @@ import unittest
 from tahsilat_alacak import (
     AGING_KOVALAR,
     VADE_KOVALAR,
-    build_tahsilat_alacak,
-    tahsilat_alacak_csv,
     _gun_vade_kovasi,
     _gun_yaslandirma_kovasi,
+    build_tahsilat_alacak,
+    tahsilat_alacak_csv,
 )
 
 
@@ -131,7 +131,7 @@ class TestTahsilatAlacak(unittest.TestCase):
 
 class TestCariVade(unittest.TestCase):
     def test_hesapla_vade_gun(self):
-        from cari_vade import hesapla_vade_gun, gun_from_plan_adi
+        from cari_vade import gun_from_plan_adi, hesapla_vade_gun
         self.assertEqual(hesapla_vade_gun(-60, None, None), 60)   # negatif plan = gün
         self.assertEqual(hesapla_vade_gun(0, None, None), 0)      # peşin
         self.assertEqual(hesapla_vade_gun(2, None, 45), 45)       # odp_ortgun öncelikli

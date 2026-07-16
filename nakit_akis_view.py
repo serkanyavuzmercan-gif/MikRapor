@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _kpi_card
+from bilanco_view import FAINT, MUTED, PAGE_BG, _kpi_card
 from gercek_durum_view import NEG, POZ, _card, _cizgi, _renk, _satir_label
 from mizan_bilanco import tl
 from nakit_akis import NakitAkis

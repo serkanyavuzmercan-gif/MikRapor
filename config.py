@@ -68,7 +68,7 @@ class MikroConfig:
     sifre_gun: str = ""         # MIKRO_SIFRE_GUN — günlük MD5 parolanın tuzu (boş olabilir)
     firma_adi: str = ""         # Raporlarda (bilanço başlığı) görünen firma unvanı (opsiyonel)
 
-    def normalized(self) -> "MikroConfig":
+    def normalized(self) -> MikroConfig:
         yil = self.calisma_yili or date.today().year
         return MikroConfig(
             base_url=(self.base_url or "").strip().rstrip("/"),

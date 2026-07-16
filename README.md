@@ -23,11 +23,33 @@ Her kullanıcı uygulamayı **kendi ağında** çalıştırır ve **kendi Mikro 
 
 ## Kurulum (geliştirme)
 
+**Windows:**
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\run_dev.ps1
 ```
+
+**Linux / macOS:**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+./run_dev.sh
+```
+
+## Testler ve kod kalitesi
+
+Rapor motorları (hesaplama katmanı) saf/headless'tır; testler GUI (PyQt) olmadan çalışır.
+
+```bash
+python -m unittest discover -p 'test_*.py'   # birim testleri
+pip install -e ".[dev]"                        # ruff + mypy (geliştirme araçları)
+ruff check .                                   # lint
+mypy .                                         # tip kontrolü (aşamalı)
+```
+
+Her push/PR'da GitHub Actions (`.github/workflows/ci.yml`) lint + testleri çalıştırır.
 
 ## Windows exe derleme
 

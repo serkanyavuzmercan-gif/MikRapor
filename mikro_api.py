@@ -21,8 +21,9 @@ import ssl
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
-from typing import Any, Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
 
 from config import MikroConfig
 
@@ -44,7 +45,7 @@ def password_hash(sifre_gun: str, today: str | None = None) -> str:
     ss `new Date().toISOString().split('T')[0]` kullanır → UTC tarih. Mikro tarafı bunu
     beklediği için biz de UTC kullanıyoruz (yerel/UTC farkı gece yarısı sorununu önler).
     """
-    gun = today if today is not None else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    gun = today if today is not None else datetime.now(UTC).strftime("%Y-%m-%d")
     to_hash = f"{gun} {sifre_gun}" if sifre_gun else gun
     return hashlib.md5(to_hash.encode("utf-8")).hexdigest()
 

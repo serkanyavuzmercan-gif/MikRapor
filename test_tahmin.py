@@ -4,11 +4,11 @@ import unittest
 
 from tahmin import (
     TahminVarsayim,
-    build_tahmin,
+    _ay_ekle,
     aylik_buyume_oner,
+    build_tahmin,
     oner_varsayim,
     tahmin_csv,
-    _ay_ekle,
 )
 
 
