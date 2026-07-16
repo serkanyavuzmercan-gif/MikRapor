@@ -1,8 +1,9 @@
 # Mikro MSSQL Şema Notları (canlı doğrulanmış)
 
 Bu repoya bağlanan ajanlar için: MikRapor'un Mikro'dan veri çekerken kullandığı **gerçek**
-tablo/kolon adları ve tip kodları. `diag_mikro.py` ile **canlı Mikro'da doğrulandı**
-(2026-06, firma 26). Tahmin değil, yer gerçeği. SQL'ler `mikro_fetch.py` → `SORGULAR`.
+tablo/kolon adları ve tip kodları. Teşhis CLI'ları (`stok_diag_cli.py`, `cari_diag_cli.py`,
+`bilanco_cli.py`) ile **canlı Mikro'da doğrulandı** (2026-06, firma 26). Tahmin değil,
+yer gerçeği. SQL'ler `infra/mikro_fetch.py` içindedir.
 
 ## 🚨 EN KRİTİK TUZAK: geçersiz tablo/kolon = HATA DEĞİL, SESSİZ BOŞ SONUÇ
 
@@ -19,7 +20,9 @@ SELECT TABLE_NAME  FROM INFORMATION_SCHEMA.TABLES  WHERE TABLE_NAME LIKE '%X%';
 (MikRapor'un ilk entegrasyonu tam bu yüzden 4 kaynakta da "0 satır" verdi: tahmini
 `MUHASEBE_HAREKETLERI` tablosu ve `sth_vade_tarihi` kolonu **yoktu**, hata da gelmedi.)
 
-Teşhis aracı: **`diag_mikro.py`** — kaydedilmiş ayarlarla şemayı tarar, gizli değer yazmaz.
+Teşhis araçları (kaydedilmiş ayarlarla çalışır, gizli değer yazmaz):
+**`bilanco_cli.py`** (mizan→bilanço + GL/cari karşılaştırma), **`cari_diag_cli.py`**
+(cari/banka bakiye teşhisi), **`stok_diag_cli.py`** (evraktip kırılımı).
 
 ## Fatura / irsaliye — `STOK_HAREKETLERI` (sth_*)
 

@@ -11,18 +11,12 @@ import sys
 from dataclasses import replace
 from datetime import date
 
-from config import load_config
-from gercek_durum import _bakiye_bilancodan, _bakiye_caridan
-from mikro_api import MikroClient
-from mikro_fetch import fetch_cari_bakiye, fetch_mizan
-from mizan_bilanco import build_bilanco, tl
-
-
-def _f(v: object) -> float:
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return 0.0
+from domain.gercek_durum import _bakiye_bilancodan, _bakiye_caridan
+from domain.mizan_bilanco import build_bilanco, tl
+from domain.ortak import to_float as _f
+from infra.config import load_config
+from infra.mikro_api import MikroClient
+from infra.mikro_fetch import fetch_cari_bakiye, fetch_mizan
 
 
 def _gl_102_bakiye(mizan_rows: list[dict]) -> dict[str, float]:
@@ -138,7 +132,7 @@ def main() -> None:
     print(f"\nMEVDUAT: {len(bankalar_mev)} hesap, toplam net {tl(sum(x[1] for x in bankalar_mev))}")
     print("EN BÜYÜK 10 (nakitte sayılan):")
     print("  [tip: 0=mevduat 1=kredi — 300.* kodları kredi sayılır]")
-    for kod, net, tip, muh, isim, gl_b in bankalar_mev[:10]:
+    for kod, net, _tip, muh, isim, gl_b in bankalar_mev[:10]:
         gl_s = f"  GL={tl(gl_b)}" if gl_b is not None else ""
         ad = f"  ({isim})" if isim else ""
         print(f"  {kod:<12} net {tl(net):>14}  muh={muh}{ad}{gl_s}")

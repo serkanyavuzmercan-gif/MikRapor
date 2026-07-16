@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import unittest
 
-from gelir_tablosu import build_gelir_tablosu
-from gercek_durum import build_gercek_durum, gercek_durum_csv, yuzde
-from gercek_durum_ayarlar import GercekDurumAyarlar
-from mizan_bilanco import build_bilanco
+from domain.gelir_tablosu import build_gelir_tablosu
+from domain.gercek_durum import build_gercek_durum, gercek_durum_csv, yuzde
+from domain.gercek_durum_ayarlar import GercekDurumAyarlar
+from domain.mizan_bilanco import build_bilanco
 
 
 def _stok_ozet():

@@ -13,10 +13,10 @@ from __future__ import annotations
 import sys
 from datetime import date
 
-from config import load_config
-from mikro_api import MikroClient
-from mikro_fetch import fetch_mizan
-from mizan_bilanco import bilanco_metni, build_bilanco, tl
+from domain.mizan_bilanco import bilanco_metni, build_bilanco, tl
+from infra.config import load_config
+from infra.mikro_api import MikroClient
+from infra.mikro_fetch import fetch_mizan
 
 
 def main() -> None:
@@ -34,8 +34,8 @@ def main() -> None:
 
     # Cari bakiye karşılaştırması (Nakit & Kârlılık'ın kullandığı kaynak)
     try:
-        from gercek_durum import _bakiye_bilancodan, _bakiye_caridan
-        from mikro_fetch import fetch_cari_bakiye
+        from domain.gercek_durum import _bakiye_bilancodan, _bakiye_caridan
+        from infra.mikro_fetch import fetch_cari_bakiye
 
         cari_rows = fetch_cari_bakiye(client, asof)
         gl = _bakiye_bilancodan(b)

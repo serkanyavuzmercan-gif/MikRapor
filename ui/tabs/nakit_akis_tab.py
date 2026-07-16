@@ -1,0 +1,70 @@
+"""Nakit Akış sekmesi — banka/kasa hareketinden kategorize nakit akış."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from domain.mizan_bilanco import tl
+from domain.nakit_akis import NakitAkis, build_nakit_akis, nakit_akis_csv
+from infra.config import MikroConfig
+from infra.mikro_api import MikroClient
+from infra.mikro_fetch import fetch_cari_bakiye, fetch_nakit_akis_hareket, fetch_nakit_delta
+from ui.nakit_akis_view import build_nakit_akis_widget
+from ui.rapor_tab import RaporTab, firma_getir
+from ui.worker import IsFonksiyonu
+
+
+class NakitAkisTab(RaporTab):
+    """Banka/kasa hareketinden kategorize nakit akış (tahsilat, ödeme, kredi…) sekmesi."""
+
+    EMOJI = "💵"
+    BASLIK = "Nakit Akış"
+    ACIKLAMA = (
+        "Banka ve kasadan fiilen geçen para — karşı tarafına göre kategorize:<br>"
+        "müşteri tahsilatı, satıcı ödemesi, kredi kullanım/ödemesi, vergi & SGK.<br>"
+        "<span style='color:#9aa0a8;'>Açılış → girişler − çıkışlar → kapanış + aylık trend.</span>")
+    GETIR_ETIKET = "Nakit Akışı Getir"
+    BASLARKEN = "Banka/kasa hareketleri çekiliyor…"
+
+    _na: NakitAkis | None = None
+
+    def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
+        def is_fn(bildir) -> dict[str, Any]:
+            client = MikroClient(cfg)
+            bildir("Banka/kasa hareketleri çekiliyor…")
+            hareket_rows = fetch_nakit_akis_hareket(client, bas, bit)
+            bildir("Kapanış bakiyeleri çekiliyor…")
+            kapanis_rows = fetch_cari_bakiye(client, bit)
+            donem_delta = fetch_nakit_delta(client, bas, bit)
+            bildir("Nakit akış kuruluyor…")
+            na = build_nakit_akis(
+                hareket_rows, bakiye_kapanis_rows=kapanis_rows,
+                donem_delta=donem_delta, bas=bas, bit=bit)
+            return {"na": na, "firma": firma_getir(cfg, client)}
+
+        return is_fn
+
+    def _goster(self, sonuc: dict[str, Any]) -> None:
+        na: NakitAkis = sonuc["na"]
+        self._na = na
+        self._firma = sonuc["firma"]
+        self._icerik_koy(build_nakit_akis_widget(na, firma=self._firma))
+        parts = [
+            f"Giriş {tl(na.toplam_giris)}",
+            f"Çıkış {tl(na.toplam_cikis)}",
+            f"Net {tl(na.net_akis)}",
+        ]
+        if na.kredi_odeme > 0.005 or na.kredi_kullanim > 0.005:
+            parts.append(f"Kredi net {tl(na.kredi_net)}")
+        if na.hareket_sayisi == 0:
+            parts.insert(0, "⚠ banka/kasa hareketi yok — dönem/yıl kontrol edin")
+        self._durum(
+            " · ".join(parts),
+            "uyari" if na.hareket_sayisi == 0 else ("iyi" if na.net_akis >= 0 else "hata"),
+        )
+
+    def _csv_dosya_adi(self) -> str:
+        return f"nakit_akis_{self._na.bas}_{self._na.bit}.csv" if self._na else "nakit_akis.csv"
+
+    def _csv_icerik(self) -> str | None:
+        return nakit_akis_csv(self._na) if self._na else None

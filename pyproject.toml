@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mikrapor"
+version = "0.1.0"
+description = "Mikro ERP'den anında finansal tablolar üreten masaüstü uygulaması (PyQt6)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Mercan Software" }]
+dependencies = [
+    "PyQt6>=6.6.0",
+    "matplotlib>=3.8.0",
+    "reportlab>=4.0.0",
+]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.3.0"]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.10",
+]
+
+[tool.setuptools]
+# Uygulama düz (flat) modül düzeninde; paketlenmiş dağıtım PyInstaller ile yapılır.
+py-modules = []
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: isort, UP: pyupgrade, B: bugbear.
+select = ["E", "F", "W", "I", "UP", "B"]
+# E501 (uzun satır): gömülü SQL/HTML string'leri nedeniyle şimdilik ayrı ele alınacak.
+# UP031 (%-format): QSS/CSS string'leri literal `{}` içerdiğinden %-format bilinçli ve okunur.
+ignore = ["E501", "UP031"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["domain", "infra", "ui"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+# Aşamalı benimseme: şimdilik uyarı amaçlı (CI'da bloklamaz). Zamanla sıkılaştırılacak.
+warn_unused_ignores = false
+warn_redundant_casts = true
+check_untyped_defs = true

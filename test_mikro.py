@@ -11,9 +11,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import config as config_mod
-from config import MikroConfig
-from mikro_api import (
+import infra.config as config_mod
+from infra.config import MikroConfig
+from infra.mikro_api import (
     MikroAPIError,
     MikroClient,
     build_auth,
@@ -26,11 +26,11 @@ from mikro_api import (
 
 class TestPasswordHash(unittest.TestCase):
     def test_with_salt(self) -> None:
-        beklenen = hashlib.md5("2026-06-23 GIZLI".encode()).hexdigest()
+        beklenen = hashlib.md5(b"2026-06-23 GIZLI").hexdigest()
         self.assertEqual(password_hash("GIZLI", today="2026-06-23"), beklenen)
 
     def test_without_salt(self) -> None:
-        beklenen = hashlib.md5("2026-06-23".encode()).hexdigest()
+        beklenen = hashlib.md5(b"2026-06-23").hexdigest()
         self.assertEqual(password_hash("", today="2026-06-23"), beklenen)
 
     def test_build_auth_shape(self) -> None:
