@@ -207,7 +207,7 @@ def main() -> int:
     if _try_activate_existing_instance():
         return 0
     window = MikRaporWindow()
-    server = _start_single_instance_server(window)
-    del server
+    # QLocalServer yaşam süresi uygulama kadar olmalı — del edilirse GC dinlemeyi keser
+    window._single_instance_server = _start_single_instance_server(window)  # noqa: SLF001
     window.showMaximized()
     return app.exec()

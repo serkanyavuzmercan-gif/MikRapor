@@ -56,6 +56,10 @@ def save_config_data(data: dict) -> Path:
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        os.chmod(path, 0o600)  # yalnızca sahibi okusun/yazsın (Linux/macOS; Windows’ta no-op benzeri)
+    except OSError:
+        pass
     return path
 
 
