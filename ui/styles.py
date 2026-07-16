@@ -55,17 +55,20 @@ QWidget#rootArea {{
 QFrame#brandBar {{
     background-color: transparent;
     border: none;
+    padding: 2px 0 4px 0;
 }}
 QLabel#titleLabel {{
     font-size: 24px;
     font-weight: 800;
     color: {NAVY};
     letter-spacing: -0.3px;
+    padding-bottom: 2px;
 }}
 QLabel#brandSubtitle {{
     color: {MUTED};
     font-size: 12px;
     font-weight: 500;
+    padding-bottom: 2px;
 }}
 QLabel#connStatus {{
     color: {ACCENT};

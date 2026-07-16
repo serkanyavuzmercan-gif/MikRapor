@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 
-from PyQt6.QtCore import QSize
+from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
@@ -92,15 +92,16 @@ class MikRaporWindow(QMainWindow):
         central.setObjectName("rootArea")
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(18, 14, 18, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(18, 16, 18, 14)
+        layout.setSpacing(12)
 
-        # 1) Marka bar
+        # 1) Marka bar — hafif daha ferah dikey alan (düzeni bozmayan oran)
         brand_bar = QFrame()
         brand_bar.setObjectName("brandBar")
         header = QHBoxLayout(brand_bar)
-        header.setContentsMargins(4, 2, 4, 8)
+        header.setContentsMargins(4, 8, 4, 14)
         header.setSpacing(12)
+        header.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         logo = QLabel()
         logo.setObjectName("brandMark")
         logo.setStyleSheet("background: transparent; border: none;")
