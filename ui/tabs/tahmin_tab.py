@@ -42,7 +42,7 @@ class TahminTab(RaporTab):
     _t: Tahmin | None = None
 
     def _ilk_mesaj(self) -> str:
-        return "«Geçmişten Doldur» ile başla; sonra varsayımları düzenle."
+        return "Hazır"
 
     def _ust_alan(self, layout: QVBoxLayout) -> None:
         # Varsayım formu (senaryo) — düzenlenebilir

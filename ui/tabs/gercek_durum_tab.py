@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtWidgets import QHBoxLayout, QPushButton
-
 from domain.gelir_tablosu import build_gelir_tablosu
 from domain.gercek_durum import GercekDurum, build_gercek_durum, gercek_durum_csv
 from domain.mizan_bilanco import build_bilanco, tl
@@ -31,24 +29,24 @@ class GercekDurumTab(RaporTab):
     """Fiili stok + banka hareketinden nakit & kârlılık üreten bağımsız rapor sekmesi."""
 
     EMOJI = "💰"
-    BASLIK = "Nakit &amp; Kârlılık"
+    BASLIK = "Nakit & Kârlılık"
     ACIKLAMA = (
-        "Faturalar muhasebeleştirilmeden, deponuzdan geçen mal ve bankadan geçen<br>"
-        "para üzerinden işletmenin fiili brüt marjını, nakit akışını ve işletme<br>"
-        "sermayesini gösterir; resmi gelir tablosuyla mutabakatını yapar.<br>"
-        "<span style='color:#9aa0a8;'>İlk kurulumda «⚙ Ayarlar» ile firma kayıt tarzını seçin.</span>")
-    GETIR_ETIKET = "Nakit && Kârlılık Getir"
+        "Faturalar muhasebeleştirilmeden, deponuzdan geçen mal ve bankadan geçen "
+        "para üzerinden işletmenin fiili brüt marjını, nakit akışını ve işletme "
+        "sermayesini gösterir; resmi gelir tablosuyla mutabakatını yapar."
+    )
+    GETIR_ETIKET = "Analizi Getir"
     BASLARKEN = "Stok, banka ve bakiye hareketleri çekiliyor…"
+
+    EKSTRA_ETIKET = "Ayarlar"
 
     _gd: GercekDurum | None = None
 
     def _ilk_mesaj(self) -> str:
-        return "Dönem seçip «Nakit & Kârlılık Getir»e basın."
+        return "Hazır"
 
-    def _ekstra_kontroller(self, controls: QHBoxLayout) -> None:
-        self._btn_ayarlar = QPushButton("⚙ Ayarlar")
-        self._btn_ayarlar.clicked.connect(self._on_ayarlar)
-        controls.addWidget(self._btn_ayarlar)
+    def _on_ekstra(self) -> None:
+        self._on_ayarlar()
 
     def _on_ayarlar(self) -> None:
         dlg = GercekDurumAyarlarDialog(self)

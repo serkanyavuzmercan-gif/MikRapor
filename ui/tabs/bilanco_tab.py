@@ -22,9 +22,8 @@ class BilancoTab(RaporTab):
 
     EMOJI = "📊"
     BASLIK = "Anında Bilanço"
-    ACIKLAMA = ("Mikro genel muhasebe verinizden, seçtiğiniz tarih itibarıyla<br>"
-                "bilançoyu saniyeler içinde üretir.")
-    IPUCU = "Tarihi seçin&nbsp; →&nbsp; <b style='color:#0f766e;'>Bilanço Getir</b>'e basın"
+    ACIKLAMA = "Mikro Genel Muhasebe verilerinizden TDHP formatında bilanço oluşturun."
+    IPUCU = ""
     GETIR_ETIKET = "Bilanço Getir"
     BASLARKEN = "GL mizan çekiliyor…"
     DONEM_ETIKET = "Tarih itibarıyla:"
@@ -34,7 +33,7 @@ class BilancoTab(RaporTab):
     _bilanco: Bilanco | None = None
 
     def _ilk_mesaj(self) -> str:
-        return "Tarih seçip «Bilanço Getir»e basın."
+        return "Hazır"
 
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
         asof = bit

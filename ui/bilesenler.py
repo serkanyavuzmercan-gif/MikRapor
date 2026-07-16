@@ -1,11 +1,10 @@
 """
 Ortak küçük UI bileşenleri — durum renkleri, karşılama ekranı, CSV kaydetme, sayı girişleri.
-
-Sekmelerde kopyalanan yardımcılar tek yerde: renk paleti styles.py Teal A temasıyla uyumludur.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
@@ -19,7 +18,6 @@ from PyQt6.QtWidgets import (
 from ui.empty_state import build_empty_state
 from ui.styles import BAD, MUTED, OK, WARN
 
-# Durum etiketi renkleri (Teal A)
 DURUM_RENK = {
     "notr": MUTED,
     "iyi": OK,
@@ -29,29 +27,40 @@ DURUM_RENK = {
 
 
 def durum_yaz(label: QLabel, mesaj: str, tur: str = "notr") -> None:
-    """Durum etiketini tek tip renk paletiyle günceller."""
     label.setText(mesaj)
     label.setStyleSheet(f"color: {DURUM_RENK.get(tur, DURUM_RENK['notr'])};")
 
 
-def hos_geldin(emoji: str, baslik: str, aciklama: str, ipucu: str = "") -> QWidget:
-    """Sekme boşken karşılama — Teal A (emoji yok; ipucu CTA metnine çevrilir)."""
-    del emoji  # geriye uyumluluk: sekmeler hâlâ EMOJI sabitini geçirir
-    cta = "Getir"
-    # İpucundan kalın CTA metnini çıkarmaya çalış
-    if "Bilanço Getir" in (ipucu or ""):
-        cta = "Bilanço Getir"
-    elif "Gelir Tablosu" in (ipucu or ""):
-        cta = "Gelir Tablosu Getir"
-    elif ipucu and "«" in ipucu:
-        pass
-    # HTML <br> temizle
+def hos_geldin(
+    emoji: str,
+    baslik: str,
+    aciklama: str,
+    ipucu: str = "",
+    *,
+    on_cta: Callable[[], None] | None = None,
+    cta: str = "",
+) -> QWidget:
+    """Sekme boşken karşılama — Teal A: illüstrasyon + CTA butonu."""
+    del emoji
+    cta_text = cta or "Getir"
+    if not cta:
+        if "Bilanço Getir" in (ipucu or ""):
+            cta_text = "Bilanço Getir"
+        elif "Gelir Tablosu" in (ipucu or ""):
+            cta_text = "Gelir Tablosu Getir"
     aciklama_duz = (aciklama or "").replace("<br>", " ").replace("<br/>", " ")
-    return build_empty_state(baslik, aciklama_duz, cta_hint=cta)
+    # HTML span temizle
+    while "<" in aciklama_duz and ">" in aciklama_duz:
+        a = aciklama_duz.find("<")
+        b = aciklama_duz.find(">", a)
+        if b < 0:
+            break
+        aciklama_duz = aciklama_duz[:a] + aciklama_duz[b + 1 :]
+    aciklama_duz = " ".join(aciklama_duz.split())
+    return build_empty_state(baslik, aciklama_duz, cta_hint=cta_text, on_cta=on_cta)
 
 
 def csv_kaydet(parent: QWidget, status: QLabel, varsayilan_ad: str, icerik: str) -> None:
-    """Ortak CSV kaydetme: dosya seç → UTF-8 (BOM, TR Excel uyumlu) yaz → durumu güncelle."""
     path, _ = QFileDialog.getSaveFileName(parent, "CSV Kaydet", varsayilan_ad, "CSV (*.csv)")
     if not path:
         return
@@ -65,7 +74,6 @@ def csv_kaydet(parent: QWidget, status: QLabel, varsayilan_ad: str, icerik: str)
 
 
 def para_spin(maks: float = 1e12) -> QDoubleSpinBox:
-    """TL tutar girişi (binlik ayraçlı, TL sonekli)."""
     sp = QDoubleSpinBox()
     sp.setRange(-maks, maks)
     sp.setDecimals(0)
@@ -77,7 +85,6 @@ def para_spin(maks: float = 1e12) -> QDoubleSpinBox:
 
 
 def yuzde_spin(alt: float, ust: float) -> QDoubleSpinBox:
-    """Yüzde girişi (% sonekli)."""
     sp = QDoubleSpinBox()
     sp.setRange(alt, ust)
     sp.setDecimals(1)
