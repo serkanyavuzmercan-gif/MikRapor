@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.donem import DonemDurumu, donem_aralik_bagla, donem_tek_bagla
-from ui.styles import MUTED
+from ui.styles import MUTED, OK
 from ui.tarih_secici import TarihSecici
 
 
@@ -86,11 +86,13 @@ class ChromeToolbar(QFrame):
         self._btn_csv.clicked.connect(self.csv_clicked.emit)
         lay.addWidget(self._btn_csv)
 
+        lay.addStretch(1)
+
         self._status = QLabel("Hazır")
         self._status.setObjectName("toolbarHint")
-        self._status.setStyleSheet(f"color: {MUTED};")
-        self._status.setWordWrap(True)
-        lay.addWidget(self._status, stretch=1)
+        self._status.setStyleSheet(f"color: {OK}; font-weight: 600;")
+        self._status.setWordWrap(False)
+        lay.addWidget(self._status)
 
         self.set_tek_tarih(False)
 
@@ -103,10 +105,14 @@ class ChromeToolbar(QFrame):
         self._bas.setVisible(not tek)
         self._ok.setVisible(not tek)
         self._bit.setVisible(not tek)
-        self._lbl_donem.setText("Tarih itibarıyla:" if tek else "Dönem:")
+        # Design A chrome: tek tarih / dönem aynı şerit — etiket sade
+        self._lbl_donem.setVisible(False)
 
     def set_getir_etiket(self, text: str) -> None:
-        self._btn_getir.setText(text)
+        # Design A: chrome her zaman "Raporu Getir"; sekme CTA empty state'te kalır
+        del text
+        self._btn_getir.setText("Raporu Getir")
+
 
     def set_pdf_gorunur(self, gorunur: bool) -> None:
         self._btn_pdf.setVisible(gorunur)

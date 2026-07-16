@@ -40,6 +40,8 @@ $ErrorActionPreference = "Continue"
     --icon "assets\icon.ico" `
     --add-data "assets\icon.ico;assets" `
     --add-data "assets\logo.png;assets" `
+    --add-data "assets\logo-mark.png;assets" `
+    --add-data "assets\empty-hero.png;assets" `
     --add-data "assets\empty-bilanco.png;assets" `
     --hidden-import matplotlib.backends.backend_qtagg `
     --hidden-import reportlab `

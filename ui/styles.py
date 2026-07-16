@@ -57,10 +57,10 @@ QFrame#brandBar {{
     border: none;
 }}
 QLabel#titleLabel {{
-    font-size: 26px;
+    font-size: 24px;
     font-weight: 800;
-    color: {INK};
-    letter-spacing: -0.4px;
+    color: {NAVY};
+    letter-spacing: -0.3px;
 }}
 QLabel#brandSubtitle {{
     color: {MUTED};
@@ -84,13 +84,17 @@ QLabel#connStatus[connected="false"] {{
 
 /* ---- Sekme araç çubuğu ---- */
 QFrame#tabToolbar {{
-    background-color: {SURFACE};
+    background-color: #f4f7f9;
     border: 1px solid {BORDER};
-    border-radius: 12px;
+    border-radius: 10px;
 }}
 QLabel#toolbarHint {{
     color: {MUTED};
     font-size: 12px;
+}}
+QWidget#emptyState {{
+    background-color: {SURFACE};
+    border: none;
 }}
 
 /* ---- Sekmeler ---- */

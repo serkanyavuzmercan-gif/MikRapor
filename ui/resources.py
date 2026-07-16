@@ -33,26 +33,26 @@ def asset_path(name: str) -> Path:
 
 def app_icon() -> QIcon:
     """Uygulama pencere ikonu."""
-    ico_path = asset_path("icon.ico")
-    if ico_path.is_file():
-        return QIcon(str(ico_path))
-    png_path = asset_path("logo.png")
-    if png_path.is_file():
-        return QIcon(str(png_path))
+    for name in ("icon.ico", "logo-mark.png", "logo.png"):
+        path = asset_path(name)
+        if path.is_file():
+            return QIcon(str(path))
     return QIcon()
 
 
 def app_logo_pixmap(size: int = 40) -> QPixmap:
-    """Başlık çubuğu için logo görseli."""
-    png_path = asset_path("logo.png")
-    if not png_path.is_file():
-        return QPixmap()
-    pm = QPixmap(str(png_path))
-    if pm.isNull():
-        return QPixmap()
-    return pm.scaled(
-        size,
-        size,
-        Qt.AspectRatioMode.KeepAspectRatio,
-        Qt.TransformationMode.SmoothTransformation,
-    )
+    """Başlık çubuğu için Design A marka görseli (logo-mark → logo fallback)."""
+    for name in ("logo-mark.png", "logo.png"):
+        png_path = asset_path(name)
+        if not png_path.is_file():
+            continue
+        pm = QPixmap(str(png_path))
+        if pm.isNull():
+            continue
+        return pm.scaled(
+            size,
+            size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+    return QPixmap()
