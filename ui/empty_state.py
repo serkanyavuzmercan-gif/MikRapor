@@ -1,10 +1,8 @@
-"""Ortak boş / karşılama ekranı — Design A: illüstrasyon full-bleed arka plan + alt CTA bandı.
+"""Ortak boş / karşılama ekranı — Design A: illüstrasyon full-bleed + alt CTA bandı.
 
-Mockup A (empty): büyük logomark + MikRapor, teal başlık, gri açıklama, dolu yeşil CTA.
-
-Marka (logo+MikRapor) her sekmede aynı ayak izinde ortalanır; uzun başlık/CTA metinleri
-yatayda ölçeklenerek sabit banda sığar — yazı uzunluğuna göre kayma / üst üste binme yok.
-CTA: ikon+yazı tek grup olarak buton ortasında.
+Marka + başlık + açıklama + CTA sabit ayak izinde (alta sabitlenmiş).
+Pencere yeniden boyutlanınca yalnız üstteki illüstrasyon alanı değişir; yazı/buton
+bloğu kaymaz. Sekmeler arası fark: açıklama uzunluğu yatay ölçekle sığdırılır.
 """
 
 from __future__ import annotations
@@ -20,6 +18,7 @@ from PyQt6.QtGui import (
     QPainter,
     QPixmap,
     QResizeEvent,
+    QTextOption,
 )
 from PyQt6.QtWidgets import (
     QHBoxLayout,
@@ -35,19 +34,30 @@ from PyQt6.QtWidgets import (
 from ui.resources import app_logo_pixmap, asset_path
 from ui.styles import ACCENT, ACCENT_HOVER, ACCENT_PRESSED, MUTED, NAVY
 
-# Empty-state marka: mockup’ta toolbar’dan belirgin şekilde büyük
 _MARK_SIZE = 44
-# Gelir Tablosu empty (referans): sabit kompozisyon bandı — sekmeden sekmeye kaymasın
 _COL_W = 480
-_TITLE_MAX_W = 360   # "Gelir Tablosu" bandı; daha uzun başlık yatay ölçeklenir
-_CTA_W = 300         # sabit CTA; uzun etiket yatay ölçeklenir, ikon+yazı ortada
+_TITLE_MAX_W = 360
+_BODY_MAX_W = 480
+_BODY_H = 44          # sabit 2 satır bandı — yükseklik sekmeden sekmeye değişmez
+_CTA_W = 300
 _CTA_H = 48
 _CTA_ICON = 16
 _CTA_GAP = 8
+_BOTTOM_PAD = 36      # alt kenardan boşluk
+_GAP_BRAND_TITLE = 14
+_GAP_TITLE_BODY = 10
+_GAP_BODY_CTA = 24
+
+# Sabit cluster yüksekliği (marka+başlık+açıklama+cta+araklıklar)
+_BRAND_H = _MARK_SIZE
+_TITLE_H = 36
+_CLUSTER_H = (
+    _BRAND_H + _GAP_BRAND_TITLE + _TITLE_H + _GAP_TITLE_BODY
+    + _BODY_H + _GAP_BODY_CTA + _CTA_H
+)
 
 
 def _load_hero_pixmap() -> QPixmap:
-    """Öncelik: anasayfalogo → mikrapor-hero-illustration → empty-hero → empty-bilanco."""
     for ad in (
         "anasayfalogo.png",
         "mikrapor-hero-illustration.png",
@@ -61,8 +71,6 @@ def _load_hero_pixmap() -> QPixmap:
 
 
 class _CoverBackground(QWidget):
-    """İllüstrasyonu alanı kaplayacak şekilde çizer (CSS background-size: cover)."""
-
     def __init__(self, pixmap: QPixmap, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._src = pixmap
@@ -96,7 +104,7 @@ class _CoverBackground(QWidget):
 
 
 class _HScaleLabel(QWidget):
-    """Tek satır metin — max_width aşarsa yalnızca yatayda ölçekler (yükseklik sabit)."""
+    """Tek satır — max_width aşarsa yatay ölçek; yükseklik sabit."""
 
     def __init__(
         self,
@@ -106,6 +114,7 @@ class _HScaleLabel(QWidget):
         point_size: int,
         weight: int = 800,
         max_width: int = _TITLE_MAX_W,
+        height: int | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -114,10 +123,11 @@ class _HScaleLabel(QWidget):
         self._font = QFont()
         self._font.setPixelSize(point_size)
         self._font.setWeight(QFont.Weight(weight) if weight >= 100 else QFont.Weight.Bold)
-        self._font.setBold(True)
+        if weight >= 700:
+            self._font.setBold(True)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         fm = QFontMetrics(self._font)
-        self.setFixedSize(max_width, fm.height() + 6)
+        self.setFixedSize(max_width, height if height is not None else fm.height() + 6)
 
     def paintEvent(self, _ev) -> None:  # noqa: N802
         p = QPainter(self)
@@ -132,15 +142,65 @@ class _HScaleLabel(QWidget):
             return
         avail = float(self.width())
         sx = min(1.0, avail / tw)
-        p.translate(avail / 2.0, 0.0)
+        cy = self.height() / 2.0
+        p.translate(avail / 2.0, cy)
         p.scale(sx, 1.0)
-        p.translate(-tw / 2.0, 0.0)
-        p.drawText(0, fm.ascent() + 3, self._text)
+        p.drawText(
+            QRectF(-tw / 2.0, -fm.height() / 2.0, tw, fm.height()),
+            int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter),
+            self._text,
+        )
+        p.end()
+
+
+class _HScaleBody(QWidget):
+    """Açıklama: sabit yükseklik (2 satır). Uzun metin önce daha geniş satıra yazılır,
+    sonra yatay ölçeklenerek banda sığdırılır — dikey layout değişmez."""
+
+    def __init__(self, text: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._text = " ".join((text or "").split())
+        self._font = QFont()
+        self._font.setPixelSize(14)
+        self.setFixedSize(_BODY_MAX_W, _BODY_H)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+    def paintEvent(self, _ev) -> None:  # noqa: N802
+        if not self._text:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        p.setFont(self._font)
+        p.setPen(QColor(MUTED))
+        fm = QFontMetrics(self._font)
+        line_h = fm.height()
+        # 2 satıra sığacak sanal genişlik bul (yatay ölçek için)
+        lo, hi = _BODY_MAX_W, max(_BODY_MAX_W, fm.horizontalAdvance(self._text) + 8)
+        best = hi
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            br = fm.boundingRect(
+                QRect(0, 0, mid, 10_000),
+                int(Qt.AlignmentFlag.AlignHCenter | Qt.TextFlag.TextWordWrap),
+                self._text,
+            )
+            if br.height() <= _BODY_H + 2:
+                best = mid
+                hi = mid - 1
+            else:
+                lo = mid + 1
+        sx = min(1.0, _BODY_MAX_W / max(1, best))
+        p.translate(self.width() / 2.0, self.height() / 2.0)
+        p.scale(sx, 1.0)
+        p.translate(-best / 2.0, -_BODY_H / 2.0)
+        opt = QTextOption(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+        opt.setWrapMode(QTextOption.WrapMode.WordWrap)
+        p.drawText(QRectF(0, 0, best, _BODY_H), self._text, opt)
         p.end()
 
 
 class _EmptyCtaButton(QPushButton):
-    """Sabit boyutlu CTA — ikon + yazı tek grup olarak ortalanır; uzun yazı yatay ölçeklenir."""
+    """Sabit boyutlu CTA — ikon + yazı tek grup ortada; uzun yazı yatay ölçek."""
 
     def __init__(self, text: str, icon: QIcon, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -179,7 +239,6 @@ class _EmptyCtaButton(QPushButton):
         p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
-        # Stil ile buton gövdesi (metin/ikon boş — kendimiz çizeriz)
         opt = QStyleOptionButton()
         self.initStyleOption(opt)
         opt.text = ""
@@ -199,14 +258,9 @@ class _EmptyCtaButton(QPushButton):
 
         if not self._icon.isNull():
             pix = self._icon.pixmap(QSize(_CTA_ICON, _CTA_ICON))
-            p.drawPixmap(
-                int(round(x0)),
-                int(round(cy - _CTA_ICON / 2.0)),
-                pix,
-            )
+            p.drawPixmap(int(round(x0)), int(round(cy - _CTA_ICON / 2.0)), pix)
             x0 += icon_slot
 
-        # Metin: grup içinde, yatay ölçek merkezden; dikey orta
         p.setFont(self._font)
         p.setPen(QColor("#ffffff"))
         p.save()
@@ -222,7 +276,7 @@ class _EmptyCtaButton(QPushButton):
 
 
 class EmptyState(QWidget):
-    """Full-bleed hero arka plan; marka + başlık + açıklama + dolu yeşil CTA."""
+    """Full-bleed hero; marka/başlık/açıklama/CTA alta sabitlenmiş sabit cluster."""
 
     def __init__(
         self,
@@ -240,27 +294,16 @@ class EmptyState(QWidget):
         self._bg = _CoverBackground(_load_hero_pixmap(), self)
         self._bg.lower()
 
-        self._overlay = QWidget(self)
-        self._overlay.setObjectName("emptyOverlay")
-        self._overlay.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self._overlay.setStyleSheet("background: transparent;")
-
-        lay = QVBoxLayout(self._overlay)
-        lay.setContentsMargins(48, 28, 48, 36)
-        lay.setSpacing(0)
-        lay.addStretch(6)
-
-        # Sabit genişlik kolon — tüm sekmelerde aynı merkez ekseni
-        col = QWidget()
-        col.setObjectName("emptyCol")
-        col.setFixedWidth(_COL_W)
-        col.setStyleSheet("background: transparent;")
-        col_lay = QVBoxLayout(col)
+        # Sabit cluster — layout stretch yok; resizeEvent ile alta sabitlenir
+        self._cluster = QWidget(self)
+        self._cluster.setObjectName("emptyCol")
+        self._cluster.setFixedSize(_COL_W, _CLUSTER_H)
+        self._cluster.setStyleSheet("background: transparent;")
+        col_lay = QVBoxLayout(self._cluster)
         col_lay.setContentsMargins(0, 0, 0, 0)
         col_lay.setSpacing(0)
-        col_lay.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        col_lay.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
 
-        # Marka: logo + MikRapor — sabit ayak izi, kolon ortası
         brand_row = QHBoxLayout()
         brand_row.setSpacing(12)
         brand_row.setContentsMargins(0, 0, 0, 0)
@@ -280,32 +323,22 @@ class EmptyState(QWidget):
         brand_font.setWeight(QFont.Weight.ExtraBold)
         brand.setFont(brand_font)
         brand.setStyleSheet(f"color: {NAVY}; letter-spacing: 0.15px; background: transparent;")
-        brand.setFixedHeight(QFontMetrics(brand_font).height() + 8)
+        brand.setFixedHeight(_BRAND_H)
         brand_row.addWidget(brand, alignment=Qt.AlignmentFlag.AlignVCenter)
         brand_row.addStretch(1)
         col_lay.addLayout(brand_row)
-        col_lay.addSpacing(14)
+        col_lay.addSpacing(_GAP_BRAND_TITLE)
 
         title = _HScaleLabel(
-            baslik, color=ACCENT, point_size=30, weight=800, max_width=_TITLE_MAX_W,
+            baslik, color=ACCENT, point_size=30, weight=800,
+            max_width=_TITLE_MAX_W, height=_TITLE_H,
         )
         col_lay.addWidget(title, alignment=Qt.AlignmentFlag.AlignHCenter)
-        col_lay.addSpacing(10)
+        col_lay.addSpacing(_GAP_TITLE_BODY)
 
-        body = QLabel(aciklama)
-        body.setObjectName("emptyBody")
-        body.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
-        body.setWordWrap(True)
-        body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        body.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
-        body.setFixedWidth(_COL_W)
-        body.setStyleSheet(
-            f"color: {MUTED}; font-size: 14px; line-height: 150%; background: transparent;"
-            "padding: 0; margin: 0;"
-        )
-        self._body = body
+        body = _HScaleBody(aciklama)
         col_lay.addWidget(body, alignment=Qt.AlignmentFlag.AlignHCenter)
-        col_lay.addSpacing(24)
+        col_lay.addSpacing(_GAP_BODY_CTA)
 
         if on_cta is not None:
             from ui.icons import icon_table
@@ -313,29 +346,25 @@ class EmptyState(QWidget):
             btn = _EmptyCtaButton(cta_hint, icon_table(16, "#ffffff"))
             btn.clicked.connect(on_cta)
             col_lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignHCenter)
+        else:
+            col_lay.addSpacing(_CTA_H)
 
-        lay.addWidget(col, alignment=Qt.AlignmentFlag.AlignHCenter)
-        lay.addSpacing(10)
-        self._body_genislik_ayarla()
+        self._yerlestir()
 
-    def _body_genislik_ayarla(self) -> None:
-        body = getattr(self, "_body", None)
-        if body is None:
-            return
-        w = _COL_W
-        body.setFixedWidth(w)
-        h = body.heightForWidth(w)
-        if h > 0:
-            body.setMinimumHeight(h + 6)
-            body.setMaximumHeight(16777215)
+    def _yerlestir(self) -> None:
+        """Cluster'ı yatay ortala, dikeyde alta sabitle — resize yalnızca üst boşluğu değiştirir."""
+        self._bg.setGeometry(self.rect())
+        self._bg.lower()
+        w = max(1, self.width())
+        h = max(1, self.height())
+        x = (w - _COL_W) // 2
+        y = max(8, h - _BOTTOM_PAD - _CLUSTER_H)
+        self._cluster.setGeometry(x, y, _COL_W, _CLUSTER_H)
+        self._cluster.raise_()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
-        self._bg.setGeometry(self.rect())
-        self._overlay.setGeometry(self.rect())
-        self._bg.lower()
-        self._overlay.raise_()
-        self._body_genislik_ayarla()
+        self._yerlestir()
 
 
 def build_empty_state(
@@ -345,5 +374,4 @@ def build_empty_state(
     cta_hint: str = "Getir",
     on_cta: Callable[[], None] | None = None,
 ) -> QWidget:
-    """Mockup A empty state — illüstrasyon ekranı kaplayan arka plan."""
     return EmptyState(baslik, aciklama, cta_hint=cta_hint, on_cta=on_cta)
