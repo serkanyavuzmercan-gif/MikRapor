@@ -1,4 +1,7 @@
-"""Ortak boş / karşılama ekranı — Design A: illüstrasyon full-bleed arka plan + üstte CTA."""
+"""Ortak boş / karşılama ekranı — Design A: illüstrasyon full-bleed arka plan + alt CTA bandı.
+
+Mockup A (empty): büyük logomark + MikRapor, teal başlık, gri açıklama, dolu yeşil CTA.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +19,33 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.resources import app_logo_pixmap, asset_path
-from ui.styles import ACCENT, MUTED, NAVY
+from ui.styles import ACCENT, ACCENT_HOVER, ACCENT_PRESSED, MUTED, NAVY
+
+# Empty-state marka: mockup’ta toolbar’dan belirgin şekilde büyük
+_MARK_SIZE = 44
+_CTA_STYLE = f"""
+QPushButton#emptyCtaBtn {{
+    background-color: {ACCENT};
+    color: #ffffff;
+    border: 1px solid {ACCENT};
+    font-size: 15px;
+    font-weight: 700;
+    padding: 14px 36px;
+    border-radius: 10px;
+    min-width: 240px;
+    min-height: 48px;
+}}
+QPushButton#emptyCtaBtn:hover {{
+    background-color: {ACCENT_HOVER};
+    border-color: {ACCENT_HOVER};
+    color: #ffffff;
+}}
+QPushButton#emptyCtaBtn:pressed {{
+    background-color: {ACCENT_PRESSED};
+    border-color: {ACCENT_PRESSED};
+    color: #ffffff;
+}}
+"""
 
 
 def _load_hero_pixmap() -> QPixmap:
@@ -62,7 +91,6 @@ class _CoverBackground(QWidget):
         grad_h = max(140, int(self.height() * 0.42))
         for i in range(grad_h):
             t = i / max(1, grad_h - 1)
-            # yavaş başla, alta doğru yoğunlaş
             alpha = int(230 * (t ** 1.8))
             p.fillRect(
                 QRect(0, self.height() - grad_h + i, self.width(), 1),
@@ -72,7 +100,7 @@ class _CoverBackground(QWidget):
 
 
 class EmptyState(QWidget):
-    """Full-bleed hero arka plan; marka + başlık + açıklama + CTA üstte."""
+    """Full-bleed hero arka plan; marka + başlık + açıklama + dolu yeşil CTA."""
 
     def __init__(
         self,
@@ -96,37 +124,40 @@ class EmptyState(QWidget):
         self._overlay.setStyleSheet("background: transparent;")
 
         lay = QVBoxLayout(self._overlay)
-        lay.setContentsMargins(48, 28, 48, 40)
+        lay.setContentsMargins(48, 28, 48, 36)
         lay.setSpacing(0)
-        # Üstte görsel alan; metin alt banda
+        # Üstte görsel alan; marka/başlık/CTA alt banda
         lay.addStretch(6)
 
         brand_row = QHBoxLayout()
-        brand_row.setSpacing(8)
+        brand_row.setSpacing(12)
         brand_row.addStretch(1)
         mark = QLabel()
+        mark.setObjectName("emptyBrandMark")
         mark.setStyleSheet("background: transparent;")
-        mark_pm = app_logo_pixmap(20)
+        mark_pm = app_logo_pixmap(_MARK_SIZE)
         if not mark_pm.isNull():
             mark.setPixmap(mark_pm)
-        brand_row.addWidget(mark)
+            mark.setFixedSize(mark_pm.size())
+        brand_row.addWidget(mark, alignment=Qt.AlignmentFlag.AlignVCenter)
         brand = QLabel("MikRapor")
+        brand.setObjectName("emptyBrandName")
         brand.setStyleSheet(
-            f"color: {NAVY}; font-size: 14px; font-weight: 700; letter-spacing: 0.2px; "
+            f"color: {NAVY}; font-size: 22px; font-weight: 800; letter-spacing: 0.15px; "
             "background: transparent;"
         )
-        brand_row.addWidget(brand)
+        brand_row.addWidget(brand, alignment=Qt.AlignmentFlag.AlignVCenter)
         brand_row.addStretch(1)
         lay.addLayout(brand_row)
-        lay.addSpacing(8)
+        lay.addSpacing(14)
 
         title = QLabel(baslik)
         title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         title.setStyleSheet(
-            f"color: {ACCENT}; font-size: 28px; font-weight: 800; background: transparent;"
+            f"color: {ACCENT}; font-size: 30px; font-weight: 800; background: transparent;"
         )
         lay.addWidget(title)
-        lay.addSpacing(8)
+        lay.addSpacing(10)
 
         body = QLabel(aciklama)
         body.setObjectName("emptyBody")
@@ -139,22 +170,18 @@ class EmptyState(QWidget):
             f"color: {MUTED}; font-size: 14px; line-height: 150%; background: transparent;"
         )
         lay.addWidget(body, alignment=Qt.AlignmentFlag.AlignHCenter)
-        lay.addSpacing(22)
+        lay.addSpacing(24)
 
         if on_cta is not None:
+            # Tam stylesheet: widget-level kısmi QSS app #primaryBtn arka planını bozuyordu
             btn = QPushButton(f"  ▤  {cta_hint}  ")
-            btn.setObjectName("primaryBtn")
+            btn.setObjectName("emptyCtaBtn")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setMinimumWidth(230)
-            btn.setMinimumHeight(48)
-            btn.setStyleSheet(
-                "QPushButton#primaryBtn { font-size: 15px; font-weight: 700; "
-                "padding: 12px 28px; border-radius: 10px; }"
-            )
+            btn.setStyleSheet(_CTA_STYLE)
             btn.clicked.connect(on_cta)
             lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-        lay.addSpacing(8)
+        lay.addSpacing(10)
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
