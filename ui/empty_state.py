@@ -45,8 +45,7 @@ class _CoverBackground(QWidget):
     def paintEvent(self, _ev) -> None:  # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        # Soft fill under letterboxing if any
-        p.fillRect(self.rect(), Qt.GlobalColor.white)
+        p.fillRect(self.rect(), QColor("#f7fafc"))
         if self._src.isNull() or self.width() < 2 or self.height() < 2:
             p.end()
             return
@@ -55,14 +54,16 @@ class _CoverBackground(QWidget):
             Qt.AspectRatioMode.KeepAspectRatioByExpanding,
             Qt.TransformationMode.SmoothTransformation,
         )
+        # Üste kaydır: illüstrasyon daha görünür (cover crop bias)
         x = (self.width() - scaled.width()) // 2
-        y = (self.height() - scaled.height()) // 2
+        y = min(0, (self.height() - scaled.height()) // 3)
         p.drawPixmap(x, y, scaled)
-        # Altta hafif beyaz gradient bandı — metin okunaklı kalsın
-        grad_h = max(160, self.height() // 2)
+        # Alt ~40% yumuşak beyaz band — CTA okunaklı, üstte görsel baskın
+        grad_h = max(140, int(self.height() * 0.42))
         for i in range(grad_h):
             t = i / max(1, grad_h - 1)
-            alpha = int(210 * (t ** 1.35))
+            # yavaş başla, alta doğru yoğunlaş
+            alpha = int(230 * (t ** 1.8))
             p.fillRect(
                 QRect(0, self.height() - grad_h + i, self.width(), 1),
                 QColor(255, 255, 255, alpha),
@@ -95,9 +96,10 @@ class EmptyState(QWidget):
         self._overlay.setStyleSheet("background: transparent;")
 
         lay = QVBoxLayout(self._overlay)
-        lay.setContentsMargins(40, 24, 40, 36)
+        lay.setContentsMargins(48, 28, 48, 40)
         lay.setSpacing(0)
-        lay.addStretch(5)
+        # Üstte görsel alan; metin alt banda
+        lay.addStretch(6)
 
         brand_row = QHBoxLayout()
         brand_row.setSpacing(8)
