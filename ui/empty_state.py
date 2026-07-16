@@ -173,9 +173,15 @@ class EmptyState(QWidget):
         lay.addSpacing(24)
 
         if on_cta is not None:
+            from PyQt6.QtCore import QSize
+
+            from ui.icons import icon_table
+
             # Tam stylesheet: widget-level kısmi QSS app #primaryBtn arka planını bozuyordu
-            btn = QPushButton(f"  ▤  {cta_hint}  ")
+            btn = QPushButton(f" {cta_hint} ")
             btn.setObjectName("emptyCtaBtn")
+            btn.setIcon(icon_table(16, "#ffffff"))
+            btn.setIconSize(QSize(16, 16))
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setStyleSheet(_CTA_STYLE)
             btn.clicked.connect(on_cta)

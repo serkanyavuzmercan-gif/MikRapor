@@ -41,8 +41,8 @@ def app_icon() -> QIcon:
 
 
 def app_logo_pixmap(size: int = 40) -> QPixmap:
-    """Başlık çubuğu için Design A marka görseli (logo-mark → logo fallback)."""
-    for name in ("logo-mark.png", "logo.png"):
+    """Başlık / empty-state marka (şeffaf logo-mark → logo fallback)."""
+    for name in ("logo-mark.png", "design-a-mark.png", "logo.png"):
         png_path = asset_path(name)
         if not png_path.is_file():
             continue

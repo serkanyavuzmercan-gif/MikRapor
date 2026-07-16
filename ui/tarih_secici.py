@@ -1,31 +1,33 @@
 """
-Görünür takvim butonlu tarih alanı.
+Dönem tarih seçicileri.
 
-QDateEdit'in dahili drop-down / calendarPopup alanı Windows'ta metin kutusu ile
-📅 butonu arasında görünmez tıklama bölgesi bırakır. Bu yüzden:
-  - calendarPopup kapalı, NoButtons
-  - drop-down QSS ile sıfırlanır
-  - takvim yalnızca 📅 butonundan açılır (kendi Popup + QCalendarWidget)
+- TarihSecici: tek tarih + takvim popup (eski API; popup içinde kullanılır)
+- DonemAralikAlani: mockup A tek kutu — «01.01.2026 — 16.07.2026» + takvim/chevron ikonları
 """
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QDate, QPoint, Qt, pyqtSignal
+from PyQt6.QtCore import QDate, QPoint, QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCalendarWidget,
     QDateEdit,
+    QFrame,
     QHBoxLayout,
+    QLabel,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
-_ALAN_YUKSEKLIK = 34
+from ui.icons import icon_calendar, icon_chevron_down
+from ui.styles import BORDER_STRONG, INK_SOFT, MUTED, SURFACE
+
+_ALAN_YUKSEKLIK = 36
 
 
 class TarihSecici(QWidget):
-    """Tarih metni + sağda 📅 butonu; butona basınca takvim açılır."""
+    """Tarih metni + sağda takvim butonu; butona basınca takvim açılır."""
 
     dateChanged = pyqtSignal(QDate)
 
@@ -45,17 +47,18 @@ class TarihSecici(QWidget):
         self._edit.setDate(tarih)
         self._edit.setFixedSize(genislik, _ALAN_YUKSEKLIK)
         self._edit.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self._edit.setToolTip("Tarihi yazın veya sağdaki 📅 ile takvimden seçin")
+        self._edit.setToolTip("Tarihi yazın veya sağdaki takvim ile seçin")
         self._edit.setObjectName("tarihEdit")
-        # Global QSS'teki QDateEdit::drop-down { width: 28px } bu alanda boşluk bırakıyor.
         self._edit.setStyleSheet(
             "QDateEdit::drop-down { width: 0px; height: 0px; border: none; image: none; }"
         )
         self._edit.dateChanged.connect(self.dateChanged.emit)
 
-        self._btn = QPushButton("📅")
+        self._btn = QPushButton()
         self._btn.setObjectName("calBtn")
-        self._btn.setFixedSize(38, _ALAN_YUKSEKLIK)
+        self._btn.setIcon(icon_calendar(14))
+        self._btn.setIconSize(QSize(14, 14))
+        self._btn.setFixedSize(36, _ALAN_YUKSEKLIK)
         self._btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn.setToolTip("Takvimi aç")
@@ -64,7 +67,7 @@ class TarihSecici(QWidget):
 
         lay.addWidget(self._edit)
         lay.addWidget(self._btn)
-        self.setFixedSize(genislik + 38, _ALAN_YUKSEKLIK)
+        self.setFixedSize(genislik + 36, _ALAN_YUKSEKLIK)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
     def showEvent(self, event) -> None:  # noqa: ANN001 — Qt override
@@ -111,3 +114,120 @@ class TarihSecici(QWidget):
         self._edit.setDate(d)
         if self._popup is not None:
             self._popup.hide()
+
+
+class DonemAralikAlani(QFrame):
+    """
+    Mockup A: tek çerçeveli dönem kutusu.
+
+      [📅]  01.01.2026 — 16.07.2026  [▾]
+
+    Tıklanınca başlangıç/bitiş seçicili popup açılır; DonemDurumu ile senkron kalır.
+    """
+
+    def __init__(self, donem, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        from ui.donem import DonemDurumu  # yerel import — döngüyü kır
+
+        assert isinstance(donem, DonemDurumu)
+        self._donem = donem
+        self._popup: QWidget | None = None
+        self._uzaktan = False
+
+        self.setObjectName("donemAralik")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedHeight(_ALAN_YUKSEKLIK)
+        self.setMinimumWidth(220)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.setStyleSheet(
+            f"QFrame#donemAralik {{"
+            f"  background: {SURFACE};"
+            f"  border: 1px solid {BORDER_STRONG};"
+            f"  border-radius: 8px;"
+            f"}}"
+            f"QFrame#donemAralik:hover {{ border-color: #9aa6b6; }}"
+            f"QLabel#donemAralikText {{ color: {INK_SOFT}; font-size: 13px; font-weight: 600;"
+            f"  background: transparent; border: none; }}"
+            f"QLabel#donemAralikHint {{ color: {MUTED}; background: transparent; border: none; }}"
+        )
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(10, 0, 8, 0)
+        lay.setSpacing(8)
+
+        cal = QLabel()
+        cal.setPixmap(icon_calendar(15).pixmap(15, 15))
+        cal.setFixedSize(16, 16)
+        lay.addWidget(cal, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+        self._text = QLabel()
+        self._text.setObjectName("donemAralikText")
+        lay.addWidget(self._text, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+        chev = QLabel()
+        chev.setPixmap(icon_chevron_down(12).pixmap(12, 12))
+        chev.setFixedSize(14, 14)
+        lay.addWidget(chev, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+        self._guncelle_metin()
+        donem.degisti.connect(self._guncelle_metin)
+
+    def _guncelle_metin(self) -> None:
+        bas = self._donem.bas_tarih().toString("dd.MM.yyyy")
+        bit = self._donem.bit_tarih().toString("dd.MM.yyyy")
+        self._text.setText(f"{bas}  —  {bit}")
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802, ANN001
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._popup_ac()
+        super().mousePressEvent(event)
+
+    def _popup_ac(self) -> None:
+        if self._popup is None:
+            self._popup = QWidget(None, Qt.WindowType.Popup)
+            self._popup.setObjectName("calPopup")
+            pl = QVBoxLayout(self._popup)
+            pl.setContentsMargins(12, 12, 12, 12)
+            pl.setSpacing(10)
+
+            row1 = QHBoxLayout()
+            lbl1 = QLabel("Başlangıç")
+            lbl1.setStyleSheet(f"color: {MUTED}; font-size: 11px;")
+            row1.addWidget(lbl1)
+            self._bas = TarihSecici(self._donem.bas_tarih(), genislik=120)
+            row1.addWidget(self._bas)
+            pl.addLayout(row1)
+
+            row2 = QHBoxLayout()
+            lbl2 = QLabel("Bitiş")
+            lbl2.setStyleSheet(f"color: {MUTED}; font-size: 11px;")
+            row2.addWidget(lbl2)
+            self._bit = TarihSecici(self._donem.bit_tarih(), genislik=120)
+            row2.addWidget(self._bit)
+            pl.addLayout(row2)
+
+            self._bas.dateChanged.connect(self._popup_tarih_degisti)
+            self._bit.dateChanged.connect(self._popup_tarih_degisti)
+
+        assert self._popup is not None
+        self._uzaktan = True
+        self._bas.setDate(self._donem.bas_tarih())
+        self._bit.setDate(self._donem.bit_tarih())
+        self._uzaktan = False
+        self._popup.adjustSize()
+        pos = self.mapToGlobal(QPoint(0, self.height() + 4))
+        self._popup.move(pos)
+        self._popup.show()
+        self._popup.raise_()
+
+    def _popup_tarih_degisti(self, _d: QDate) -> None:
+        if self._uzaktan:
+            return
+        bas = self._bas.date()
+        bit = self._bit.date()
+        if bas > bit:
+            bit = bas
+            self._uzaktan = True
+            self._bit.setDate(bit)
+            self._uzaktan = False
+        self._donem.donem_ayarla(bas=bas, bit=bit)

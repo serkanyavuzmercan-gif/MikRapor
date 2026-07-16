@@ -67,6 +67,7 @@ class RaporTab(QWidget):
     def bagla_chrome(self, chrome: ChromeToolbar) -> None:
         """Üst chrome toolbar'a bağlanır (aktif sekme olduğunda çağrılır)."""
         self._chrome = chrome
+        chrome.set_aktif_tab(self)
         self._status = chrome.status_label()
         chrome.set_tek_tarih(self.TEK_TARIH)
         chrome.set_getir_etiket(self.GETIR_ETIKET)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sys
 
+from PyQt6.QtCore import QSize
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
@@ -24,6 +25,7 @@ from PyQt6.QtWidgets import (
 from infra.config import load_config
 from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
+from ui.icons import icon_gear
 from ui.mikro_settings_dialog import MikroAyarlarDialog
 from ui.rapor_tab import RaporTab
 from ui.resources import app_icon, app_logo_pixmap
@@ -100,10 +102,12 @@ class MikRaporWindow(QMainWindow):
         header.setContentsMargins(4, 2, 4, 8)
         header.setSpacing(12)
         logo = QLabel()
-        pm = app_logo_pixmap(48)
+        logo.setObjectName("brandMark")
+        logo.setStyleSheet("background: transparent; border: none;")
+        pm = app_logo_pixmap(52)
         if not pm.isNull():
             logo.setPixmap(pm)
-            logo.setFixedSize(48, 48)
+            logo.setFixedSize(pm.size())
         header.addWidget(logo)
         titles = QVBoxLayout()
         titles.setSpacing(0)
@@ -116,8 +120,10 @@ class MikRaporWindow(QMainWindow):
         titles.addWidget(alt)
         header.addLayout(titles)
         header.addStretch()
-        btn_ayar = QPushButton("⚙  Mikro Ayarları")
+        btn_ayar = QPushButton(" Mikro Ayarları")
         btn_ayar.setObjectName("ghostBtn")
+        btn_ayar.setIcon(icon_gear(15))
+        btn_ayar.setIconSize(QSize(15, 15))
         btn_ayar.clicked.connect(self._on_ayarlar)
         header.addWidget(btn_ayar)
         self._conn = QLabel()
