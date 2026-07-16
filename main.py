@@ -67,7 +67,8 @@ from tahmin_view import build_tahmin_widget
 from mikro_settings_dialog import MikroAyarlarDialog
 from mizan_bilanco import Bilanco, bilanco_csv, build_bilanco, tl
 from resources import app_icon, app_logo_pixmap
-from styles import DARK_STYLESHEET
+from empty_state import build_empty_state
+from styles import APP_STYLESHEET, BAD, MUTED, OK, WARN
 from tarih_secici import TarihSecici
 
 INSTANCE_KEY = "MercanSoftware.MikRapor.SingleInstance"
@@ -221,7 +222,10 @@ class BilancoTab(QWidget):
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(12)
 
-        controls = QHBoxLayout()
+        bar = QFrame()
+        bar.setObjectName("tabToolbar")
+        controls = QHBoxLayout(bar)
+        controls.setContentsMargins(14, 10, 14, 10)
         controls.setSpacing(10)
         controls.addWidget(QLabel("Tarih itibarıyla:"))
         self._date = TarihSecici(self._donem.bit_tarih(), genislik=140)
@@ -234,52 +238,37 @@ class BilancoTab(QWidget):
         controls.addWidget(self._btn_getir)
 
         self._btn_pdf = QPushButton("PDF Kaydet")
+        self._btn_pdf.setObjectName("ghostBtn")
         self._btn_pdf.setEnabled(False)
         self._btn_pdf.clicked.connect(self._on_pdf)
         controls.addWidget(self._btn_pdf)
 
         self._btn_csv = QPushButton("CSV Kaydet")
+        self._btn_csv.setObjectName("ghostBtn")
         self._btn_csv.setEnabled(False)
         self._btn_csv.clicked.connect(self._on_csv)
         controls.addWidget(self._btn_csv)
 
         self._status = QLabel("Tarih seçip «Bilanço Getir»e basın.")
-        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setObjectName("toolbarHint")
+        self._status.setStyleSheet(f"color: {MUTED};")
         self._status.setWordWrap(True)
         controls.addWidget(self._status, stretch=1)
-        layout.addLayout(controls)
+        layout.addWidget(bar)
 
-        self._empty = self._build_empty()
+        self._empty = build_empty_state(
+            "Anında Bilanço",
+            "Mikro genel muhasebe verinizden, seçtiğiniz tarih itibarıyla "
+            "TDHP bilançosunu saniyeler içinde üretir.",
+            cta_hint="Bilanço Getir",
+        )
         layout.addWidget(self._empty, stretch=1)
-        # Bilanço gövdesi yerel widget'larla (QTreeWidget) çizilir; satır :hover vurgusu
-        # için zengin-metin yerine yerel görünüm. Dış scroll tüm sayfayı birlikte kaydırır.
         self._view = QScrollArea()
         self._view.setWidgetResizable(True)
         self._view.setFrameShape(QFrame.Shape.NoFrame)
-        self._view.setStyleSheet("QScrollArea { background: #f4f6f9; border: none; }")
+        self._view.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         self._view.setVisible(False)
         layout.addWidget(self._view, stretch=1)
-
-    def _build_empty(self) -> QWidget:
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.addStretch()
-        lbl = QLabel(
-            "<div align='center' style='font-family:Segoe UI;'>"
-            "<div style='font-size:46px;'>📊</div>"
-            "<div style='font-size:22px; font-weight:800; color:#374151; margin-top:6px;'>Anında Bilanço</div>"
-            "<div style='color:#6b7280; margin-top:12px; line-height:160%;'>"
-            "Mikro genel muhasebe verinizden, seçtiğiniz tarih itibarıyla<br>"
-            "bilançoyu saniyeler içinde üretir.</div>"
-            "<div style='color:#94a3b8; margin-top:16px; font-size:12px;'>"
-            "Tarihi seçin&nbsp; →&nbsp; <b style='color:#2f6fed;'>Bilanço Getir</b>'e basın</div>"
-            "</div>"
-        )
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl.setWordWrap(True)
-        lay.addWidget(lbl)
-        lay.addStretch()
-        return w
 
     def _selected_asof(self) -> str:
         return self._date.date().toString("yyyy-MM-dd")
@@ -300,7 +289,7 @@ class BilancoTab(QWidget):
         asof = self._selected_asof()
         self._btn_getir.setEnabled(False)
         self._status.setText(f"{self._date.date().toString('dd.MM.yyyy')} itibarıyla GL çekiliyor…")
-        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setStyleSheet(f"color: {MUTED};")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         client = MikroClient(cfg)
         try:
@@ -318,7 +307,7 @@ class BilancoTab(QWidget):
             QApplication.restoreOverrideCursor()
             self._btn_getir.setEnabled(True)
             self._status.setText("Bilanço getirilemedi.")
-            self._status.setStyleSheet("color: #e57373;")
+            self._status.setStyleSheet(f"color: {BAD};")
             QMessageBox.warning(self, "Mikro Hatası", str(exc))
             return
         finally:
@@ -333,13 +322,13 @@ class BilancoTab(QWidget):
         self._btn_csv.setEnabled(True)
         if abs(b.fark) < 1.0:
             self._status.setText(f"{len(rows)} hesap · Aktif=Pasif ✓ dengede.")
-            self._status.setStyleSheet("color: #81c784;")
+            self._status.setStyleSheet(f"color: {OK};")
         elif b.dengede:
             self._status.setText(f"{len(rows)} hesap · ≈ dengede (kalan %{b.denge_yuzde:.2f}).")
-            self._status.setStyleSheet("color: #ffb74d;")
+            self._status.setStyleSheet(f"color: {WARN};")
         else:
             self._status.setText(f"{len(rows)} hesap · FARK var (%{b.denge_yuzde:.2f}).")
-            self._status.setStyleSheet("color: #e57373;")
+            self._status.setStyleSheet(f"color: {BAD};")
 
     def _on_pdf(self) -> None:
         if not self._bilanco:
@@ -354,7 +343,7 @@ class BilancoTab(QWidget):
             QMessageBox.critical(self, "PDF Hatası", str(exc))
             return
         self._status.setText(f"PDF kaydedildi: {Path(path).name}")
-        self._status.setStyleSheet("color: #81c784;")
+        self._status.setStyleSheet(f"color: {OK};")
 
     def _on_csv(self) -> None:
         if not self._bilanco:
@@ -375,28 +364,7 @@ def _csv_kaydet(parent: QWidget, status: QLabel, varsayilan_ad: str, icerik: str
         QMessageBox.critical(parent, "CSV Hatası", str(exc))
         return
     status.setText(f"CSV kaydedildi: {Path(path).name}")
-    status.setStyleSheet("color: #81c784;")
-
-
-def _hos_geldin(emoji: str, baslik: str, aciklama: str) -> QWidget:
-    """Sekme boşken gösterilen ortalanmış karşılama widget'ı."""
-    w = QWidget()
-    lay = QVBoxLayout(w)
-    lay.addStretch()
-    lbl = QLabel(
-        f"<div align='center' style='font-family:Segoe UI;'>"
-        f"<div style='font-size:46px;'>{emoji}</div>"
-        f"<div style='font-size:22px; font-weight:800; color:#374151; margin-top:6px;'>{baslik}</div>"
-        f"<div style='color:#6b7280; margin-top:12px; line-height:160%;'>{aciklama}</div>"
-        f"<div style='color:#94a3b8; margin-top:16px; font-size:12px;'>"
-        f"Dönemi seçin&nbsp; →&nbsp; <b style='color:#2f6fed;'>Getir</b>'e basın</div>"
-        f"</div>"
-    )
-    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    lbl.setWordWrap(True)
-    lay.addWidget(lbl)
-    lay.addStretch()
-    return w
+    status.setStyleSheet(f"color: {OK};")
 
 
 class GelirTablosuTab(QWidget):
@@ -414,7 +382,10 @@ class GelirTablosuTab(QWidget):
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(12)
 
-        controls = QHBoxLayout()
+        bar = QFrame()
+        bar.setObjectName("tabToolbar")
+        controls = QHBoxLayout(bar)
+        controls.setContentsMargins(14, 10, 14, 10)
         controls.setSpacing(8)
         controls.addWidget(QLabel("Dönem:"))
         self._bas = TarihSecici(self._donem.bas_tarih(), genislik=130)
@@ -429,29 +400,33 @@ class GelirTablosuTab(QWidget):
         self._btn_getir.clicked.connect(self._on_getir)
         controls.addWidget(self._btn_getir)
         self._btn_pdf = QPushButton("PDF Kaydet")
+        self._btn_pdf.setObjectName("ghostBtn")
         self._btn_pdf.setEnabled(False)
         self._btn_pdf.clicked.connect(self._on_pdf)
         controls.addWidget(self._btn_pdf)
 
         self._btn_csv = QPushButton("CSV Kaydet")
+        self._btn_csv.setObjectName("ghostBtn")
         self._btn_csv.setEnabled(False)
         self._btn_csv.clicked.connect(self._on_csv)
         controls.addWidget(self._btn_csv)
 
         self._status = QLabel("Dönem seçip «Gelir Tablosu Getir»e basın.")
-        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setStyleSheet(f"color: {MUTED};")
         self._status.setWordWrap(True)
         controls.addWidget(self._status, stretch=1)
-        layout.addLayout(controls)
+        layout.addWidget(bar)
 
-        self._empty = _hos_geldin("📈", "Gelir Tablosu",
-                                  "Seçtiğiniz dönemde satış, maliyet ve giderlerden<br>"
-                                  "kâr/zararın nasıl oluştuğunu gösterir.")
+        self._empty = build_empty_state(
+            "Gelir Tablosu",
+            "Seçtiğiniz dönemde satış, maliyet ve giderlerden kâr/zararın nasıl oluştuğunu gösterir.",
+            cta_hint="Gelir Tablosu Getir",
+        )
         layout.addWidget(self._empty, stretch=1)
         self._view = QScrollArea()
         self._view.setWidgetResizable(True)
         self._view.setFrameShape(QFrame.Shape.NoFrame)
-        self._view.setStyleSheet("QScrollArea { background: #f4f6f9; border: none; }")
+        self._view.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         self._view.setVisible(False)
         layout.addWidget(self._view, stretch=1)
 
@@ -475,7 +450,7 @@ class GelirTablosuTab(QWidget):
         bit = self._bit.date().toString("yyyy-MM-dd")
         self._btn_getir.setEnabled(False)
         self._status.setText("Dönem gelir/gider hareketleri çekiliyor…")
-        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setStyleSheet(f"color: {MUTED};")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         client = MikroClient(cfg)
         try:
@@ -492,7 +467,7 @@ class GelirTablosuTab(QWidget):
             QApplication.restoreOverrideCursor()
             self._btn_getir.setEnabled(True)
             self._status.setText("Gelir tablosu getirilemedi.")
-            self._status.setStyleSheet("color: #e57373;")
+            self._status.setStyleSheet(f"color: {BAD};")
             QMessageBox.warning(self, "Mikro Hatası", str(exc))
             return
         finally:
@@ -507,7 +482,7 @@ class GelirTablosuTab(QWidget):
         self._btn_csv.setEnabled(True)
         self._status.setText(f"{gt.hesap_sayisi} gelir/gider hesabı · Net Kâr {tl(gt.net_kar)} "
                              f"(net marj {yuzde(gt.net_marj)})")
-        self._status.setStyleSheet("color: #81c784;" if gt.net_kar >= 0 else "color: #e57373;")
+        self._status.setStyleSheet(f"color: {OK};" if gt.net_kar >= 0 else f"color: {BAD};")
 
     def _on_pdf(self) -> None:
         if not self._gt:
@@ -522,7 +497,7 @@ class GelirTablosuTab(QWidget):
             QMessageBox.critical(self, "PDF Hatası", str(exc))
             return
         self._status.setText(f"PDF kaydedildi: {Path(path).name}")
-        self._status.setStyleSheet("color: #81c784;")
+        self._status.setStyleSheet(f"color: {OK};")
 
     def _on_csv(self) -> None:
         if not self._gt:
@@ -546,7 +521,10 @@ class GercekDurumTab(QWidget):
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(12)
 
-        controls = QHBoxLayout()
+        bar = QFrame()
+        bar.setObjectName("tabToolbar")
+        controls = QHBoxLayout(bar)
+        controls.setContentsMargins(14, 10, 14, 10)
         controls.setSpacing(8)
         controls.addWidget(QLabel("Dönem:"))
         self._bas = TarihSecici(self._donem.bas_tarih(), genislik=130)
@@ -556,7 +534,8 @@ class GercekDurumTab(QWidget):
         controls.addWidget(self._bit)
         _donem_aralik_bagla(self, self._donem, self._bas, self._bit)
 
-        self._btn_ayarlar = QPushButton("⚙ Ayarlar")
+        self._btn_ayarlar = QPushButton("Ayarlar")
+        self._btn_ayarlar.setObjectName("ghostBtn")
         self._btn_ayarlar.clicked.connect(self._on_ayarlar)
         controls.addWidget(self._btn_ayarlar)
 
@@ -566,27 +545,28 @@ class GercekDurumTab(QWidget):
         controls.addWidget(self._btn_getir)
 
         self._btn_csv = QPushButton("CSV Kaydet")
+        self._btn_csv.setObjectName("ghostBtn")
         self._btn_csv.setEnabled(False)
         self._btn_csv.clicked.connect(self._on_csv)
         controls.addWidget(self._btn_csv)
 
         self._status = QLabel("Dönem seçip «Nakit & Kârlılık Getir»e basın.")
-        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setStyleSheet(f"color: {MUTED};")
         self._status.setWordWrap(True)
         controls.addWidget(self._status, stretch=1)
-        layout.addLayout(controls)
+        layout.addWidget(bar)
 
-        self._empty = _hos_geldin(
-            "💰", "Nakit &amp; Kârlılık",
-            "Faturalar muhasebeleştirilmeden, deponuzdan geçen mal ve bankadan geçen<br>"
-            "para üzerinden işletmenin fiili brüt marjını, nakit akışını ve işletme<br>"
-            "sermayesini gösterir; resmi gelir tablosuyla mutabakatını yapar.<br>"
-            "<span style='color:#9aa0a8;'>İlk kurulumda «⚙ Ayarlar» ile firma kayıt tarzını seçin.</span>")
+        self._empty = build_empty_state(
+            "Nakit & Kârlılık",
+            "Faturalar muhasebeleştirilmeden, deponuzdan geçen mal ve bankadan geçen para üzerinden işletmenin fiili kârlılığını ve nakdini hesaplar.",
+            cta_hint="Analizi Getir",
+        )
+
         layout.addWidget(self._empty, stretch=1)
         self._view = QScrollArea()
         self._view.setWidgetResizable(True)
         self._view.setFrameShape(QFrame.Shape.NoFrame)
-        self._view.setStyleSheet("QScrollArea { background: #f4f6f9; border: none; }")
+        self._view.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         self._view.setVisible(False)
         layout.addWidget(self._view, stretch=1)
 
@@ -595,7 +575,8 @@ class GercekDurumTab(QWidget):
         if dlg.exec():
             a = dlg.ayarlar()
             self._status.setText(f"Ayarlar kaydedildi — {a.ozet()}")
-            self._status.setStyleSheet("color: #81c784;")
+            self._status.setStyleSheet(f"color: {OK};")
+
 
     def _on_getir(self) -> None:
         cfg = load_config()
@@ -618,7 +599,7 @@ class GercekDurumTab(QWidget):
         ayarlar = load_gercek_durum_ayarlar()
         self._btn_getir.setEnabled(False)
         self._status.setText("Stok, banka ve bakiye hareketleri çekiliyor…")
-        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setStyleSheet(f"color: {MUTED};")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         client = MikroClient(cfg)
         try:
@@ -652,7 +633,7 @@ class GercekDurumTab(QWidget):
             QApplication.restoreOverrideCursor()
             self._btn_getir.setEnabled(True)
             self._status.setText("Rapor getirilemedi.")
-            self._status.setStyleSheet("color: #e57373;")
+            self._status.setStyleSheet(f"color: {BAD};")
             QMessageBox.warning(self, "Mikro Hatası", str(exc))
             return
         finally:
@@ -677,9 +658,10 @@ class GercekDurumTab(QWidget):
             parts.insert(0, "⚠ stok verisi yok — dönem/yıl kontrol edin")
         self._status.setText(" · ".join(parts))
         self._status.setStyleSheet(
-            "color: #ffb74d;" if gd.veri_eksik else
-            ("color: #81c784;" if gd.gercek_brut_kar >= 0 else "color: #e57373;")
+            f"color: {WARN};" if gd.veri_eksik else
+            (f"color: {OK};" if gd.gercek_brut_kar >= 0 else f"color: {BAD};")
         )
+
 
     def _on_csv(self) -> None:
         if not self._gd:
@@ -703,7 +685,10 @@ class TahsilatAlacakTab(QWidget):
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(12)
 
-        controls = QHBoxLayout()
+        bar = QFrame()
+        bar.setObjectName("tabToolbar")
+        controls = QHBoxLayout(bar)
+        controls.setContentsMargins(14, 10, 14, 10)
         controls.setSpacing(8)
         controls.addWidget(QLabel("Dönem:"))
         self._bas = TarihSecici(self._donem.bas_tarih(), genislik=130)
@@ -719,26 +704,28 @@ class TahsilatAlacakTab(QWidget):
         controls.addWidget(self._btn_getir)
 
         self._btn_csv = QPushButton("CSV Kaydet")
+        self._btn_csv.setObjectName("ghostBtn")
         self._btn_csv.setEnabled(False)
         self._btn_csv.clicked.connect(self._on_csv)
         controls.addWidget(self._btn_csv)
 
         self._status = QLabel("Dönem seçip «Tahsilat & Alacak Getir»e basın.")
-        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setStyleSheet(f"color: {MUTED};")
         self._status.setWordWrap(True)
         controls.addWidget(self._status, stretch=1)
-        layout.addLayout(controls)
+        layout.addWidget(bar)
 
-        self._empty = _hos_geldin(
-            "📒", "Tahsilat &amp; Alacak",
-            "Cari hareketlerden — açık alacak ve borçların vadeye göre yaşlandırması,<br>"
-            "dönem tahsilat/ödeme performansı (DSO/DPO) ve ileriye dönük net vade<br>"
-            "takvimi (ne girecek − ne çıkacak). Resmi GL'ye dokunmaz.")
+        self._empty = build_empty_state(
+            "Tahsilat & Alacak",
+            "Cari hareketlerden açık alacak ve borçların vadeye göre yaşlandırması, dönem tahsilat/ödeme performansı ve ileriye dönük net vade takvimi.",
+            cta_hint="Analizi Getir",
+        )
+
         layout.addWidget(self._empty, stretch=1)
         self._view = QScrollArea()
         self._view.setWidgetResizable(True)
         self._view.setFrameShape(QFrame.Shape.NoFrame)
-        self._view.setStyleSheet("QScrollArea { background: #f4f6f9; border: none; }")
+        self._view.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         self._view.setVisible(False)
         layout.addWidget(self._view, stretch=1)
 
@@ -762,7 +749,7 @@ class TahsilatAlacakTab(QWidget):
         bit = self._bit.date().toString("yyyy-MM-dd")
         self._btn_getir.setEnabled(False)
         self._status.setText("Cari açık kalemler çekiliyor…")
-        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setStyleSheet(f"color: {MUTED};")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         client = MikroClient(cfg)
         try:
@@ -781,7 +768,7 @@ class TahsilatAlacakTab(QWidget):
             QApplication.restoreOverrideCursor()
             self._btn_getir.setEnabled(True)
             self._status.setText("Tahsilat & alacak getirilemedi.")
-            self._status.setStyleSheet("color: #e57373;")
+            self._status.setStyleSheet(f"color: {BAD};")
             QMessageBox.warning(self, "Mikro Hatası", str(exc))
             return
         finally:
@@ -804,9 +791,10 @@ class TahsilatAlacakTab(QWidget):
             parts.insert(0, "⚠ açık bakiye yok — dönem/yıl kontrol edin")
         self._status.setText(" · ".join(parts))
         self._status.setStyleSheet(
-            "color: #ffb74d;" if ta.cari_sayisi == 0 else
-            ("color: #e57373;" if ta.alacak_gecikmis > 0.005 else "color: #81c784;")
+            f"color: {WARN};" if ta.cari_sayisi == 0 else
+            (f"color: {BAD};" if ta.alacak_gecikmis > 0.005 else f"color: {OK};")
         )
+
 
     def _on_csv(self) -> None:
         if not self._ta:
@@ -830,7 +818,10 @@ class NakitAkisTab(QWidget):
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(12)
 
-        controls = QHBoxLayout()
+        bar = QFrame()
+        bar.setObjectName("tabToolbar")
+        controls = QHBoxLayout(bar)
+        controls.setContentsMargins(14, 10, 14, 10)
         controls.setSpacing(8)
         controls.addWidget(QLabel("Dönem:"))
         self._bas = TarihSecici(self._donem.bas_tarih(), genislik=130)
@@ -846,26 +837,28 @@ class NakitAkisTab(QWidget):
         controls.addWidget(self._btn_getir)
 
         self._btn_csv = QPushButton("CSV Kaydet")
+        self._btn_csv.setObjectName("ghostBtn")
         self._btn_csv.setEnabled(False)
         self._btn_csv.clicked.connect(self._on_csv)
         controls.addWidget(self._btn_csv)
 
         self._status = QLabel("Dönem seçip «Nakit Akışı Getir»e basın.")
-        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setStyleSheet(f"color: {MUTED};")
         self._status.setWordWrap(True)
         controls.addWidget(self._status, stretch=1)
-        layout.addLayout(controls)
+        layout.addWidget(bar)
 
-        self._empty = _hos_geldin(
-            "💵", "Nakit Akış",
-            "Banka ve kasadan fiilen geçen para — karşı tarafına göre kategorize:<br>"
-            "müşteri tahsilatı, satıcı ödemesi, kredi kullanım/ödemesi, vergi & SGK.<br>"
-            "<span style='color:#9aa0a8;'>Açılış → girişler − çıkışlar → kapanış + aylık trend.</span>")
+        self._empty = build_empty_state(
+            "Nakit Akış",
+            "Banka ve kasadan fiilen geçen para — müşteri tahsilatı, satıcı ödemesi, kredi, vergi, personel; açılıştan kapanışa reconcile.",
+            cta_hint="Nakit Akış Getir",
+        )
+
         layout.addWidget(self._empty, stretch=1)
         self._view = QScrollArea()
         self._view.setWidgetResizable(True)
         self._view.setFrameShape(QFrame.Shape.NoFrame)
-        self._view.setStyleSheet("QScrollArea { background: #f4f6f9; border: none; }")
+        self._view.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         self._view.setVisible(False)
         layout.addWidget(self._view, stretch=1)
 
@@ -889,7 +882,7 @@ class NakitAkisTab(QWidget):
         bit = self._bit.date().toString("yyyy-MM-dd")
         self._btn_getir.setEnabled(False)
         self._status.setText("Banka/kasa hareketleri çekiliyor…")
-        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setStyleSheet(f"color: {MUTED};")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         client = MikroClient(cfg)
         try:
@@ -910,7 +903,7 @@ class NakitAkisTab(QWidget):
             QApplication.restoreOverrideCursor()
             self._btn_getir.setEnabled(True)
             self._status.setText("Nakit akış getirilemedi.")
-            self._status.setStyleSheet("color: #e57373;")
+            self._status.setStyleSheet(f"color: {BAD};")
             QMessageBox.warning(self, "Mikro Hatası", str(exc))
             return
         finally:
@@ -933,9 +926,10 @@ class NakitAkisTab(QWidget):
             parts.insert(0, "⚠ banka/kasa hareketi yok — dönem/yıl kontrol edin")
         self._status.setText(" · ".join(parts))
         self._status.setStyleSheet(
-            "color: #ffb74d;" if na.hareket_sayisi == 0 else
-            ("color: #81c784;" if na.net_akis >= 0 else "color: #e57373;")
+            f"color: {WARN};" if na.hareket_sayisi == 0 else
+            (f"color: {OK};" if na.net_akis >= 0 else f"color: {BAD};")
         )
+
 
     def _on_csv(self) -> None:
         if not self._na:
@@ -980,7 +974,10 @@ class TahminTab(QWidget):
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(10)
 
-        controls = QHBoxLayout()
+        bar = QFrame()
+        bar.setObjectName("tabToolbar")
+        controls = QHBoxLayout(bar)
+        controls.setContentsMargins(14, 10, 14, 10)
         controls.setSpacing(8)
         controls.addWidget(QLabel("Geçmiş veri dönemi:"))
         self._bas = TarihSecici(self._donem.bas_tarih(), genislik=120)
@@ -994,20 +991,21 @@ class TahminTab(QWidget):
         self._btn_doldur.clicked.connect(self._on_doldur)
         controls.addWidget(self._btn_doldur)
         self._btn_csv = QPushButton("CSV Kaydet")
+        self._btn_csv.setObjectName("ghostBtn")
         self._btn_csv.setEnabled(False)
         self._btn_csv.clicked.connect(self._on_csv)
         controls.addWidget(self._btn_csv)
         self._status = QLabel("«Geçmişten Doldur» ile başla; sonra varsayımları düzenle.")
-        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setStyleSheet(f"color: {MUTED};")
         self._status.setWordWrap(True)
         controls.addWidget(self._status, stretch=1)
-        layout.addLayout(controls)
+        layout.addWidget(bar)
 
         # Varsayım formu (senaryo) — düzenlenebilir
         form_box = QFrame()
         form_box.setObjectName("tahminForm")
         form_box.setStyleSheet(
-            "QFrame#tahminForm { background: #f7f9fc; border: 1px solid #e3e8ef; border-radius: 10px; }")
+            "QFrame#tahminForm { background: #f7f9fc; border: 1px solid #e2e6ec; border-radius: 12px; }")
         fl = QHBoxLayout(form_box)
         fl.setContentsMargins(14, 10, 14, 10)
         fl.setSpacing(18)
@@ -1028,24 +1026,25 @@ class TahminTab(QWidget):
             col = QFormLayout()
             col.setContentsMargins(0, 0, 0, 0)
             lbl = QLabel(etiket)
-            lbl.setStyleSheet("color: #6b7280; font-size: 11px;")
+            lbl.setStyleSheet(f"color: {MUTED}; font-size: 11px;")
             col.addRow(lbl, w)
             fl.addLayout(col)
         self._btn_projekte = QPushButton("Projekte Et")
+        self._btn_projekte.setObjectName("primaryBtn")
         self._btn_projekte.clicked.connect(self._on_projekte)
         fl.addWidget(self._btn_projekte)
         layout.addWidget(form_box)
 
-        self._empty = _hos_geldin(
-            "🔮", "Tahmin",
-            "Geçmiş trendden otomatik tahmin üretir; varsayımları (büyüme, marj,<br>"
-            "gider) düzenleyip senaryonu görebilirsin: tahmini ciro, kâr ve nakit.<br>"
-            "<span style='color:#9aa0a8;'>Önce «Geçmişten Doldur», sonra istediğini değiştir.</span>")
+        self._empty = build_empty_state(
+            "Tahmin",
+            "Geçmiş trendden otomatik tahmin üretir; varsayımları (büyüme, marj, gider) düzenleyip senaryonu görebilirsiniz.",
+            cta_hint="Geçmişten Doldur",
+        )
         layout.addWidget(self._empty, stretch=1)
         self._view = QScrollArea()
         self._view.setWidgetResizable(True)
         self._view.setFrameShape(QFrame.Shape.NoFrame)
-        self._view.setStyleSheet("QScrollArea { background: #f4f6f9; border: none; }")
+        self._view.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         self._view.setVisible(False)
         layout.addWidget(self._view, stretch=1)
 
@@ -1069,7 +1068,7 @@ class TahminTab(QWidget):
         bit = self._bit.date().toString("yyyy-MM-dd")
         self._btn_doldur.setEnabled(False)
         self._status.setText("Geçmiş veri çekiliyor (satış, marj, nakit, gider)…")
-        self._status.setStyleSheet("color: #8b929e;")
+        self._status.setStyleSheet(f"color: {MUTED};")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         client = MikroClient(cfg)
         try:
@@ -1093,7 +1092,7 @@ class TahminTab(QWidget):
             QApplication.restoreOverrideCursor()
             self._btn_doldur.setEnabled(True)
             self._status.setText("Geçmiş veri getirilemedi.")
-            self._status.setStyleSheet("color: #e57373;")
+            self._status.setStyleSheet(f"color: {BAD};")
             QMessageBox.warning(self, "Mikro Hatası", str(exc))
             return
         finally:
@@ -1116,8 +1115,9 @@ class TahminTab(QWidget):
         self._sp_marj.setValue(v.marj_yuzde)
         self._sp_gider.setValue(v.sabit_gider)
         self._status.setText("Geçmişten dolduruldu — varsayımları düzenleyip «Projekte Et»e basabilirsin.")
-        self._status.setStyleSheet("color: #81c784;")
+        self._status.setStyleSheet(f"color: {OK};")
         self._on_projekte()
+
 
     def _on_projekte(self) -> None:
         v = TahminVarsayim(
@@ -1138,7 +1138,7 @@ class TahminTab(QWidget):
             f"Tahmin: {self._sp_ufuk.value()} ay · toplam ciro {tl(self._t.toplam_ciro)} · "
             f"dönem sonu nakit {tl(self._t.son_nakit)}")
         self._status.setStyleSheet(
-            "color: #e57373;" if self._t.en_dusuk_nakit < 0 else "color: #81c784;")
+            f"color: {BAD};" if self._t.en_dusuk_nakit < 0 else f"color: {OK};")
 
     def _on_csv(self) -> None:
         if not self._t:
@@ -1169,25 +1169,38 @@ class MikRaporWindow(QMainWindow):
         layout.setContentsMargins(18, 14, 18, 14)
         layout.setSpacing(10)
 
-        # Üst bar: logo + MikRapor + global Mikro Ayarları
-        header = QHBoxLayout()
+        # Üst marka bar (Teal A)
+        brand_bar = QFrame()
+        brand_bar.setObjectName("brandBar")
+        header = QHBoxLayout(brand_bar)
+        header.setContentsMargins(4, 2, 4, 8)
+        header.setSpacing(12)
         logo = QLabel()
-        pm = app_logo_pixmap(40)
+        pm = app_logo_pixmap(48)
         if not pm.isNull():
             logo.setPixmap(pm)
-            logo.setFixedSize(40, 40)
+            logo.setFixedSize(48, 48)
         header.addWidget(logo)
+        titles = QVBoxLayout()
+        titles.setSpacing(0)
+        titles.setContentsMargins(0, 0, 0, 0)
         baslik = QLabel("MikRapor")
         baslik.setObjectName("titleLabel")
-        header.addWidget(baslik)
-        alt = QLabel("Finansal Raporlama")
-        alt.setStyleSheet("color: #8b929e; font-size: 12px; margin-left: 4px;")
-        header.addWidget(alt)
+        titles.addWidget(baslik)
+        alt = QLabel("Mikro finansal raporlar")
+        alt.setObjectName("brandSubtitle")
+        titles.addWidget(alt)
+        header.addLayout(titles)
         header.addStretch()
+        self._conn = QLabel()
+        self._conn.setObjectName("connStatus")
+        header.addWidget(self._conn)
         btn_ayar = QPushButton("Mikro Ayarları")
+        btn_ayar.setObjectName("ghostBtn")
         btn_ayar.clicked.connect(self._on_ayarlar)
         header.addWidget(btn_ayar)
-        layout.addLayout(header)
+        layout.addWidget(brand_bar)
+        self._refresh_conn_status()
 
         # Sekmeler — her rapor kendi sekmesinde (ortak dönem)
         self._tabs = QTabWidget()
@@ -1199,13 +1212,29 @@ class MikRaporWindow(QMainWindow):
         self._tabs.addTab(TahminTab(self._donem), "Tahmin")
         layout.addWidget(self._tabs, stretch=1)
 
+    def _refresh_conn_status(self) -> None:
+        cfg = load_config()
+        if cfg.is_complete():
+            kod = cfg.firma_kodu or "—"
+            ad = (cfg.firma_adi or "").strip()
+            label = f"Bağlı · Firma {kod}" + (f" · {ad[:28]}" if ad else "")
+            self._conn.setText(label)
+            self._conn.setProperty("connected", True)
+        else:
+            self._conn.setText("Bağlantı ayarlanmadı")
+            self._conn.setProperty("connected", False)
+        # property değişince QSS yenilensin
+        self._conn.style().unpolish(self._conn)
+        self._conn.style().polish(self._conn)
+
     def _on_ayarlar(self) -> None:
-        MikroAyarlarDialog(self).exec()
+        if MikroAyarlarDialog(self).exec():
+            self._refresh_conn_status()
 
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setStyleSheet(DARK_STYLESHEET)
+    app.setStyleSheet(APP_STYLESHEET)
     app.setWindowIcon(app_icon())
     if _try_activate_existing_instance():
         return 0

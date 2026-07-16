@@ -19,7 +19,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from bilanco_view import FAINT, MUTED, PAGE_BG, _kpi_card
+from bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _kpi_card
+from styles import PRIMARY_SOFT
 from gercek_durum_view import NEG, POZ, _card, _renk, _satir_label
 from mizan_bilanco import tl
 from tahmin import Tahmin
@@ -91,7 +92,7 @@ class _TahminChart(QWidget):
             p.fillRect(QRectF(cx - bar_w / 2, min(vy, zy), bar_w, max(1.0, abs(vy - zy))),
                        QColor("#bfdbfe"))
         # nakit çizgisi
-        p.setPen(QPen(QColor("#1d4ed8"), 2))
+        p.setPen(QPen(QColor(ACCENT), 2))
         pts = []
         for i, nk in enumerate(nakit):
             cx = sol + grup_w * i + grup_w / 2
@@ -114,8 +115,8 @@ def _grafik_panel(t: Tahmin) -> QFrame:
     v.setContentsMargins(0, 0, 0, 0)
     v.setSpacing(6)
     lej = QLabel(
-        "<span style='color:#bfdbfe;'>■</span> Ciro (aylık) &nbsp;&nbsp;"
-        "<span style='color:#1d4ed8;'>▬</span> Nakit (kümülatif)"
+        f"<span style='color:#99f6e4;'>■</span> Ciro (aylık) &nbsp;&nbsp;"
+        f"<span style='color:{ACCENT};'>▬</span> Nakit (kümülatif)"
     )
     lej.setStyleSheet("font-size: 11px; background: transparent;")
     lej.setTextFormat(Qt.TextFormat.RichText)
@@ -149,7 +150,7 @@ def build_tahmin_widget(t: Tahmin, firma: str = "") -> QWidget:
 
     kpi = QHBoxLayout()
     kpi.setSpacing(12)
-    kpi.addWidget(_kpi_card(f"TOPLAM CİRO ({len(t.aylar)} AY)", tl(t.toplam_ciro), "#eef4ff", "#1d4ed8"))
+    kpi.addWidget(_kpi_card(f"TOPLAM CİRO ({len(t.aylar)} AY)", tl(t.toplam_ciro), PRIMARY_SOFT, ACCENT))
     nk_bg, nk_vr = ("#e8f6ee", POZ) if t.toplam_net >= 0 else ("#fdecec", NEG)
     kpi.addWidget(_kpi_card("TOPLAM NET KÂR", tl(t.toplam_net), nk_bg, nk_vr))
     sn_bg, sn_vr = ("#e8f6ee", POZ) if t.son_nakit >= 0 else ("#fdecec", NEG)

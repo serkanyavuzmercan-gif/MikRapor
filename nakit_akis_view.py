@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _kpi_card
+from styles import PRIMARY_SOFT
 from gercek_durum_view import NEG, POZ, _card, _cizgi, _renk, _satir_label
 from mizan_bilanco import tl
 from nakit_akis import NakitAkis
@@ -146,7 +147,7 @@ class _AylikChart(QWidget):
         n = len(self._aylar)
         grup_w = cw / n
         bar_w = min(16.0, grup_w / 4.2)
-        renkler = (QColor("#15803d"), QColor("#b91c1c"), QColor("#2f6fed"))  # giriş/çıkış/net
+        renkler = (QColor("#15803d"), QColor("#b91c1c"), QColor(ACCENT))  # giriş/çıkış/net
 
         def y_of(v):
             return ust + ch * ((max_v - v) / span)
@@ -176,9 +177,9 @@ def _trend_panel(na: NakitAkis) -> QFrame:
     v.setContentsMargins(0, 0, 0, 0)
     v.setSpacing(6)
     lej = QLabel(
-        "<span style='color:#15803d;'>■</span> Giriş &nbsp;&nbsp;"
-        "<span style='color:#b91c1c;'>■</span> Çıkış &nbsp;&nbsp;"
-        "<span style='color:#2f6fed;'>■</span> Net"
+        f"<span style='color:#15803d;'>■</span> Giriş &nbsp;&nbsp;"
+        f"<span style='color:#b91c1c;'>■</span> Çıkış &nbsp;&nbsp;"
+        f"<span style='color:{ACCENT};'>■</span> Net"
     )
     lej.setStyleSheet("font-size: 11px; background: transparent;")
     lej.setTextFormat(Qt.TextFormat.RichText)
@@ -227,7 +228,7 @@ def build_nakit_akis_widget(na: NakitAkis, firma: str = "") -> QWidget:
     kpi.addWidget(_kpi_card("TOPLAM ÇIKIŞ", tl(na.toplam_cikis), "#fdecec", NEG))
     nk_bg, nk_vr = ("#e8f6ee", POZ) if na.net_akis >= 0 else ("#fdecec", NEG)
     kpi.addWidget(_kpi_card("NET NAKİT AKIŞI", tl(na.net_akis), nk_bg, nk_vr))
-    kp_bg, kp_vr = ("#eef4ff", "#1d4ed8") if na.kapanis_nakit >= 0 else ("#fdecec", NEG)
+    kp_bg, kp_vr = (PRIMARY_SOFT, ACCENT) if na.kapanis_nakit >= 0 else ("#fdecec", NEG)
     kpi.addWidget(_kpi_card("KAPANIŞ NAKİT", tl(na.kapanis_nakit), kp_bg, kp_vr))
     root.addLayout(kpi)
 

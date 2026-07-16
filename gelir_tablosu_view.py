@@ -22,6 +22,7 @@ from bilanco_view import (
     _section,
     _tree,
 )
+from styles import ACCENT, PRIMARY_SOFT
 from gelir_tablosu import GelirTablosu, yuzde
 from mizan_bilanco import tl
 
@@ -84,9 +85,9 @@ def build_gelir_tablosu_widget(gt: GelirTablosu, firma: str = "") -> QWidget:
 
     kpi = QHBoxLayout()
     kpi.setSpacing(12)
-    kpi.addWidget(_kpi_card("NET SATIŞLAR", tl(gt.net_satislar), "#eef4ff", "#1d4ed8"))
-    kpi.addWidget(_kpi_marj("BRÜT KÂR", gt.brut_kar, gt.brut_marj, "#eef4ff", "#1d4ed8"))
-    kpi.addWidget(_kpi_marj("FAALİYET KÂRI", gt.faaliyet_kari, gt.faaliyet_marj, "#eef4ff", "#1d4ed8"))
+    kpi.addWidget(_kpi_card("NET SATIŞLAR", tl(gt.net_satislar), PRIMARY_SOFT, ACCENT))
+    kpi.addWidget(_kpi_marj("BRÜT KÂR", gt.brut_kar, gt.brut_marj, PRIMARY_SOFT, ACCENT))
+    kpi.addWidget(_kpi_marj("FAALİYET KÂRI", gt.faaliyet_kari, gt.faaliyet_marj, PRIMARY_SOFT, ACCENT))
     kpi.addWidget(_kpi_marj("DÖNEM NET KÂRI", gt.net_kar, gt.net_marj, nk_bg, nk_vr))
     root.addLayout(kpi)
 
