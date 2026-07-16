@@ -1,4 +1,4 @@
-"""Ortak boş / karşılama ekranı — Design A mockup birebir: hero + marka + CTA."""
+"""Ortak boş / karşılama ekranı — Design A mockup: hero + marka + tam metin + CTA."""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ from collections.abc import Callable
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
 from ui.resources import app_logo_pixmap, asset_path
-from ui.styles import ACCENT, INK, MUTED, NAVY
+from ui.styles import ACCENT, MUTED, NAVY
 
 
 def build_empty_state(
@@ -19,38 +19,38 @@ def build_empty_state(
     cta_hint: str = "Getir",
     on_cta: Callable[[], None] | None = None,
 ) -> QWidget:
-    """Mockup A empty state: büyük hero, MikRapor lockup, headline, tek CTA."""
+    """Mockup A empty state: hero, MikRapor lockup, headline, alt metin (2 satır), CTA."""
     w = QWidget()
     w.setObjectName("emptyState")
     lay = QVBoxLayout(w)
-    lay.setContentsMargins(48, 32, 48, 40)
+    lay.setContentsMargins(40, 24, 40, 32)
     lay.setSpacing(0)
-    lay.addStretch(3)
+    lay.addStretch(2)
 
     art = QLabel()
     art.setAlignment(Qt.AlignmentFlag.AlignHCenter)
     art.setObjectName("emptyArt")
+    art.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
     pix = QPixmap(str(asset_path("empty-hero.png")))
     if pix.isNull():
         pix = QPixmap(str(asset_path("empty-bilanco.png")))
     if not pix.isNull():
         art.setPixmap(
             pix.scaled(
-                520,
-                280,
+                480,
+                240,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
         )
     lay.addWidget(art)
-    lay.addSpacing(20)
+    lay.addSpacing(18)
 
-    # Küçük marka lockup (mockup: ikon + MikRapor)
     brand_row = QHBoxLayout()
     brand_row.setSpacing(8)
     brand_row.addStretch(1)
     mark = QLabel()
-    mark_pm = app_logo_pixmap(22)
+    mark_pm = app_logo_pixmap(20)
     if not mark_pm.isNull():
         mark.setPixmap(mark_pm)
     brand_row.addWidget(mark)
@@ -61,27 +61,33 @@ def build_empty_state(
     brand_row.addWidget(brand)
     brand_row.addStretch(1)
     lay.addLayout(brand_row)
-    lay.addSpacing(10)
+    lay.addSpacing(8)
 
     title = QLabel(baslik)
     title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-    title.setStyleSheet(f"color: {ACCENT}; font-size: 30px; font-weight: 800;")
+    title.setStyleSheet(f"color: {ACCENT}; font-size: 28px; font-weight: 800;")
     lay.addWidget(title)
-    lay.addSpacing(10)
+    lay.addSpacing(8)
 
     body = QLabel(aciklama)
-    body.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+    body.setObjectName("emptyBody")
+    body.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
     body.setWordWrap(True)
-    body.setMaximumWidth(540)
-    body.setStyleSheet(f"color: {MUTED}; font-size: 14px; line-height: 155%;")
+    body.setMinimumWidth(420)
+    body.setMaximumWidth(560)
+    body.setMinimumHeight(44)  # 2 satır garantisi — kesilmesin
+    body.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+    body.setStyleSheet(
+        f"color: {MUTED}; font-size: 14px; line-height: 150%; background: transparent;"
+    )
     lay.addWidget(body, alignment=Qt.AlignmentFlag.AlignHCenter)
-    lay.addSpacing(24)
+    lay.addSpacing(22)
 
     if on_cta is not None:
-        btn = QPushButton(f"  {cta_hint}  ")
+        btn = QPushButton(f"  ▤  {cta_hint}  ")
         btn.setObjectName("primaryBtn")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setMinimumWidth(220)
+        btn.setMinimumWidth(230)
         btn.setMinimumHeight(48)
         btn.setStyleSheet(
             f"QPushButton#primaryBtn {{ font-size: 15px; font-weight: 700; "
@@ -90,5 +96,5 @@ def build_empty_state(
         btn.clicked.connect(on_cta)
         lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-    lay.addStretch(4)
+    lay.addStretch(3)
     return w

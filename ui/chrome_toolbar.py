@@ -74,13 +74,13 @@ class ChromeToolbar(QFrame):
         self._btn_iptal.clicked.connect(self.iptal_clicked.emit)
         lay.addWidget(self._btn_iptal)
 
-        self._btn_pdf = QPushButton("PDF")
+        self._btn_pdf = QPushButton("📄 PDF")
         self._btn_pdf.setObjectName("ghostBtn")
         self._btn_pdf.setEnabled(False)
         self._btn_pdf.clicked.connect(self.pdf_clicked.emit)
         lay.addWidget(self._btn_pdf)
 
-        self._btn_csv = QPushButton("CSV")
+        self._btn_csv = QPushButton("▦ CSV")
         self._btn_csv.setObjectName("ghostBtn")
         self._btn_csv.setEnabled(False)
         self._btn_csv.clicked.connect(self.csv_clicked.emit)
@@ -100,13 +100,19 @@ class ChromeToolbar(QFrame):
         return self._status
 
     def set_tek_tarih(self, tek: bool) -> None:
+        """Design A: chrome her zaman tarih aralığı gösterir (mockup: 01.01 — 16.07).
+
+        tek=True sekmelerde (bilanço) fetch yine bitiş tarihini kullanır; UI aralık kalır.
+        """
         self._tek_tarih = tek
-        self._tarih.setVisible(tek)
-        self._bas.setVisible(not tek)
-        self._ok.setVisible(not tek)
-        self._bit.setVisible(not tek)
-        # Design A chrome: tek tarih / dönem aynı şerit — etiket sade
+        self._tarih.setVisible(False)
+        self._bas.setVisible(True)
+        self._ok.setVisible(True)
+        self._bit.setVisible(True)
         self._lbl_donem.setVisible(False)
+        # Ayırıcı mockup’taki "—" hissi
+        self._ok.setText("—")
+        self._ok.setStyleSheet(f"color: {MUTED}; font-weight: 600; padding: 0 2px;")
 
     def set_getir_etiket(self, text: str) -> None:
         # Design A: chrome her zaman "Raporu Getir"; sekme CTA empty state'te kalır
