@@ -1,14 +1,17 @@
 """Ortak boş / karşılama ekranı — Design A: illüstrasyon full-bleed arka plan + alt CTA bandı.
 
 Mockup A (empty): büyük logomark + MikRapor, teal başlık, gri açıklama, dolu yeşil CTA.
+
+Marka (logo+MikRapor) her sekmede aynı ayak izinde ortalanır; uzun başlık/CTA metinleri
+yatayda ölçeklenerek sabit banda sığar — yazı uzunluğuna göre kayma / üst üste binme yok.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtCore import QRect, Qt
-from PyQt6.QtGui import QColor, QPainter, QPixmap, QResizeEvent
+from PyQt6.QtCore import QRect, QSize, Qt
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPixmap, QResizeEvent
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -23,6 +26,12 @@ from ui.styles import ACCENT, ACCENT_HOVER, ACCENT_PRESSED, MUTED, NAVY
 
 # Empty-state marka: mockup’ta toolbar’dan belirgin şekilde büyük
 _MARK_SIZE = 44
+# Gelir Tablosu empty (referans): sabit kompozisyon bandı — sekmeden sekmeye kaymasın
+_COL_W = 480
+_TITLE_MAX_W = 360   # "Gelir Tablosu" bandı; daha uzun başlık yatay ölçeklenir
+_CTA_W = 280         # referans CTA genişliği (Gelir Tablosu Getir)
+_CTA_H = 48
+
 _CTA_STYLE = f"""
 QPushButton#emptyCtaBtn {{
     background-color: {ACCENT};
@@ -30,10 +39,12 @@ QPushButton#emptyCtaBtn {{
     border: 1px solid {ACCENT};
     font-size: 15px;
     font-weight: 700;
-    padding: 14px 36px;
+    padding: 0 16px;
     border-radius: 10px;
-    min-width: 240px;
-    min-height: 48px;
+    min-width: {_CTA_W}px;
+    max-width: {_CTA_W}px;
+    min-height: {_CTA_H}px;
+    max-height: {_CTA_H}px;
 }}
 QPushButton#emptyCtaBtn:hover {{
     background-color: {ACCENT_HOVER};
@@ -99,6 +110,57 @@ class _CoverBackground(QWidget):
         p.end()
 
 
+class _HScaleLabel(QWidget):
+    """Tek satır metin — max_width aşarsa yalnızca yatayda ölçekler (yükseklik sabit).
+
+    Uzun başlıklar («Tahsilat & Alacak») referans banda («Gelir Tablosu») sığar;
+    kısa metinler ortalanır, ölçek 1.0 kalır. Marka konumunu etkilemez.
+    """
+
+    def __init__(
+        self,
+        text: str,
+        *,
+        color: str,
+        point_size: int,
+        weight: int = 800,
+        max_width: int = _TITLE_MAX_W,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._text = text
+        self._color = QColor(color)
+        self._max_w = max_width
+        self._font = QFont()
+        self._font.setPixelSize(point_size)
+        self._font.setWeight(QFont.Weight(weight) if weight >= 100 else QFont.Weight.Bold)
+        self._font.setBold(True)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        fm = QFontMetrics(self._font)
+        self.setFixedSize(max_width, fm.height() + 6)
+
+    def paintEvent(self, _ev) -> None:  # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setFont(self._font)
+        p.setPen(self._color)
+        fm = QFontMetrics(self._font)
+        tw = fm.horizontalAdvance(self._text)
+        if tw <= 0:
+            p.end()
+            return
+        avail = float(self.width())
+        sx = min(1.0, avail / tw)
+        # Ortala; yatay ölçek merkezden
+        p.translate(avail / 2.0, 0.0)
+        p.scale(sx, 1.0)
+        p.translate(-tw / 2.0, 0.0)
+        baseline = fm.ascent() + 3
+        p.drawText(0, baseline, self._text)
+        p.end()
+
+
 class EmptyState(QWidget):
     """Full-bleed hero arka plan; marka + başlık + açıklama + dolu yeşil CTA."""
 
@@ -129,8 +191,20 @@ class EmptyState(QWidget):
         # Üstte görsel alan; marka/başlık/CTA alt banda (önceki konum)
         lay.addStretch(6)
 
+        # Sabit genişlik kolon — tüm sekmelerde aynı merkez ekseni
+        col = QWidget()
+        col.setObjectName("emptyCol")
+        col.setFixedWidth(_COL_W)
+        col.setStyleSheet("background: transparent;")
+        col_lay = QVBoxLayout(col)
+        col_lay.setContentsMargins(0, 0, 0, 0)
+        col_lay.setSpacing(0)
+        col_lay.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+
+        # Marka: logo + MikRapor — sabit ayak izi, her zaman kolon ortası
         brand_row = QHBoxLayout()
         brand_row.setSpacing(12)
+        brand_row.setContentsMargins(0, 0, 0, 0)
         brand_row.addStretch(1)
         mark = QLabel()
         mark.setObjectName("emptyBrandMark")
@@ -142,55 +216,74 @@ class EmptyState(QWidget):
         brand_row.addWidget(mark, alignment=Qt.AlignmentFlag.AlignVCenter)
         brand = QLabel("MikRapor")
         brand.setObjectName("emptyBrandName")
+        brand_font = QFont()
+        brand_font.setPixelSize(22)
+        brand_font.setWeight(QFont.Weight.ExtraBold)
+        brand.setFont(brand_font)
         brand.setStyleSheet(
-            f"color: {NAVY}; font-size: 22px; font-weight: 800; letter-spacing: 0.15px; "
-            "background: transparent;"
+            f"color: {NAVY}; letter-spacing: 0.15px; background: transparent;"
         )
+        # Sabit ayak izi — sekme başlığı/CTA uzunluğu markayı kaydıramaz
+        brand.setFixedHeight(QFontMetrics(brand_font).height() + 8)
         brand_row.addWidget(brand, alignment=Qt.AlignmentFlag.AlignVCenter)
         brand_row.addStretch(1)
-        lay.addLayout(brand_row)
-        lay.addSpacing(14)
+        col_lay.addLayout(brand_row)
+        col_lay.addSpacing(14)
 
-        title = QLabel(baslik)
-        title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        title.setStyleSheet(
-            f"color: {ACCENT}; font-size: 30px; font-weight: 800; background: transparent;"
+        # Başlık: uzunsa yatay ölçek — MikRapor’un altına binmez / kaydırmaz
+        title = _HScaleLabel(
+            baslik, color=ACCENT, point_size=30, weight=800, max_width=_TITLE_MAX_W,
         )
-        lay.addWidget(title)
-        lay.addSpacing(10)
+        col_lay.addWidget(title, alignment=Qt.AlignmentFlag.AlignHCenter)
+        col_lay.addSpacing(10)
 
         body = QLabel(aciklama)
         body.setObjectName("emptyBody")
         body.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
         body.setWordWrap(True)
         body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        # Minimum: layout stretch metni ezmesin. Yükseklik width'e göre resize'ta hesaplanır.
-        body.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
-        body.setMinimumWidth(320)
-        body.setMaximumWidth(560)
+        body.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
+        body.setFixedWidth(_COL_W)
         body.setStyleSheet(
             f"color: {MUTED}; font-size: 14px; line-height: 150%; background: transparent;"
             "padding: 0; margin: 0;"
         )
         self._body = body
-        lay.addWidget(body, alignment=Qt.AlignmentFlag.AlignHCenter)
-        lay.addSpacing(24)
+        col_lay.addWidget(body, alignment=Qt.AlignmentFlag.AlignHCenter)
+        col_lay.addSpacing(24)
 
         if on_cta is not None:
-            from PyQt6.QtCore import QSize
-
             from ui.icons import icon_table
 
-            # Tam stylesheet: widget-level kısmi QSS app #primaryBtn arka planını bozuyordu
-            btn = QPushButton(f" {cta_hint} ")
+            # Sabit genişlik CTA — uzun etiket yatay ölçeklenir, buton boyutu sabit
+            btn = QPushButton()
             btn.setObjectName("emptyCtaBtn")
-            btn.setIcon(icon_table(16, "#ffffff"))
-            btn.setIconSize(QSize(16, 16))
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setStyleSheet(_CTA_STYLE)
+            btn.setFixedSize(_CTA_W, _CTA_H)
             btn.clicked.connect(on_cta)
-            lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignHCenter)
 
+            inner = QHBoxLayout(btn)
+            inner.setContentsMargins(18, 0, 18, 0)
+            inner.setSpacing(8)
+            icon_lbl = QLabel()
+            icon_lbl.setPixmap(icon_table(16, "#ffffff").pixmap(QSize(16, 16)))
+            icon_lbl.setFixedSize(16, 16)
+            icon_lbl.setStyleSheet("background: transparent;")
+            icon_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            inner.addWidget(icon_lbl, alignment=Qt.AlignmentFlag.AlignVCenter)
+            # Metin alanı: ikon sonrası kalan genişlikte yatay ölçek
+            cta_text_w = _CTA_W - 18 - 18 - 16 - 8
+            cta_lbl = _HScaleLabel(
+                cta_hint.strip(), color="#ffffff", point_size=15, weight=700,
+                max_width=cta_text_w,
+            )
+            cta_lbl.setFixedHeight(_CTA_H - 4)
+            cta_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            inner.addWidget(cta_lbl, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
+            col_lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+        lay.addWidget(col, alignment=Qt.AlignmentFlag.AlignHCenter)
         lay.addSpacing(10)
         self._body_genislik_ayarla()
 
@@ -199,9 +292,7 @@ class EmptyState(QWidget):
         body = getattr(self, "_body", None)
         if body is None:
             return
-        # Kenar boşlukları düşülmüş kullanılabilir genişlik
-        kullanilabilir = max(320, self.width() - 96) if self.width() > 0 else 560
-        w = min(560, kullanilabilir)
+        w = _COL_W
         body.setFixedWidth(w)
         h = body.heightForWidth(w)
         if h > 0:
