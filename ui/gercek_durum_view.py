@@ -24,10 +24,7 @@ from PyQt6.QtWidgets import (
 from domain.gercek_durum import GercekDurum, yuzde
 from domain.mizan_bilanco import tl
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _kpi_card
-
-POZ = "#15803d"   # yeşil (iyi/pozitif)
-NEG = "#b91c1c"   # kırmızı (kötü/negatif)
-PANEL_BG = "#f7f9fc"
+from ui.styles import BAD as NEG, BORDER, OK as POZ, PANEL_BG
 
 
 def _renk(v: float) -> str:
@@ -38,8 +35,7 @@ def _card(baslik: str, inner: QWidget) -> QFrame:
     card = QFrame()
     card.setObjectName("gdCard")
     card.setStyleSheet(
-        "QFrame#gdCard { background: %s; border: 1px solid #e3e8ef; border-radius: 12px; }"
-        % PANEL_BG
+        f"QFrame#gdCard {{ background: {PANEL_BG}; border: 1px solid {BORDER}; border-radius: 12px; }}"
     )
     card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
     lay = QVBoxLayout(card)
@@ -269,7 +265,7 @@ class _TrendChart(QWidget):
         n = len(self._aylar)
         grup_w = cw / n
         bar_w = min(18.0, grup_w / 4.2)
-        renkler = (QColor("#2f6fed"), QColor("#15803d"), QColor("#f59e0b"))
+        renkler = (QColor(ACCENT), QColor(POZ), QColor("#d97706"))
 
         def y_of(v: float) -> float:
             return ust + ch * ((max_v - v) / span)
@@ -303,9 +299,9 @@ def _trend_panel(gd: GercekDurum) -> QFrame:
     v.setContentsMargins(0, 0, 0, 0)
     v.setSpacing(6)
     lej = QLabel(
-        "<span style='color:#2f6fed;'>■</span> Satış &nbsp;&nbsp;"
-        "<span style='color:#15803d;'>■</span> Brüt Kâr &nbsp;&nbsp;"
-        "<span style='color:#f59e0b;'>■</span> Net Nakit"
+        f"<span style='color:{ACCENT};'>■</span> Satış &nbsp;&nbsp;"
+        f"<span style='color:{POZ};'>■</span> Brüt Kâr &nbsp;&nbsp;"
+        "<span style='color:#d97706;'>■</span> Net Nakit"
     )
     lej.setStyleSheet("font-size: 11px; background: transparent;")
     lej.setTextFormat(Qt.TextFormat.RichText)
@@ -364,17 +360,43 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
         )
         root.addWidget(uyari)
 
-    kpi = QHBoxLayout()
-    kpi.setSpacing(12)
-    kpi.addWidget(_kpi_card("FİİLİ SATIŞ", tl(gd.gercek_satis), "#eef4ff", "#1d4ed8"))
-    bk_bg, bk_vr = ("#e8f6ee", POZ) if gd.gercek_brut_kar >= 0 else ("#fdecec", NEG)
-    kpi.addWidget(_kpi_card(f"FİİLİ BRÜT MARJ  ·  {yuzde(gd.gercek_brut_marj)}",
-                            tl(gd.gercek_brut_kar), bk_bg, bk_vr))
-    nk_bg, nk_vr = ("#e8f6ee", POZ) if gd.nakit_net >= 0 else ("#fdecec", NEG)
-    kpi.addWidget(_kpi_card("NET NAKİT AKIŞI", tl(gd.nakit_net), nk_bg, nk_vr))
-    is_bg, is_vr = ("#e8f6ee", POZ) if gd.net_isletme_sermayesi >= 0 else ("#fdecec", NEG)
-    kpi.addWidget(_kpi_card("NET İŞLETME SERMAYESİ", tl(gd.net_isletme_sermayesi), is_bg, is_vr))
-    root.addLayout(kpi)
+    # Hero: fiili brüt marj önde (Teal A)
+    hero = QFrame()
+    hero.setObjectName("gdHero")
+    hero.setStyleSheet(
+        f"QFrame#gdHero {{ background: #ffffff; border: 1px solid {BORDER}; border-radius: 14px; }}"
+    )
+    hl = QHBoxLayout(hero)
+    hl.setContentsMargins(20, 16, 20, 16)
+    hl.setSpacing(24)
+    hero_left = QVBoxLayout()
+    hero_left.setSpacing(2)
+    hb = QLabel("FİİLİ BRÜT MARJ")
+    hb.setStyleSheet(f"color: {MUTED}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;")
+    hv = QLabel(yuzde(gd.gercek_brut_marj))
+    hv.setStyleSheet(
+        f"color: {_renk(gd.gercek_brut_marj)}; font-size: 32px; font-weight: 800;"
+    )
+    hs = QLabel(f"Fiili brüt kâr {tl(gd.gercek_brut_kar)}  ·  satış {tl(gd.gercek_satis)}")
+    hs.setStyleSheet(f"color: {FAINT}; font-size: 12px;")
+    hero_left.addWidget(hb)
+    hero_left.addWidget(hv)
+    hero_left.addWidget(hs)
+    hl.addLayout(hero_left, 2)
+    for baslik, deger, vr in (
+        ("NET NAKİT AKIŞI", tl(gd.nakit_net), _renk(gd.nakit_net)),
+        ("NET İŞLETME SERMAYESİ", tl(gd.net_isletme_sermayesi), _renk(gd.net_isletme_sermayesi)),
+    ):
+        col = QVBoxLayout()
+        col.setSpacing(2)
+        lb = QLabel(baslik)
+        lb.setStyleSheet(f"color: {MUTED}; font-size: 11px; font-weight: 600;")
+        col.addWidget(lb)
+        dv = QLabel(deger)
+        dv.setStyleSheet(f"color: {vr}; font-size: 16px; font-weight: 800;")
+        col.addWidget(dv)
+        hl.addLayout(col, 1)
+    root.addWidget(hero)
 
     row1 = QHBoxLayout()
     row1.setSpacing(20)
@@ -382,10 +404,7 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
     row1.addWidget(_karsilastirma_panel(gd), 1)
     root.addLayout(row1)
 
-    row2 = QHBoxLayout()
-    row2.setSpacing(20)
-    row2.addWidget(_nakit_panel(gd), 1)
-    row2.addWidget(_trend_panel(gd), 1)
-    root.addLayout(row2)
+    root.addWidget(_trend_panel(gd))
+    root.addWidget(_nakit_panel(gd))
     root.addStretch(1)
     return content

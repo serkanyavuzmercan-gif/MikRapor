@@ -1,11 +1,9 @@
 """
-Bilanço — yerel Qt görünümü (QTreeWidget panelleri + KPI kartları).
+Bilanço — yerel Qt görünümü (QTreeWidget panelleri + tipografi KPI şeridi).
 
 Neden HTML değil: bilanço gövdesi önceden QTextBrowser içinde HTML idi, ama Qt'nin
 zengin-metin motoru CSS `:hover` desteklemez — satır üstüne gelince vurgulama yapılamaz.
 Bu yüzden gövde yerel widget'larla çizilir: AKTİF | PASİF iki `QTreeWidget` paneli.
-Satır üstüne gelince (`::item:hover`) satır açık maviyle vurgulanır (kullanıcı isteği).
-Veri modeli (`Bilanco`) ve PDF çıktısı aynı kalır; yalnızca ekran görünümü yerelleşir.
 """
 
 from __future__ import annotations
@@ -26,16 +24,37 @@ from PyQt6.QtWidgets import (
 )
 
 from domain.mizan_bilanco import AKTIF_BOLUM, PASIF_BOLUM, Bilanco, tl
+from ui.styles import (
+    ACCENT,
+    BAD,
+    BORDER,
+    FAINT,
+    INK,
+    MUTED,
+    NAVY,
+    OK,
+    PAGE_BG,
+    PANEL_BG,
+    SUBINK,
+    WARN,
+)
 
-# Renkler — açık tema (styles.py ile uyumlu)
-NAVY = "#1f3a5f"
-ACCENT = "#2f6fed"
-INK = "#1f2937"
-SUBINK = "#334155"
-MUTED = "#6b7280"
-FAINT = "#94a3b8"
-PANEL_BG = "#f7f9fc"
-PAGE_BG = "#f4f6f9"
+# View'lar styles token'larını buradan da import edebilir (geriye uyumluluk)
+__all__ = [
+    "ACCENT",
+    "FAINT",
+    "MUTED",
+    "NAVY",
+    "PAGE_BG",
+    "build_bilanco_widget",
+    "_kpi_card",
+    "_kpi_metric",
+    "_panel",
+    "_tree",
+    "_row",
+    "_section",
+    "_fit_height",
+]
 
 _ALT_TOPLAM_ETIKET = {
     "1": "Dönen Varlıklar Toplamı",
@@ -45,25 +64,24 @@ _ALT_TOPLAM_ETIKET = {
     "5": "Özkaynaklar Toplamı",
 }
 
-# Satır üstüne gelince vurgu — yerel widget olduğu için gerçek :hover çalışır.
-_TREE_QSS = """
-QTreeWidget {
+_TREE_QSS = f"""
+QTreeWidget {{
     background: #ffffff;
     alternate-background-color: #f5f8fc;
-    border: 1px solid #e3e8ef;
+    border: 1px solid {BORDER};
     border-radius: 10px;
     outline: 0;
-    font-size: 12px;
-}
-QTreeWidget::item {
+    font-size: 13px;
+}}
+QTreeWidget::item {{
     padding: 6px 4px;
     color: #374151;
     border-bottom: 1px solid #e6eaf1;
-}
-QTreeWidget::item:hover {
-    background: #d6e4fb;
+}}
+QTreeWidget::item:hover {{
+    background: #ccfbf1;
     color: #0f172a;
-}
+}}
 """
 
 
@@ -78,8 +96,7 @@ def _tree() -> QTreeWidget:
     t.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
     t.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     t.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    t.setAlternatingRowColors(True)  # zebra — satırları gözle ayırmayı kolaylaştırır
-    # Satır :hover vurgusunun çalışması için viewport'ta mouse-tracking + WA_Hover şart.
+    t.setAlternatingRowColors(True)
     t.setMouseTracking(True)
     t.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
     t.viewport().setMouseTracking(True)
@@ -93,8 +110,6 @@ def _tree() -> QTreeWidget:
 
 
 def _buyut(f: QFont, artis: float = 0.5) -> None:
-    """Punto/piksel — hangisi tanımlıysa onu büyüt. Stylesheet px font'ta pointSizeF()=-1
-    döner; doğrudan +0.5 yapmak 'Point size <= 0' uyarısı verir, o yüzden güvenli büyütme."""
     if f.pointSizeF() > 0:
         f.setPointSizeF(f.pointSizeF() + artis)
     elif f.pixelSize() > 0:
@@ -110,7 +125,7 @@ def _section(t: QTreeWidget, baslik: str) -> None:
     it.setForeground(0, QBrush(QColor(NAVY)))
     it.setFlags(Qt.ItemFlag.ItemIsEnabled)
     t.addTopLevelItem(it)
-    it.setFirstColumnSpanned(True)  # eklendikten SONRA span çalışır
+    it.setFirstColumnSpanned(True)
 
 
 def _row(t: QTreeWidget, ad: str, tutar: float, *, bold: bool = False,
@@ -132,7 +147,6 @@ def _row(t: QTreeWidget, ad: str, tutar: float, *, bold: bool = False,
 
 
 def _fit_height(t: QTreeWidget) -> None:
-    """Kendi scroll'unu kapat; dış scroll yönetsin diye yüksekliği içeriğe sabitle."""
     total = 2 * t.frameWidth()
     for i in range(t.topLevelItemCount()):
         h = t.sizeHintForRow(i)
@@ -170,67 +184,91 @@ def _panel(baslik: str, t: QTreeWidget) -> QFrame:
     card = QFrame()
     card.setObjectName("panelCard")
     card.setStyleSheet(
-        "QFrame#panelCard { background: %s; border: 1px solid #e3e8ef; border-radius: 12px; }"
-        % PANEL_BG
+        f"QFrame#panelCard {{ background: {PANEL_BG}; border: 1px solid {BORDER}; "
+        f"border-radius: 12px; }}"
     )
     card.setMinimumWidth(360)
-    # Dikey Expanding: iki panel de en yüksek olanın boyuna uzar → başlıklar üstte hizalı
-    # (kısa panel alttan boşluk alır; dikeyde ortalama yapılmaz — kullanıcı isteği).
     card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
     lay = QVBoxLayout(card)
     lay.setContentsMargins(16, 14, 16, 16)
     lay.setSpacing(10)
     lbl = QLabel(baslik)
-    lbl.setStyleSheet(f"color: {ACCENT}; font-size: 14px; font-weight: 800; background: transparent;")
+    lbl.setStyleSheet(
+        f"color: {ACCENT}; font-size: 14px; font-weight: 800; background: transparent;"
+    )
     lay.addWidget(lbl)
     lay.addWidget(t)
-    lay.addStretch(1)  # içeriği yukarı sabitle
+    lay.addStretch(1)
     return card
 
 
 def _kpi_card(baslik: str, deger: str, bg: str, vrenk: str) -> QFrame:
+    """Klasik soft kart (diğer sekmeler için)."""
     card = QFrame()
     card.setObjectName("kpiCard")
     card.setStyleSheet(
-        "QFrame#kpiCard { background: %s; border: 1px solid #e7ecf3; border-radius: 10px; }"
-        % bg
+        f"QFrame#kpiCard {{ background: {bg}; border: 1px solid {BORDER}; border-radius: 10px; }}"
     )
     card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     lay = QVBoxLayout(card)
     lay.setContentsMargins(14, 11, 14, 11)
     lay.setSpacing(3)
     b = QLabel(baslik)
-    b.setStyleSheet("color: #64748b; font-size: 11px; background: transparent;")
+    b.setStyleSheet(f"color: {MUTED}; font-size: 11px; background: transparent;")
     v = QLabel(deger)
-    v.setStyleSheet(f"color: {vrenk}; font-size: 18px; font-weight: 800; background: transparent;")
+    v.setStyleSheet(
+        f"color: {vrenk}; font-size: 18px; font-weight: 800; background: transparent;"
+    )
     lay.addWidget(b)
     lay.addWidget(v)
     return card
 
 
+def _kpi_metric(baslik: str, deger: str, *, vrenk: str = INK) -> QWidget:
+    """Tipografi KPI — ağır kart yok (Teal A bilanço şeridi)."""
+    w = QWidget()
+    w.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    lay = QVBoxLayout(w)
+    lay.setContentsMargins(8, 4, 8, 4)
+    lay.setSpacing(2)
+    b = QLabel(baslik)
+    b.setStyleSheet(f"color: {MUTED}; font-size: 11px; font-weight: 600; letter-spacing: 0.4px;")
+    v = QLabel(deger)
+    v.setStyleSheet(f"color: {vrenk}; font-size: 20px; font-weight: 800;")
+    lay.addWidget(b)
+    lay.addWidget(v)
+    return w
+
+
+def _kpi_divider() -> QFrame:
+    line = QFrame()
+    line.setFrameShape(QFrame.Shape.VLine)
+    line.setStyleSheet(f"color: {BORDER};")
+    line.setFixedWidth(1)
+    return line
+
+
 def build_bilanco_widget(b: Bilanco, firma: str = "") -> QWidget:
     """Bir Bilanço'dan, QScrollArea içine konacak yerel görünüm widget'ı üretir."""
-    # Denge & dönem K/Z renkleri (HTML sürümüyle aynı mantık)
     if abs(b.fark) < 1.0:
-        denge_txt, denge_bg, denge_vr = "✓ DENGEDE", "#e8f6ee", "#15803d"
+        denge_txt, denge_vr = "Dengede", OK
     elif b.dengede:
-        denge_txt, denge_bg, denge_vr = f"≈ %{b.denge_yuzde:.2f}", "#fdf3e0", "#b45309"
+        denge_txt, denge_vr = f"≈ %{b.denge_yuzde:.2f}", WARN
     else:
-        denge_txt, denge_bg, denge_vr = "✗ FARK", "#fdecec", "#b91c1c"
-    kz_bg, kz_vr = ("#e8f6ee", "#15803d") if b.donem_kz >= 0 else ("#fdecec", "#b91c1c")
+        denge_txt, denge_vr = "Fark var", BAD
+    kz_vr = OK if b.donem_kz >= 0 else BAD
 
     content = QWidget()
     content.setObjectName("bilancoContent")
-    content.setStyleSheet("QWidget#bilancoContent { background: %s; }" % PAGE_BG)
+    content.setStyleSheet(f"QWidget#bilancoContent {{ background: {PAGE_BG}; }}")
     root = QVBoxLayout(content)
-    root.setContentsMargins(24, 18, 24, 24)
-    root.setSpacing(14)
+    root.setContentsMargins(28, 20, 28, 28)
+    root.setSpacing(16)
 
-    # Başlık satırı
-    firma_str = f" &nbsp;·&nbsp; <b>{firma}</b>" if firma else ""
+    firma_str = f"  ·  <b>{firma}</b>" if firma else ""
     head = QLabel(
-        f"<span style='color:{MUTED}; font-size:11px;'>ANINDA BİLANÇO &nbsp;·&nbsp; "
-        f"{b.asof} tarihi itibarıyla{firma_str}</span><br>"
+        f"<span style='color:{MUTED}; font-size:12px; letter-spacing:0.3px;'>"
+        f"ANINDA BİLANÇO  ·  {b.asof} tarihi itibarıyla{firma_str}</span><br>"
         f"<span style='color:{FAINT}; font-size:11px;'>canlı/yönetim bilançosu — "
         f"kesin dönem sonucu için ay sonu kapanışı esastır</span>"
     )
@@ -238,17 +276,25 @@ def build_bilanco_widget(b: Bilanco, firma: str = "") -> QWidget:
     head.setTextFormat(Qt.TextFormat.RichText)
     root.addWidget(head)
 
-    # KPI kartları
-    kpi = QHBoxLayout()
-    kpi.setSpacing(12)
-    kpi.addWidget(_kpi_card("TOPLAM AKTİF", tl(b.aktif_toplam), "#eef4ff", "#1d4ed8"))
-    kpi.addWidget(_kpi_card("TOPLAM PASİF", tl(b.pasif_toplam), "#eef4ff", "#1d4ed8"))
-    kpi.addWidget(_kpi_card("DÖNEM NET K/Z", tl(b.donem_kz), kz_bg, kz_vr))
-    kpi.addWidget(_kpi_card("DENGE", denge_txt, denge_bg, denge_vr))
-    root.addLayout(kpi)
+    # Tipografi KPI şeridi (kart yığını değil)
+    strip = QFrame()
+    strip.setObjectName("kpiStrip")
+    strip.setStyleSheet(
+        f"QFrame#kpiStrip {{ background: #ffffff; border: 1px solid {BORDER}; "
+        f"border-radius: 12px; }}"
+    )
+    kpi = QHBoxLayout(strip)
+    kpi.setContentsMargins(16, 14, 16, 14)
+    kpi.setSpacing(0)
+    kpi.addWidget(_kpi_metric("TOPLAM AKTİF", tl(b.aktif_toplam), vrenk=NAVY), 1)
+    kpi.addWidget(_kpi_divider())
+    kpi.addWidget(_kpi_metric("TOPLAM PASİF", tl(b.pasif_toplam), vrenk=NAVY), 1)
+    kpi.addWidget(_kpi_divider())
+    kpi.addWidget(_kpi_metric("DÖNEM NET K/Z", tl(b.donem_kz), vrenk=kz_vr), 1)
+    kpi.addWidget(_kpi_divider())
+    kpi.addWidget(_kpi_metric("DENGE", denge_txt, vrenk=denge_vr), 1)
+    root.addWidget(strip)
 
-    # AKTİF | PASİF panelleri — genişlik sınırlı kapsayıcıda eşit bölünür, ortalanır.
-    # (Yan boşluklar paneli minimuma sıkıştırmasın diye kapsayıcı kullanılır.)
     t_aktif, t_pasif = _tree(), _tree()
     _doldur(t_aktif, b, "aktif")
     _doldur(t_pasif, b, "pasif")
@@ -260,7 +306,6 @@ def build_bilanco_widget(b: Bilanco, firma: str = "") -> QWidget:
     pr.setSpacing(20)
     pr.addWidget(_panel("AKTİF (VARLIKLAR)", t_aktif), 1)
     pr.addWidget(_panel("PASİF (KAYNAKLAR)", t_pasif), 1)
-    # panel_row genişliği doldurur (cap 1280); artan boşluk yan stretch'lere → ortalanır.
     outer = QHBoxLayout()
     outer.addStretch(1)
     outer.addWidget(panel_row, 12)

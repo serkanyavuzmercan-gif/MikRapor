@@ -20,7 +20,8 @@ from PyQt6.QtWidgets import (
 
 from domain.mizan_bilanco import tl
 from domain.tahsilat_alacak import AGING_KOVALAR, VADE_KOVALAR, TahsilatAlacak
-from ui.bilanco_view import FAINT, MUTED, PAGE_BG, _kpi_card
+from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _kpi_card
+from ui.styles import PRIMARY_SOFT
 from ui.gercek_durum_view import NEG, POZ, _card, _cizgi, _renk, _satir_label
 
 # Yaşlandırma kovası → renk (vadesi gelmemiş yeşil → 90+ kırmızı)
@@ -219,7 +220,7 @@ def build_tahsilat_alacak_widget(ta: TahsilatAlacak, firma: str = "") -> QWidget
 
     kpi = QHBoxLayout()
     kpi.setSpacing(12)
-    kpi.addWidget(_kpi_card("TOPLAM ALACAK", tl(ta.alacak_toplam), "#eef4ff", "#1d4ed8"))
+    kpi.addWidget(_kpi_card("TOPLAM ALACAK", tl(ta.alacak_toplam), PRIMARY_SOFT, ACCENT))
     ag_bg, ag_vr = ("#fdecec", NEG) if ta.alacak_gecikmis > 0.005 else ("#e8f6ee", POZ)
     kpi.addWidget(_kpi_card("GECİKMİŞ ALACAK", tl(ta.alacak_gecikmis), ag_bg, ag_vr))
     kpi.addWidget(_kpi_card("TOPLAM BORÇ", tl(ta.borc_toplam), "#fdf3e0", "#b45309"))
@@ -243,7 +244,7 @@ def build_tahsilat_alacak_widget(ta: TahsilatAlacak, firma: str = "") -> QWidget
 
     row3 = QHBoxLayout()
     row3.setSpacing(20)
-    row3.addWidget(_top_panel("EN ÇOK ALACAKLI OLDUĞUMUZ MÜŞTERİLER", ta.top_alacak, "#1d4ed8"), 1)
+    row3.addWidget(_top_panel("EN ÇOK ALACAKLI OLDUĞUMUZ MÜŞTERİLER", ta.top_alacak, ACCENT), 1)
     row3.addWidget(_top_panel("EN ÇOK BORÇLU OLDUĞUMUZ SATICILAR", ta.top_borc, "#b45309"), 1)
     root.addLayout(row3)
     root.addStretch(1)
