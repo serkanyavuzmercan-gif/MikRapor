@@ -163,12 +163,16 @@ class EmptyState(QWidget):
         body.setObjectName("emptyBody")
         body.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
         body.setWordWrap(True)
-        body.setMinimumWidth(420)
+        body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        # Minimum: layout stretch metni ezmesin. Yükseklik width'e göre resize'ta hesaplanır.
+        body.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        body.setMinimumWidth(320)
         body.setMaximumWidth(560)
-        body.setMinimumHeight(44)
         body.setStyleSheet(
             f"color: {MUTED}; font-size: 14px; line-height: 150%; background: transparent;"
+            "padding: 0; margin: 0;"
         )
+        self._body = body
         lay.addWidget(body, alignment=Qt.AlignmentFlag.AlignHCenter)
         lay.addSpacing(24)
 
@@ -188,6 +192,22 @@ class EmptyState(QWidget):
             lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignHCenter)
 
         lay.addStretch(2)
+        self._body_genislik_ayarla()
+
+    def _body_genislik_ayarla(self) -> None:
+        """Kelime kaydırmalı açıklamanın tam yüksekliğini width'e göre kilitle (kesilmesin)."""
+        body = getattr(self, "_body", None)
+        if body is None:
+            return
+        # Kenar boşlukları düşülmüş kullanılabilir genişlik
+        kullanilabilir = max(320, self.width() - 96) if self.width() > 0 else 560
+        w = min(560, kullanilabilir)
+        body.setFixedWidth(w)
+        h = body.heightForWidth(w)
+        if h > 0:
+            # +6: Windows/DPI’da font metrik farkına karşı satır kesilmesin
+            body.setMinimumHeight(h + 6)
+            body.setMaximumHeight(16777215)  # QWIDGETSIZE_MAX — üst sınır kalksın
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -195,6 +215,7 @@ class EmptyState(QWidget):
         self._overlay.setGeometry(self.rect())
         self._bg.lower()
         self._overlay.raise_()
+        self._body_genislik_ayarla()
 
 
 def build_empty_state(
