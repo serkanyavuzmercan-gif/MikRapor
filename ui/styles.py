@@ -76,6 +76,9 @@ QLabel#connStatus {{
     border: 1px solid {ACCENT_MUTED};
     border-radius: 8px;
 }}
+QLabel#connStatus[connected="true"] {{
+    color: {ACCENT};
+}}
 QLabel#connStatus[connected="false"] {{
     color: {MUTED};
     background-color: #f1f5f9;

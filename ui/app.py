@@ -186,11 +186,11 @@ class MikRaporWindow(QMainWindow):
         if cfg.is_complete():
             kod = cfg.firma_kodu or "—"
             ad = (cfg.firma_adi or "").strip()
-            label = f"Bağlı · Firma {kod}" + (f" · {ad[:28]}" if ad else "")
+            label = f"●  Bağlı · Firma {kod}" + (f" · {ad[:28]}" if ad else "")
             self._conn.setText(label)
             self._conn.setProperty("connected", True)
         else:
-            self._conn.setText("Bağlantı ayarlanmadı")
+            self._conn.setText("○  Bağlantı ayarlanmadı")
             self._conn.setProperty("connected", False)
         self._conn.style().unpolish(self._conn)
         self._conn.style().polish(self._conn)
