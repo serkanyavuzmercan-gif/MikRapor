@@ -124,10 +124,10 @@ class EmptyState(QWidget):
         self._overlay.setStyleSheet("background: transparent;")
 
         lay = QVBoxLayout(self._overlay)
-        lay.setContentsMargins(48, 20, 48, 28)
+        lay.setContentsMargins(48, 28, 48, 36)
         lay.setSpacing(0)
-        # Üstte görsel; marka/başlık/CTA biraz daha yukarı (önce stretch 6 → alt band)
-        lay.addStretch(3)
+        # Üstte görsel alan; marka/başlık/CTA alt banda (önceki konum)
+        lay.addStretch(6)
 
         brand_row = QHBoxLayout()
         brand_row.setSpacing(12)
