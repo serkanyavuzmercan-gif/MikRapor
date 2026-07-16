@@ -18,7 +18,7 @@ class TahsilatAlacakTab(RaporTab):
     """Cari hareketten alacak/borç yaşlandırma, vade takvimi ve tahsilat performansı sekmesi."""
 
     EMOJI = "📒"
-    BASLIK = "Tahsilat &amp; Alacak"
+    BASLIK = "Tahsilat & Alacak"
     ACIKLAMA = (
         "Cari hareketlerden — açık alacak ve borçların vadeye göre yaşlandırması,<br>"
         "dönem tahsilat/ödeme performansı (DSO/DPO) ve ileriye dönük net vade<br>"
@@ -29,7 +29,7 @@ class TahsilatAlacakTab(RaporTab):
     _ta: TahsilatAlacak | None = None
 
     def _ilk_mesaj(self) -> str:
-        return "Dönem seçip «Tahsilat & Alacak Getir»e basın."
+        return "Hazır"
 
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
         def is_fn(bildir) -> dict[str, Any]:

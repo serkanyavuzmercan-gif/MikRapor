@@ -1,9 +1,7 @@
 """
 MikRapor uygulama penceresi ve giriş noktası.
 
-Sekmeli mimari: her finansal rapor kendi modülünde (ui/tabs/*), ortak iskelet
-ui.rapor_tab.RaporTab. Ağ çağrıları arka plan thread'inde koşar (ui.worker).
-Tek örnek (single instance): ikinci kopya açılınca mevcut pencere öne getirilir.
+Design A düzeni: marka bar → ortak chrome toolbar → sekmeler → içerik.
 """
 
 from __future__ import annotations
@@ -24,8 +22,10 @@ from PyQt6.QtWidgets import (
 )
 
 from infra.config import load_config
+from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
 from ui.mikro_settings_dialog import MikroAyarlarDialog
+from ui.rapor_tab import RaporTab
 from ui.resources import app_icon, app_logo_pixmap
 from ui.styles import APP_STYLESHEET
 from ui.tabs.bilanco_tab import BilancoTab
@@ -93,6 +93,7 @@ class MikRaporWindow(QMainWindow):
         layout.setContentsMargins(18, 14, 18, 14)
         layout.setSpacing(10)
 
+        # 1) Marka bar
         brand_bar = QFrame()
         brand_bar.setObjectName("brandBar")
         header = QHBoxLayout(brand_bar)
@@ -125,6 +126,16 @@ class MikRaporWindow(QMainWindow):
         layout.addWidget(brand_bar)
         self._refresh_conn_status()
 
+        # 2) Ortak chrome toolbar (Design A — sekmelerin ÜSTÜNDE)
+        self._chrome = ChromeToolbar(self._donem)
+        self._chrome.getir_clicked.connect(self._on_chrome_getir)
+        self._chrome.iptal_clicked.connect(self._on_chrome_iptal)
+        self._chrome.pdf_clicked.connect(self._on_chrome_pdf)
+        self._chrome.csv_clicked.connect(self._on_chrome_csv)
+        self._chrome.ekstra_clicked.connect(self._on_chrome_ekstra)
+        layout.addWidget(self._chrome)
+
+        # 3) Sekmeler
         self._tabs = QTabWidget()
         self._tabs.addTab(BilancoTab(self._donem), "Anında Bilanço")
         self._tabs.addTab(GelirTablosuTab(self._donem), "Gelir Tablosu")
@@ -132,7 +143,43 @@ class MikRaporWindow(QMainWindow):
         self._tabs.addTab(TahsilatAlacakTab(self._donem), "Tahsilat && Alacak")
         self._tabs.addTab(NakitAkisTab(self._donem), "Nakit Akış")
         self._tabs.addTab(TahminTab(self._donem), "Tahmin")
+        self._tabs.currentChanged.connect(self._on_tab_degisti)
         layout.addWidget(self._tabs, stretch=1)
+        self._on_tab_degisti(0)
+
+    def _aktif_tab(self) -> RaporTab | None:
+        w = self._tabs.currentWidget()
+        return w if isinstance(w, RaporTab) else None
+
+    def _on_tab_degisti(self, _index: int) -> None:
+        tab = self._aktif_tab()
+        if tab is not None:
+            tab.bagla_chrome(self._chrome)
+
+    def _on_chrome_getir(self) -> None:
+        tab = self._aktif_tab()
+        if tab is not None:
+            tab._on_getir()
+
+    def _on_chrome_iptal(self) -> None:
+        tab = self._aktif_tab()
+        if tab is not None:
+            tab._on_iptal()
+
+    def _on_chrome_pdf(self) -> None:
+        tab = self._aktif_tab()
+        if tab is not None and tab.PDF_DESTEK:
+            tab._on_pdf()
+
+    def _on_chrome_csv(self) -> None:
+        tab = self._aktif_tab()
+        if tab is not None:
+            tab._on_csv()
+
+    def _on_chrome_ekstra(self) -> None:
+        tab = self._aktif_tab()
+        if tab is not None:
+            tab._on_ekstra()
 
     def _refresh_conn_status(self) -> None:
         cfg = load_config()
