@@ -43,6 +43,8 @@ $ErrorActionPreference = "Continue"
     --add-data "assets\logo-mark.png;assets" `
     --add-data "assets\empty-hero.png;assets" `
     --add-data "assets\empty-bilanco.png;assets" `
+    --add-data "assets\anasayfalogo.png;assets" `
+    --add-data "assets\mikrapor-hero-illustration.png;assets" `
     --hidden-import matplotlib.backends.backend_qtagg `
     --hidden-import reportlab `
     --hidden-import PyQt6.QtCore `
