@@ -9,13 +9,12 @@ from __future__ import annotations
 import sys
 from datetime import date
 
-from config import load_config
-from gercek_durum import _siniflandir_stok
-from gercek_durum_ayarlar import load_gercek_durum_ayarlar
-from mikro_api import MikroClient
-from mikro_fetch import fetch_stok_ozet
-from mizan_bilanco import tl
-from ortak import to_float as _f
+from domain.gercek_durum import _siniflandir_stok
+from domain.mizan_bilanco import tl
+from domain.ortak import to_float as _f
+from infra.config import load_config, load_gercek_durum_ayarlar
+from infra.mikro_api import MikroClient
+from infra.mikro_fetch import fetch_stok_ozet
 
 _EVRAK_AD = {
     (0, 3): "alış faturası",

@@ -14,9 +14,9 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from bilanco_pdf import DARK, FONT, FONT_B, GRAY, LINE, NAVY, _tr_tarih
-from gelir_tablosu import GelirTablosu, yuzde
-from mizan_bilanco import tl
+from domain.gelir_tablosu import GelirTablosu, yuzde
+from domain.mizan_bilanco import tl
+from ui.bilanco_pdf import DARK, FONT, FONT_B, GRAY, LINE, NAVY, _tr_tarih
 
 
 def _govde(gt: GelirTablosu) -> Table:

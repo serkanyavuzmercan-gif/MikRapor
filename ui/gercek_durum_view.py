@@ -21,9 +21,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _kpi_card
-from gercek_durum import GercekDurum, yuzde
-from mizan_bilanco import tl
+from domain.gercek_durum import GercekDurum, yuzde
+from domain.mizan_bilanco import tl
+from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _kpi_card
 
 POZ = "#15803d"   # yeşil (iyi/pozitif)
 NEG = "#b91c1c"   # kırmızı (kötü/negatif)

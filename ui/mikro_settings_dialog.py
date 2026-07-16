@@ -25,9 +25,9 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from config import MikroConfig, config_path, load_config, save_config
-from mikro_api import MikroClient
-from mikro_fetch import fetch_firma_adi
+from infra.config import MikroConfig, config_path, load_config, save_config
+from infra.mikro_api import MikroClient
+from infra.mikro_fetch import fetch_firma_adi
 
 
 class MikroAyarlarDialog(QDialog):
@@ -43,7 +43,8 @@ class MikroAyarlarDialog(QDialog):
 
         info = QLabel(
             "Bu bilgiler yalnızca bu bilgisayarda saklanır ve doğrudan kendi Mikro "
-            "sunucunuza bağlanmak için kullanılır. Hiçbir bilgi dışarı gönderilmez."
+            "sunucunuza bağlanmak için kullanılır. Hiçbir bilgi dışarı gönderilmez. "
+            "API anahtarı ve şifre tuzu Windows'ta DPAPI ile şifrelenerek kaydedilir."
         )
         info.setWordWrap(True)
         info.setStyleSheet("color: #9aa0a8;")
@@ -83,6 +84,15 @@ class MikroAyarlarDialog(QDialog):
         self._show_secrets = QCheckBox("Anahtar ve şifreyi göster")
         self._show_secrets.toggled.connect(self._on_toggle_secrets)
         form.addRow("", self._show_secrets)
+
+        self._tls_dogrula = QCheckBox("TLS sertifikasını doğrula")
+        self._tls_dogrula.setChecked(self._cfg.tls_dogrula)
+        self._tls_dogrula.setToolTip(
+            "Mikro sunucunuzda geçerli (imzalı) bir sertifika varsa açın.\n"
+            "Self-signed sertifika kullanan kurulumlarda (yaygın durum) kapalı bırakın;\n"
+            "kapalıyken sertifika doğrulanmaz."
+        )
+        form.addRow("", self._tls_dogrula)
         layout.addLayout(form)
 
         path_lbl = QLabel(f"Kayıt yeri: {config_path()}")
@@ -144,6 +154,7 @@ class MikroAyarlarDialog(QDialog):
             kullanici_kodu=self._kullanici.text(),
             sifre_gun=self._sifre_gun.text(),
             firma_adi=self._firma_adi.text(),
+            tls_dogrula=self._tls_dogrula.isChecked(),
         ).normalized()
 
     def _on_test(self) -> None:

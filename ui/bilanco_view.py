@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from mizan_bilanco import AKTIF_BOLUM, PASIF_BOLUM, Bilanco, tl
+from domain.mizan_bilanco import AKTIF_BOLUM, PASIF_BOLUM, Bilanco, tl
 
 # Renkler — açık tema (styles.py ile uyumlu)
 NAVY = "#1f3a5f"

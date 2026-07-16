@@ -25,7 +25,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from mizan_bilanco import AKTIF_BOLUM, PASIF_BOLUM, Bilanco, tl
+from domain.mizan_bilanco import AKTIF_BOLUM, PASIF_BOLUM, Bilanco, tl
 
 FONT = "Helvetica"
 FONT_B = "Helvetica-Bold"

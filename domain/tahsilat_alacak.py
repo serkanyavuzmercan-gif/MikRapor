@@ -20,10 +20,10 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from ortak import csv_sayi
-from ortak import muh_sinifi as _muh_sinifi
-from ortak import to_float as _f
-from ortak import to_int as _i
+from domain.ortak import csv_sayi
+from domain.ortak import muh_sinifi as _muh_sinifi
+from domain.ortak import to_float as _f
+from domain.ortak import to_int as _i
 
 # Yaşlandırma kovaları — vade gününe göre gecikme (asof − vade).
 AGING_KOVALAR = ("Vadesi gelmemiş", "1–30 gün", "31–60 gün", "61–90 gün", "90+ gün")

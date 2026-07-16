@@ -11,9 +11,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import config as config_mod
-from config import MikroConfig
-from mikro_api import (
+import infra.config as config_mod
+from infra.config import MikroConfig
+from infra.mikro_api import (
     MikroAPIError,
     MikroClient,
     build_auth,

@@ -20,11 +20,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from bilanco_view import FAINT, MUTED, PAGE_BG, _kpi_card
-from gercek_durum_view import NEG, POZ, _card, _cizgi, _renk, _satir_label
-from mizan_bilanco import tl
-from nakit_akis import NakitAkis
-from tahsilat_alacak_view import _oran_bar
+from domain.mizan_bilanco import tl
+from domain.nakit_akis import NakitAkis
+from ui.bilanco_view import FAINT, MUTED, PAGE_BG, _kpi_card
+from ui.gercek_durum_view import NEG, POZ, _card, _cizgi, _renk, _satir_label
+from ui.tahsilat_alacak_view import _oran_bar
 
 
 def _ozet_panel(na: NakitAkis) -> QFrame:

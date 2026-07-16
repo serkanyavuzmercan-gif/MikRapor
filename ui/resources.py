@@ -13,17 +13,17 @@ from PyQt6.QtGui import QIcon, QPixmap
 
 
 def project_root() -> Path:
-    """Paketlenmiş veya geliştirme ortamı kök dizini."""
+    """Paketlenmiş veya geliştirme ortamı kök dizini (bu dosya ui/ altında — kök bir üst)."""
     if getattr(sys, "frozen", False):
         return Path(sys._MEIPASS)
-    return Path(__file__).resolve().parent
+    return Path(__file__).resolve().parents[1]
 
 
 def data_dir() -> Path:
     """Yazılabilir veri dizini (exe yanı veya proje kökü)."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parent
+    return Path(__file__).resolve().parents[1]
 
 
 def asset_path(name: str) -> Path:

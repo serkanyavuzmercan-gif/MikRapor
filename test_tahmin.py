@@ -2,7 +2,7 @@
 
 import unittest
 
-from tahmin import (
+from domain.tahmin import (
     TahminVarsayim,
     _ay_ekle,
     aylik_buyume_oner,

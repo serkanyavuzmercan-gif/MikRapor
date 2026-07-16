@@ -19,16 +19,14 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from config import config_path
-from gercek_durum_ayarlar import (
+from domain.gercek_durum_ayarlar import (
     ALACAK_BORC_SECENEKLERI,
     ALIS_BAZI_SECENEKLERI,
     NAKIT_KAYNAK_SECENEKLERI,
     SATIS_BAZI_SECENEKLERI,
     GercekDurumAyarlar,
-    load_gercek_durum_ayarlar,
-    save_gercek_durum_ayarlar,
 )
+from infra.config import config_path, load_gercek_durum_ayarlar, save_gercek_durum_ayarlar
 
 
 def _combo_secenekler(combo: QComboBox, secenekler: list[tuple[str, str]], secili: str) -> None:

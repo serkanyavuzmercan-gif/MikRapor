@@ -7,9 +7,7 @@ Varsayılan profil: irsaliyeli satış, alış faturası, nakit GL, alacak/borç
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-
-from config import _read_config_data, save_config_data
+from dataclasses import dataclass
 
 
 @dataclass
@@ -49,16 +47,7 @@ class GercekDurumAyarlar:
         return f"Satış: {sat} · {alis.get(self.alis_bazi, self.alis_bazi)} · {nak.get(self.nakit_kaynak, self.nakit_kaynak)} · Alacak/Borç: {ab}"
 
 
-def load_gercek_durum_ayarlar() -> GercekDurumAyarlar:
-    data = _read_config_data()
-    return GercekDurumAyarlar.from_dict(data.get("gercek_durum"))
-
-
-def save_gercek_durum_ayarlar(ayarlar: GercekDurumAyarlar) -> None:
-    data = _read_config_data()
-    data["gercek_durum"] = asdict(ayarlar)
-    save_config_data(data)
-
+# NOT: load/save (dosya I/O) infra.config'tedir — domain katmanı saf kalır.
 
 # UI etiketleri (dialog)
 SATIS_BAZI_SECENEKLERI = [

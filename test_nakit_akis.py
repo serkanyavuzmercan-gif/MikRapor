@@ -2,7 +2,7 @@
 
 import unittest
 
-from nakit_akis import _kategori, build_nakit_akis, nakit_akis_csv
+from domain.nakit_akis import _kategori, build_nakit_akis, nakit_akis_csv
 
 
 def _h(ay, tip, prefix, tutar):

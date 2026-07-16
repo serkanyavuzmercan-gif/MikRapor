@@ -17,6 +17,9 @@ from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 
+from domain.gercek_durum_ayarlar import GercekDurumAyarlar
+from infra import gizli
+
 APP_DIR_NAME = "MikRapor"
 CONFIG_FILE_NAME = "config.json"
 
@@ -67,6 +70,8 @@ class MikroConfig:
     kullanici_kodu: str = ""    # MIKRO_KULLANICI_KODU
     sifre_gun: str = ""         # MIKRO_SIFRE_GUN — günlük MD5 parolanın tuzu (boş olabilir)
     firma_adi: str = ""         # Raporlarda (bilanço başlığı) görünen firma unvanı (opsiyonel)
+    tls_dogrula: bool = False   # MIKRO_TLS_DOGRULA — True: sertifika doğrulanır;
+                                # False: self-signed kabul (Mikro kurulumlarında yaygın)
 
     def normalized(self) -> MikroConfig:
         yil = self.calisma_yili or date.today().year
@@ -78,6 +83,7 @@ class MikroConfig:
             kullanici_kodu=(self.kullanici_kodu or "").strip(),
             sifre_gun=(self.sifre_gun or "").strip(),
             firma_adi=(self.firma_adi or "").strip(),
+            tls_dogrula=bool(self.tls_dogrula),
         )
 
     def eksik_alanlar(self) -> list[str]:
@@ -105,6 +111,10 @@ def _int_or_zero(value: object) -> int:
         return 0
 
 
+def _bool_env(value: str | None) -> bool:
+    return str(value or "").strip().lower() in ("1", "true", "evet", "yes")
+
+
 def _from_env() -> MikroConfig:
     """Ortam değişkenlerinden config üretir (ss ile aynı isimler). Geliştiriciler için fallback."""
     return MikroConfig(
@@ -115,22 +125,27 @@ def _from_env() -> MikroConfig:
         kullanici_kodu=os.environ.get("MIKRO_KULLANICI_KODU", ""),
         sifre_gun=os.environ.get("MIKRO_SIFRE_GUN", ""),
         firma_adi=os.environ.get("MIKRO_FIRMA_ADI", ""),
+        tls_dogrula=_bool_env(os.environ.get("MIKRO_TLS_DOGRULA")),
     ).normalized()
 
 
 def load_config() -> MikroConfig:
-    """Yerel config dosyasını okur; yoksa veya bozuksa ortam değişkenlerine düşer."""
+    """Yerel config dosyasını okur; yoksa veya bozuksa ortam değişkenlerine düşer.
+
+    api_key / sifre_gun şifreli ("dpapi:...") ise çözülür; düz metin (eski kayıt) da okunur.
+    """
     data = _read_config_data()
     if data:
         try:
             return MikroConfig(
                 base_url=data.get("base_url", ""),
-                api_key=data.get("api_key", ""),
+                api_key=gizli.coz(str(data.get("api_key", "") or "")),
                 firma_kodu=str(data.get("firma_kodu", "")),
                 calisma_yili=_int_or_zero(data.get("calisma_yili")),
                 kullanici_kodu=data.get("kullanici_kodu", ""),
-                sifre_gun=data.get("sifre_gun", ""),
+                sifre_gun=gizli.coz(str(data.get("sifre_gun", "") or "")),
                 firma_adi=data.get("firma_adi", ""),
+                tls_dogrula=bool(data.get("tls_dogrula", False)),
             ).normalized()
         except (TypeError, ValueError):
             pass
@@ -138,7 +153,25 @@ def load_config() -> MikroConfig:
 
 
 def save_config(cfg: MikroConfig) -> Path:
-    """Mikro alanlarını kaydeder; gercek_durum vb. diğer anahtarları silmez."""
+    """Mikro alanlarını kaydeder; gercek_durum vb. diğer anahtarları silmez.
+
+    Sırlar (api_key, sifre_gun) Windows'ta DPAPI ile şifrelenerek yazılır (infra.gizli).
+    """
     data = _read_config_data()
-    data.update(asdict(cfg.normalized()))
+    kayit = asdict(cfg.normalized())
+    kayit["api_key"] = gizli.sifrele(kayit["api_key"])
+    kayit["sifre_gun"] = gizli.sifrele(kayit["sifre_gun"])
+    data.update(kayit)
     return save_config_data(data)
+
+
+# --- Nakit & Kârlılık ayarları (config.json «gercek_durum» anahtarı) ---
+
+def load_gercek_durum_ayarlar() -> GercekDurumAyarlar:
+    return GercekDurumAyarlar.from_dict(_read_config_data().get("gercek_durum"))
+
+
+def save_gercek_durum_ayarlar(ayarlar: GercekDurumAyarlar) -> None:
+    data = _read_config_data()
+    data["gercek_durum"] = asdict(ayarlar)
+    save_config_data(data)

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import unittest
 
-from mizan_bilanco import ana_hesap, bilanco_html, build_bilanco, tl
+from domain.mizan_bilanco import ana_hesap, bilanco_html, build_bilanco, tl
 
 
 def _dengeli_mizan():

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ortak import csv_sayi
+from domain.ortak import csv_sayi
 
 
 def _ay_ekle(yyyymm: str, k: int) -> str:

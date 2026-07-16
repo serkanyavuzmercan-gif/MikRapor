@@ -11,12 +11,12 @@ import sys
 from dataclasses import replace
 from datetime import date
 
-from config import load_config
-from gercek_durum import _bakiye_bilancodan, _bakiye_caridan
-from mikro_api import MikroClient
-from mikro_fetch import fetch_cari_bakiye, fetch_mizan
-from mizan_bilanco import build_bilanco, tl
-from ortak import to_float as _f
+from domain.gercek_durum import _bakiye_bilancodan, _bakiye_caridan
+from domain.mizan_bilanco import build_bilanco, tl
+from domain.ortak import to_float as _f
+from infra.config import load_config
+from infra.mikro_api import MikroClient
+from infra.mikro_fetch import fetch_cari_bakiye, fetch_mizan
 
 
 def _gl_102_bakiye(mizan_rows: list[dict]) -> dict[str, float]:

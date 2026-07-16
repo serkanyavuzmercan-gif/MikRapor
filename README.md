@@ -21,6 +21,21 @@ Her kullanıcı uygulamayı **kendi ağında** çalıştırır ve **kendi Mikro 
 - Firma ünvanı Mikro'dan otomatik (elle giriş de mümkün)
 - Açık tema, tek-örnek pencere, tarih/dönem seçici
 
+## Mimari
+
+Kod üç katmanlı pakettedir; bağımlılık yönü `ui → infra → domain`:
+
+- **`domain/`** — rapor motorları (mizan→bilanço, gelir tablosu, nakit & kârlılık, tahsilat,
+  nakit akış, tahmin). Saf hesaplama: GUI/ağ/DB yok, `list[dict] → dataclass`.
+- **`infra/`** — yapılandırma (`config.py`, DPAPI sır saklama `gizli.py`), Mikro REST istemcisi
+  (`mikro_api.py`, TLS seçeneği) ve SQL veri çekme (`mikro_fetch.py`).
+- **`ui/`** — PyQt6 pencere (`app.py`), her rapor kendi sekme modülünde (`ui/tabs/*`), ortak sekme
+  iskeleti `rapor_tab.py` (arka plan `worker.py` ile ağ çağrıları UI'yı dondurmaz; iptal + aşama
+  mesajları), görünümler, PDF dışa aktarım ve tema (`styles.py`).
+
+Giriş noktası kökteki `main.py`'dir (PyInstaller hedefi). Teşhis CLI'ları
+(`bilanco_cli.py`, `cari_diag_cli.py`, `stok_diag_cli.py`) motorları yeniden kullanır.
+
 ## Kurulum (geliştirme)
 
 **Windows:**

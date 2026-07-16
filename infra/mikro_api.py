@@ -7,7 +7,9 @@ ss/lib/mikro-api.ts auth ve istek desenini birebir taşır:
   - Yanıt zarfı: result[0].Data ; result[0].IsError true ise hata fırlatılır
   - SqlVeriOkuV2 ile salt-okunur ham SQL — satırlar SQLResult1 / SQLResult / Data / Rows altında
   - Geçici ağ hataları için exponential backoff (2s, 4s, 8s) retry
-  - TLS doğrulaması kapalı (Mikro genelde self-signed sertifika; ss'de rejectUnauthorized:false)
+  - TLS doğrulaması yapılandırılabilir (MikroConfig.tls_dogrula). Varsayılan KAPALI —
+    Mikro kurulumlarında self-signed sertifika yaygındır (ss'de rejectUnauthorized:false);
+    geçerli sertifikası olan kurulumlar ayarlardan doğrulamayı açabilir.
 
 Ağ katmanı stdlib `urllib` ile yazıldı (yeni bağımlılık yok, PyInstaller derlemesi sade kalsın).
 Test edilebilmesi için `transport` enjekte edilebilir (network'süz birim testleri).
@@ -25,7 +27,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from config import MikroConfig
+from infra.config import MikroConfig
 
 DEFAULT_TIMEOUT = 60.0
 DEFAULT_MAX_ATTEMPTS = 4
@@ -62,26 +64,34 @@ def build_auth(cfg: MikroConfig) -> dict[str, Any]:
     }
 
 
-# Self-signed Mikro sertifikası için doğrulamayı kapat (ss: rejectUnauthorized:false)
-_SSL_CTX = ssl.create_default_context()
-_SSL_CTX.check_hostname = False
-_SSL_CTX.verify_mode = ssl.CERT_NONE
+def _ssl_context(dogrula: bool) -> ssl.SSLContext:
+    """TLS bağlamı: dogrula=False ise self-signed sertifika kabul edilir (Mikro'da yaygın)."""
+    ctx = ssl.create_default_context()
+    if not dogrula:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
 
 
-def _urllib_transport(url: str, body: str, timeout: float) -> tuple[int, str]:
-    req = urllib.request.Request(
-        url,
-        data=body.encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as resp:
-            status = getattr(resp, "status", None) or resp.getcode()
-            return int(status), resp.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as exc:
-        body_text = exc.read().decode("utf-8", errors="replace") if exc.fp else str(exc)
-        return int(exc.code), body_text
+def _urllib_transport_factory(dogrula: bool) -> Transport:
+    ctx = _ssl_context(dogrula)
+
+    def _transport(url: str, body: str, timeout: float) -> tuple[int, str]:
+        req = urllib.request.Request(
+            url,
+            data=body.encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+                status = getattr(resp, "status", None) or resp.getcode()
+                return int(status), resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            body_text = exc.read().decode("utf-8", errors="replace") if exc.fp else str(exc)
+            return int(exc.code), body_text
+
+    return _transport
 
 
 def _is_retryable(err: Exception) -> bool:
@@ -150,7 +160,7 @@ class MikroClient:
         max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     ) -> None:
         self.cfg = cfg.normalized()
-        self._transport = transport or _urllib_transport
+        self._transport = transport or _urllib_transport_factory(self.cfg.tls_dogrula)
         self.timeout = timeout
         self.max_attempts = max_attempts
 

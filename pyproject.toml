@@ -39,15 +39,7 @@ select = ["E", "F", "W", "I", "UP", "B"]
 ignore = ["E501", "UP031"]
 
 [tool.ruff.lint.isort]
-known-first-party = [
-    "config", "mikro_api", "mikro_fetch", "ortak", "cari_vade",
-    "mizan_bilanco", "gelir_tablosu", "gercek_durum", "gercek_durum_ayarlar",
-    "tahsilat_alacak", "nakit_akis", "tahmin",
-    "bilanco_view", "gelir_tablosu_view", "gercek_durum_view",
-    "tahsilat_alacak_view", "nakit_akis_view", "tahmin_view",
-    "bilanco_pdf", "gelir_tablosu_pdf", "styles", "resources", "tarih_secici",
-    "mikro_settings_dialog", "gercek_durum_settings_dialog",
-]
+known-first-party = ["domain", "infra", "ui"]
 
 [tool.mypy]
 python_version = "3.11"

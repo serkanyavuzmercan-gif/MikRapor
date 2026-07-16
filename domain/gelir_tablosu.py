@@ -20,9 +20,9 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from mizan_bilanco import ana_hesap, tl
-from ortak import csv_sayi, yuzde
-from ortak import to_float as _f
+from domain.mizan_bilanco import ana_hesap, tl
+from domain.ortak import csv_sayi, yuzde
+from domain.ortak import to_float as _f
 
 HESAP_ADLARI_GELIR: dict[str, str] = {
     "600": "Yurtiçi Satışlar", "601": "Yurtdışı Satışlar", "602": "Diğer Gelirler",
@@ -207,9 +207,9 @@ def gelir_tablosu_metni(gt: GelirTablosu) -> str:
         if s.tip == "bolum":
             out.append(f"\n{s.etiket}")
         elif s.tip == "hesap":
-            out.append(f"   {s.etiket:<46} {tl(s.tutar):>16}")
+            out.append(f"   {s.etiket:<46} {tl(s.tutar or 0.0):>16}")
         else:  # sonuc
-            out.append(f"{'─' * 60}\n{s.etiket:<46} {tl(s.tutar):>16}")
+            out.append(f"{'─' * 60}\n{s.etiket:<46} {tl(s.tutar or 0.0):>16}")
     out.append("=" * 60)
     out.append(f"Brüt marj {yuzde(gt.brut_marj)} · Faaliyet marj {yuzde(gt.faaliyet_marj)} · "
                f"Net marj {yuzde(gt.net_marj)}")

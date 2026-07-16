@@ -6,7 +6,7 @@
 #   Ana vurgu #2f6fed (hover #2563eb, pressed #1d4ed8)
 #   Başarı #15803d · Uyarı #b45309 · Hata #b91c1c
 
-DARK_STYLESHEET = """
+LIGHT_STYLESHEET = """
 * {
     font-family: "Segoe UI", "Inter", system-ui, sans-serif;
     font-size: 12px;

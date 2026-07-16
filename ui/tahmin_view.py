@@ -19,10 +19,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from bilanco_view import FAINT, MUTED, PAGE_BG, _kpi_card
-from gercek_durum_view import NEG, POZ, _card, _renk, _satir_label
-from mizan_bilanco import tl
-from tahmin import Tahmin
+from domain.mizan_bilanco import tl
+from domain.tahmin import Tahmin
+from ui.bilanco_view import FAINT, MUTED, PAGE_BG, _kpi_card
+from ui.gercek_durum_view import NEG, POZ, _card, _renk, _satir_label
 
 
 def _tablo_panel(t: Tahmin) -> QFrame:

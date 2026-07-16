@@ -16,9 +16,9 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
-from cari_vade import hesapla_vade_gun
-from mikro_api import MikroAPIError, MikroClient, get_row_value, parse_sql_rows
-from ortak import to_float as _f_local
+from domain.cari_vade import hesapla_vade_gun
+from domain.ortak import to_float as _f_local
+from infra.mikro_api import MikroAPIError, MikroClient, get_row_value, parse_sql_rows
 
 
 def fetch_firma_adi(client: MikroClient) -> str:
@@ -324,7 +324,7 @@ def _opt_int(v: object) -> int | None:
     if v is None or v == "":
         return None
     try:
-        return int(float(v))
+        return int(float(str(v)))
     except (TypeError, ValueError):
         return None
 

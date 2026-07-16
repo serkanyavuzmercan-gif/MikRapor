@@ -10,7 +10,9 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
-from bilanco_view import (
+from domain.gelir_tablosu import GelirTablosu, yuzde
+from domain.mizan_bilanco import tl
+from ui.bilanco_view import (
     FAINT,
     MUTED,
     NAVY,
@@ -22,8 +24,6 @@ from bilanco_view import (
     _section,
     _tree,
 )
-from gelir_tablosu import GelirTablosu, yuzde
-from mizan_bilanco import tl
 
 
 def _doldur(t, gt: GelirTablosu) -> None:

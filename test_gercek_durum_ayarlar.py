@@ -8,8 +8,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import config as config_mod
-from gercek_durum_ayarlar import GercekDurumAyarlar, load_gercek_durum_ayarlar, save_gercek_durum_ayarlar
+import infra.config as config_mod
+from domain.gercek_durum_ayarlar import GercekDurumAyarlar
+from infra.config import load_gercek_durum_ayarlar, save_gercek_durum_ayarlar
 
 
 class TestGercekDurumAyarlar(unittest.TestCase):

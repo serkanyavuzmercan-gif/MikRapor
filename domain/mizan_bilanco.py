@@ -15,8 +15,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from html import escape
 
-from ortak import csv_metin, csv_sayi, tl
-from ortak import to_float as _f
+from domain.ortak import csv_metin, csv_sayi, tl
+from domain.ortak import to_float as _f
 
 # Tek Düzen Hesap Planı — yaygın ana hesap adları (bilinmeyen kod numarasıyla görünür)
 HESAP_ADLARI: dict[str, str] = {

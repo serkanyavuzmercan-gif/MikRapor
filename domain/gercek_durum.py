@@ -21,12 +21,12 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from gercek_durum_ayarlar import GercekDurumAyarlar
-from mizan_bilanco import Bilanco
-from ortak import csv_sayi, yuzde
-from ortak import muh_sinifi as _muh_sinifi
-from ortak import to_float as _f
-from ortak import to_int as _i
+from domain.gercek_durum_ayarlar import GercekDurumAyarlar
+from domain.mizan_bilanco import Bilanco
+from domain.ortak import csv_sayi, yuzde
+from domain.ortak import muh_sinifi as _muh_sinifi
+from domain.ortak import to_float as _f
+from domain.ortak import to_int as _i
 
 # --- Hareket sınıflama (MIKRO-SEMA-NOTLARI ile doğrulanmış tip/evraktip kodları) ---
 SATIS_TIP = 1   # çıkış
@@ -514,7 +514,7 @@ def build_gercek_durum(
             gd.musteri_avans = bk["musteri_avans"]
             gd.satici_avans = bk["satici_avans"]
             gd.bakiye_kaynagi = "cari"
-        gd.cari_hesap_sayisi = bk["cari_hesap_sayisi"]
+        gd.cari_hesap_sayisi = int(bk["cari_hesap_sayisi"])
         nak_bk, nak_etiket = _nakit_kaynak_uygula(bk, bilanco, a.nakit_kaynak)
         gd.nakit_mevcut = nak_bk["nakit_mevcut"]
         gd.nakit_banka = nak_bk["nakit_banka"]
