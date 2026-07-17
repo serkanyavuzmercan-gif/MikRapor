@@ -61,15 +61,14 @@ QFrame#brandBar {{
 QFrame#headerNav {{
     background-color: {NAVY_SOFT};
     border: 1px solid {BORDER};
-    border-radius: 12px;
-    min-height: 44px;
+    border-radius: 10px;
+    min-height: 38px;
 }}
 QLabel#titleLabel {{
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 800;
     color: {NAVY};
     letter-spacing: -0.3px;
-    padding-bottom: 2px;
 }}
 QLabel#brandSubtitle {{
     color: {MUTED};
@@ -79,9 +78,9 @@ QLabel#brandSubtitle {{
 }}
 QLabel#connStatus {{
     color: {ACCENT};
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
-    padding: 6px 12px;
+    padding: 5px 8px;
     background-color: {ACCENT_SOFT};
     border: 1px solid {ACCENT_MUTED};
     border-radius: 8px;
@@ -144,12 +143,12 @@ QTabBar#headerTabBar {{
 QTabBar#headerTabBar::tab {{
     background-color: transparent;
     color: {MUTED};
-    padding: 9px 10px;
-    margin: 0 2px;
+    padding: 6px 4px;
+    margin: 0 1px;
     border: 1px solid transparent;
-    border-radius: 8px;
+    border-radius: 7px;
     font-weight: 600;
-    font-size: 12px;
+    font-size: 11px;
 }}
 QTabBar#headerTabBar::tab:hover {{
     background-color: {SURFACE};
@@ -241,6 +240,8 @@ QPushButton#ghostBtn {{
     color: {SUBINK};
     border: 1px solid {BORDER_STRONG};
     text-align: center;
+    padding: 7px 10px;
+    font-size: 12px;
 }}
 
 /* ---- Girdiler ---- */

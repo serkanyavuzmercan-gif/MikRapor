@@ -18,6 +18,8 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMainWindow,
     QPushButton,
+    QSizePolicy,
+    QTabBar,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -42,6 +44,26 @@ from ui.tabs.trend_tab import TrendTab
 from ui.worker import RaporWorker
 
 INSTANCE_KEY = "MercanSoftware.MikRapor.SingleInstance"
+
+# Kısa etiket + tam ad (tooltip) — header'da 7 sekme sığsın
+_SEKME_ETIKETLERI = (
+    ("Bilanço", "Anında Bilanço"),
+    ("Gelir", "Gelir Tablosu"),
+    ("Nakit & Kâr", "Nakit & Kârlılık"),
+    ("Tahsilat", "Tahsilat & Alacak"),
+    ("Nakit Akış", "Nakit Akış"),
+    ("Tahmin", "Tahmin"),
+    ("Trend", "Trend & Oranlar"),
+)
+
+
+class HeaderTabBar(QTabBar):
+    """Genişlik daralınca kesilmesin — eşit paylaşılsın."""
+
+    def minimumSizeHint(self) -> QSize:
+        s = super().minimumSizeHint()
+        s.setWidth(0)
+        return s
 
 
 def _try_activate_existing_instance() -> bool:
@@ -105,13 +127,13 @@ class MikRaporWindow(QMainWindow):
         brand_bar = QFrame()
         brand_bar.setObjectName("brandBar")
         header = QHBoxLayout(brand_bar)
-        header.setContentsMargins(4, 8, 4, 10)
-        header.setSpacing(14)
+        header.setContentsMargins(2, 6, 2, 8)
+        header.setSpacing(10)
         header.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         logo = QLabel()
         logo.setObjectName("brandMark")
         logo.setStyleSheet("background: transparent; border: none;")
-        pm = app_logo_pixmap(52)
+        pm = app_logo_pixmap(40)
         if not pm.isNull():
             logo.setPixmap(pm)
             logo.setFixedSize(pm.size())
@@ -122,50 +144,56 @@ class MikRaporWindow(QMainWindow):
         baslik = QLabel("MikRapor")
         baslik.setObjectName("titleLabel")
         titles.addWidget(baslik)
-        alt = QLabel("Mikro finansal raporlar")
-        alt.setObjectName("brandSubtitle")
-        titles.addWidget(alt)
         header.addLayout(titles)
 
         # 2) Sekmeler (içerik pane aşağıda; tab bar marka bar ortasında)
         self._tabs = QTabWidget()
         self._tabs.setObjectName("raporTabs")
         self._tabs.setDocumentMode(True)
-        self._tabs.addTab(BilancoTab(self._donem), "Anında Bilanço")
-        self._tabs.addTab(GelirTablosuTab(self._donem), "Gelir Tablosu")
-        self._tabs.addTab(GercekDurumTab(self._donem), "Nakit && Kârlılık")
-        self._tabs.addTab(TahsilatAlacakTab(self._donem), "Tahsilat && Alacak")
-        self._tabs.addTab(NakitAkisTab(self._donem), "Nakit Akış")
-        self._tabs.addTab(TahminTab(self._donem), "Tahmin")
-        self._tabs.addTab(TrendTab(self._donem), "Trend && Oranlar")
-        self._tabs.currentChanged.connect(self._on_tab_degisti)
-
-        tab_bar = self._tabs.tabBar()
+        tab_bar = HeaderTabBar()
         tab_bar.setObjectName("headerTabBar")
         tab_bar.setExpanding(True)
         tab_bar.setDrawBase(False)
-        tab_bar.setUsesScrollButtons(True)
+        tab_bar.setUsesScrollButtons(False)
         tab_bar.setElideMode(Qt.TextElideMode.ElideNone)
+        tab_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self._tabs.setTabBar(tab_bar)
+
+        sekme_siniflari = (
+            BilancoTab,
+            GelirTablosuTab,
+            GercekDurumTab,
+            TahsilatAlacakTab,
+            NakitAkisTab,
+            TahminTab,
+            TrendTab,
+        )
+        for cls, (etiket, tam) in zip(sekme_siniflari, _SEKME_ETIKETLERI, strict=True):
+            idx = self._tabs.addTab(cls(self._donem), etiket)
+            self._tabs.setTabToolTip(idx, tam)
+        self._tabs.currentChanged.connect(self._on_tab_degisti)
 
         nav = QFrame()
         nav.setObjectName("headerNav")
+        nav.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         nav_lay = QHBoxLayout(nav)
-        nav_lay.setContentsMargins(5, 5, 5, 5)
+        nav_lay.setContentsMargins(3, 3, 3, 3)
         nav_lay.setSpacing(0)
-        nav_lay.addWidget(tab_bar)
+        nav_lay.addWidget(tab_bar, stretch=1)
         header.addWidget(nav, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-        btn_ayar = QPushButton(" Mikro Ayarları")
+        btn_ayar = QPushButton(" Ayarlar")
         btn_ayar.setObjectName("ghostBtn")
-        btn_ayar.setIcon(icon_gear(15))
-        btn_ayar.setIconSize(QSize(15, 15))
+        btn_ayar.setToolTip("Mikro Ayarları")
+        btn_ayar.setIcon(icon_gear(14))
+        btn_ayar.setIconSize(QSize(14, 14))
         btn_ayar.clicked.connect(self._on_ayarlar)
         header.addWidget(btn_ayar, alignment=Qt.AlignmentFlag.AlignVCenter)
         self._conn = QLabel()
         self._conn.setObjectName("connStatus")
         header.addWidget(self._conn, alignment=Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(brand_bar)
-        self._conn.setText("○  Bağlantı kontrol ediliyor…")
+        self._conn.setText("○  Ayarlanmadı")
         self._conn.setProperty("connected", False)
 
         # 3) Ortak chrome toolbar (aktif rapor araçları)
@@ -225,9 +253,9 @@ class MikRaporWindow(QMainWindow):
         """Ayarlar eksikse ayarlanmadı; doluysa arka planda Mikro ping ile doğrula."""
         cfg = load_config()
         if not cfg.is_complete():
-            self._set_conn("○  Bağlantı ayarlanmadı", False)
+            self._set_conn("○  Ayarlanmadı", False)
             return
-        self._set_conn("◌  Kontrol ediliyor…", False)
+        self._set_conn("◌  Kontrol…", False)
         if self._ping_worker is not None and self._ping_worker.isRunning():
             self._ping_worker.iptal_et()
             self._ping_worker.wait(2000)
@@ -249,7 +277,7 @@ class MikRaporWindow(QMainWindow):
             return
         kod = cfg.firma_kodu or "—"
         ad = (cfg.firma_adi or "").strip()
-        label = f"●  Bağlı · Firma {kod}" + (f" · {ad[:28]}" if ad else "")
+        label = f"●  Firma {kod}" + (f" · {ad[:18]}" if ad else "")
         self._set_conn(label, True)
 
     def _on_ping_hata(self, _msg: str) -> None:
