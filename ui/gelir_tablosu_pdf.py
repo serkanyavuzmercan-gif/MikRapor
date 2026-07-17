@@ -16,8 +16,8 @@ from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer,
 
 from domain.gelir_tablosu import GelirTablosu, yuzde
 from domain.mizan_bilanco import tl
-from ui.bilanco_pdf import DARK, FONT, FONT_B, GRAY, LINE, NAVY, _tr_tarih
-from ui.pdf_ortak import dipnot_ekle
+from ui.bilanco_pdf import DARK, FONT, FONT_B, GRAY, LINE, NAVY
+from ui.pdf_ortak import dipnot_ekle, letterhead
 
 
 def _govde(gt: GelirTablosu) -> Table:
@@ -66,20 +66,10 @@ def export_gelir_tablosu_pdf(gt: GelirTablosu, path: str | Path, firma: str = ""
         title="Gelir Tablosu", author=firma or "MikRapor",
     )
     elems: list = []
-    if firma:
-        elems.append(Paragraph(
-            firma, ParagraphStyle("firma", fontName=FONT_B, fontSize=15, textColor=DARK, leading=18)))
-    elems.append(HRFlowable(width="100%", thickness=1.2, color=NAVY, spaceBefore=3, spaceAfter=8))
-
-    baslik_row = Table([[
-        Paragraph("GELİR TABLOSU", ParagraphStyle("t", fontName=FONT_B, fontSize=13, textColor=DARK)),
-        Paragraph(f"{_tr_tarih(gt.bas)} – {_tr_tarih(gt.bit)} Dönemi &nbsp;&nbsp;·&nbsp;&nbsp; Tutarlar: TL",
-                  ParagraphStyle("d", fontName=FONT, fontSize=9, textColor=GRAY, alignment=2)),
-    ]], colWidths=[70 * mm, 104 * mm])
-    baslik_row.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-                                    ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
-    elems.append(baslik_row)
-    elems.append(Spacer(1, 8))
+    letterhead(
+        elems, firma=firma, baslik="GELİR TABLOSU",
+        bas=gt.bas, bit=gt.bit,
+    )
     # Maliyet eksik uyarısı yalnızca uygulama ekranında; PDF'e konmaz.
     elems.append(_govde(gt))
 

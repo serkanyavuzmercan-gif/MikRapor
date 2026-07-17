@@ -26,7 +26,6 @@ from ui.pdf_ortak import (
     sty_kpi,
     sty_row,
     sty_sec,
-    tr_tarih,
 )
 
 # Yeşil → kırmızı (uygulama yaşlandırma paleti)
@@ -96,7 +95,7 @@ def export_tahsilat_alacak_pdf(ta: TahsilatAlacak, path: str | Path, firma: str 
     elems: list = []
     letterhead(
         elems, firma=firma, baslik="TAHSİLAT & ALACAK",
-        donem=f"{tr_tarih(ta.bas)} – {tr_tarih(ta.bit)} · Tutarlar: TL",
+        bas=ta.bas, bit=ta.bit,
     )
 
     # —— Klasik özet listesi ——

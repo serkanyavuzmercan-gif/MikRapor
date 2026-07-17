@@ -19,7 +19,7 @@ def export_tahmin_pdf(t: Tahmin, path: str | Path, firma: str = "") -> Path:
     v = t.varsayim
     letterhead(
         elems, firma=firma, baslik="TAHMİN / PROJEKSİYON",
-        donem=f"Başlangıç {v.baslangic_ay} · {v.ufuk_ay} ay · Tutarlar: TL",
+        donem=f"Başlangıç – bitiş dönemi: {v.baslangic_ay} · {v.ufuk_ay} ay",
     )
 
     ozet = [

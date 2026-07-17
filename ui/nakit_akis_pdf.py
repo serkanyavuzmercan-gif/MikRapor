@@ -9,7 +9,7 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import CIKIS_ETIKET, CIKIS_SIRA, GIRIS_ETIKET, GIRIS_SIRA, NakitAkis
-from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, dipnot_ekle, letterhead, pdf_doc, sty_kpi, sty_row, sty_sec, tr_tarih
+from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, dipnot_ekle, letterhead, pdf_doc, sty_kpi, sty_row, sty_sec
 
 
 def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "") -> Path:
@@ -18,7 +18,7 @@ def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "") -> P
     elems: list = []
     letterhead(
         elems, firma=firma, baslik="NAKİT AKIŞ",
-        donem=f"{tr_tarih(na.bas)} – {tr_tarih(na.bit)} · Tutarlar: TL",
+        bas=na.bas, bit=na.bit,
     )
 
     ozet = [

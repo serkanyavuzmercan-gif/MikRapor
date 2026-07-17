@@ -11,7 +11,7 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
 from domain.gercek_durum import GercekDurum
 from domain.mizan_bilanco import tl
-from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, NAVY, dipnot_ekle, letterhead, pdf_doc, sty_kpi, sty_row, sty_sec, tr_tarih
+from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, NAVY, dipnot_ekle, letterhead, pdf_doc, sty_kpi, sty_row, sty_sec
 
 
 def _th(metin: str, *, sag: bool = False) -> Paragraph:
@@ -49,7 +49,7 @@ def export_gercek_durum_pdf(gd: GercekDurum, path: str | Path, firma: str = "") 
     elems: list = []
     letterhead(
         elems, firma=firma, baslik="NAKİT & KÂRLILIK",
-        donem=f"{tr_tarih(gd.bas)} – {tr_tarih(gd.bit)} · Tutarlar: TL",
+        bas=gd.bas, bit=gd.bit,
     )
 
     data = [

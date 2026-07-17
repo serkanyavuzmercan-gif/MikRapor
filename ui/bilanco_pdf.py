@@ -26,7 +26,7 @@ from reportlab.platypus import (
 )
 
 from domain.mizan_bilanco import AKTIF_BOLUM, PASIF_BOLUM, Bilanco, tl
-from ui.pdf_ortak import dipnot_ekle
+from ui.pdf_ortak import dipnot_ekle, letterhead
 
 FONT = "Helvetica"
 FONT_B = "Helvetica-Bold"
@@ -69,18 +69,6 @@ def _tr_tarih(asof: str) -> str:
         return f"{d}.{m}.{y}"
     except Exception:  # noqa: BLE001
         return asof
-
-
-def _donem_metni(bas: str, bit: str) -> str:
-    """PDF sağ üst: dönem aralığı + kesim (itibarıyla) + TL."""
-    b, e = _tr_tarih(bas), _tr_tarih(bit)
-    if not bas or bas == bit:
-        return f"{e} tarihi itibarıyla &nbsp;&nbsp;·&nbsp;&nbsp; Tutarlar: TL"
-    return (
-        f"Dönem: {b} – {e}"
-        f" &nbsp;&nbsp;·&nbsp;&nbsp; Kesim: {e} tarihi itibarıyla"
-        f" &nbsp;&nbsp;·&nbsp;&nbsp; Tutarlar: TL"
-    )
 
 
 def _side_table(b: Bilanco, taraf: str) -> Table:
@@ -160,27 +148,12 @@ def export_bilanco_pdf(
     )
     elems: list = []
 
-    if firma:
-        elems.append(Paragraph(
-            firma, ParagraphStyle("firma", fontName=FONT_B, fontSize=15, textColor=DARK, leading=18)))
-    elems.append(HRFlowable(width="100%", thickness=1.2, color=NAVY, spaceBefore=3, spaceAfter=8))
-
     donem_bas = (bas or "").strip() or bilanco.asof
     donem_bit = (bit or "").strip() or bilanco.asof
-    baslik_row = Table([[
-        Paragraph("BİLANÇO", ParagraphStyle("t", fontName=FONT_B, fontSize=13, textColor=DARK)),
-        Paragraph(
-            _donem_metni(donem_bas, donem_bit),
-            ParagraphStyle("d", fontName=FONT, fontSize=8, textColor=GRAY, alignment=2, leading=10),
-        ),
-    ]], colWidths=[42 * mm, 134 * mm])
-    baslik_row.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-    ]))
-    elems.append(baslik_row)
-    elems.append(Spacer(1, 8))
+    letterhead(
+        elems, firma=firma, baslik="BİLANÇO",
+        bas=donem_bas, bit=donem_bit,
+    )
 
     body = Table([[_side_table(bilanco, "aktif"), _side_table(bilanco, "pasif")]],
                  colWidths=[90 * mm, 90 * mm])

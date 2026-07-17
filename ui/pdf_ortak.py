@@ -62,7 +62,16 @@ def pdf_doc(path: Path, *, title: str, firma: str = "") -> SimpleDocTemplate:
     )
 
 
-def letterhead(elems: list, *, firma: str, baslik: str, donem: str) -> None:
+def letterhead(
+    elems: list,
+    *,
+    firma: str,
+    baslik: str,
+    donem: str = "",
+    bas: str = "",
+    bit: str = "",
+) -> None:
+    """Firma + çizgi + başlık; altında yalnızca başlangıç–bitiş dönemi satırı."""
     if firma:
         elems.append(Paragraph(
             firma,
@@ -73,11 +82,25 @@ def letterhead(elems: list, *, firma: str, baslik: str, donem: str) -> None:
         baslik,
         ParagraphStyle("t", fontName=FONT_B, fontSize=13, textColor=DARK, leading=16),
     ))
-    elems.append(Paragraph(
-        donem,
-        ParagraphStyle("d", fontName=FONT, fontSize=9, textColor=GRAY, leading=12),
-    ))
+    donem_yazi = (donem or "").strip() or donem_satiri(bas, bit)
+    if donem_yazi:
+        elems.append(Paragraph(
+            donem_yazi,
+            ParagraphStyle("d", fontName=FONT, fontSize=9, textColor=GRAY, leading=12),
+        ))
     elems.append(Spacer(1, 8))
+
+
+def donem_satiri(bas: str = "", bit: str = "") -> str:
+    """Başlık altı dönem metni — yalnızca başlangıç / bitiş; başka ek yok."""
+    b, e = tr_tarih(bas), tr_tarih(bit)
+    if b and e and b != e:
+        return f"Başlangıç – bitiş dönemi: {b} – {e}"
+    if e:
+        return f"Başlangıç – bitiş dönemi: {e}"
+    if b:
+        return f"Başlangıç – bitiş dönemi: {b}"
+    return ""
 
 
 def sty_row() -> ParagraphStyle:
@@ -103,18 +126,19 @@ def kurumsal_dipnot(
     ek: str = "",
 ) -> list:
     """
-    Tüm PDF’lerin altındaki kurumsal dipnot (Bilanço ile aynı dil).
+    Tüm PDF’lerin altındaki kurumsal dipnot.
 
-    belge: kısa belge tanımı, örn. «yönetim amaçlı anlık bilanço»
-    kaynak: veri kaynağı / yöntem satırı
-    ek: niteliğe eklenecek ek cümle (opsiyonel)
+    1) Belge niteliği
+    2) Hidroteknik Yazılım — MikRapor ile üretilmiştir.
+    3) Kaynak / yöntem
+    4) Kullanım sınırı
     """
     sty = ParagraphStyle(
         "ft", fontName=FONT, fontSize=8, textColor=GRAY, leading=10.5, alignment=0,
     )
-    sty_b = ParagraphStyle(
+    sty_uretici = ParagraphStyle(
         "ftb", fontName=FONT_B, fontSize=8.5, textColor=colors.HexColor("#64748b"),
-        leading=11, alignment=2,
+        leading=11, alignment=0,
     )
 
     nitelik = (
@@ -125,6 +149,7 @@ def kurumsal_dipnot(
     if ek:
         nitelik += " " + ek
 
+    uretici = "Hidroteknik Yazılım — MikRapor ile üretilmiştir."
     kaynak_satir = (
         f"<b>Kaynak / yöntem:</b> {kaynak} "
         f"&nbsp;·&nbsp; Üretim: MikRapor · {_uretim_zamani()}"
@@ -133,14 +158,13 @@ def kurumsal_dipnot(
         "<b>Kullanım sınırı:</b> Bilgilendirme amaçlıdır; yatırım, kredi veya resmî beyan "
         "yerine geçmez. Doğruluk firma muhasebe kayıtlarına bağlıdır."
     )
-    uretici = "Hidroteknik Yazılım — MikRapor ile üretilmiştir."
 
     t = Table(
         [
             [Paragraph(nitelik, sty)],
+            [Paragraph(uretici, sty_uretici)],
             [Paragraph(kaynak_satir, sty)],
             [Paragraph(sorumluluk, sty)],
-            [Paragraph(uretici, sty_b)],
         ],
         colWidths=[174 * mm],
     )
