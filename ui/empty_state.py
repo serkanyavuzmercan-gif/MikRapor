@@ -19,6 +19,7 @@ from PyQt6.QtGui import (
     QPainterPath,
     QPixmap,
     QResizeEvent,
+    QShowEvent,
     QTextOption,
 )
 from PyQt6.QtWidgets import (
@@ -323,6 +324,7 @@ class EmptyState(QWidget):
 
         self._bg = _CoverBackground(_load_hero_pixmap(), self)
         self._bg.lower()
+        self._arka_plan = False
 
         # Sabit cluster — layout stretch yok; resizeEvent ile alta sabitlenir
         self._cluster = QWidget(self)
@@ -384,6 +386,7 @@ class EmptyState(QWidget):
 
     def set_arka_plan_modu(self, aktif: bool) -> None:
         """True: rapor içeriği altında soluk illüstrasyon; marka/CTA gizlenir."""
+        self._arka_plan = aktif
         self._cluster.setVisible(not aktif)
         self._bg.set_soluk(aktif, opacity=0.24)
         self._yerlestir()
@@ -392,8 +395,9 @@ class EmptyState(QWidget):
         """Cluster'ı yatay ortala, dikeyde alta sabitle — resize yalnızca üst boşluğu değiştirir."""
         self._bg.setGeometry(self.rect())
         self._bg.lower()
-        if not self._cluster.isVisible():
+        if self._arka_plan:
             return
+        # isVisible() kullanma: gizli sekmede ata gizliyken False döner, yerleşim kaçardı
         w = max(1, self.width())
         h = max(1, self.height())
         x = (w - _COL_W) // 2
@@ -404,6 +408,18 @@ class EmptyState(QWidget):
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._yerlestir()
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        # Gizli sekme ilk açılınca resize kaçabiliyor — yerleşimi burada da uygula
+        super().showEvent(event)
+        self._yerlestir()
+
+
+def build_soluk_arka_plan(*, opacity: float = 0.24) -> QWidget:
+    """Rapor içeriği altında kullanılacak soluk illüstrasyon zemini."""
+    bg = _CoverBackground(_load_hero_pixmap())
+    bg.set_soluk(True, opacity=opacity)
+    return bg
 
 
 def build_empty_state(

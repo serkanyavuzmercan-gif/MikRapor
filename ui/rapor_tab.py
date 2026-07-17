@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QScrollArea,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -30,12 +31,13 @@ from infra.mikro_fetch import fetch_firma_adi
 from ui.bilesenler import csv_kaydet, durum_yaz, hos_geldin
 from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
+from ui.empty_state import build_soluk_arka_plan
 from ui.mikro_settings_dialog import MikroAyarlarDialog
 from ui.styles import PAGE_BG
 from ui.worker import IsFonksiyonu, RaporWorker
 
 # Rapor içeriğinde illüstrasyonun hafif görünmesi için sayfa zemini
-_PAGE_BG_SOLUK = "rgba(244, 246, 249, 0.78)"
+_PAGE_BG_SOLUK = "rgba(244, 246, 249, 0.82)"
 
 
 def firma_getir(cfg: MikroConfig, client: MikroClient) -> str:
@@ -83,7 +85,7 @@ class RaporTab(QWidget):
         chrome.set_pdf_gorunur(self.PDF_DESTEK)
         chrome.set_ekstra_gorunur(bool(self.EKSTRA_ETIKET), self.EKSTRA_ETIKET or "Ayarlar")
         # Aktif sekmenin durumunu yansıt
-        if self._view.isVisible():
+        if self._rapor_acik():
             chrome.set_csv_aktif(True)
             chrome.set_pdf_aktif(self.PDF_DESTEK)
         else:
@@ -92,6 +94,9 @@ class RaporTab(QWidget):
             chrome.set_durum_mesaj("")
         chrome.set_getir_aktif(self._worker is None)
         chrome.set_iptal_gorunur(self._worker is not None)
+
+    def _rapor_acik(self) -> bool:
+        return getattr(self, "_stack", None) is not None and self._stack.currentIndex() == 1
 
     def _chrome_aktif(self) -> bool:
         """Bu sekme chrome'un sahibi mi? (paylaşılan toolbar kirlenmesin)."""
@@ -104,13 +109,8 @@ class RaporTab(QWidget):
 
         self._ust_alan(layout)
 
-        self._stage = QWidget()
-        self._stage.setObjectName("raporStage")
-        self._stage.setStyleSheet("QWidget#raporStage { background: transparent; }")
-        stage_lay = QGridLayout(self._stage)
-        stage_lay.setContentsMargins(0, 0, 0, 0)
-        stage_lay.setSpacing(0)
-
+        # 0: empty (Anında Bilanço ile aynı düzen), 1: soluk arka + rapor
+        self._stack = QStackedWidget()
         self._empty = hos_geldin(
             self.EMOJI,
             self.BASLIK,
@@ -119,20 +119,30 @@ class RaporTab(QWidget):
             on_cta=self._on_getir,
             cta=self.GETIR_ETIKET,
         )
-        stage_lay.addWidget(self._empty, 0, 0)
+        self._stack.addWidget(self._empty)
+
+        self._icerik_sayfa = QWidget()
+        self._icerik_sayfa.setObjectName("raporIcerikSayfa")
+        self._icerik_sayfa.setStyleSheet("QWidget#raporIcerikSayfa { background: transparent; }")
+        ic_lay = QGridLayout(self._icerik_sayfa)
+        ic_lay.setContentsMargins(0, 0, 0, 0)
+        ic_lay.setSpacing(0)
+        self._arka = build_soluk_arka_plan(opacity=0.24)
+        ic_lay.addWidget(self._arka, 0, 0)
 
         self._view = QScrollArea()
         self._view.setWidgetResizable(True)
         self._view.setFrameShape(QFrame.Shape.NoFrame)
         self._view.setStyleSheet(
             "QScrollArea { background: transparent; border: none; }"
-            "QScrollArea > QWidget > QWidget { background: transparent; }"
         )
         self._view.viewport().setStyleSheet("background: transparent;")
-        self._view.setVisible(False)
-        stage_lay.addWidget(self._view, 0, 0)
+        ic_lay.addWidget(self._view, 0, 0)
+        self._view.raise_()
 
-        layout.addWidget(self._stage, stretch=1)
+        self._stack.addWidget(self._icerik_sayfa)
+        self._stack.setCurrentIndex(0)
+        layout.addWidget(self._stack, stretch=1)
 
     def _ilk_mesaj(self) -> str:
         return "Hazır"
@@ -166,12 +176,6 @@ class RaporTab(QWidget):
             durum_yaz(self._status, mesaj, tur)
 
     def _icerik_koy(self, widget: QWidget) -> None:
-        # Illüstrasyon soluk arka planda kalsın; içerik üstte yarı saydam zeminle
-        if hasattr(self._empty, "set_arka_plan_modu"):
-            self._empty.set_arka_plan_modu(True)
-        self._empty.setVisible(True)
-        self._empty.lower()
-
         stil = widget.styleSheet() or ""
         if PAGE_BG in stil:
             stil = stil.replace(PAGE_BG, _PAGE_BG_SOLUK)
@@ -180,9 +184,8 @@ class RaporTab(QWidget):
         widget.setStyleSheet(stil)
         widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        self._view.setVisible(True)
         self._view.setWidget(widget)
-        self._view.raise_()
+        self._stack.setCurrentIndex(1)
 
     def _ayarlar_tamam(self) -> MikroConfig | None:
         cfg = load_config()
