@@ -7,9 +7,10 @@ Dönem tarih seçicileri.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QDate, QPoint, QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QDate, QPoint, QRect, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtWidgets import (
+    QApplication,
     QCalendarWidget,
     QFrame,
     QHBoxLayout,
@@ -27,6 +28,63 @@ from ui.styles import BORDER_STRONG, INK_SOFT, MUTED, SURFACE
 _ALAN_YUKSEKLIK = 36
 _FMT = "dd.MM.yyyy"
 _MASK = "00.00.0000"
+_POPUP_PAY = 8
+
+
+def _popup_siniri(anchor: QWidget) -> QRect:
+    """Ana uygulama penceresinin client alanı (Popup değil); yoksa ekran."""
+    win: QWidget | None = anchor.window()
+    if win is not None and bool(win.windowFlags() & Qt.WindowType.Popup):
+        win = None
+        for top in QApplication.topLevelWidgets():
+            if not top.isVisible() or not top.isWindow():
+                continue
+            if bool(top.windowFlags() & Qt.WindowType.Popup):
+                continue
+            if top.windowType() == Qt.WindowType.Window:
+                win = top
+                break
+    if win is not None and win.isVisible():
+        tl = win.mapToGlobal(QPoint(0, 0))
+        return QRect(tl, win.size())
+    screen = anchor.screen() or QApplication.primaryScreen()
+    if screen is not None:
+        return screen.availableGeometry()
+    return QRect(0, 0, 1920, 1080)
+
+
+def _popup_yerlestir(
+    popup: QWidget,
+    *,
+    anchor: QWidget,
+    below: QPoint,
+    prefer_left: int | None = None,
+) -> None:
+    """
+    Popup’u below noktasının altına koy; yatayda prefer_left (veya below.x) kullan.
+    Ana pencere / ekran dışına taşmasın — gerekirse kaydır veya yukarı aç.
+    """
+    popup.adjustSize()
+    geo = _popup_siniri(anchor)
+    pw, ph = popup.width(), popup.height()
+    x = prefer_left if prefer_left is not None else below.x()
+    y = below.y()
+
+    max_x = geo.right() - _POPUP_PAY - pw + 1
+    min_x = geo.left() + _POPUP_PAY
+    if max_x < min_x:
+        x = geo.left() + max(0, (geo.width() - pw) // 2)
+    else:
+        x = min(max(x, min_x), max_x)
+
+    if y + ph > geo.bottom() - _POPUP_PAY:
+        # Yukarı aç (anchor üstü)
+        yukari = anchor.mapToGlobal(QPoint(0, 0)).y() - ph - 2
+        y = yukari if yukari >= geo.top() + _POPUP_PAY else geo.bottom() - _POPUP_PAY - ph
+    if y < geo.top() + _POPUP_PAY:
+        y = geo.top() + _POPUP_PAY
+
+    popup.move(x, y)
 
 
 def _metinden_tarih(metin: str) -> QDate | None:
@@ -167,10 +225,10 @@ class TarihSecici(QWidget):
         self._popup_olustur()
         assert self._cal is not None and self._popup is not None
         self._cal.setSelectedDate(self._edit.date())
-        self._popup.adjustSize()
-        anchor = self._btn.mapToGlobal(QPoint(0, self._btn.height() + 2))
-        pw = self._popup.width()
-        self._popup.move(anchor.x() + self._btn.width() - pw, anchor.y())
+        # Sol kenarı tarih alanına hizala; pencere dışına taşarsa kaydır
+        below = self.mapToGlobal(QPoint(0, self.height() + 2))
+        prefer_left = self.mapToGlobal(QPoint(0, 0)).x()
+        _popup_yerlestir(self._popup, anchor=self, below=below, prefer_left=prefer_left)
         self._popup.show()
         self._popup.raise_()
         self._cal.setFocus()
@@ -280,9 +338,9 @@ class DonemAralikAlani(QFrame):
         self._bas.setDate(self._donem.bas_tarih())
         self._bit.setDate(self._donem.bit_tarih())
         self._uzaktan = False
-        self._popup.adjustSize()
-        pos = self.mapToGlobal(QPoint(0, self.height() + 4))
-        self._popup.move(pos)
+        below = self.mapToGlobal(QPoint(0, self.height() + 4))
+        prefer_left = self.mapToGlobal(QPoint(0, 0)).x()
+        _popup_yerlestir(self._popup, anchor=self, below=below, prefer_left=prefer_left)
         self._popup.show()
         self._popup.raise_()
         self._bas.odakla()
