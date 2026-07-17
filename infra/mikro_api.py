@@ -2,7 +2,7 @@
 Mikro ERP REST API istemcisi (Python).
 
 ss/lib/mikro-api.ts auth ve istek desenini birebir taşır:
-  - Günlük rotasyonlu parola: MD5( "YYYY-MM-DD"  veya  "YYYY-MM-DD <SIFRE_GUN>" )
+  - Günlük rotasyonlu parola: MD5( "YYYY-MM-DD <şifre>" )
   - POST {baseUrl}/{endpoint}  gövde: {"Mikro": {...auth}, ...}
   - Yanıt zarfı: result[0].Data ; result[0].IsError true ise hata fırlatılır
   - SqlVeriOkuV2 ile salt-okunur ham SQL — satırlar SQLResult1 / SQLResult / Data / Rows altında
@@ -57,6 +57,7 @@ def password_hash(sifre_gun: str, today: str | None = None) -> str:
 
     ss `new Date().toISOString().split('T')[0]` kullanır → UTC tarih. Mikro tarafı bunu
     beklediği için biz de UTC kullanıyoruz (yerel/UTC farkı gece yarısı sorununu önler).
+    Hash girdisi: ``YYYY-MM-DD <şifre>``.
     """
     gun = today if today is not None else datetime.now(UTC).strftime("%Y-%m-%d")
     to_hash = f"{gun} {sifre_gun}" if sifre_gun else gun

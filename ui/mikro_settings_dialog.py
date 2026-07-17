@@ -48,7 +48,7 @@ class MikroAyarlarDialog(QDialog):
         info = QLabel(
             "Bu bilgiler yalnızca bu bilgisayarda saklanır ve doğrudan kendi Mikro "
             "sunucunuza bağlanmak için kullanılır. Hiçbir bilgi dışarı gönderilmez. "
-            "API anahtarı ve şifre tuzu Windows'ta DPAPI, Linux/macOS'ta yerel anahtarla "
+            "API anahtarı ve şifre Windows'ta DPAPI, Linux/macOS'ta yerel anahtarla "
             "şifrelenerek kaydedilir. Uzak adreslerde https:// zorunludur."
         )
         info.setWordWrap(True)
@@ -68,14 +68,15 @@ class MikroAyarlarDialog(QDialog):
         self._kullanici = QLineEdit(self._cfg.kullanici_kodu)
         self._sifre_gun = QLineEdit(self._cfg.sifre_gun)
         self._sifre_gun.setEchoMode(QLineEdit.EchoMode.Password)
-        self._sifre_gun.setPlaceholderText("Günlük parola tuzu (boş olabilir)")
+        self._sifre_gun.setPlaceholderText("Mikro kullanıcı şifresi")
+        self._sifre_gun.setToolTip("Mikro API kimlik doğrulamasında kullanılan kullanıcı şifresi (zorunlu).")
 
         form.addRow("Mikro API adresi:", self._base_url)
         form.addRow("API anahtarı:", self._api_key)
         form.addRow("Firma kodu:", self._firma_kodu)
         form.addRow("Çalışma yılı:", self._calisma_yili)
         form.addRow("Kullanıcı kodu:", self._kullanici)
-        form.addRow("Şifre tuzu (SIFRE_GUN):", self._sifre_gun)
+        form.addRow("Şifre:", self._sifre_gun)
 
         self._firma_adi = QLineEdit(self._cfg.firma_adi)
         self._firma_adi.setPlaceholderText("Boş bırakırsanız Mikro'dan (FIRMALAR.fir_unvan) otomatik çekilir")

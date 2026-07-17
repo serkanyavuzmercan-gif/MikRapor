@@ -69,9 +69,18 @@ class TestConfigRoundtrip(unittest.TestCase):
         self.assertTrue(loaded.is_complete())
 
     def test_incomplete_reports_missing(self) -> None:
-        cfg = MikroConfig(base_url="", api_key="", firma_kodu="", kullanici_kodu="")
+        cfg = MikroConfig(base_url="", api_key="", firma_kodu="", kullanici_kodu="", sifre_gun="")
         self.assertFalse(cfg.is_complete())
         self.assertIn("Mikro API adresi", cfg.eksik_alanlar())
+        self.assertIn("Şifre", cfg.eksik_alanlar())
+
+    def test_sifre_zorunlu(self) -> None:
+        cfg = MikroConfig(
+            base_url="https://x.example/api", api_key="k", firma_kodu="01",
+            kullanici_kodu="U", sifre_gun="",
+        )
+        self.assertFalse(cfg.is_complete())
+        self.assertEqual(cfg.eksik_alanlar(), ["Şifre"])
 
 
 class TestSqlParsing(unittest.TestCase):

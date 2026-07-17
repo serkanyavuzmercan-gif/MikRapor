@@ -75,7 +75,7 @@ class MikroConfig:
     firma_kodu: str = ""        # MIKRO_FIRMA_KODU — örn. 01 (cari yıl firma kodu)
     calisma_yili: int = 0       # MIKRO_CALISMA_YILI — 0 ise içinde bulunulan yıl
     kullanici_kodu: str = ""    # MIKRO_KULLANICI_KODU
-    sifre_gun: str = ""         # MIKRO_SIFRE_GUN — günlük MD5 parolanın tuzu (boş olabilir)
+    sifre_gun: str = ""         # MIKRO_SIFRE_GUN — Mikro kullanıcı şifresi (zorunlu)
     firma_adi: str = ""         # Raporlarda (bilanço başlığı) görünen firma unvanı (opsiyonel)
     tls_dogrula: bool = False   # MIKRO_TLS_DOGRULA — True: sertifika doğrulanır;
                                 # False: self-signed kabul (Mikro kurulumlarında yaygın)
@@ -105,6 +105,8 @@ class MikroConfig:
             eksik.append("Firma kodu")
         if not c.kullanici_kodu:
             eksik.append("Kullanıcı kodu")
+        if not c.sifre_gun:
+            eksik.append("Şifre")
         return eksik
 
     def is_complete(self) -> bool:
