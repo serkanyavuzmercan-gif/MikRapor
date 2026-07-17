@@ -99,6 +99,8 @@ class GercekDurumAyarlarDialog(QDialog):
         )
         buttons.accepted.connect(self._on_save)
         buttons.rejected.connect(self.reject)
+        from ui.bilesenler import dialog_kaydet_iptal
+        dialog_kaydet_iptal(buttons)
         layout.addWidget(buttons)
 
     def _on_varsayilan(self) -> None:

@@ -8,6 +8,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
+    QDialogButtonBox,
     QDoubleSpinBox,
     QFileDialog,
     QLabel,
@@ -31,6 +32,35 @@ def durum_yaz(label: QLabel, mesaj: str, tur: str = "notr") -> None:
     label.setText(text)
     label.setStyleSheet(f"color: {DURUM_RENK.get(tur, DURUM_RENK['notr'])}; font-weight: 600;")
     label.setVisible(bool(text))
+
+
+def soru_evet_hayir(
+    parent: QWidget | None,
+    baslik: str,
+    metin: str,
+    *,
+    varsayilan_evet: bool = True,
+) -> bool:
+    """Türkçe EVET / HAYIR onay kutusu. True = EVET."""
+    kutu = QMessageBox(parent)
+    kutu.setIcon(QMessageBox.Icon.Question)
+    kutu.setWindowTitle(baslik)
+    kutu.setText(metin)
+    evet = kutu.addButton("Evet", QMessageBox.ButtonRole.YesRole)
+    hayir = kutu.addButton("Hayır", QMessageBox.ButtonRole.NoRole)
+    kutu.setDefaultButton(evet if varsayilan_evet else hayir)
+    kutu.exec()
+    return kutu.clickedButton() is evet
+
+
+def dialog_kaydet_iptal(buttons: QDialogButtonBox) -> None:
+    """QDialogButtonBox Save/Cancel etiketlerini Kaydet / İptal yapar."""
+    kaydet = buttons.button(QDialogButtonBox.StandardButton.Save)
+    if kaydet is not None:
+        kaydet.setText("Kaydet")
+    iptal = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+    if iptal is not None:
+        iptal.setText("İptal")
 
 
 def hos_geldin(

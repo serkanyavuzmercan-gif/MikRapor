@@ -154,13 +154,13 @@ class RaporTab(QWidget):
         cfg = load_config()
         if cfg.is_complete():
             return cfg
-        cevap = QMessageBox.question(
+        from ui.bilesenler import soru_evet_hayir
+
+        if soru_evet_hayir(
             self, "Mikro Ayarları Eksik",
             "Mikro bağlantı bilgileri eksik. Üstteki «Mikro Ayarları»'ndan doldurun.\n\n"
             "Şimdi açmak ister misiniz?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if cevap == QMessageBox.StandardButton.Yes:
+        ):
             MikroAyarlarDialog(self).exec()
         return None
 

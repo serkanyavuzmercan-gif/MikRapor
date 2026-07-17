@@ -126,6 +126,8 @@ class MikroAyarlarDialog(QDialog):
         )
         buttons.accepted.connect(self._on_save)
         buttons.rejected.connect(self.reject)
+        from ui.bilesenler import dialog_kaydet_iptal
+        dialog_kaydet_iptal(buttons)
         self._buttons = buttons
         layout.addWidget(buttons)
 
@@ -250,16 +252,15 @@ class MikroAyarlarDialog(QDialog):
             QMessageBox.warning(self, "Geçersiz API Adresi", "\n".join(url_hatalari))
             return
         if not cfg.tls_dogrula:
-            cevap = QMessageBox.question(
+            from ui.bilesenler import soru_evet_hayir
+
+            if not soru_evet_hayir(
                 self,
                 "TLS doğrulaması kapalı",
                 "TLS sertifika doğrulaması kapalı. Self-signed Mikro sunucuları için "
                 "bu yaygındır; geçerli (imzalı) sertifikanız varsa iptal edip kutuyu işaretleyin.\n\n"
                 "Yine de kaydedilsin mi?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes,
-            )
-            if cevap != QMessageBox.StandardButton.Yes:
+            ):
                 return
         try:
             save_config(cfg)
