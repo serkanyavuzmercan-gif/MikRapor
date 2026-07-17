@@ -1,19 +1,20 @@
 """
 Dönem tarih seçicileri.
 
-- TarihSecici: tek tarih + takvim popup (eski API; popup içinde kullanılır)
-- DonemAralikAlani: mockup A tek kutu — «01.01.2026 — 16.07.2026» + takvim/chevron ikonları
+- TarihSecici: gg.aa.yyyy satırına klavyeden gün/ay/yıl yazılır + takvim butonu
+- DonemAralikAlani: mockup A tek kutu — «01.01.2026 — 16.07.2026» + takvim/chevron
 """
 
 from __future__ import annotations
 
 from PyQt6.QtCore import QDate, QPoint, QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtWidgets import (
     QCalendarWidget,
-    QDateEdit,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -24,10 +25,82 @@ from ui.icons import icon_calendar, icon_chevron_down
 from ui.styles import BORDER_STRONG, INK_SOFT, MUTED, SURFACE
 
 _ALAN_YUKSEKLIK = 36
+_FMT = "dd.MM.yyyy"
+_MASK = "00.00.0000"
+
+
+def _metinden_tarih(metin: str) -> QDate | None:
+    s = (metin or "").strip()
+    if not s or "_" in s:
+        return None
+    d = QDate.fromString(s, _FMT)
+    return d if d.isValid() else None
+
+
+class _TarihSatiri(QLineEdit):
+    """gg.aa.yyyy — gün, ay ve yıl klavyeden serbest yazılır."""
+
+    tarihDegisti = pyqtSignal(QDate)
+
+    def __init__(self, tarih: QDate, *, genislik: int, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._son_gecerli = tarih if tarih.isValid() else QDate.currentDate()
+        self.setObjectName("tarihEdit")
+        self.setInputMask(_MASK)
+        self.setText(self._son_gecerli.toString(_FMT))
+        self.setFixedSize(genislik, _ALAN_YUKSEKLIK)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.setToolTip("Tarihi yazın (gg.aa.yyyy) veya sağdaki takvim ile seçin")
+        self.setCursorPosition(0)
+        self.editingFinished.connect(self._bitince)
+        self.textChanged.connect(self._yazildi)
+
+    def date(self) -> QDate:
+        return self._son_gecerli
+
+    def setDate(self, d: QDate) -> None:
+        if not d.isValid():
+            return
+        self._son_gecerli = d
+        self.blockSignals(True)
+        self.setInputMask(_MASK)
+        self.setText(d.toString(_FMT))
+        self.blockSignals(False)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        # Nokta ile sonraki bölüme (gün → ay → yıl)
+        if event.key() in (Qt.Key.Key_Period, Qt.Key.Key_Comma, Qt.Key.Key_Slash):
+            pos = self.cursorPosition()
+            if pos <= 2:
+                self.setCursorPosition(3)
+            elif pos <= 5:
+                self.setCursorPosition(6)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _yazildi(self, _metin: str) -> None:
+        """Maske dolunca geçerli tarihi hemen uygula (gün/ay/yıl)."""
+        d = _metinden_tarih(self.text())
+        if d is None or d == self._son_gecerli:
+            return
+        self._son_gecerli = d
+        self.tarihDegisti.emit(d)
+
+    def _bitince(self) -> None:
+        d = _metinden_tarih(self.text())
+        if d is None:
+            self.setDate(self._son_gecerli)
+            return
+        if d != self._son_gecerli:
+            self._son_gecerli = d
+            self.setText(d.toString(_FMT))
+            self.tarihDegisti.emit(d)
 
 
 class TarihSecici(QWidget):
-    """Tarih metni + sağda takvim butonu; butona basınca takvim açılır."""
+    """Tarih metni + sağda takvim butonu; gün/ay/yıl klavyeden yazılır."""
 
     dateChanged = pyqtSignal(QDate)
 
@@ -40,19 +113,8 @@ class TarihSecici(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
-        self._edit = QDateEdit()
-        self._edit.setCalendarPopup(False)
-        self._edit.setButtonSymbols(QDateEdit.ButtonSymbols.NoButtons)
-        self._edit.setDisplayFormat("dd.MM.yyyy")
-        self._edit.setDate(tarih)
-        self._edit.setFixedSize(genislik, _ALAN_YUKSEKLIK)
-        self._edit.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self._edit.setToolTip("Tarihi yazın veya sağdaki takvim ile seçin")
-        self._edit.setObjectName("tarihEdit")
-        self._edit.setStyleSheet(
-            "QDateEdit::drop-down { width: 0px; height: 0px; border: none; image: none; }"
-        )
-        self._edit.dateChanged.connect(self.dateChanged.emit)
+        self._edit = _TarihSatiri(tarih, genislik=genislik)
+        self._edit.tarihDegisti.connect(self.dateChanged.emit)
 
         self._btn = QPushButton()
         self._btn.setObjectName("calBtn")
@@ -78,12 +140,15 @@ class TarihSecici(QWidget):
         return self._edit.date()
 
     def setDate(self, d: QDate) -> None:
-        self._edit.blockSignals(True)
         self._edit.setDate(d)
-        self._edit.blockSignals(False)
 
     def blockSignals(self, block: bool) -> bool:  # noqa: A003 — Qt API
         return self._edit.blockSignals(block)
+
+    def odakla(self) -> None:
+        """Popup açılınca gün bölümüne odaklan."""
+        self._edit.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._edit.setCursorPosition(0)
 
     def _popup_olustur(self) -> None:
         if self._popup is not None:
@@ -112,6 +177,7 @@ class TarihSecici(QWidget):
 
     def _tarih_secildi(self, d: QDate) -> None:
         self._edit.setDate(d)
+        self.dateChanged.emit(d)
         if self._popup is not None:
             self._popup.hide()
 
@@ -219,6 +285,7 @@ class DonemAralikAlani(QFrame):
         self._popup.move(pos)
         self._popup.show()
         self._popup.raise_()
+        self._bas.odakla()
 
     def _popup_tarih_degisti(self, _d: QDate) -> None:
         if self._uzaktan:

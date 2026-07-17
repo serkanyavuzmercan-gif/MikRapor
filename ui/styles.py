@@ -215,7 +215,7 @@ QComboBox::drop-down, QDateEdit::drop-down {{
     border-top-right-radius: 7px;
     border-bottom-right-radius: 7px;
 }}
-QDateEdit#tarihEdit {{
+QDateEdit#tarihEdit, QLineEdit#tarihEdit {{
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
     border-right: none;
