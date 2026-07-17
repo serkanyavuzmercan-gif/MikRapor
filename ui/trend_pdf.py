@@ -85,18 +85,18 @@ def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "") -> Path:
 
         rows = [[
             _th("Ay"),
-            _th("Satış", sag=True),
-            _th("Alış", sag=True),
-            _th("Brüt", sag=True),
-            _th("Nakit net", sag=True),
+            _th("Satış"),
+            _th("Alış"),
+            _th("Brüt"),
+            _th("Nakit net"),
         ]]
         for a in tr.aylik:
             rows.append([
                 _td(a.ay),
-                _td(tl(a.satis), sag=True),
-                _td(tl(a.alis), sag=True),
-                _td(tl(a.brut), sag=True),
-                _td(tl(a.nakit_net), sag=True),
+                _td(tl(a.satis)),
+                _td(tl(a.alis)),
+                _td(tl(a.brut)),
+                _td(tl(a.nakit_net)),
             ])
         tt = Table(rows, colWidths=[28 * mm, 36 * mm, 36 * mm, 36 * mm, 38 * mm])
         tt.setStyle(TableStyle([

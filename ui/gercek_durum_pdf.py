@@ -92,18 +92,18 @@ def export_gercek_durum_pdf(gd: GercekDurum, path: str | Path, firma: str = "") 
         elems.append(Spacer(1, 4))
         rows = [[
             _th("Ay"),
-            _th("Satış", sag=True),
-            _th("Alış", sag=True),
-            _th("Brüt", sag=True),
-            _th("Nakit net", sag=True),
+            _th("Satış"),
+            _th("Alış"),
+            _th("Brüt"),
+            _th("Nakit net"),
         ]]
         for a in gd.trend:
             rows.append([
                 _td(a.ay),
-                _td(tl(a.satis), sag=True),
-                _td(tl(a.alis), sag=True),
-                _td(tl(a.brut), sag=True),
-                _td(tl(a.nakit_net), sag=True, bold=True),
+                _td(tl(a.satis)),
+                _td(tl(a.alis)),
+                _td(tl(a.brut)),
+                _td(tl(a.nakit_net), bold=True),
             ])
         tt = Table(rows, colWidths=[28 * mm, 36 * mm, 36 * mm, 36 * mm, 38 * mm])
         tt.setStyle(TableStyle([
