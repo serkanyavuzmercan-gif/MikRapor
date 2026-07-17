@@ -128,16 +128,16 @@ def kurumsal_dipnot(
     Tüm PDF’lerin altındaki kurumsal dipnot.
 
     1) Belge niteliği
-    2) Hidroteknik Yazılım — MikRapor ile üretilmiştir.
-    3) Kaynak / yöntem
-    4) Kullanım sınırı
+    2) Kaynak / yöntem
+    3) Kullanım sınırı
+    4) Hidroteknik Yazılım — MikRapor ile üretilmiştir.  (sağ alt)
     """
     sty = ParagraphStyle(
         "ft", fontName=FONT, fontSize=8, textColor=GRAY, leading=10.5, alignment=0,
     )
     sty_uretici = ParagraphStyle(
         "ftb", fontName=FONT_B, fontSize=8.5, textColor=colors.HexColor("#64748b"),
-        leading=11, alignment=0,
+        leading=11, alignment=2,
     )
 
     nitelik = (
@@ -148,7 +148,6 @@ def kurumsal_dipnot(
     if ek:
         nitelik += " " + ek
 
-    uretici = "Hidroteknik Yazılım — MikRapor ile üretilmiştir."
     kaynak_satir = (
         f"<b>Kaynak / yöntem:</b> {kaynak} "
         f"&nbsp;·&nbsp; Üretim: MikRapor · {_uretim_zamani()}"
@@ -157,13 +156,14 @@ def kurumsal_dipnot(
         "<b>Kullanım sınırı:</b> Bilgilendirme amaçlıdır; yatırım, kredi veya resmî beyan "
         "yerine geçmez. Doğruluk firma muhasebe kayıtlarına bağlıdır."
     )
+    uretici = "Hidroteknik Yazılım — MikRapor ile üretilmiştir."
 
     t = Table(
         [
             [Paragraph(nitelik, sty)],
-            [Paragraph(uretici, sty_uretici)],
             [Paragraph(kaynak_satir, sty)],
             [Paragraph(sorumluluk, sty)],
+            [Paragraph(uretici, sty_uretici)],
         ],
         colWidths=[174 * mm],
     )
@@ -172,7 +172,9 @@ def kurumsal_dipnot(
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 1.5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+        ("TOPPADDING", (0, -1), (-1, -1), 4),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (0, -1), (-1, -1), "RIGHT"),
     ]))
     return [t]
 
