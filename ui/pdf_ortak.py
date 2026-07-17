@@ -71,17 +71,34 @@ def letterhead(
     bas: str = "",
     bit: str = "",
 ) -> None:
-    """Firma + çizgi + başlık; altında yalnızca başlangıç–bitiş dönemi satırı."""
+    """Firma + çizgi + başlık (solda) / Üretim satırı (sağda) + dönem satırı."""
     if firma:
         elems.append(Paragraph(
             firma,
             ParagraphStyle("firma", fontName=FONT_B, fontSize=15, textColor=DARK, leading=18),
         ))
     elems.append(HRFlowable(width="100%", thickness=1.2, color=NAVY, spaceBefore=3, spaceAfter=8))
-    elems.append(Paragraph(
-        baslik,
-        ParagraphStyle("t", fontName=FONT_B, fontSize=13, textColor=DARK, leading=16),
-    ))
+
+    # Dipnottaki ile aynı stil: 8 pt, gri
+    uretim = f"Üretim: MikRapor · {_uretim_zamani()}"
+    baslik_row = Table([[
+        Paragraph(
+            baslik,
+            ParagraphStyle("t", fontName=FONT_B, fontSize=13, textColor=DARK, leading=16),
+        ),
+        Paragraph(
+            uretim,
+            ParagraphStyle("ur", fontName=FONT, fontSize=8, textColor=GRAY, leading=10.5, alignment=2),
+        ),
+    ]], colWidths=[95 * mm, 79 * mm])
+    baslik_row.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+    ]))
+    elems.append(baslik_row)
+
     donem_yazi = (donem or "").strip() or donem_satiri(bas, bit)
     if donem_yazi:
         elems.append(Paragraph(
@@ -130,7 +147,7 @@ def kurumsal_dipnot(
     1) Belge niteliği
     2) Kaynak / yöntem
     3) Kullanım sınırı
-    4) Hidroteknik Yazılım — MikRapor ile üretilmiştir.  (sağ alt)
+    4) Hidroteknik Yazılım — MikRapor  (sağ alt)
     """
     sty = ParagraphStyle(
         "ft", fontName=FONT, fontSize=8, textColor=GRAY, leading=10.5, alignment=0,
@@ -148,15 +165,12 @@ def kurumsal_dipnot(
     if ek:
         nitelik += " " + ek
 
-    kaynak_satir = (
-        f"<b>Kaynak / yöntem:</b> {kaynak} "
-        f"&nbsp;·&nbsp; Üretim: MikRapor · {_uretim_zamani()}"
-    )
+    kaynak_satir = f"<b>Kaynak / yöntem:</b> {kaynak}"
     sorumluluk = (
         "<b>Kullanım sınırı:</b> Bilgilendirme amaçlıdır; yatırım, kredi veya resmî beyan "
         "yerine geçmez. Doğruluk firma muhasebe kayıtlarına bağlıdır."
     )
-    uretici = "Hidroteknik Yazılım — MikRapor ile üretilmiştir."
+    uretici = "Hidroteknik Yazılım — MikRapor"
 
     t = Table(
         [
