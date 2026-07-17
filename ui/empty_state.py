@@ -60,13 +60,19 @@ _CLUSTER_H = (
 )
 
 
-def _load_hero_pixmap() -> QPixmap:
-    for ad in (
-        "anasayfalogo.png",
-        "mikrapor-hero-illustration.png",
-        "empty-hero.png",
-        "empty-bilanco.png",
-    ):
+def _load_hero_pixmap(asset: str | None = None) -> QPixmap:
+    adaylar: list[str] = []
+    if asset:
+        adaylar.append(asset)
+    adaylar.extend(
+        (
+            "anasayfalogo.png",
+            "mikrapor-hero-illustration.png",
+            "empty-hero.png",
+            "empty-bilanco.png",
+        )
+    )
+    for ad in adaylar:
         pix = QPixmap(str(asset_path(ad)))
         if not pix.isNull():
             return pix
@@ -316,13 +322,14 @@ class EmptyState(QWidget):
         *,
         cta_hint: str = "Getir",
         on_cta: Callable[[], None] | None = None,
+        hero_asset: str | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("emptyState")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        self._bg = _CoverBackground(_load_hero_pixmap(), self)
+        self._bg = _CoverBackground(_load_hero_pixmap(hero_asset), self)
         self._bg.lower()
         self._arka_plan = False
 
@@ -415,9 +422,9 @@ class EmptyState(QWidget):
         self._yerlestir()
 
 
-def build_soluk_arka_plan(*, opacity: float = 0.32) -> QWidget:
+def build_soluk_arka_plan(*, opacity: float = 0.32, hero_asset: str | None = None) -> QWidget:
     """Rapor içeriği altında kullanılacak soluk illüstrasyon zemini."""
-    bg = _CoverBackground(_load_hero_pixmap())
+    bg = _CoverBackground(_load_hero_pixmap(hero_asset))
     bg.set_soluk(True, opacity=opacity)
     return bg
 
@@ -428,5 +435,8 @@ def build_empty_state(
     *,
     cta_hint: str = "Getir",
     on_cta: Callable[[], None] | None = None,
+    hero_asset: str | None = None,
 ) -> QWidget:
-    return EmptyState(baslik, aciklama, cta_hint=cta_hint, on_cta=on_cta)
+    return EmptyState(
+        baslik, aciklama, cta_hint=cta_hint, on_cta=on_cta, hero_asset=hero_asset,
+    )

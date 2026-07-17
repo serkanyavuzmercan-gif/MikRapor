@@ -65,6 +65,7 @@ class RaporTab(QWidget):
     TARIH_GENISLIK = 130
     PDF_DESTEK = False
     EKSTRA_ETIKET = ""  # doluysa chrome'da ekstra buton (ör. Ayarlar)
+    HERO_ASSET = ""  # boşsa ortak hero; doluysa assets/<ad> (ör. empty-gelir.png)
 
     def __init__(self, donem: DonemDurumu, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -111,6 +112,7 @@ class RaporTab(QWidget):
 
         # 0: empty (Anında Bilanço ile aynı düzen), 1: soluk arka + rapor
         self._stack = QStackedWidget()
+        hero = self.HERO_ASSET or None
         self._empty = hos_geldin(
             self.EMOJI,
             self.BASLIK,
@@ -118,6 +120,7 @@ class RaporTab(QWidget):
             self.IPUCU,
             on_cta=self._on_getir,
             cta=self.GETIR_ETIKET,
+            hero_asset=hero,
         )
         self._stack.addWidget(self._empty)
 
@@ -127,7 +130,7 @@ class RaporTab(QWidget):
         ic_lay = QGridLayout(self._icerik_sayfa)
         ic_lay.setContentsMargins(0, 0, 0, 0)
         ic_lay.setSpacing(0)
-        self._arka = build_soluk_arka_plan(opacity=0.40)
+        self._arka = build_soluk_arka_plan(opacity=0.40, hero_asset=hero)
         ic_lay.addWidget(self._arka, 0, 0)
 
         self._view = QScrollArea()

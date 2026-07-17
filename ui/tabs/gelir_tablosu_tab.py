@@ -29,6 +29,7 @@ class GelirTablosuTab(RaporTab):
     GETIR_ETIKET = "Gelir Tablosu Getir"
     BASLARKEN = "Dönem gelir/gider hareketleri çekiliyor…"
     PDF_DESTEK = True
+    HERO_ASSET = "empty-gelir.png"
 
     _gt: GelirTablosu | None = None
 
