@@ -128,12 +128,11 @@ QWidget#emptyOverlay {{
     background: transparent;
 }}
 
-/* ---- Sekmeler (header segmented nav) ---- */
-QTabWidget#raporTabs::pane {{
+/* ---- Sekmeler (header segmented nav + içerik stack) ---- */
+QStackedWidget#raporStack {{
     border: 1px solid {BORDER};
     background-color: {SURFACE};
     border-radius: 12px;
-    top: 0px;
 }}
 QTabBar#headerTabBar {{
     background: transparent;

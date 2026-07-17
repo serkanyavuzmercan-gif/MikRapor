@@ -19,8 +19,8 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QSizePolicy,
+    QStackedWidget,
     QTabBar,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -58,12 +58,30 @@ _SEKME_ETIKETLERI = (
 
 
 class HeaderTabBar(QTabBar):
-    """Genişlik daralınca kesilmesin — eşit paylaşılsın."""
+    """Header nav — eşit genişlik; QTabWidget'a bağlı değil (tıklayınca daralmaz)."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setExpanding(True)
+        self.setDrawBase(False)
+        self.setUsesScrollButtons(False)
+        self.setElideMode(Qt.TextElideMode.ElideNone)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
     def minimumSizeHint(self) -> QSize:
         s = super().minimumSizeHint()
         s.setWidth(0)
         return s
+
+    def tabSizeHint(self, index: int) -> QSize:
+        base = super().tabSizeHint(index)
+        n = self.count()
+        if n <= 0:
+            return base
+        # Seçili/kalın yazı sizeHint'i bozmasın — her sekme eşit pay
+        w = max(1, self.width() // n) if self.width() > 0 else base.width()
+        base.setWidth(w)
+        return base
 
 
 def _try_activate_existing_instance() -> bool:
@@ -146,18 +164,12 @@ class MikRaporWindow(QMainWindow):
         titles.addWidget(baslik)
         header.addLayout(titles)
 
-        # 2) Sekmeler (içerik pane aşağıda; tab bar marka bar ortasında)
-        self._tabs = QTabWidget()
-        self._tabs.setObjectName("raporTabs")
-        self._tabs.setDocumentMode(True)
-        tab_bar = HeaderTabBar()
-        tab_bar.setObjectName("headerTabBar")
-        tab_bar.setExpanding(True)
-        tab_bar.setDrawBase(False)
-        tab_bar.setUsesScrollButtons(False)
-        tab_bar.setElideMode(Qt.TextElideMode.ElideNone)
-        tab_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self._tabs.setTabBar(tab_bar)
+        # 2) Sekmeler — tab bar header'da; içerik ayrı stack (QTabWidget layout savaşmasın)
+        self._tab_bar = HeaderTabBar()
+        self._tab_bar.setObjectName("headerTabBar")
+
+        self._stack = QStackedWidget()
+        self._stack.setObjectName("raporStack")
 
         sekme_siniflari = (
             BilancoTab,
@@ -169,9 +181,12 @@ class MikRaporWindow(QMainWindow):
             TrendTab,
         )
         for cls, (etiket, tam) in zip(sekme_siniflari, _SEKME_ETIKETLERI, strict=True):
-            idx = self._tabs.addTab(cls(self._donem), etiket)
-            self._tabs.setTabToolTip(idx, tam)
-        self._tabs.currentChanged.connect(self._on_tab_degisti)
+            w = cls(self._donem)
+            idx = self._stack.addWidget(w)
+            self._tab_bar.addTab(etiket)
+            self._tab_bar.setTabToolTip(idx, tam)
+
+        self._tab_bar.currentChanged.connect(self._on_tab_degisti)
 
         nav = QFrame()
         nav.setObjectName("headerNav")
@@ -179,7 +194,7 @@ class MikRaporWindow(QMainWindow):
         nav_lay = QHBoxLayout(nav)
         nav_lay.setContentsMargins(3, 3, 3, 3)
         nav_lay.setSpacing(0)
-        nav_lay.addWidget(tab_bar, stretch=1)
+        nav_lay.addWidget(self._tab_bar, stretch=1)
         header.addWidget(nav, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         btn_ayar = QPushButton(" Ayarlar")
@@ -205,15 +220,17 @@ class MikRaporWindow(QMainWindow):
         self._chrome.ekstra_clicked.connect(self._on_chrome_ekstra)
         layout.addWidget(self._chrome)
 
-        # 4) Sekme içerik alanı (tab bar yukarıda)
-        layout.addWidget(self._tabs, stretch=1)
+        # 4) Sekme içerik alanı
+        layout.addWidget(self._stack, stretch=1)
         self._on_tab_degisti(0)
 
     def _aktif_tab(self) -> RaporTab | None:
-        w = self._tabs.currentWidget()
+        w = self._stack.currentWidget()
         return w if isinstance(w, RaporTab) else None
 
-    def _on_tab_degisti(self, _index: int) -> None:
+    def _on_tab_degisti(self, index: int) -> None:
+        if 0 <= index < self._stack.count():
+            self._stack.setCurrentIndex(index)
         tab = self._aktif_tab()
         if tab is not None:
             tab.bagla_chrome(self._chrome)
@@ -296,8 +313,8 @@ class MikRaporWindow(QMainWindow):
         if self._ping_worker is not None and self._ping_worker.isRunning():
             self._ping_worker.iptal_et()
             self._ping_worker.wait(3000)
-        for i in range(self._tabs.count()):
-            w = self._tabs.widget(i)
+        for i in range(self._stack.count()):
+            w = self._stack.widget(i)
             if isinstance(w, RaporTab):
                 w.iptal_ve_bekle()
         event.accept()
