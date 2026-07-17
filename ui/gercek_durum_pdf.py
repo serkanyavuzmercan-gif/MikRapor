@@ -11,7 +11,7 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
 from domain.gercek_durum import GercekDurum
 from domain.mizan_bilanco import tl
-from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, NAVY, letterhead, pdf_doc, sty_kpi, sty_row, sty_sec, tr_tarih
+from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, NAVY, dipnot_ekle, letterhead, pdf_doc, sty_kpi, sty_row, sty_sec, tr_tarih
 
 
 def _th(metin: str, *, sag: bool = False) -> Paragraph:
@@ -117,5 +117,10 @@ def export_gercek_durum_pdf(gd: GercekDurum, path: str | Path, firma: str = "") 
         ]))
         elems.append(tt)
 
+    dipnot_ekle(
+        elems,
+        belge="Yönetim amaçlı nakit ve kârlılık özeti",
+        kaynak="Mikro stok / cari / banka hareketleri · Fiili marj mutabakatı",
+    )
     doc.build(elems)
     return out

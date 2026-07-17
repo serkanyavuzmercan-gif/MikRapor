@@ -19,6 +19,7 @@ from ui.pdf_ortak import (
     FONT_B,
     GRAY,
     LINE,
+    dipnot_ekle,
     letterhead,
     pdf_doc,
     sty_row,
@@ -340,12 +341,11 @@ def export_tahsilat_alacak_pdf(ta: TahsilatAlacak, path: str | Path, firma: str 
         elems.extend([top, Spacer(1, 6)])
 
     # —— Dipnot ——
-    dip = Paragraph(
-        "Cari hareketlerden türetilmiştir; resmi GL bilançosu değildir. "
-        "Yaşlandırma vade tarihine göre FIFO açık kalemdir. Yönetim amaçlı özet.",
-        _sty("dip", size=7, color=GRAY, leading=9),
+    dipnot_ekle(
+        elems,
+        belge="Yönetim amaçlı tahsilat ve alacak özeti",
+        kaynak="Mikro cari hareketleri · Yaşlandırma: vade tarihine göre FIFO açık kalem",
     )
-    elems.append(dip)
 
     doc.build(elems)
     return out

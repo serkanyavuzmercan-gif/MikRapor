@@ -8,7 +8,6 @@ Türkçe için DejaVu fontu.
 
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -27,6 +26,7 @@ from reportlab.platypus import (
 )
 
 from domain.mizan_bilanco import AKTIF_BOLUM, PASIF_BOLUM, Bilanco, tl
+from ui.pdf_ortak import dipnot_ekle
 
 FONT = "Helvetica"
 FONT_B = "Helvetica-Bold"
@@ -81,57 +81,6 @@ def _donem_metni(bas: str, bit: str) -> str:
         f" &nbsp;&nbsp;·&nbsp;&nbsp; Kesim: {e} tarihi itibarıyla"
         f" &nbsp;&nbsp;·&nbsp;&nbsp; Tutarlar: TL"
     )
-
-
-def _uretim_zamani() -> str:
-    return datetime.now().strftime("%d.%m.%Y %H:%M")
-
-
-def _footer_bloklari(bilanco: Bilanco) -> list:
-    """Belge niteliği / kaynak / sorumluluk / üretici — kurumsal dipnot."""
-    sty = ParagraphStyle(
-        "ft", fontName=FONT, fontSize=8, textColor=GRAY, leading=10.5, alignment=0,
-    )
-    sty_b = ParagraphStyle(
-        "ftb", fontName=FONT_B, fontSize=8.5, textColor=colors.HexColor("#64748b"), leading=11, alignment=2,
-    )
-
-    nitelik = (
-        "<b>Belge niteliği:</b> Yönetim amaçlı anlık bilançodur. "
-        "Kesinleşmiş yasal mali tablo veya e-defter çıktısı değildir. "
-        "Mikro ERP genel muhasebe kayıtlarından üretilmiştir."
-    )
-    if abs(bilanco.fark) >= 1.0:
-        nitelik += (
-            f" Aktif–Pasif farkı ({tl(bilanco.fark)}) dönem-içi maliyet "
-            "kapanışından kaynaklanabilmektedir."
-        )
-
-    kaynak = (
-        f"<b>Kaynak / yöntem:</b> Mikro GL mizan &nbsp;·&nbsp; Hesap planı: TDHP "
-        f"&nbsp;·&nbsp; Üretim: MikRapor · {_uretim_zamani()}"
-    )
-    sorumluluk = (
-        "<b>Kullanım sınırı:</b> Bilgilendirme amaçlıdır; yatırım, kredi veya resmî beyan "
-        "yerine geçmez. Doğruluk firma muhasebe kayıtlarına bağlıdır."
-    )
-    uretici = "Hidroteknik Yazılım — MikRapor ile üretilmiştir."
-
-    satirlar = [
-        [Paragraph(nitelik, sty)],
-        [Paragraph(kaynak, sty)],
-        [Paragraph(sorumluluk, sty)],
-        [Paragraph(uretici, sty_b)],
-    ]
-    t = Table(satirlar, colWidths=[176 * mm])
-    t.setStyle(TableStyle([
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
-    return [t]
 
 
 def _side_table(b: Bilanco, taraf: str) -> Table:
@@ -242,9 +191,18 @@ def export_bilanco_pdf(
     ]))
     elems.append(body)
 
-    elems.append(Spacer(1, 10))
-    elems.append(HRFlowable(width="100%", thickness=0.4, color=LINE, spaceAfter=4))
-    elems.extend(_footer_bloklari(bilanco))
+    ek = ""
+    if abs(bilanco.fark) >= 1.0:
+        ek = (
+            f"Aktif–Pasif farkı ({tl(bilanco.fark)}) dönem-içi maliyet "
+            "kapanışından kaynaklanabilmektedir."
+        )
+    dipnot_ekle(
+        elems,
+        belge="Yönetim amaçlı anlık bilanço",
+        kaynak="Mikro GL mizan · Hesap planı: TDHP",
+        ek=ek,
+    )
 
     doc.build(elems)
     return out

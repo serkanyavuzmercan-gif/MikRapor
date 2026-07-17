@@ -17,6 +17,7 @@ from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer,
 from domain.gelir_tablosu import GelirTablosu, yuzde
 from domain.mizan_bilanco import tl
 from ui.bilanco_pdf import DARK, FONT, FONT_B, GRAY, LINE, NAVY, _tr_tarih
+from ui.pdf_ortak import dipnot_ekle
 
 
 def _govde(gt: GelirTablosu) -> Table:
@@ -82,20 +83,23 @@ def export_gelir_tablosu_pdf(gt: GelirTablosu, path: str | Path, firma: str = ""
     # Maliyet eksik uyarısı yalnızca uygulama ekranında; PDF'e konmaz.
     elems.append(_govde(gt))
 
-    elems.append(Spacer(1, 10))
-    elems.append(HRFlowable(width="100%", thickness=0.4, color=LINE, spaceAfter=5))
-    ozet = (f"Brüt kâr marjı {yuzde(gt.brut_marj)} &nbsp;·&nbsp; Faaliyet marjı {yuzde(gt.faaliyet_marj)} "
-            f"&nbsp;·&nbsp; Net kâr marjı {yuzde(gt.net_marj)}")
-    footer = Table([[
-        Paragraph(ozet + "<br/>Yönetim amaçlı ara gelir tablosudur; kesinleşmiş resmî mali tablo "
-                  "niteliği taşımaz.",
-                  ParagraphStyle("ft", fontName=FONT, fontSize=7, textColor=GRAY, leading=9)),
-        Paragraph("MikRapor", ParagraphStyle("br", fontName=FONT_B, fontSize=8,
-                  textColor=colors.HexColor("#9aa6b6"), alignment=2)),
-    ]], colWidths=[148 * mm, 26 * mm])
-    footer.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
-                                ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
-    elems.append(footer)
+    # Marj özeti (dipnottan önce kısa KPI satırı)
+    elems.append(Spacer(1, 8))
+    ozet = (
+        f"Brüt kâr marjı {yuzde(gt.brut_marj)} &nbsp;·&nbsp; "
+        f"Faaliyet marjı {yuzde(gt.faaliyet_marj)} &nbsp;·&nbsp; "
+        f"Net kâr marjı {yuzde(gt.net_marj)}"
+    )
+    elems.append(Paragraph(
+        ozet,
+        ParagraphStyle("oz", fontName=FONT, fontSize=8, textColor=GRAY, leading=10),
+    ))
+
+    dipnot_ekle(
+        elems,
+        belge="Yönetim amaçlı ara gelir tablosu",
+        kaynak="Mikro GL mizan · Hesap planı: TDHP",
+    )
 
     doc.build(elems)
     return out

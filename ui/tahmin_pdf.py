@@ -9,7 +9,7 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
 from domain.mizan_bilanco import tl
 from domain.tahmin import Tahmin
-from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, letterhead, pdf_doc, sty_kpi, sty_row, sty_sec
+from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, dipnot_ekle, letterhead, pdf_doc, sty_kpi, sty_row, sty_sec
 
 
 def export_tahmin_pdf(t: Tahmin, path: str | Path, firma: str = "") -> Path:
@@ -59,5 +59,10 @@ def export_tahmin_pdf(t: Tahmin, path: str | Path, firma: str = "") -> Path:
         ("LINEBELOW", (0, 0), (-1, 0), 0.8, LINE),
     ]))
     elems.append(at)
+    dipnot_ekle(
+        elems,
+        belge="Yönetim amaçlı tahmin / projeksiyon özeti; gerçekleşme garantisi içermez",
+        kaynak="Kullanıcı varsayımları · MikRapor projeksiyon modeli",
+    )
     doc.build(elems)
     return out

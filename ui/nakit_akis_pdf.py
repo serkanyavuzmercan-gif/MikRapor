@@ -9,7 +9,7 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import CIKIS_ETIKET, CIKIS_SIRA, GIRIS_ETIKET, GIRIS_SIRA, NakitAkis
-from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, letterhead, pdf_doc, sty_kpi, sty_row, sty_sec, tr_tarih
+from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, dipnot_ekle, letterhead, pdf_doc, sty_kpi, sty_row, sty_sec, tr_tarih
 
 
 def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "") -> Path:
@@ -59,5 +59,10 @@ def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "") -> P
         tc.setStyle(TableStyle([("ALIGN", (1, 0), (1, -1), "RIGHT"), ("FONTNAME", (0, 0), (-1, -1), FONT)]))
         elems.append(tc)
 
+    dipnot_ekle(
+        elems,
+        belge="Yönetim amaçlı nakit akış özeti",
+        kaynak="Mikro banka / kasa / cari hareketleri",
+    )
     doc.build(elems)
     return out

@@ -11,7 +11,7 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
 from domain.mizan_bilanco import tl
 from domain.trend import TrendRapor
-from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, NAVY, letterhead, pdf_doc, sty_kpi, sty_row, sty_sec, tr_tarih
+from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, NAVY, dipnot_ekle, letterhead, pdf_doc, sty_kpi, sty_row, sty_sec, tr_tarih
 
 
 def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "") -> Path:
@@ -110,5 +110,10 @@ def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "") -> Path:
         ]))
         elems.append(tt)
 
+    dipnot_ekle(
+        elems,
+        belge="Yönetim amaçlı trend ve finansal oran özeti",
+        kaynak="Mikro GL mizan / cari hareketler · Hesap planı: TDHP",
+    )
     doc.build(elems)
     return out
