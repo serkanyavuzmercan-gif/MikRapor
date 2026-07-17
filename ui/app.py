@@ -120,8 +120,8 @@ class MikRaporWindow(QMainWindow):
         central.setObjectName("rootArea")
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(18, 16, 18, 14)
-        layout.setSpacing(12)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
 
         # 1) Marka bar — logo | sekmeler | ayarlar / bağlantı
         brand_bar = QFrame()

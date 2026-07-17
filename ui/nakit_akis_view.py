@@ -194,7 +194,7 @@ def build_nakit_akis_widget(na: NakitAkis, firma: str = "") -> QWidget:
     content.setObjectName("naContent")
     content.setStyleSheet("QWidget#naContent { background: %s; }" % PAGE_BG)
     root = QVBoxLayout(content)
-    root.setContentsMargins(24, 18, 24, 24)
+    root.setContentsMargins(16, 14, 16, 16)
     root.setSpacing(14)
 
     firma_str = f" &nbsp;·&nbsp; <b>{firma}</b>" if firma else ""

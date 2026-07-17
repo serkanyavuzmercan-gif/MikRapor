@@ -200,7 +200,7 @@ def _panel(baslik: str, t: QTreeWidget) -> QFrame:
         f"QFrame#panelCard {{ background: {PANEL_BG}; border: 1px solid {BORDER}; "
         f"border-radius: 12px; }}"
     )
-    card.setMinimumWidth(360)
+    card.setMinimumWidth(280)
     card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
     lay = QVBoxLayout(card)
     lay.setContentsMargins(16, 14, 16, 16)
@@ -275,8 +275,8 @@ def build_bilanco_widget(b: Bilanco, firma: str = "") -> QWidget:
     content.setObjectName("bilancoContent")
     content.setStyleSheet(f"QWidget#bilancoContent {{ background: {PAGE_BG}; }}")
     root = QVBoxLayout(content)
-    root.setContentsMargins(28, 20, 28, 28)
-    root.setSpacing(16)
+    root.setContentsMargins(16, 14, 16, 16)
+    root.setSpacing(14)
 
     firma_str = f"  ·  <b>{firma}</b>" if firma else ""
     head = QLabel(
@@ -312,18 +312,12 @@ def build_bilanco_widget(b: Bilanco, firma: str = "") -> QWidget:
     _doldur(t_aktif, b, "aktif")
     _doldur(t_pasif, b, "pasif")
     panel_row = QWidget()
-    panel_row.setMaximumWidth(1280)
     panel_row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     pr = QHBoxLayout(panel_row)
     pr.setContentsMargins(0, 0, 0, 0)
-    pr.setSpacing(20)
+    pr.setSpacing(16)
     pr.addWidget(_panel("AKTİF (VARLIKLAR)", t_aktif), 1)
     pr.addWidget(_panel("PASİF (KAYNAKLAR)", t_pasif), 1)
-    outer = QHBoxLayout()
-    outer.addStretch(1)
-    outer.addWidget(panel_row, 12)
-    outer.addStretch(1)
-    root.addLayout(outer)
-    root.addStretch(1)
+    root.addWidget(panel_row, 1)
 
     return content

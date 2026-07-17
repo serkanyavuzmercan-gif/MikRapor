@@ -54,7 +54,7 @@ def build_gelir_tablosu_widget(gt: GelirTablosu, firma: str = "") -> QWidget:
     content.setObjectName("gtContent")
     content.setStyleSheet("QWidget#gtContent { background: %s; }" % PAGE_BG)
     root = QVBoxLayout(content)
-    root.setContentsMargins(24, 18, 24, 24)
+    root.setContentsMargins(16, 14, 16, 16)
     root.setSpacing(14)
 
     firma_str = f" &nbsp;·&nbsp; <b>{firma}</b>" if firma else ""
@@ -95,12 +95,6 @@ def build_gelir_tablosu_widget(gt: GelirTablosu, firma: str = "") -> QWidget:
     t.setColumnWidth(1, 160)
     _doldur(t, gt)
     panel = _panel("GELİR TABLOSU (Kâr/Zarar)", t)
-    panel.setMaximumWidth(860)
     panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-    outer = QHBoxLayout()
-    outer.addStretch(1)
-    outer.addWidget(panel, 8)
-    outer.addStretch(1)
-    root.addLayout(outer)
-    root.addStretch(1)
+    root.addWidget(panel, 1)
     return content

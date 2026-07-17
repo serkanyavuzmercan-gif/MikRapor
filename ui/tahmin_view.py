@@ -131,7 +131,7 @@ def build_tahmin_widget(t: Tahmin, firma: str = "") -> QWidget:
     content.setObjectName("tahminContent")
     content.setStyleSheet("QWidget#tahminContent { background: %s; }" % PAGE_BG)
     root = QVBoxLayout(content)
-    root.setContentsMargins(24, 18, 24, 24)
+    root.setContentsMargins(16, 14, 16, 16)
     root.setSpacing(14)
 
     v = t.varsayim
