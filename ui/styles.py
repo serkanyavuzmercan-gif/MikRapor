@@ -56,7 +56,13 @@ QFrame#brandBar {{
     background-color: transparent;
     border: none;
     border-bottom: 1px solid {BORDER};
-    padding: 2px 0 0 0;
+    padding: 0;
+}}
+QFrame#headerNav {{
+    background-color: {NAVY_SOFT};
+    border: 1px solid {BORDER};
+    border-radius: 12px;
+    min-height: 44px;
 }}
 QLabel#titleLabel {{
     font-size: 24px;
@@ -123,7 +129,7 @@ QWidget#emptyOverlay {{
     background: transparent;
 }}
 
-/* ---- Sekmeler (tab bar marka bar ortasında) ---- */
+/* ---- Sekmeler (header segmented nav) ---- */
 QTabWidget#raporTabs::pane {{
     border: 1px solid {BORDER};
     background-color: {SURFACE};
@@ -138,17 +144,28 @@ QTabBar#headerTabBar {{
 QTabBar#headerTabBar::tab {{
     background-color: transparent;
     color: {MUTED};
-    padding: 10px 12px 12px 12px;
-    margin-right: 0px;
-    border: none;
-    border-bottom: 3px solid transparent;
+    padding: 9px 10px;
+    margin: 0 2px;
+    border: 1px solid transparent;
+    border-radius: 8px;
     font-weight: 600;
     font-size: 12px;
 }}
-QTabBar#headerTabBar::tab:hover {{ color: {INK_SOFT}; }}
+QTabBar#headerTabBar::tab:hover {{
+    background-color: {SURFACE};
+    color: {INK_SOFT};
+    border: 1px solid {BORDER_STRONG};
+}}
 QTabBar#headerTabBar::tab:selected {{
-    color: {INK};
-    border-bottom: 3px solid {ACCENT};
+    background-color: {SURFACE};
+    color: {ACCENT};
+    border: 1px solid {ACCENT_MUTED};
+    font-weight: 700;
+}}
+QTabBar#headerTabBar::tab:selected:hover {{
+    background-color: {ACCENT_SOFT};
+    color: {ACCENT};
+    border: 1px solid {ACCENT_MUTED};
 }}
 QTabBar::tab {{
     background-color: transparent;
