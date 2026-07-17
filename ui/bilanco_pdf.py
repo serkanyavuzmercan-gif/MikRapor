@@ -1,13 +1,14 @@
 """
 BİLANÇO — PDF dışa aktarım (reportlab). Kurumsal mali tablo görünümü.
 
-Letterhead (firma adı + çizgi) · BİLANÇO başlığı + tarih · iki sütun AKTİF | PASİF ·
-bölüm alt toplamları (Dönen/Duran/KV/UV/Özkaynak) · AKTİF TOPLAM = PASİF TOPLAM.
-Denge, eşit toplamlarla zaten gösterilir (rozet/jargon yok). Türkçe için DejaVu fontu.
+Letterhead (firma adı + çizgi) · BİLANÇO başlığı + dönem/kesim · iki sütun AKTİF | PASİF ·
+bölüm alt toplamları · dipnot: belge niteliği, kaynak, üretici, sorumluluk.
+Türkçe için DejaVu fontu.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -71,11 +72,66 @@ def _tr_tarih(asof: str) -> str:
 
 
 def _donem_metni(bas: str, bit: str) -> str:
-    """PDF sağ üst dönem satırı — başlangıç–bitiş aralığı."""
+    """PDF sağ üst: dönem aralığı + kesim (itibarıyla) + TL."""
     b, e = _tr_tarih(bas), _tr_tarih(bit)
     if not bas or bas == bit:
         return f"{e} tarihi itibarıyla &nbsp;&nbsp;·&nbsp;&nbsp; Tutarlar: TL"
-    return f"{b} – {e} tarihleri arasındaki veriler &nbsp;&nbsp;·&nbsp;&nbsp; Tutarlar: TL"
+    return (
+        f"Dönem: {b} – {e}"
+        f" &nbsp;&nbsp;·&nbsp;&nbsp; Kesim: {e} tarihi itibarıyla"
+        f" &nbsp;&nbsp;·&nbsp;&nbsp; Tutarlar: TL"
+    )
+
+
+def _uretim_zamani() -> str:
+    return datetime.now().strftime("%d.%m.%Y %H:%M")
+
+
+def _footer_bloklari(bilanco: Bilanco) -> list:
+    """Belge niteliği / kaynak / sorumluluk / üretici — kurumsal dipnot."""
+    sty = ParagraphStyle(
+        "ft", fontName=FONT, fontSize=6.5, textColor=GRAY, leading=8.5, alignment=0,
+    )
+    sty_b = ParagraphStyle(
+        "ftb", fontName=FONT_B, fontSize=7, textColor=colors.HexColor("#7b8794"), leading=9, alignment=2,
+    )
+
+    nitelik = (
+        "<b>Belge niteliği:</b> Yönetim amaçlı anlık bilançodur. "
+        "Kesinleşmiş yasal mali tablo veya e-defter çıktısı değildir. "
+        "Mikro ERP genel muhasebe kayıtlarından üretilmiştir."
+    )
+    if abs(bilanco.fark) >= 1.0:
+        nitelik += (
+            f" Aktif–Pasif farkı ({tl(bilanco.fark)}) dönem-içi maliyet "
+            "kapanışından kaynaklanabilmektedir."
+        )
+
+    kaynak = (
+        f"<b>Kaynak / yöntem:</b> Mikro GL mizan &nbsp;·&nbsp; Hesap planı: TDHP "
+        f"&nbsp;·&nbsp; Üretim: MikRapor · {_uretim_zamani()}"
+    )
+    sorumluluk = (
+        "<b>Kullanım sınırı:</b> Bilgilendirme amaçlıdır; yatırım, kredi veya resmî beyan "
+        "yerine geçmez. Doğruluk firma muhasebe kayıtlarına bağlıdır."
+    )
+    uretici = "Hidroteknik Yazılım — MikRapor ile üretilmiştir."
+
+    satirlar = [
+        [Paragraph(nitelik, sty)],
+        [Paragraph(kaynak, sty)],
+        [Paragraph(sorumluluk, sty)],
+        [Paragraph(uretici, sty_b)],
+    ]
+    t = Table(satirlar, colWidths=[176 * mm])
+    t.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    return [t]
 
 
 def _side_table(b: Bilanco, taraf: str) -> Table:
@@ -150,52 +206,45 @@ def export_bilanco_pdf(
     out = Path(path)
     doc = SimpleDocTemplate(
         str(out), pagesize=A4,
-        leftMargin=16 * mm, rightMargin=16 * mm, topMargin=15 * mm, bottomMargin=14 * mm,
+        leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=12 * mm,
         title="Bilanço", author=firma or "MikRapor",
     )
     elems: list = []
 
-    # Letterhead — firma adı + ince çizgi
     if firma:
         elems.append(Paragraph(
             firma, ParagraphStyle("firma", fontName=FONT_B, fontSize=15, textColor=DARK, leading=18)))
     elems.append(HRFlowable(width="100%", thickness=1.2, color=NAVY, spaceBefore=3, spaceAfter=8))
 
-    # Başlık satırı: BİLANÇO  ·  dönem (sağda) — chrome’daki başlangıç–bitiş
     donem_bas = (bas or "").strip() or bilanco.asof
     donem_bit = (bit or "").strip() or bilanco.asof
     baslik_row = Table([[
         Paragraph("BİLANÇO", ParagraphStyle("t", fontName=FONT_B, fontSize=13, textColor=DARK)),
         Paragraph(
             _donem_metni(donem_bas, donem_bit),
-            ParagraphStyle("d", fontName=FONT, fontSize=9, textColor=GRAY, alignment=2),
+            ParagraphStyle("d", fontName=FONT, fontSize=8, textColor=GRAY, alignment=2, leading=10),
         ),
-    ]], colWidths=[50 * mm, 126 * mm])
-    baslik_row.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-                                    ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    ]], colWidths=[42 * mm, 134 * mm])
+    baslik_row.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
     elems.append(baslik_row)
     elems.append(Spacer(1, 8))
 
-    # Gövde: AKTİF | PASİF yan yana
     body = Table([[_side_table(bilanco, "aktif"), _side_table(bilanco, "pasif")]],
                  colWidths=[90 * mm, 90 * mm])
-    body.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
-                              ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (0, 0), 6)]))
+    body.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (0, 0), 6),
+    ]))
     elems.append(body)
 
-    # Dipnot — profesyonel, ölçülü
-    elems.append(Spacer(1, 12))
-    elems.append(HRFlowable(width="100%", thickness=0.4, color=LINE, spaceAfter=5))
-    not_metni = "Yönetim amaçlı ara bilançodur; kesinleşmiş resmî mali tablo niteliği taşımaz."
-    if abs(bilanco.fark) >= 1.0:
-        not_metni += f" Aktif–Pasif farkı ({tl(bilanco.fark)}) dönem-içi maliyet kapanışından kaynaklanmaktadır."
-    footer = Table([[
-        Paragraph(not_metni, ParagraphStyle("ft", fontName=FONT, fontSize=7, textColor=GRAY, leading=9)),
-        Paragraph("MikRapor", ParagraphStyle("br", fontName=FONT_B, fontSize=8, textColor=colors.HexColor("#9aa6b6"), alignment=2)),
-    ]], colWidths=[150 * mm, 26 * mm])
-    footer.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
-                                ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
-    elems.append(footer)
+    elems.append(Spacer(1, 10))
+    elems.append(HRFlowable(width="100%", thickness=0.4, color=LINE, spaceAfter=4))
+    elems.extend(_footer_bloklari(bilanco))
 
     doc.build(elems)
     return out
