@@ -1,7 +1,7 @@
 """
 MikRapor uygulama penceresi ve giriş noktası.
 
-Design A düzeni: marka bar → ortak chrome toolbar → sekmeler → içerik.
+Design A düzeni: marka bar (sekmeler ortada) → ortak chrome toolbar → içerik.
 """
 
 from __future__ import annotations
@@ -101,12 +101,12 @@ class MikRaporWindow(QMainWindow):
         layout.setContentsMargins(18, 16, 18, 14)
         layout.setSpacing(12)
 
-        # 1) Marka bar — hafif daha ferah dikey alan (düzeni bozmayan oran)
+        # 1) Marka bar — logo | sekmeler | ayarlar / bağlantı
         brand_bar = QFrame()
         brand_bar.setObjectName("brandBar")
         header = QHBoxLayout(brand_bar)
-        header.setContentsMargins(4, 8, 4, 14)
-        header.setSpacing(12)
+        header.setContentsMargins(4, 4, 4, 0)
+        header.setSpacing(10)
         header.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         logo = QLabel()
         logo.setObjectName("brandMark")
@@ -126,31 +126,11 @@ class MikRaporWindow(QMainWindow):
         alt.setObjectName("brandSubtitle")
         titles.addWidget(alt)
         header.addLayout(titles)
-        header.addStretch()
-        btn_ayar = QPushButton(" Mikro Ayarları")
-        btn_ayar.setObjectName("ghostBtn")
-        btn_ayar.setIcon(icon_gear(15))
-        btn_ayar.setIconSize(QSize(15, 15))
-        btn_ayar.clicked.connect(self._on_ayarlar)
-        header.addWidget(btn_ayar)
-        self._conn = QLabel()
-        self._conn.setObjectName("connStatus")
-        header.addWidget(self._conn)
-        layout.addWidget(brand_bar)
-        self._conn.setText("○  Bağlantı kontrol ediliyor…")
-        self._conn.setProperty("connected", False)
 
-        # 2) Ortak chrome toolbar (Design A — sekmelerin ÜSTÜNDE)
-        self._chrome = ChromeToolbar(self._donem)
-        self._chrome.getir_clicked.connect(self._on_chrome_getir)
-        self._chrome.iptal_clicked.connect(self._on_chrome_iptal)
-        self._chrome.pdf_clicked.connect(self._on_chrome_pdf)
-        self._chrome.csv_clicked.connect(self._on_chrome_csv)
-        self._chrome.ekstra_clicked.connect(self._on_chrome_ekstra)
-        layout.addWidget(self._chrome)
-
-        # 3) Sekmeler
+        # 2) Sekmeler (içerik pane aşağıda; tab bar marka bar ortasında)
         self._tabs = QTabWidget()
+        self._tabs.setObjectName("raporTabs")
+        self._tabs.setDocumentMode(True)
         self._tabs.addTab(BilancoTab(self._donem), "Anında Bilanço")
         self._tabs.addTab(GelirTablosuTab(self._donem), "Gelir Tablosu")
         self._tabs.addTab(GercekDurumTab(self._donem), "Nakit && Kârlılık")
@@ -159,6 +139,37 @@ class MikRaporWindow(QMainWindow):
         self._tabs.addTab(TahminTab(self._donem), "Tahmin")
         self._tabs.addTab(TrendTab(self._donem), "Trend && Oranlar")
         self._tabs.currentChanged.connect(self._on_tab_degisti)
+
+        tab_bar = self._tabs.tabBar()
+        tab_bar.setObjectName("headerTabBar")
+        tab_bar.setExpanding(False)
+        tab_bar.setDrawBase(False)
+        tab_bar.setUsesScrollButtons(True)
+        header.addWidget(tab_bar, stretch=1, alignment=Qt.AlignmentFlag.AlignBottom)
+
+        btn_ayar = QPushButton(" Mikro Ayarları")
+        btn_ayar.setObjectName("ghostBtn")
+        btn_ayar.setIcon(icon_gear(15))
+        btn_ayar.setIconSize(QSize(15, 15))
+        btn_ayar.clicked.connect(self._on_ayarlar)
+        header.addWidget(btn_ayar, alignment=Qt.AlignmentFlag.AlignVCenter)
+        self._conn = QLabel()
+        self._conn.setObjectName("connStatus")
+        header.addWidget(self._conn, alignment=Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(brand_bar)
+        self._conn.setText("○  Bağlantı kontrol ediliyor…")
+        self._conn.setProperty("connected", False)
+
+        # 3) Ortak chrome toolbar (aktif rapor araçları)
+        self._chrome = ChromeToolbar(self._donem)
+        self._chrome.getir_clicked.connect(self._on_chrome_getir)
+        self._chrome.iptal_clicked.connect(self._on_chrome_iptal)
+        self._chrome.pdf_clicked.connect(self._on_chrome_pdf)
+        self._chrome.csv_clicked.connect(self._on_chrome_csv)
+        self._chrome.ekstra_clicked.connect(self._on_chrome_ekstra)
+        layout.addWidget(self._chrome)
+
+        # 4) Sekme içerik alanı (tab bar yukarıda)
         layout.addWidget(self._tabs, stretch=1)
         self._on_tab_degisti(0)
 

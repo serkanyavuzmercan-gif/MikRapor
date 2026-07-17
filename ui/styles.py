@@ -55,7 +55,8 @@ QWidget#rootArea {{
 QFrame#brandBar {{
     background-color: transparent;
     border: none;
-    padding: 2px 0 4px 0;
+    border-bottom: 1px solid {BORDER};
+    padding: 2px 0 0 0;
 }}
 QLabel#titleLabel {{
     font-size: 24px;
@@ -122,12 +123,32 @@ QWidget#emptyOverlay {{
     background: transparent;
 }}
 
-/* ---- Sekmeler ---- */
-QTabWidget::pane {{
+/* ---- Sekmeler (tab bar marka bar ortasında) ---- */
+QTabWidget#raporTabs::pane {{
     border: 1px solid {BORDER};
     background-color: {SURFACE};
     border-radius: 12px;
-    top: -1px;
+    top: 0px;
+}}
+QTabBar#headerTabBar {{
+    background: transparent;
+    border: none;
+    qproperty-drawBase: 0;
+}}
+QTabBar#headerTabBar::tab {{
+    background-color: transparent;
+    color: {MUTED};
+    padding: 10px 12px 12px 12px;
+    margin-right: 0px;
+    border: none;
+    border-bottom: 3px solid transparent;
+    font-weight: 600;
+    font-size: 12px;
+}}
+QTabBar#headerTabBar::tab:hover {{ color: {INK_SOFT}; }}
+QTabBar#headerTabBar::tab:selected {{
+    color: {INK};
+    border-bottom: 3px solid {ACCENT};
 }}
 QTabBar::tab {{
     background-color: transparent;

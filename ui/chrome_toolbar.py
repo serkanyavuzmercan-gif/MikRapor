@@ -1,4 +1,4 @@
-"""Ortak üst chrome toolbar — Design A: marka bar altında, sekmelerin üstünde.
+"""Ortak üst chrome toolbar — Design A: marka bar (sekmeler) altında.
 
 Satır 1: tarih + Getir / PDF / CSV + kısa durum
 Satır 2: uzun rapor özeti chip şeridi (yalnız sonuç varken)
