@@ -91,8 +91,8 @@ class _CoverBackground(QWidget):
     def paintEvent(self, _ev) -> None:  # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        # Soluk modda biraz daha açık zemin — içerik okunaklı kalsın
-        p.fillRect(self.rect(), QColor("#f4f7fa" if self._soluk else "#f7fafc"))
+        # Soluk modda daha açık zemin; illüstrasyon düşük opaklıkla üstte
+        p.fillRect(self.rect(), QColor("#eef3f7" if self._soluk else "#f7fafc"))
         if self._src.isNull() or self.width() < 2 or self.height() < 2:
             p.end()
             return
@@ -106,11 +106,11 @@ class _CoverBackground(QWidget):
         p.setOpacity(self._opacity)
         p.drawPixmap(x, y, scaled)
         p.setOpacity(1.0)
-        # Alttan beyaz geçiş; solukken daha yumuşak / kısa
+        # Alttan beyaz geçiş; solukken kısa ve hafif — illüstrasyon kaybolmasın
         if self._soluk:
-            grad_h = max(80, int(self.height() * 0.28))
-            max_a = 160
-            exp = 1.4
+            grad_h = max(60, int(self.height() * 0.18))
+            max_a = 90
+            exp = 1.2
         else:
             grad_h = max(140, int(self.height() * 0.42))
             max_a = 230
@@ -415,7 +415,7 @@ class EmptyState(QWidget):
         self._yerlestir()
 
 
-def build_soluk_arka_plan(*, opacity: float = 0.24) -> QWidget:
+def build_soluk_arka_plan(*, opacity: float = 0.32) -> QWidget:
     """Rapor içeriği altında kullanılacak soluk illüstrasyon zemini."""
     bg = _CoverBackground(_load_hero_pixmap())
     bg.set_soluk(True, opacity=opacity)

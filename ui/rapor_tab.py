@@ -36,8 +36,8 @@ from ui.mikro_settings_dialog import MikroAyarlarDialog
 from ui.styles import PAGE_BG
 from ui.worker import IsFonksiyonu, RaporWorker
 
-# Rapor içeriğinde illüstrasyonun hafif görünmesi için sayfa zemini
-_PAGE_BG_SOLUK = "rgba(244, 246, 249, 0.82)"
+# İçerik kökü yarı saydam beyaz — altındaki soluk illüstrasyon hafifçe görünsün
+_PAGE_BG_SOLUK = "rgba(255, 255, 255, 0.72)"
 
 
 def firma_getir(cfg: MikroConfig, client: MikroClient) -> str:
@@ -127,16 +127,20 @@ class RaporTab(QWidget):
         ic_lay = QGridLayout(self._icerik_sayfa)
         ic_lay.setContentsMargins(0, 0, 0, 0)
         ic_lay.setSpacing(0)
-        self._arka = build_soluk_arka_plan(opacity=0.24)
+        self._arka = build_soluk_arka_plan(opacity=0.40)
         ic_lay.addWidget(self._arka, 0, 0)
 
         self._view = QScrollArea()
         self._view.setWidgetResizable(True)
         self._view.setFrameShape(QFrame.Shape.NoFrame)
+        self._view.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._view.setStyleSheet(
             "QScrollArea { background: transparent; border: none; }"
         )
-        self._view.viewport().setStyleSheet("background: transparent;")
+        vp = self._view.viewport()
+        vp.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        vp.setAutoFillBackground(False)
+        vp.setStyleSheet("background: transparent;")
         ic_lay.addWidget(self._view, 0, 0)
         self._view.raise_()
 
@@ -182,9 +186,19 @@ class RaporTab(QWidget):
         else:
             stil = (stil + f"\nQWidget {{ background-color: {_PAGE_BG_SOLUK}; }}").strip()
         widget.setStyleSheet(stil)
+        widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        widget.setAutoFillBackground(False)
 
         self._view.setWidget(widget)
+        # Viewport her koyuşta tekrar saydam (Qt bazen sıfırlar)
+        vp = self._view.viewport()
+        vp.setAutoFillBackground(False)
+        vp.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        vp.setStyleSheet("background: transparent;")
+
+        self._arka.lower()
+        self._view.raise_()
         self._stack.setCurrentIndex(1)
 
     def _ayarlar_tamam(self) -> MikroConfig | None:
