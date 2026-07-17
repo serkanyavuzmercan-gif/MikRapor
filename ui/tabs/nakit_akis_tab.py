@@ -30,7 +30,6 @@ class NakitAkisTab(RaporTab):
     GETIR_ETIKET = "Nakit Akışı Getir"
     BASLARKEN = "Banka/kasa hareketleri çekiliyor…"
     PDF_DESTEK = True
-    HERO_ASSET = "empty-nakit.png"
 
     _na: NakitAkis | None = None
 
