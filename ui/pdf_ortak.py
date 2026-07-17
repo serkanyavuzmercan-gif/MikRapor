@@ -92,15 +92,17 @@ def letterhead(
 
 
 def donem_satiri(bas: str = "", bit: str = "") -> str:
-    """Başlık altı dönem metni — yalnızca başlangıç / bitiş; başka ek yok."""
+    """Başlık altı dönem metni — başlangıç / bitiş + Tutarlar: TL."""
     b, e = tr_tarih(bas), tr_tarih(bit)
     if b and e and b != e:
-        return f"Başlangıç – bitiş dönemi: {b} – {e}"
-    if e:
-        return f"Başlangıç – bitiş dönemi: {e}"
-    if b:
-        return f"Başlangıç – bitiş dönemi: {b}"
-    return ""
+        donem = f"Başlangıç – bitiş dönemi: {b} – {e}"
+    elif e:
+        donem = f"Başlangıç – bitiş dönemi: {e}"
+    elif b:
+        donem = f"Başlangıç – bitiş dönemi: {b}"
+    else:
+        return "Tutarlar: TL"
+    return f"{donem} · Tutarlar: TL"
 
 
 def sty_row() -> ParagraphStyle:
