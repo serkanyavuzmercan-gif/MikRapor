@@ -12,8 +12,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -29,7 +31,11 @@ from ui.bilesenler import csv_kaydet, durum_yaz, hos_geldin
 from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
 from ui.mikro_settings_dialog import MikroAyarlarDialog
+from ui.styles import PAGE_BG
 from ui.worker import IsFonksiyonu, RaporWorker
+
+# Rapor içeriğinde illüstrasyonun hafif görünmesi için sayfa zemini
+_PAGE_BG_SOLUK = "rgba(244, 246, 249, 0.78)"
 
 
 def firma_getir(cfg: MikroConfig, client: MikroClient) -> str:
@@ -98,6 +104,13 @@ class RaporTab(QWidget):
 
         self._ust_alan(layout)
 
+        self._stage = QWidget()
+        self._stage.setObjectName("raporStage")
+        self._stage.setStyleSheet("QWidget#raporStage { background: transparent; }")
+        stage_lay = QGridLayout(self._stage)
+        stage_lay.setContentsMargins(0, 0, 0, 0)
+        stage_lay.setSpacing(0)
+
         self._empty = hos_geldin(
             self.EMOJI,
             self.BASLIK,
@@ -106,13 +119,20 @@ class RaporTab(QWidget):
             on_cta=self._on_getir,
             cta=self.GETIR_ETIKET,
         )
-        layout.addWidget(self._empty, stretch=1)
+        stage_lay.addWidget(self._empty, 0, 0)
+
         self._view = QScrollArea()
         self._view.setWidgetResizable(True)
         self._view.setFrameShape(QFrame.Shape.NoFrame)
-        self._view.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        self._view.setStyleSheet(
+            "QScrollArea { background: transparent; border: none; }"
+            "QScrollArea > QWidget > QWidget { background: transparent; }"
+        )
+        self._view.viewport().setStyleSheet("background: transparent;")
         self._view.setVisible(False)
-        layout.addWidget(self._view, stretch=1)
+        stage_lay.addWidget(self._view, 0, 0)
+
+        layout.addWidget(self._stage, stretch=1)
 
     def _ilk_mesaj(self) -> str:
         return "Hazır"
@@ -146,9 +166,23 @@ class RaporTab(QWidget):
             durum_yaz(self._status, mesaj, tur)
 
     def _icerik_koy(self, widget: QWidget) -> None:
-        self._empty.setVisible(False)
+        # Illüstrasyon soluk arka planda kalsın; içerik üstte yarı saydam zeminle
+        if hasattr(self._empty, "set_arka_plan_modu"):
+            self._empty.set_arka_plan_modu(True)
+        self._empty.setVisible(True)
+        self._empty.lower()
+
+        stil = widget.styleSheet() or ""
+        if PAGE_BG in stil:
+            stil = stil.replace(PAGE_BG, _PAGE_BG_SOLUK)
+        else:
+            stil = (stil + f"\nQWidget {{ background-color: {_PAGE_BG_SOLUK}; }}").strip()
+        widget.setStyleSheet(stil)
+        widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
         self._view.setVisible(True)
         self._view.setWidget(widget)
+        self._view.raise_()
 
     def _ayarlar_tamam(self) -> MikroConfig | None:
         cfg = load_config()

@@ -76,13 +76,22 @@ class _CoverBackground(QWidget):
     def __init__(self, pixmap: QPixmap, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._src = pixmap
+        self._opacity = 1.0
+        self._soluk = False
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def set_soluk(self, soluk: bool, *, opacity: float = 0.26) -> None:
+        """Rapor açıkken illüstrasyonu soluk arka plan yap."""
+        self._soluk = soluk
+        self._opacity = max(0.08, min(1.0, opacity)) if soluk else 1.0
+        self.update()
 
     def paintEvent(self, _ev) -> None:  # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        p.fillRect(self.rect(), QColor("#f7fafc"))
+        # Soluk modda biraz daha açık zemin — içerik okunaklı kalsın
+        p.fillRect(self.rect(), QColor("#f4f7fa" if self._soluk else "#f7fafc"))
         if self._src.isNull() or self.width() < 2 or self.height() < 2:
             p.end()
             return
@@ -93,11 +102,21 @@ class _CoverBackground(QWidget):
         )
         x = (self.width() - scaled.width()) // 2
         y = min(0, (self.height() - scaled.height()) // 3)
+        p.setOpacity(self._opacity)
         p.drawPixmap(x, y, scaled)
-        grad_h = max(140, int(self.height() * 0.42))
+        p.setOpacity(1.0)
+        # Alttan beyaz geçiş; solukken daha yumuşak / kısa
+        if self._soluk:
+            grad_h = max(80, int(self.height() * 0.28))
+            max_a = 160
+            exp = 1.4
+        else:
+            grad_h = max(140, int(self.height() * 0.42))
+            max_a = 230
+            exp = 1.8
         for i in range(grad_h):
             t = i / max(1, grad_h - 1)
-            alpha = int(230 * (t ** 1.8))
+            alpha = int(max_a * (t ** exp))
             p.fillRect(
                 QRect(0, self.height() - grad_h + i, self.width(), 1),
                 QColor(255, 255, 255, alpha),
@@ -363,10 +382,18 @@ class EmptyState(QWidget):
 
         self._yerlestir()
 
+    def set_arka_plan_modu(self, aktif: bool) -> None:
+        """True: rapor içeriği altında soluk illüstrasyon; marka/CTA gizlenir."""
+        self._cluster.setVisible(not aktif)
+        self._bg.set_soluk(aktif, opacity=0.24)
+        self._yerlestir()
+
     def _yerlestir(self) -> None:
         """Cluster'ı yatay ortala, dikeyde alta sabitle — resize yalnızca üst boşluğu değiştirir."""
         self._bg.setGeometry(self.rect())
         self._bg.lower()
+        if not self._cluster.isVisible():
+            return
         w = max(1, self.width())
         h = max(1, self.height())
         x = (w - _COL_W) // 2
