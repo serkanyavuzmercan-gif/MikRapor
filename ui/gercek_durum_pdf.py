@@ -119,8 +119,12 @@ def export_gercek_durum_pdf(gd: GercekDurum, path: str | Path, firma: str = "") 
 
     dipnot_ekle(
         elems,
-        belge="Yönetim amaçlı nakit ve kârlılık özeti",
-        kaynak="Mikro stok / cari / banka hareketleri · Fiili marj mutabakatı",
+        metin=(
+            "Bu belge, Mikro ERP verilerinden üretilmiş yönetimsel bir kârlılık ve nakit "
+            "özetidir. Kesinleşmiş yasal mali tablo niteliği taşımaz. Yalnızca bilgilendirme "
+            "amaçlıdır; resmî beyan, kredi veya yatırım aracı olarak kullanılamaz. "
+            "Bilgiler mevcut muhasebe kayıtlarına dayanır."
+        ),
     )
     doc.build(elems)
     return out
