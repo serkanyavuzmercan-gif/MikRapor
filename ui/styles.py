@@ -228,6 +228,24 @@ QDateEdit#tarihEdit::drop-down {{
     background: transparent;
     image: none;
 }}
+QDateEdit#donemAralikEdit {{
+    background: transparent;
+    border: none;
+    padding: 0 2px;
+    font-size: 13px;
+    font-weight: 600;
+}}
+QDateEdit#donemAralikEdit:focus {{
+    background-color: {ACCENT_SOFT};
+    border-radius: 4px;
+}}
+QDateEdit#donemAralikEdit::drop-down {{
+    width: 0px;
+    height: 0px;
+    border: none;
+    background: transparent;
+    image: none;
+}}
 QWidget#calPopup {{
     background-color: {SURFACE};
     border: 1px solid {BORDER_STRONG};

@@ -1,8 +1,9 @@
 """
 Dönem tarih seçicileri.
 
-- TarihSecici: tek tarih + takvim popup (eski API; popup içinde kullanılır)
-- DonemAralikAlani: mockup A tek kutu — «01.01.2026 — 16.07.2026» + takvim/chevron ikonları
+- TarihSecici: tek tarih + takvim popup (popup içinde; klavye ile de yazılır)
+- DonemAralikAlani: mockup A tek kutu — «01.01.2026 — 16.07.2026»
+  her iki tarih klavyeden düzenlenebilir; takvim ikonu / chevron popup açar
 """
 
 from __future__ import annotations
@@ -24,10 +25,30 @@ from ui.icons import icon_calendar, icon_chevron_down
 from ui.styles import BORDER_STRONG, INK_SOFT, MUTED, SURFACE
 
 _ALAN_YUKSEKLIK = 36
+_INLINE_EDIT_W = 92
+
+
+def _tarih_edit(tarih: QDate, *, genislik: int, object_name: str = "tarihEdit") -> QDateEdit:
+    """Klavyeden yazılabilir, takvim düğmesiz QDateEdit."""
+    edit = QDateEdit()
+    edit.setCalendarPopup(False)
+    edit.setButtonSymbols(QDateEdit.ButtonSymbols.NoButtons)
+    edit.setDisplayFormat("dd.MM.yyyy")
+    edit.setDate(tarih)
+    edit.setFixedHeight(_ALAN_YUKSEKLIK)
+    edit.setMinimumWidth(genislik)
+    edit.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+    edit.setToolTip("Tarihi klavyeden yazın (gg.aa.yyyy) veya takvimden seçin")
+    edit.setObjectName(object_name)
+    edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    edit.setStyleSheet(
+        "QDateEdit::drop-down { width: 0px; height: 0px; border: none; image: none; }"
+    )
+    return edit
 
 
 class TarihSecici(QWidget):
-    """Tarih metni + sağda takvim butonu; butona basınca takvim açılır."""
+    """Tarih metni + sağda takvim butonu; yazılabilir, butona basınca takvim açılır."""
 
     dateChanged = pyqtSignal(QDate)
 
@@ -40,18 +61,8 @@ class TarihSecici(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
-        self._edit = QDateEdit()
-        self._edit.setCalendarPopup(False)
-        self._edit.setButtonSymbols(QDateEdit.ButtonSymbols.NoButtons)
-        self._edit.setDisplayFormat("dd.MM.yyyy")
-        self._edit.setDate(tarih)
+        self._edit = _tarih_edit(tarih, genislik=genislik, object_name="tarihEdit")
         self._edit.setFixedSize(genislik, _ALAN_YUKSEKLIK)
-        self._edit.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self._edit.setToolTip("Tarihi yazın veya sağdaki takvim ile seçin")
-        self._edit.setObjectName("tarihEdit")
-        self._edit.setStyleSheet(
-            "QDateEdit::drop-down { width: 0px; height: 0px; border: none; image: none; }"
-        )
         self._edit.dateChanged.connect(self.dateChanged.emit)
 
         self._btn = QPushButton()
@@ -120,9 +131,9 @@ class DonemAralikAlani(QFrame):
     """
     Mockup A: tek çerçeveli dönem kutusu.
 
-      [📅]  01.01.2026 — 16.07.2026  [▾]
+      [📅]  [01.01.2026] — [16.07.2026]  [▾]
 
-    Tıklanınca başlangıç/bitiş seçicili popup açılır; DonemDurumu ile senkron kalır.
+    Tarihler klavyeden yazılır; takvim ikonu veya chevron popup açar.
     """
 
     def __init__(self, donem, parent: QWidget | None = None) -> None:
@@ -135,9 +146,8 @@ class DonemAralikAlani(QFrame):
         self._uzaktan = False
 
         self.setObjectName("donemAralik")
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(_ALAN_YUKSEKLIK)
-        self.setMinimumWidth(220)
+        self.setMinimumWidth(248)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setStyleSheet(
             f"QFrame#donemAralik {{"
@@ -146,41 +156,104 @@ class DonemAralikAlani(QFrame):
             f"  border-radius: 8px;"
             f"}}"
             f"QFrame#donemAralik:hover {{ border-color: #9aa6b6; }}"
-            f"QLabel#donemAralikText {{ color: {INK_SOFT}; font-size: 13px; font-weight: 600;"
-            f"  background: transparent; border: none; }}"
-            f"QLabel#donemAralikHint {{ color: {MUTED}; background: transparent; border: none; }}"
+            f"QDateEdit#donemAralikEdit {{"
+            f"  background: transparent; border: none; padding: 0 2px;"
+            f"  color: {INK_SOFT}; font-size: 13px; font-weight: 600;"
+            f"  min-height: {_ALAN_YUKSEKLIK - 4}px;"
+            f"}}"
+            f"QDateEdit#donemAralikEdit:focus {{"
+            f"  background: #f0fdf9; border-radius: 4px;"
+            f"}}"
+            f"QDateEdit#donemAralikEdit::drop-down {{"
+            f"  width: 0; height: 0; border: none; image: none; background: transparent;"
+            f"}}"
+            f"QLabel#donemAralikSep {{ color: {MUTED}; font-size: 13px; font-weight: 600;"
+            f"  background: transparent; border: none; padding: 0 2px; }}"
         )
 
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(10, 0, 8, 0)
-        lay.setSpacing(8)
+        lay.setContentsMargins(8, 0, 6, 0)
+        lay.setSpacing(4)
 
-        cal = QLabel()
-        cal.setPixmap(icon_calendar(15).pixmap(15, 15))
-        cal.setFixedSize(16, 16)
-        lay.addWidget(cal, alignment=Qt.AlignmentFlag.AlignVCenter)
+        self._btn_cal = QPushButton()
+        self._btn_cal.setFlat(True)
+        self._btn_cal.setIcon(icon_calendar(15))
+        self._btn_cal.setIconSize(QSize(15, 15))
+        self._btn_cal.setFixedSize(22, 22)
+        self._btn_cal.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_cal.setToolTip("Takvimle seç")
+        self._btn_cal.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._btn_cal.setStyleSheet("QPushButton { background: transparent; border: none; padding: 0; }")
+        self._btn_cal.clicked.connect(self._popup_ac)
+        lay.addWidget(self._btn_cal, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-        self._text = QLabel()
-        self._text.setObjectName("donemAralikText")
-        lay.addWidget(self._text, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
+        self._bas_edit = _tarih_edit(
+            donem.bas_tarih(), genislik=_INLINE_EDIT_W, object_name="donemAralikEdit",
+        )
+        self._bas_edit.setFixedWidth(_INLINE_EDIT_W)
+        lay.addWidget(self._bas_edit, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-        chev = QLabel()
-        chev.setPixmap(icon_chevron_down(12).pixmap(12, 12))
-        chev.setFixedSize(14, 14)
-        lay.addWidget(chev, alignment=Qt.AlignmentFlag.AlignVCenter)
+        sep = QLabel("—")
+        sep.setObjectName("donemAralikSep")
+        lay.addWidget(sep, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-        self._guncelle_metin()
-        donem.degisti.connect(self._guncelle_metin)
+        self._bit_edit = _tarih_edit(
+            donem.bit_tarih(), genislik=_INLINE_EDIT_W, object_name="donemAralikEdit",
+        )
+        self._bit_edit.setFixedWidth(_INLINE_EDIT_W)
+        lay.addWidget(self._bit_edit, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-    def _guncelle_metin(self) -> None:
-        bas = self._donem.bas_tarih().toString("dd.MM.yyyy")
-        bit = self._donem.bit_tarih().toString("dd.MM.yyyy")
-        self._text.setText(f"{bas}  —  {bit}")
+        self._btn_chev = QPushButton()
+        self._btn_chev.setFlat(True)
+        self._btn_chev.setIcon(icon_chevron_down(12))
+        self._btn_chev.setIconSize(QSize(12, 12))
+        self._btn_chev.setFixedSize(20, 20)
+        self._btn_chev.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_chev.setToolTip("Takvimle seç")
+        self._btn_chev.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._btn_chev.setStyleSheet("QPushButton { background: transparent; border: none; padding: 0; }")
+        self._btn_chev.clicked.connect(self._popup_ac)
+        lay.addWidget(self._btn_chev, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-    def mousePressEvent(self, event) -> None:  # noqa: N802, ANN001
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._popup_ac()
-        super().mousePressEvent(event)
+        self._bas_edit.dateChanged.connect(self._inline_degisti)
+        self._bit_edit.dateChanged.connect(self._inline_degisti)
+        self._bas_edit.editingFinished.connect(self._inline_bitince)
+        self._bit_edit.editingFinished.connect(self._inline_bitince)
+        donem.degisti.connect(self._donemden_yukle)
+        self._donemden_yukle()
+
+    def _donemden_yukle(self) -> None:
+        self._uzaktan = True
+        self._bas_edit.blockSignals(True)
+        self._bit_edit.blockSignals(True)
+        self._bas_edit.setDate(self._donem.bas_tarih())
+        self._bit_edit.setDate(self._donem.bit_tarih())
+        self._bas_edit.blockSignals(False)
+        self._bit_edit.blockSignals(False)
+        self._uzaktan = False
+
+    def _inline_degisti(self, _d: QDate) -> None:
+        if self._uzaktan:
+            return
+        self._doneme_yaz()
+
+    def _inline_bitince(self) -> None:
+        """Yazım bitince bas ≤ bit garanti et."""
+        if self._uzaktan:
+            return
+        self._doneme_yaz()
+
+    def _doneme_yaz(self) -> None:
+        bas = self._bas_edit.date()
+        bit = self._bit_edit.date()
+        if not bas.isValid() or not bit.isValid():
+            return
+        if bas > bit:
+            bit = bas
+            self._uzaktan = True
+            self._bit_edit.setDate(bit)
+            self._uzaktan = False
+        self._donem.donem_ayarla(bas=bas, bit=bit)
 
     def _popup_ac(self) -> None:
         if self._popup is None:
@@ -219,6 +292,8 @@ class DonemAralikAlani(QFrame):
         self._popup.move(pos)
         self._popup.show()
         self._popup.raise_()
+        self._bas._edit.setFocus()  # noqa: SLF001 — popup’ta klavye ile yazılsın
+        self._bas._edit.selectAll()  # noqa: SLF001
 
     def _popup_tarih_degisti(self, _d: QDate) -> None:
         if self._uzaktan:
