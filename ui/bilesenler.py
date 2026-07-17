@@ -92,17 +92,19 @@ def hos_geldin(
     return build_empty_state(baslik, aciklama_duz, cta_hint=cta_text, on_cta=on_cta)
 
 
-def csv_kaydet(parent: QWidget, status: QLabel, varsayilan_ad: str, icerik: str) -> None:
+def csv_kaydet(parent: QWidget, status: QLabel | None, varsayilan_ad: str, icerik: str) -> str | None:
     path, _ = QFileDialog.getSaveFileName(parent, "CSV Kaydet", varsayilan_ad, "CSV (*.csv)")
     if not path:
-        return
+        return None
     try:
         with open(path, "w", encoding="utf-8-sig", newline="") as f:
             f.write(icerik)
     except OSError as exc:
         QMessageBox.critical(parent, "CSV Hatası", str(exc))
-        return
-    durum_yaz(status, f"CSV kaydedildi: {Path(path).name}", "iyi")
+        return None
+    if status is not None:
+        durum_yaz(status, f"CSV kaydedildi: {Path(path).name}", "iyi")
+    return path
 
 
 def para_spin(maks: float = 1e12) -> QDoubleSpinBox:

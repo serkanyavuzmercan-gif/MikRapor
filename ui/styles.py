@@ -98,6 +98,21 @@ QLabel#toolbarHint {{
     color: {MUTED};
     font-size: 12px;
 }}
+QFrame#ozetSerit {{
+    background: {SURFACE};
+    border: 1px solid {BORDER};
+    border-radius: 8px;
+    min-height: 34px;
+}}
+QLabel#ozetChip {{
+    background: {ACCENT_SOFT};
+    color: {INK_SOFT};
+    border: 1px solid #cce8e2;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+}}
 QWidget#emptyState {{
     background-color: {SURFACE};
     border: none;

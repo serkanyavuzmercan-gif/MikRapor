@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import (
 from infra.config import MikroConfig, load_config
 from infra.mikro_api import MikroAPIError, MikroClient
 from infra.mikro_fetch import fetch_firma_adi
-from ui.bilesenler import csv_kaydet, durum_yaz, hos_geldin
+from ui.bilesenler import csv_kaydet, hos_geldin
 from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
 from ui.empty_state import build_soluk_arka_plan
@@ -176,8 +176,8 @@ class RaporTab(QWidget):
         raise NotImplementedError
 
     def _durum(self, mesaj: str, tur: str = "notr") -> None:
-        if self._chrome_aktif() and self._status is not None:
-            durum_yaz(self._status, mesaj, tur)
+        if self._chrome_aktif() and self._chrome is not None:
+            self._chrome.set_durum(mesaj, tur)
 
     def _icerik_koy(self, widget: QWidget) -> None:
         stil = widget.styleSheet() or ""
@@ -321,6 +321,10 @@ class RaporTab(QWidget):
 
     def _on_csv(self) -> None:
         icerik = self._csv_icerik()
-        if icerik is None or self._status is None:
+        if icerik is None:
             return
-        csv_kaydet(self, self._status, self._csv_dosya_adi(), icerik)
+        path = csv_kaydet(self, None, self._csv_dosya_adi(), icerik)
+        if path:
+            from pathlib import Path
+
+            self._durum(f"CSV kaydedildi: {Path(path).name}", "iyi")
