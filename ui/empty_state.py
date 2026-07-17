@@ -16,6 +16,7 @@ from PyQt6.QtGui import (
     QFontMetrics,
     QIcon,
     QPainter,
+    QPainterPath,
     QPixmap,
     QResizeEvent,
     QTextOption,
@@ -25,8 +26,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
-    QStyle,
-    QStyleOptionButton,
     QVBoxLayout,
     QWidget,
 )
@@ -44,7 +43,9 @@ _CTA_W = 300
 _CTA_H = 48
 _CTA_ICON = 16
 _CTA_GAP = 8
-_BOTTOM_PAD = 36
+_CTA_RADIUS = 10
+_CTA_BOTTOM_PAD = 10   # alt yuvarlak kenar kesilmesin
+_BOTTOM_PAD = 40
 _GAP_BRAND_TITLE = 14
 _GAP_TITLE_BODY = 10
 _GAP_BODY_CTA = 24
@@ -54,7 +55,7 @@ _BRAND_H = _MARK_SIZE
 _TITLE_H = 36
 _CLUSTER_H = (
     _BRAND_H + _GAP_BRAND_TITLE + _TITLE_H + _GAP_TITLE_BODY
-    + _BODY_H + _GAP_BODY_CTA + _CTA_H
+    + _BODY_H + _GAP_BODY_CTA + _CTA_H + _CTA_BOTTOM_PAD
 )
 
 
@@ -212,32 +213,23 @@ class _HScaleBody(QWidget):
 
 
 class _EmptyCtaButton(QPushButton):
-    """Sabit boyutlu CTA — ikon + yazı tek grup ortada; uzun yazı yatay ölçek."""
+    """Sabit boyutlu CTA — ikon + yazı tek grup ortada; uzun yazı yatay ölçek.
+
+    Alt kenar kesilmesin diye gövde kendi çizilir (stil CE_PushButton AA kırpmaz).
+    """
 
     def __init__(self, text: str, icon: QIcon, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._label = (text or "").strip()
+        # Qt accelerator (&&) özel paint'te görünmesin → tek & veya /
+        raw = (text or "").strip().replace("&&", " / ")
+        self._label = " ".join(raw.split())
         self._icon = icon
         self.setObjectName("emptyCtaBtn")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedSize(_CTA_W, _CTA_H)
-        self.setStyleSheet(f"""
-            QPushButton#emptyCtaBtn {{
-                background-color: {ACCENT};
-                color: #ffffff;
-                border: 1px solid {ACCENT};
-                border-radius: 10px;
-                padding: 0;
-            }}
-            QPushButton#emptyCtaBtn:hover {{
-                background-color: {ACCENT_HOVER};
-                border-color: {ACCENT_HOVER};
-            }}
-            QPushButton#emptyCtaBtn:pressed {{
-                background-color: {ACCENT_PRESSED};
-                border-color: {ACCENT_PRESSED};
-            }}
-        """)
+        self.setFlat(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setStyleSheet("QPushButton#emptyCtaBtn { background: transparent; border: none; padding: 0; }")
         self._font = QFont()
         self._font.setPixelSize(15)
         self._font.setWeight(QFont.Weight.Bold)
@@ -245,17 +237,24 @@ class _EmptyCtaButton(QPushButton):
     def sizeHint(self) -> QSize:  # noqa: N802
         return QSize(_CTA_W, _CTA_H)
 
+    def _bg_color(self) -> QColor:
+        if self.isDown():
+            return QColor(ACCENT_PRESSED)
+        if self.underMouse():
+            return QColor(ACCENT_HOVER)
+        return QColor(ACCENT)
+
     def paintEvent(self, _ev) -> None:  # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
-        opt = QStyleOptionButton()
-        self.initStyleOption(opt)
-        opt.text = ""
-        opt.icon = QIcon()
-        self.style().drawControl(QStyle.ControlElement.CE_PushButton, opt, p, self)
+        # 0.5px inset — alt yuvarlak kenar kırpılmasın
+        rect = QRectF(0.5, 0.5, self.width() - 1.0, self.height() - 1.0)
+        path = QPainterPath()
+        path.addRoundedRect(rect, float(_CTA_RADIUS), float(_CTA_RADIUS))
+        p.fillPath(path, self._bg_color())
 
         fm = QFontMetrics(self._font)
         text_w = fm.horizontalAdvance(self._label)
@@ -358,8 +357,9 @@ class EmptyState(QWidget):
             btn = _EmptyCtaButton(cta_hint, icon_table(16, "#ffffff"))
             btn.clicked.connect(on_cta)
             col_lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignHCenter)
+            col_lay.addSpacing(_CTA_BOTTOM_PAD)
         else:
-            col_lay.addSpacing(_CTA_H)
+            col_lay.addSpacing(_CTA_H + _CTA_BOTTOM_PAD)
 
         self._yerlestir()
 

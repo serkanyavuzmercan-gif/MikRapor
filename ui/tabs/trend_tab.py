@@ -35,7 +35,7 @@ class TrendTab(RaporTab):
         "bilanço tarihindeki klasik finansal oranları (cari, asit-test, borç/özkaynak)<br>"
         "yan yana koyar."
     )
-    GETIR_ETIKET = "Trend && Oranları Getir"
+    GETIR_ETIKET = "Trend / Oranları Getir"
     BASLARKEN = "Stok, nakit ve mizan çekiliyor…"
     PDF_DESTEK = True
 

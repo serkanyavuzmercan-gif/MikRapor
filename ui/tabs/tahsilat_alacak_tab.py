@@ -27,7 +27,7 @@ class TahsilatAlacakTab(RaporTab):
         "Cari hareketlerden — açık alacak ve borçların vadeye göre yaşlandırması,<br>"
         "dönem tahsilat/ödeme performansı (DSO/DPO) ve ileriye dönük net vade<br>"
         "takvimi (ne girecek − ne çıkacak). Resmi GL'ye dokunmaz.")
-    GETIR_ETIKET = "Tahsilat && Alacak Getir"
+    GETIR_ETIKET = "Tahsilat / Alacak Getir"
     BASLARKEN = "Cari açık kalemler çekiliyor…"
     PDF_DESTEK = True
 

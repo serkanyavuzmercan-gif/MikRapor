@@ -149,6 +149,9 @@ QPushButton#primaryBtn {{
     color: #ffffff;
     border: 1px solid {ACCENT};
     text-align: center;
+    padding: 10px 18px;
+    border-radius: 8px;
+    min-height: 22px;
 }}
 QPushButton#primaryBtn:hover {{
     background-color: {ACCENT_HOVER};
@@ -164,30 +167,20 @@ QPushButton#primaryBtn:disabled {{
     border-color: #99d5cf;
 }}
 
-/* Empty-state CTA — dolu teal; içerik _EmptyCtaButton ile ortalanır */
+/* Empty-state CTA — gövde _EmptyCtaButton.paintEvent ile çizilir (alt kenar kırpılmasın) */
 QPushButton#emptyCtaBtn {{
-    background-color: {ACCENT};
-    color: #ffffff;
-    border: 1px solid {ACCENT};
-    border-radius: 10px;
-    font-size: 15px;
-    font-weight: 700;
+    background: transparent;
+    border: none;
     padding: 0;
     min-width: 300px;
     max-width: 300px;
     min-height: 48px;
     max-height: 48px;
-    text-align: center;
 }}
-QPushButton#emptyCtaBtn:hover {{
-    background-color: {ACCENT_HOVER};
-    border-color: {ACCENT_HOVER};
-    color: #ffffff;
-}}
+QPushButton#emptyCtaBtn:hover,
 QPushButton#emptyCtaBtn:pressed {{
-    background-color: {ACCENT_PRESSED};
-    border-color: {ACCENT_PRESSED};
-    color: #ffffff;
+    background: transparent;
+    border: none;
 }}
 
 QPushButton#ghostBtn {{

@@ -90,10 +90,10 @@ def _uretim_zamani() -> str:
 def _footer_bloklari(bilanco: Bilanco) -> list:
     """Belge niteliği / kaynak / sorumluluk / üretici — kurumsal dipnot."""
     sty = ParagraphStyle(
-        "ft", fontName=FONT, fontSize=6.5, textColor=GRAY, leading=8.5, alignment=0,
+        "ft", fontName=FONT, fontSize=8, textColor=GRAY, leading=10.5, alignment=0,
     )
     sty_b = ParagraphStyle(
-        "ftb", fontName=FONT_B, fontSize=7, textColor=colors.HexColor("#7b8794"), leading=9, alignment=2,
+        "ftb", fontName=FONT_B, fontSize=8.5, textColor=colors.HexColor("#64748b"), leading=11, alignment=2,
     )
 
     nitelik = (
