@@ -42,7 +42,6 @@ class GercekDurumTab(RaporTab):
     GETIR_ETIKET = "Analizi Getir"
     BASLARKEN = "Stok, banka ve bakiye hareketleri çekiliyor…"
     PDF_DESTEK = True
-    HERO_ASSET = "empty-nakit.png"
 
     EKSTRA_ETIKET = "Ayarlar"
 
