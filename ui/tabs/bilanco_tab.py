@@ -68,8 +68,11 @@ class BilancoTab(RaporTab):
             self, "PDF Kaydet", f"bilanco_{self._bilanco.asof}.pdf", "PDF (*.pdf)")
         if not path:
             return
+        # Chrome’daki tarih aralığı (TEK_TARIH veri için bit’i kullanır; PDF’de ikisi de yazılır)
+        bas = self._donem.bas_tarih().toString("yyyy-MM-dd")
+        bit = self._donem.bit_tarih().toString("yyyy-MM-dd")
         try:
-            export_bilanco_pdf(self._bilanco, path, firma=self._firma)
+            export_bilanco_pdf(self._bilanco, path, firma=self._firma, bas=bas, bit=bit)
         except Exception as exc:  # noqa: BLE001 — kullanıcıya göster
             QMessageBox.critical(self, "PDF Hatası", str(exc))
             return

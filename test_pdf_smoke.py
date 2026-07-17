@@ -52,7 +52,10 @@ class TestPdfSmoke(unittest.TestCase):
         b = build_bilanco(_MIZAN_ROWS, asof="2026-06-30")
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "bilanco.pdf"
-            export_bilanco_pdf(b, out, firma="Test Ticaret A.Ş.")
+            export_bilanco_pdf(
+                b, out, firma="Test Ticaret A.Ş.",
+                bas="2026-01-01", bit="2026-06-30",
+            )
             _pdf_dogrula(self, out)
 
     def test_gelir_tablosu_pdf(self) -> None:

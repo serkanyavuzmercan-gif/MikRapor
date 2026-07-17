@@ -70,6 +70,14 @@ def _tr_tarih(asof: str) -> str:
         return asof
 
 
+def _donem_metni(bas: str, bit: str) -> str:
+    """PDF sağ üst dönem satırı — başlangıç–bitiş aralığı."""
+    b, e = _tr_tarih(bas), _tr_tarih(bit)
+    if not bas or bas == bit:
+        return f"{e} tarihi itibarıyla &nbsp;&nbsp;·&nbsp;&nbsp; Tutarlar: TL"
+    return f"{b} – {e} tarihleri arasındaki veriler &nbsp;&nbsp;·&nbsp;&nbsp; Tutarlar: TL"
+
+
 def _side_table(b: Bilanco, taraf: str) -> Table:
     sty_col = ParagraphStyle("col", fontName=FONT_B, fontSize=9, textColor=colors.white, leading=11)
     sty_sec = ParagraphStyle("sec", fontName=FONT_B, fontSize=8, textColor=NAVY, leading=11)
@@ -131,7 +139,14 @@ def _side_table(b: Bilanco, taraf: str) -> Table:
     return t
 
 
-def export_bilanco_pdf(bilanco: Bilanco, path: str | Path, firma: str = "") -> Path:
+def export_bilanco_pdf(
+    bilanco: Bilanco,
+    path: str | Path,
+    firma: str = "",
+    *,
+    bas: str = "",
+    bit: str = "",
+) -> Path:
     out = Path(path)
     doc = SimpleDocTemplate(
         str(out), pagesize=A4,
@@ -146,13 +161,16 @@ def export_bilanco_pdf(bilanco: Bilanco, path: str | Path, firma: str = "") -> P
             firma, ParagraphStyle("firma", fontName=FONT_B, fontSize=15, textColor=DARK, leading=18)))
     elems.append(HRFlowable(width="100%", thickness=1.2, color=NAVY, spaceBefore=3, spaceAfter=8))
 
-    # Başlık satırı: BİLANÇO  ·  tarih (sağda)
-    tarih = _tr_tarih(bilanco.asof)
+    # Başlık satırı: BİLANÇO  ·  dönem (sağda) — chrome’daki başlangıç–bitiş
+    donem_bas = (bas or "").strip() or bilanco.asof
+    donem_bit = (bit or "").strip() or bilanco.asof
     baslik_row = Table([[
         Paragraph("BİLANÇO", ParagraphStyle("t", fontName=FONT_B, fontSize=13, textColor=DARK)),
-        Paragraph(f"{tarih} Tarihi İtibarıyla &nbsp;&nbsp;·&nbsp;&nbsp; Tutarlar: TL",
-                  ParagraphStyle("d", fontName=FONT, fontSize=9, textColor=GRAY, alignment=2)),
-    ]], colWidths=[60 * mm, 116 * mm])
+        Paragraph(
+            _donem_metni(donem_bas, donem_bit),
+            ParagraphStyle("d", fontName=FONT, fontSize=9, textColor=GRAY, alignment=2),
+        ),
+    ]], colWidths=[50 * mm, 126 * mm])
     baslik_row.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
                                     ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
     elems.append(baslik_row)
