@@ -86,8 +86,7 @@ class ChromeToolbar(QFrame):
             kl = QHBoxLayout(kutu)
             kl.setContentsMargins(3, 2, 3, 2)
             kl.setSpacing(2)
-            for kod, etiket, tip in grup:
-                del tip
+            for kod, etiket, _tip in grup:
                 btn = QPushButton(etiket)
                 btn.setObjectName("donemKisayolBtn")
                 btn.setCheckable(True)
@@ -345,7 +344,7 @@ class ChromeToolbar(QFrame):
             fm = QFontMetrics(chip.font())
             if fm.horizontalAdvance(p) > 220:
                 chip.setText(fm.elidedText(p, Qt.TextElideMode.ElideRight, 220))
-                bagla_nav_tip(chip, p, eyebrow="ÖZET", parent=self)
+                bagla_nav_tip(chip, p, eyebrow="ÖZET")
             self._ozet_lay.addWidget(chip, 0, Qt.AlignmentFlag.AlignVCenter)
         self._ozet_lay.addStretch(1)
         self._ozet.setVisible(True)
