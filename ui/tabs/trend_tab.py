@@ -38,6 +38,7 @@ class TrendTab(RaporTab):
     GETIR_ETIKET = "Trend / Oranları Getir"
     BASLARKEN = "Stok, nakit ve mizan çekiliyor…"
     PDF_DESTEK = True
+    HERO_ASSET = "empty-trendler.png"
 
     _tr: TrendRapor | None = None
 
