@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import sys
 
-from PyQt6.QtCore import QSize, Qt, QTimer
-from PyQt6.QtGui import QCloseEvent
+from PyQt6.QtCore import QEvent, QPoint, QSize, Qt, QTimer
+from PyQt6.QtGui import QCloseEvent, QColor, QFont
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
+    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -57,8 +58,45 @@ _SEKME_ETIKETLERI = (
 )
 
 
+class _NavTip(QFrame):
+    """Header sekme hover ipucu — kurumsal, gölgeli pill."""
+
+    def __init__(self) -> None:
+        super().__init__(None, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+        self.setObjectName("navTip")
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(12, 8, 14, 8)
+        lay.setSpacing(8)
+        accent = QFrame()
+        accent.setObjectName("navTipAccent")
+        accent.setFixedWidth(3)
+        accent.setFixedHeight(16)
+        lay.addWidget(accent, alignment=Qt.AlignmentFlag.AlignVCenter)
+        self._lbl = QLabel()
+        self._lbl.setObjectName("navTipLabel")
+        font = QFont()
+        font.setPointSize(11)
+        font.setWeight(QFont.Weight.DemiBold)
+        self._lbl.setFont(font)
+        lay.addWidget(self._lbl)
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(18)
+        shadow.setOffset(0, 4)
+        shadow.setColor(QColor(15, 23, 42, 55))
+        self.setGraphicsEffect(shadow)
+
+    def show_text(self, text: str, global_pos: QPoint) -> None:
+        self._lbl.setText(text)
+        self.adjustSize()
+        self.move(global_pos)
+        self.show()
+        self.raise_()
+
+
 class HeaderTabBar(QTabBar):
-    """Header nav — eşit genişlik; QTabWidget'a bağlı değil (tıklayınca daralmaz)."""
+    """Header nav — eşit genişlik; özel kurumsal tooltip."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -67,6 +105,9 @@ class HeaderTabBar(QTabBar):
         self.setUsesScrollButtons(False)
         self.setElideMode(Qt.TextElideMode.ElideNone)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self._tip = _NavTip()
+        self._tip_idx = -1
+        self.setMouseTracking(True)
 
     def minimumSizeHint(self) -> QSize:
         s = super().minimumSizeHint()
@@ -78,10 +119,46 @@ class HeaderTabBar(QTabBar):
         n = self.count()
         if n <= 0:
             return base
-        # Seçili/kalın yazı sizeHint'i bozmasın — her sekme eşit pay
         w = max(1, self.width() // n) if self.width() > 0 else base.width()
         base.setWidth(w)
         return base
+
+    def event(self, event: QEvent) -> bool:  # noqa: N802 — Qt API
+        if event.type() == QEvent.Type.ToolTip:
+            return True  # native tooltip kapalı — özel tip kullanıyoruz
+        return super().event(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        super().mouseMoveEvent(event)
+        idx = self.tabAt(event.position().toPoint())
+        if idx < 0:
+            self._hide_tip()
+            return
+        tip = self.tabToolTip(idx).strip()
+        label = self.tabText(idx).strip()
+        if not tip or tip == label:
+            self._hide_tip()
+            return
+        if idx != self._tip_idx or not self._tip.isVisible():
+            self._tip_idx = idx
+            rect = self.tabRect(idx)
+            # Sekmenin altında, ortalanmış
+            pos = self.mapToGlobal(rect.bottomLeft())
+            pos.setX(pos.x() + max(0, (rect.width() - 120) // 2))
+            pos.setY(pos.y() + 6)
+            self._tip.show_text(tip, pos)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802
+        self._hide_tip()
+        super().leaveEvent(event)
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        self._hide_tip()
+        super().hideEvent(event)
+
+    def _hide_tip(self) -> None:
+        self._tip_idx = -1
+        self._tip.hide()
 
 
 def _try_activate_existing_instance() -> bool:

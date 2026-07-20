@@ -385,10 +385,28 @@ QHeaderView::section {{
 QLabel {{ color: {INK_SOFT}; }}
 QToolTip {{
     background-color: {SURFACE};
-    color: {INK_SOFT};
-    border: 1px solid {BORDER};
-    border-radius: 6px;
-    padding: 6px 8px;
+    color: {NAVY};
+    border: 1px solid {ACCENT_MUTED};
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+}}
+QFrame#navTip {{
+    background-color: {SURFACE};
+    border: 1px solid #d7e3ec;
+    border-radius: 10px;
+}}
+QFrame#navTipAccent {{
+    background-color: {ACCENT};
+    border: none;
+    border-radius: 2px;
+}}
+QLabel#navTipLabel {{
+    color: {NAVY};
+    background: transparent;
+    border: none;
+    padding: 0;
 }}
 """
 
