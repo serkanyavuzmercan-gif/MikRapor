@@ -14,8 +14,10 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSpinBox,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -33,11 +35,15 @@ from infra.mikro_fetch import (
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
-from ui.bilesenler import para_spin, yuzde_spin
+from ui.bilesenler import hos_geldin, para_spin, yuzde_spin
+from ui.empty_state import DEFAULT_HERO_ASSET, HERO_SOLUK_OPACITY, build_soluk_arka_plan
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.tahmin_pdf import export_tahmin_pdf
 from ui.tahmin_view import build_tahmin_widget
 from ui.worker import IsFonksiyonu
+
+_PANEL_GENISLIK = 288
+_RAIL_GENISLIK = 40
 
 
 class TahminTab(RaporTab):
@@ -61,8 +67,12 @@ class TahminTab(RaporTab):
     def _ilk_mesaj(self) -> str:
         return "Hazır"
 
-    def _ust_alan(self, layout: QVBoxLayout) -> None:
-        # Varsayım formu — etiket üstte, dar pencerede kaymalı ızgara
+    def _build(self) -> None:
+        """Sol senaryo paneli + sağda empty/rapor içeriği."""
+        root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
         self._sp_nakit = para_spin()
         self._sp_ciro = para_spin()
         self._sp_gider = para_spin()
@@ -72,7 +82,6 @@ class TahminTab(RaporTab):
         self._sp_ufuk.setRange(1, 36)
         self._sp_ufuk.setValue(12)
         self._sp_ufuk.setSuffix(" ay")
-        self._sp_ufuk.setMinimumWidth(90)
 
         for sp in (
             self._sp_nakit, self._sp_ciro, self._sp_gider,
@@ -89,10 +98,62 @@ class TahminTab(RaporTab):
             ("Aylık sabit gider", self._sp_gider),
             ("Ufuk", self._sp_ufuk),
         )
-        form_box = _VarsayimForm(alanlar)
-        self._btn_projekte = form_box.btn_projekte
+        self._senaryo = _SenaryoSolPanel(alanlar)
+        self._btn_projekte = self._senaryo.btn_projekte
         self._btn_projekte.clicked.connect(self._on_projekte)
-        layout.addWidget(form_box)
+        root.addWidget(self._senaryo, 0)
+
+        sag = QWidget()
+        sag_lay = QVBoxLayout(sag)
+        sag_lay.setContentsMargins(0, 0, 0, 0)
+        sag_lay.setSpacing(0)
+
+        self._stack = QStackedWidget()
+        hero = (self.HERO_ASSET or "").strip() or DEFAULT_HERO_ASSET
+        hero_fit = (self.HERO_FIT or "cover").strip() or "cover"
+        self._empty = hos_geldin(
+            self.EMOJI,
+            self.BASLIK,
+            self.ACIKLAMA,
+            self.IPUCU,
+            on_cta=self._on_getir,
+            cta=self.GETIR_ETIKET,
+            hero_asset=hero,
+            hero_fit=hero_fit,
+        )
+        self._stack.addWidget(self._empty)
+
+        self._icerik_sayfa = QWidget()
+        self._icerik_sayfa.setObjectName("raporIcerikSayfa")
+        self._icerik_sayfa.setStyleSheet("QWidget#raporIcerikSayfa { background: transparent; }")
+        ic_lay = QGridLayout(self._icerik_sayfa)
+        ic_lay.setContentsMargins(0, 0, 0, 0)
+        ic_lay.setSpacing(0)
+        self._arka = build_soluk_arka_plan(
+            opacity=HERO_SOLUK_OPACITY, hero_asset=hero, hero_fit=hero_fit,
+        )
+        ic_lay.addWidget(self._arka, 0, 0)
+
+        self._view = QScrollArea()
+        self._view.setWidgetResizable(True)
+        self._view.setFrameShape(QFrame.Shape.NoFrame)
+        self._view.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._view.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        vp = self._view.viewport()
+        vp.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        vp.setAutoFillBackground(False)
+        vp.setStyleSheet("background: transparent;")
+        ic_lay.addWidget(self._view, 0, 0)
+        self._view.raise_()
+
+        self._stack.addWidget(self._icerik_sayfa)
+        self._stack.setCurrentIndex(0)
+        sag_lay.addWidget(self._stack, stretch=1)
+        root.addWidget(sag, 1)
+
+    def _ust_alan(self, layout: QVBoxLayout) -> None:
+        """Sol panel `_build` içinde; üst şerit yok."""
+        del layout
 
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
         ufuk = self._sp_ufuk.value()
@@ -133,6 +194,7 @@ class TahminTab(RaporTab):
         self._sp_buyume.setValue(v.buyume_yuzde)
         self._sp_marj.setValue(v.marj_yuzde)
         self._sp_gider.setValue(v.sabit_gider)
+        self._senaryo.ac()
         self._durum("Geçmişten dolduruldu — varsayımları düzenleyip «Projekte Et»e basabilirsin.", "iyi")
         self._on_projekte()
 
@@ -179,75 +241,82 @@ class TahminTab(RaporTab):
         return tahmin_csv(self._t) if self._t else None
 
 
-class _VarsayimForm(QFrame):
-    """Etiket üstte alanlar + sağda Projekte Et; daralınca sütun sayısı azalır."""
+class _SenaryoSolPanel(QFrame):
+    """Sol rail + açılır senaryo gövdesi. Varsayılan kapalı — içerik ferah kalır."""
 
     def __init__(self, alanlar: tuple[tuple[str, QWidget], ...]) -> None:
         super().__init__()
-        self.setObjectName("tahminForm")
-        self._hucreler: list[QWidget] = []
-        self._cols = -1
+        self.setObjectName("tahminSolHost")
+        self._acik = False
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(14, 12, 14, 12)
-        root.setSpacing(10)
+        host = QHBoxLayout(self)
+        host.setContentsMargins(0, 0, 0, 0)
+        host.setSpacing(0)
+
+        self._rail = QPushButton("\n".join("SENARYO"))
+        self._rail.setObjectName("tahminSolRail")
+        self._rail.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._rail.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._rail.setFixedWidth(_RAIL_GENISLIK)
+        self._rail.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        self._rail.setToolTip("Senaryo varsayımlarını aç")
+        self._rail.clicked.connect(self.ac)
+        host.addWidget(self._rail)
+
+        self._govde = QFrame()
+        self._govde.setObjectName("tahminSolPanel")
+        self._govde.setFixedWidth(_PANEL_GENISLIK)
+        self._govde.setVisible(False)
+        gl = QVBoxLayout(self._govde)
+        gl.setContentsMargins(14, 14, 14, 14)
+        gl.setSpacing(12)
 
         baslik_satir = QHBoxLayout()
-        baslik_satir.setContentsMargins(0, 0, 0, 0)
-        baslik_satir.setSpacing(12)
+        baslik_satir.setSpacing(8)
         baslik = QLabel("Senaryo varsayımları")
         baslik.setObjectName("tahminFormBaslik")
+        baslik.setWordWrap(True)
         baslik_satir.addWidget(baslik, 1)
+        kapat = QPushButton("‹")
+        kapat.setObjectName("tahminSolKapat")
+        kapat.setCursor(Qt.CursorShape.PointingHandCursor)
+        kapat.setFixedSize(28, 28)
+        kapat.setToolTip("Paneli kapat")
+        kapat.clicked.connect(self.kapat)
+        baslik_satir.addWidget(kapat, 0, Qt.AlignmentFlag.AlignTop)
+        gl.addLayout(baslik_satir)
+
+        ipucu = QLabel("Değerleri düzenleyip projekte edin.")
+        ipucu.setObjectName("tahminAlanEtiket")
+        ipucu.setWordWrap(True)
+        gl.addWidget(ipucu)
+
+        for etiket, w in alanlar:
+            lbl = QLabel(etiket)
+            lbl.setObjectName("tahminAlanEtiket")
+            gl.addWidget(lbl)
+            gl.addWidget(w)
+
+        gl.addStretch(1)
+
         self.btn_projekte = QPushButton("Projekte Et")
         self.btn_projekte.setObjectName("primaryBtn")
         self.btn_projekte.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_projekte.setMinimumHeight(34)
-        baslik_satir.addWidget(self.btn_projekte, 0, Qt.AlignmentFlag.AlignRight)
-        root.addLayout(baslik_satir)
+        self.btn_projekte.setMinimumHeight(36)
+        gl.addWidget(self.btn_projekte)
 
-        self._grid_host = QWidget()
-        self._grid = QGridLayout(self._grid_host)
-        self._grid.setContentsMargins(0, 0, 0, 0)
-        self._grid.setHorizontalSpacing(12)
-        self._grid.setVerticalSpacing(10)
-        root.addWidget(self._grid_host)
+        host.addWidget(self._govde)
 
-        for etiket, w in alanlar:
-            hucre = QWidget()
-            hucre.setMinimumWidth(120)
-            vl = QVBoxLayout(hucre)
-            vl.setContentsMargins(0, 0, 0, 0)
-            vl.setSpacing(4)
-            lbl = QLabel(etiket)
-            lbl.setObjectName("tahminAlanEtiket")
-            lbl.setWordWrap(True)
-            vl.addWidget(lbl)
-            vl.addWidget(w)
-            self._hucreler.append(hucre)
+    def ac(self) -> None:
+        if self._acik:
+            return
+        self._acik = True
+        self._govde.setVisible(True)
+        self._rail.setVisible(False)
 
-        self._yerlestir(6)
-
-    def resizeEvent(self, event) -> None:  # noqa: N802
-        super().resizeEvent(event)
-        w = max(1, self.width())
-        if w < 480:
-            cols = 1
-        elif w < 720:
-            cols = 2
-        elif w < 980:
-            cols = 3
-        else:
-            cols = 6
-        if cols != self._cols:
-            self._yerlestir(cols)
-
-    def _yerlestir(self, cols: int) -> None:
-        self._cols = cols
-        while self._grid.count():
-            item = self._grid.takeAt(0)
-            if item is not None and item.widget() is not None:
-                item.widget().setParent(self._grid_host)
-        for i, hucre in enumerate(self._hucreler):
-            self._grid.addWidget(hucre, i // cols, i % cols)
-        for c in range(cols):
-            self._grid.setColumnStretch(c, 1)
+    def kapat(self) -> None:
+        if not self._acik:
+            return
+        self._acik = False
+        self._govde.setVisible(False)
+        self._rail.setVisible(True)

@@ -272,11 +272,46 @@ QPushButton#ghostBtn {{
     font-size: 12px;
 }}
 
-/* ---- Tahmin senaryo formu ---- */
-QFrame#tahminForm {{
+/* ---- Tahmin senaryo formu (sol panel) ---- */
+QFrame#tahminSolHost {{
+    background: transparent;
+    border: none;
+}}
+QPushButton#tahminSolRail {{
     background-color: {SURFACE};
+    color: {ACCENT};
     border: 1px solid {BORDER};
-    border-radius: 12px;
+    border-left: none;
+    border-top-right-radius: 10px;
+    border-bottom-right-radius: 10px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 10px 4px;
+}}
+QPushButton#tahminSolRail:hover {{
+    background-color: {ACCENT_SOFT};
+    color: {ACCENT_HOVER};
+}}
+QFrame#tahminSolPanel {{
+    background-color: {SURFACE};
+    border: none;
+    border-right: 1px solid {BORDER};
+}}
+QPushButton#tahminSolKapat {{
+    background: {ACCENT_SOFT};
+    color: {ACCENT};
+    border: 1px solid #cce8e2;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 0;
+}}
+QPushButton#tahminSolKapat:hover {{
+    background: {ACCENT};
+    color: #ffffff;
 }}
 QLabel#tahminFormBaslik {{
     color: {NAVY};
