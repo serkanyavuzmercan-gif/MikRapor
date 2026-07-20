@@ -230,6 +230,28 @@ def fetch_bakiye_ozet(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+def fetch_kredi_anapara(client: MikroClient, bas: str, bit: str) -> float:
+    """
+    Dönem (bas..bit) içinde kredi anapara geri ödemesi ≈ 300/303 hesabına yapılan BORÇ.
+
+    Kredi geri ödemesinde 300 (Banka Kredileri, pasif) borçlanır; yeni kullanım alacaktır.
+    Bu yüzden dönem içi borç (fis_meblag0 > 0) toplamı ~ anapara ödemesidir. Faiz 66'dadır
+    (çift sayım olmaz). Runway'in kredi ayağı için — nakit-akış kategorisi krediyi göremediğinden.
+    """
+    bas = iso_tarih(bas, alan="tarih")
+    bit = iso_tarih(bit, alan="tarih")
+    sql = (
+        "SELECT SUM(CASE WHEN fis_meblag0 > 0 THEN fis_meblag0 ELSE 0 END) AS anapara "
+        "FROM MUHASEBE_FISLERI WITH (NOLOCK) "
+        "WHERE fis_iptal = 0 AND (fis_hesap_kod LIKE '300%' OR fis_hesap_kod LIKE '303%') "
+        f"AND fis_tarih >= '{bas}' AND fis_tarih < '{_bit_son(bit)}'"
+    )
+    rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+    if rows:
+        return _f_local(get_row_value(rows[0], "anapara", "ANAPARA"))
+    return 0.0
+
+
 def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     """
     Belirli tarihe (asof = 'YYYY-MM-DD') kadar kümülatif mizan: hesap başına borç/alacak.
