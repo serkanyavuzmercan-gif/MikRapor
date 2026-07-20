@@ -5,16 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFileDialog,
-    QFormLayout,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QVBoxLayout,
+    QWidget,
 )
 
 from domain.gercek_durum import build_gercek_durum
@@ -59,14 +62,7 @@ class TahminTab(RaporTab):
         return "Hazır"
 
     def _ust_alan(self, layout: QVBoxLayout) -> None:
-        # Varsayım formu (senaryo) — düzenlenebilir
-        form_box = QFrame()
-        form_box.setObjectName("tahminForm")
-        form_box.setStyleSheet(
-            "QFrame#tahminForm { background: #f7f9fc; border: 1px solid #e3e8ef; border-radius: 10px; }")
-        fl = QHBoxLayout(form_box)
-        fl.setContentsMargins(14, 10, 14, 10)
-        fl.setSpacing(18)
+        # Varsayım formu — etiket üstte, dar pencerede kaymalı ızgara
         self._sp_nakit = para_spin()
         self._sp_ciro = para_spin()
         self._sp_gider = para_spin()
@@ -76,20 +72,26 @@ class TahminTab(RaporTab):
         self._sp_ufuk.setRange(1, 36)
         self._sp_ufuk.setValue(12)
         self._sp_ufuk.setSuffix(" ay")
-        for etiket, w in (
-            ("Başlangıç nakit", self._sp_nakit), ("Baz aylık ciro", self._sp_ciro),
-            ("Aylık büyüme", self._sp_buyume), ("Brüt marj", self._sp_marj),
-            ("Aylık sabit gider", self._sp_gider), ("Ufuk", self._sp_ufuk),
+        self._sp_ufuk.setMinimumWidth(90)
+
+        for sp in (
+            self._sp_nakit, self._sp_ciro, self._sp_gider,
+            self._sp_buyume, self._sp_marj, self._sp_ufuk,
         ):
-            col = QFormLayout()
-            col.setContentsMargins(0, 0, 0, 0)
-            lbl = QLabel(etiket)
-            lbl.setStyleSheet("color: #6b7280; font-size: 11px;")
-            col.addRow(lbl, w)
-            fl.addLayout(col)
-        self._btn_projekte = QPushButton("Projekte Et")
+            sp.setMinimumWidth(0)
+            sp.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        alanlar = (
+            ("Başlangıç nakit", self._sp_nakit),
+            ("Baz aylık ciro", self._sp_ciro),
+            ("Aylık büyüme", self._sp_buyume),
+            ("Brüt marj", self._sp_marj),
+            ("Aylık sabit gider", self._sp_gider),
+            ("Ufuk", self._sp_ufuk),
+        )
+        form_box = _VarsayimForm(alanlar)
+        self._btn_projekte = form_box.btn_projekte
         self._btn_projekte.clicked.connect(self._on_projekte)
-        fl.addWidget(self._btn_projekte)
         layout.addWidget(form_box)
 
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
@@ -175,3 +177,77 @@ class TahminTab(RaporTab):
 
     def _csv_icerik(self) -> str | None:
         return tahmin_csv(self._t) if self._t else None
+
+
+class _VarsayimForm(QFrame):
+    """Etiket üstte alanlar + sağda Projekte Et; daralınca sütun sayısı azalır."""
+
+    def __init__(self, alanlar: tuple[tuple[str, QWidget], ...]) -> None:
+        super().__init__()
+        self.setObjectName("tahminForm")
+        self._hucreler: list[QWidget] = []
+        self._cols = -1
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 12, 14, 12)
+        root.setSpacing(10)
+
+        baslik_satir = QHBoxLayout()
+        baslik_satir.setContentsMargins(0, 0, 0, 0)
+        baslik_satir.setSpacing(12)
+        baslik = QLabel("Senaryo varsayımları")
+        baslik.setObjectName("tahminFormBaslik")
+        baslik_satir.addWidget(baslik, 1)
+        self.btn_projekte = QPushButton("Projekte Et")
+        self.btn_projekte.setObjectName("primaryBtn")
+        self.btn_projekte.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_projekte.setMinimumHeight(34)
+        baslik_satir.addWidget(self.btn_projekte, 0, Qt.AlignmentFlag.AlignRight)
+        root.addLayout(baslik_satir)
+
+        self._grid_host = QWidget()
+        self._grid = QGridLayout(self._grid_host)
+        self._grid.setContentsMargins(0, 0, 0, 0)
+        self._grid.setHorizontalSpacing(12)
+        self._grid.setVerticalSpacing(10)
+        root.addWidget(self._grid_host)
+
+        for etiket, w in alanlar:
+            hucre = QWidget()
+            hucre.setMinimumWidth(120)
+            vl = QVBoxLayout(hucre)
+            vl.setContentsMargins(0, 0, 0, 0)
+            vl.setSpacing(4)
+            lbl = QLabel(etiket)
+            lbl.setObjectName("tahminAlanEtiket")
+            lbl.setWordWrap(True)
+            vl.addWidget(lbl)
+            vl.addWidget(w)
+            self._hucreler.append(hucre)
+
+        self._yerlestir(6)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        w = max(1, self.width())
+        if w < 480:
+            cols = 1
+        elif w < 720:
+            cols = 2
+        elif w < 980:
+            cols = 3
+        else:
+            cols = 6
+        if cols != self._cols:
+            self._yerlestir(cols)
+
+    def _yerlestir(self, cols: int) -> None:
+        self._cols = cols
+        while self._grid.count():
+            item = self._grid.takeAt(0)
+            if item is not None and item.widget() is not None:
+                item.widget().setParent(self._grid_host)
+        for i, hucre in enumerate(self._hucreler):
+            self._grid.addWidget(hucre, i // cols, i % cols)
+        for c in range(cols):
+            self._grid.setColumnStretch(c, 1)
