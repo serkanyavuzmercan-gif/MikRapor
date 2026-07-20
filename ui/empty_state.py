@@ -1,7 +1,8 @@
-"""Ortak boş / karşılama ekranı — Design A.
+"""Ortak boş / karşılama ekranı — Design A: illüstrasyon full-bleed + alt CTA bandı.
 
-Üstte illüstrasyon (esnek), altta marka/başlık/CTA bandı (sabit yükseklik).
-İki bölge asla üst üste binmez; pencere küçülünce yalnız illüstrasyon alanı daralır.
+Marka + başlık + açıklama + CTA sabit ayak izinde (alta sabitlenmiş).
+Pencere yeniden boyutlanınca yalnız üstteki illüstrasyon alanı değişir; yazı/buton
+bloğu kaymaz. Sekmeler arası fark: açıklama uzunluğu yatay ölçekle sığdırılır.
 """
 
 from __future__ import annotations
@@ -116,15 +117,15 @@ class _CoverBackground(QWidget):
         p.setOpacity(self._opacity)
         p.drawPixmap(x, y, scaled)
         p.setOpacity(1.0)
-        # Alttan beyaz geçiş; empty'de kısa (alt bant ayrı), solukken hafif
+        # Alttan beyaz geçiş; solukken kısa ve hafif — illüstrasyon kaybolmasın
         if self._soluk:
             grad_h = max(60, int(self.height() * 0.18))
             max_a = 90
             exp = 1.2
         else:
-            grad_h = max(72, int(self.height() * 0.20))
-            max_a = 160
-            exp = 1.5
+            grad_h = max(140, int(self.height() * 0.42))
+            max_a = 230
+            exp = 1.8
         for i in range(grad_h):
             t = i / max(1, grad_h - 1)
             alpha = int(max_a * (t ** exp))
@@ -317,7 +318,7 @@ class _EmptyCtaButton(QPushButton):
 
 
 class EmptyState(QWidget):
-    """Üstte illüstrasyon, altta sabit CTA bandı — örtüşme yok."""
+    """Full-bleed hero; marka/başlık/açıklama/CTA alta sabitlenmiş sabit cluster."""
 
     def __init__(
         self,
@@ -332,27 +333,13 @@ class EmptyState(QWidget):
         super().__init__(parent)
         self.setObjectName("emptyState")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self._arka_plan = False
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
 
         self._bg = _CoverBackground(_load_hero_pixmap(hero_asset), self)
-        root.addWidget(self._bg, stretch=1)
+        self._bg.lower()
+        self._arka_plan = False
 
-        # Alt bant: yazı/CTA — illüstrasyondan ayrı, asla üstüne binmez
-        self._footer = QWidget(self)
-        self._footer.setObjectName("emptyFooter")
-        self._footer.setFixedHeight(_CLUSTER_H + _BOTTOM_PAD)
-        self._footer.setStyleSheet(
-            "QWidget#emptyFooter { background: #ffffff; border: none; }"
-        )
-        foot_lay = QVBoxLayout(self._footer)
-        foot_lay.setContentsMargins(0, 0, 0, _BOTTOM_PAD)
-        foot_lay.setSpacing(0)
-
-        self._cluster = QWidget(self._footer)
+        # Sabit cluster — layout stretch yok; resizeEvent ile alta sabitlenir
+        self._cluster = QWidget(self)
         self._cluster.setObjectName("emptyCol")
         self._cluster.setFixedSize(_COL_W, _CLUSTER_H)
         self._cluster.setStyleSheet("background: transparent;")
@@ -407,23 +394,37 @@ class EmptyState(QWidget):
         else:
             col_lay.addSpacing(_CTA_H + _CTA_BOTTOM_PAD)
 
-        foot_lay.addWidget(
-            self._cluster,
-            alignment=Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom,
-        )
-        root.addWidget(self._footer)
+        self._yerlestir()
 
     def set_arka_plan_modu(self, aktif: bool) -> None:
-        """True: yalnız soluk illüstrasyon (CTA bandı gizli)."""
+        """True: rapor içeriği altında soluk illüstrasyon; marka/CTA gizlenir."""
         self._arka_plan = aktif
-        self._footer.setVisible(not aktif)
+        self._cluster.setVisible(not aktif)
         self._bg.set_soluk(aktif, opacity=0.24)
+        self._yerlestir()
+
+    def _yerlestir(self) -> None:
+        """Cluster'ı yatay ortala, dikeyde alta sabitle — resize yalnızca üst boşluğu değiştirir."""
+        self._bg.setGeometry(self.rect())
+        self._bg.lower()
+        if self._arka_plan:
+            return
+        # isVisible() kullanma: gizli sekmede ata gizliyken False döner, yerleşim kaçardı
+        w = max(1, self.width())
+        h = max(1, self.height())
+        x = (w - _COL_W) // 2
+        y = max(8, h - _BOTTOM_PAD - _CLUSTER_H)
+        self._cluster.setGeometry(x, y, _COL_W, _CLUSTER_H)
+        self._cluster.raise_()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
+        self._yerlestir()
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        # Gizli sekme ilk açılınca resize kaçabiliyor — yerleşimi burada da uygula
         super().showEvent(event)
+        self._yerlestir()
 
 
 def build_soluk_arka_plan(*, opacity: float = 0.40, hero_asset: str | None = None) -> QWidget:
