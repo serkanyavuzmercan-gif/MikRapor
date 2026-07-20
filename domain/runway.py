@@ -141,6 +141,7 @@ class RunwayTakvim:
     tukenme_ay: str | None = None
     en_dusuk_nakit: float = 0.0
     en_dusuk_ay: str = ""
+    gider_eksik: bool = False  # aylık düzenli gider ~0 → maaş/gider kategorize edilememiş
 
     @property
     def surdurulebilir(self) -> bool:
@@ -165,6 +166,7 @@ def build_runway_takvim(
     r = RunwayTakvim(
         baslangic_nakit=baslangic_nakit, aylik_gider=aylik_gider,
         aylik_kredi=aylik_kredi, ufuk_ay=max(1, ufuk_ay),
+        gider_eksik=(aylik_gider + aylik_kredi) < 1.0,
     )
     ay_giren: dict[int, float] = defaultdict(float)
     ay_cikan: dict[int, float] = defaultdict(float)
@@ -189,11 +191,17 @@ def build_runway_takvim(
     return r
 
 
-def runway_takvim_kur(*, na, ta, baslangic_ay: str = "", ufuk_ay: int = 6) -> RunwayTakvim:
+def runway_takvim_kur(
+    *, na, ta, baslangic_ay: str = "", ufuk_ay: int = 6,
+    baslangic_nakit: float | None = None,
+) -> RunwayTakvim:
     """
-    NakitAkis (mevcut nakit + düzenli gider run-rate) + TahsilatAlacak (vade takvimi)
-    birleşiminden takvim runway'i kurar. Düzenli gider = maaş+SGK+vergi+genel gider aylık
-    ortalaması; kredi = kredi ödemesi aylık ortalaması.
+    NakitAkis (düzenli gider run-rate) + TahsilatAlacak (vade takvimi) birleşiminden
+    takvim runway'i kurar. Düzenli gider = maaş+SGK+vergi+genel gider aylık ortalaması;
+    kredi = kredi ödemesi aylık ortalaması.
+
+    baslangic_nakit verilirse (GL/mizan nakiti) onu kullanır — cari-hareket nakiti döviz
+    kuru yüzünden onlarca kat şişebildiği için GÜVENİLİR kaynak GL'dir.
     """
     ay_sayisi = max(1, len(getattr(na, "aylik", None) or [1]))
     ck = getattr(na, "cikis_kategori", {}) or {}
@@ -204,8 +212,9 @@ def runway_takvim_kur(*, na, ta, baslangic_ay: str = "", ufuk_ay: int = 6) -> Ru
     kredi = getattr(na, "kredi_odeme", 0.0) / ay_sayisi
     if not baslangic_ay:
         baslangic_ay = (getattr(na, "bit", "") or "")[:7]
+    nakit = baslangic_nakit if baslangic_nakit is not None else na.kapanis_nakit
     return build_runway_takvim(
-        baslangic_nakit=na.kapanis_nakit, baslangic_ay=baslangic_ay,
+        baslangic_nakit=nakit, baslangic_ay=baslangic_ay,
         alacak_vade=getattr(ta, "alacak_vade", {}), borc_vade=getattr(ta, "borc_vade", {}),
         aylik_gider=duzenli, aylik_kredi=kredi, ufuk_ay=ufuk_ay,
     )

@@ -83,6 +83,41 @@ class TestRunwayTakvim(unittest.TestCase):
         self.assertIsNone(r.tukenme_ay)
         self.assertTrue(r.surdurulebilir)
 
+    def test_gider_eksik_bayragi(self):
+        eksik = build_runway_takvim(
+            baslangic_nakit=500000.0, baslangic_ay="2026-06",
+            alacak_vade={VADE_KOVALAR[1]: 100000.0}, borc_vade={},
+            aylik_gider=0.0, aylik_kredi=0.0, ufuk_ay=3,
+        )
+        self.assertTrue(eksik.gider_eksik)
+        tam = build_runway_takvim(
+            baslangic_nakit=500000.0, baslangic_ay="2026-06",
+            alacak_vade={}, borc_vade={}, aylik_gider=50000.0, ufuk_ay=3,
+        )
+        self.assertFalse(tam.gider_eksik)
+
+    def test_gl_nakit_override(self):
+        # Şişik cari kapanış (24.7M) yerine GL nakit (530k) başlangıç kullanılmalı.
+        na = NakitAkis(bit="2026-06-30", kapanis_nakit=24_700_000.0,
+                       aylik=[AyNakit("2026-05", giris=0.0, cikis=0.0)])
+
+        class _TA:
+            alacak_vade: dict = {}
+            borc_vade: dict = {}
+
+        r = runway_takvim_kur(na=na, ta=_TA(), baslangic_nakit=530000.0, ufuk_ay=3)
+        self.assertEqual(r.baslangic_nakit, 530000.0)  # cari 24.7M DEĞİL
+
+    def test_nakit_gl_ozetten(self):
+        from domain.nakit_akis import nakit_gl_ozetten
+        rows = [
+            {"ana": "100", "bakiye": 175941.0},
+            {"ana": "102", "bakiye": 114629.0},
+            {"ana": "108", "bakiye": 238951.0},
+            {"ana": "120", "bakiye": 6_400_000.0},  # alacak — nakit değil, sayılmaz
+        ]
+        self.assertAlmostEqual(nakit_gl_ozetten(rows), 529521.0, places=0)
+
     def test_takvim_kur_adaptor(self):
         na = NakitAkis(
             bit="2026-06-30", kapanis_nakit=150000.0,

@@ -113,6 +113,22 @@ def nakit_bakiye(bakiye_rows: list[dict] | None) -> float:
     return total
 
 
+# GL (mizan) hazır değerler — Bilanço "Nakit ve Nakit Benzerleri" ile birebir.
+# Cari-hareket nakiti döviz-kur nedeniyle onlarca kat şişebildiğinden, runway/tahmin
+# için GÜVENİLİR başlangıç bu kaynaktır.
+_GL_NAKIT_ANA = frozenset({"100", "101", "102", "103", "108"})
+
+
+def nakit_gl_ozetten(bakiye_ozet_rows: list[dict] | None) -> float:
+    """fetch_bakiye_ozet satırlarından GL nakit (100/101/102/103/108) toplamı."""
+    total = 0.0
+    for r in (bakiye_ozet_rows or []):
+        ana = str(r.get("ana", r.get("ANA")) or "").strip()
+        if ana in _GL_NAKIT_ANA:
+            total += _f(r.get("bakiye", r.get("BAKIYE")))
+    return total
+
+
 # Geriye uyumluluk
 _nakit_bakiye = nakit_bakiye
 

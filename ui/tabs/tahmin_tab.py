@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (
 
 from domain.gercek_durum import build_gercek_durum
 from domain.mizan_bilanco import tl
-from domain.nakit_akis import build_nakit_akis, nakit_bakiye
+from domain.nakit_akis import build_nakit_akis, nakit_bakiye, nakit_gl_ozetten
 from domain.runway import RunwayTakvim, runway_takvim_kur
 from domain.tahmin import Tahmin, TahminVarsayim, build_tahmin, oner_varsayim, tahmin_csv
 from domain.tahsilat_alacak import build_tahsilat_alacak
@@ -32,6 +32,7 @@ from infra.config import MikroConfig
 from infra.mikro_api import MikroAPIError, MikroClient
 from infra.mikro_fetch import (
     fetch_acik_kalemler,
+    fetch_bakiye_ozet,
     fetch_cari_bakiye,
     fetch_cari_vade_gun,
     fetch_nakit_akis_hareket,
@@ -183,7 +184,10 @@ class TahminTab(RaporTab):
                 vade_gun_map = fetch_cari_vade_gun(client)
                 acik_rows = fetch_acik_kalemler(client, bit, bas, bit)
                 ta = build_tahsilat_alacak(acik_rows, vade_gun_map=vade_gun_map, bas=bas, bit=bit)
-                runway = runway_takvim_kur(na=na, ta=ta, baslangic_ay=bit[:7], ufuk_ay=6)
+                # Başlangıç nakit GL'den (Bilanço ile birebir) — cari nakit döviz-kur şişik olabilir.
+                gl_nakit = nakit_gl_ozetten(fetch_bakiye_ozet(client, bit))
+                runway = runway_takvim_kur(
+                    na=na, ta=ta, baslangic_ay=bit[:7], ufuk_ay=6, baslangic_nakit=gl_nakit)
             except MikroAPIError:
                 runway = None
             bildir("Varsayımlar öneriliyor…")
