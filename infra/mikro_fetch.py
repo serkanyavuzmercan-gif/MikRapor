@@ -490,8 +490,12 @@ def _fetch_nakit_akis_sql(
         # cha_kasa_hizkod alanındadır. BANKALAR ile ayrış — banka hesapları 300.02.x gibi
         # kodlanıp TDHP 300 (kredi) ile çakışabildiğinden şart: kredi bankası → 'KRD',
         # nakit banka → iç transfer (sayma), aksi halde muhasebe hesabı öneki.
+        # cha_kasa_hizmet karşı tarafın TÜRÜdür (cha_cari_cins enum'u): 10=Finansal
+        # Sözleşme, 11=Kredi Sözleşmesi → doğrudan kredi (resmî Mikro API dokümanı,
+        # Tablo 51). Kod ne olursa olsun tür kazanır.
         hizkod_expr = (
-            "CASE WHEN hb.ban_kod IS NOT NULL AND ISNULL(hb.ban_hesap_tip, 0) = 1 THEN 'KRD' "
+            "CASE WHEN c.cha_kasa_hizmet IN (10, 11) THEN 'KRD' "
+            "WHEN hb.ban_kod IS NOT NULL AND ISNULL(hb.ban_hesap_tip, 0) = 1 THEN 'KRD' "
             "WHEN hb.ban_kod IS NOT NULL THEN '' "
             "WHEN LTRIM(RTRIM(ISNULL(c.cha_kasa_hizkod, ''))) <> '' "
             "THEN LEFT(LTRIM(c.cha_kasa_hizkod), 3) ELSE '' END"
