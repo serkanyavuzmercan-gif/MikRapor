@@ -345,8 +345,9 @@ class ChromeToolbar(QFrame):
             self._ozet_lay.addWidget(chip, 0, Qt.AlignmentFlag.AlignVCenter)
         self._ozet_lay.addStretch(1)
         if self._nakit_modu:
-            ipucu = QPushButton("Kurallar · Hesaplama")
-            ipucu.setObjectName("ozetIpucu")
+            ipucu = QPushButton(
+                "Kuralları değiştirmek için Hesaplama’yı kullanın.")
+            ipucu.setObjectName("hesaplamaIpucu")
             ipucu.setCursor(Qt.CursorShape.PointingHandCursor)
             ipucu.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             ipucu.setFlat(True)

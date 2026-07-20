@@ -119,19 +119,6 @@ QLabel#ozetChip {{
     font-size: 11px;
     font-weight: 600;
 }}
-QPushButton#ozetIpucu {{
-    background: transparent;
-    color: {ACCENT};
-    border: none;
-    padding: 4px 8px;
-    font-size: 11px;
-    font-weight: 700;
-    text-align: right;
-}}
-QPushButton#ozetIpucu:hover {{
-    color: {ACCENT_HOVER};
-    text-decoration: underline;
-}}
 QFrame#gelecekDonemUyari {{
     background-color: {WARN_BG};
     border: 1px solid #f0d4a0;
@@ -144,6 +131,19 @@ QLabel#gelecekDonemUyariMetin {{
     font-weight: 600;
     background: transparent;
     border: none;
+}}
+QPushButton#hesaplamaIpucu {{
+    background: transparent;
+    color: #7a4e0e;
+    border: none;
+    padding: 2px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: right;
+}}
+QPushButton#hesaplamaIpucu:hover {{
+    color: #9a6212;
+    text-decoration: underline;
 }}
 QFrame#donemKisayol {{
     background: {SURFACE};
