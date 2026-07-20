@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.donem import KISAYOL_GRUPLARI, DonemDurumu, kisayol_aralik
-from ui.icons import icon_csv, icon_pdf
+from ui.icons import icon_csv, icon_gear, icon_pdf
 from ui.styles import BAD, MUTED, OK, WARN
 from ui.tarih_secici import DonemAralikAlani
 
@@ -99,12 +99,6 @@ class ChromeToolbar(QFrame):
             kisayol_serit.addWidget(kutu)
         row.addLayout(kisayol_serit)
 
-        self._btn_ekstra = QPushButton("Ayarlar")
-        self._btn_ekstra.setObjectName("ghostBtn")
-        self._btn_ekstra.setVisible(False)
-        self._btn_ekstra.clicked.connect(self.ekstra_clicked.emit)
-        row.addWidget(self._btn_ekstra)
-
         self._btn_getir = QPushButton("Raporu Getir")
         self._btn_getir.setObjectName("primaryBtn")
         self._btn_getir.clicked.connect(self.getir_clicked.emit)
@@ -138,6 +132,19 @@ class ChromeToolbar(QFrame):
 
         self._pdf_hazir = False
         self._csv_hazir = False
+
+        # Sekmeye özel (ör. Nakit & Kâr hesaplama ayarları) — dönemlerden ayrı
+        self._btn_ekstra = QPushButton("Hesaplama")
+        self._btn_ekstra.setObjectName("ayarEkstraBtn")
+        self._btn_ekstra.setIcon(icon_gear(14))
+        self._btn_ekstra.setIconSize(QSize(14, 14))
+        self._btn_ekstra.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_ekstra.setVisible(False)
+        self._btn_ekstra.setToolTip(
+            "Bu sekmeye özel hesaplama kuralları (satış/alış/nakit kaynağı)."
+        )
+        self._btn_ekstra.clicked.connect(self.ekstra_clicked.emit)
+        row.addWidget(self._btn_ekstra)
 
         row.addStretch(1)
 
@@ -232,9 +239,14 @@ class ChromeToolbar(QFrame):
     def set_iptal_gorunur(self, gorunur: bool) -> None:
         self._btn_iptal.setVisible(gorunur)
 
-    def set_ekstra_gorunur(self, gorunur: bool, etiket: str = "Ayarlar") -> None:
+    def set_ekstra_gorunur(self, gorunur: bool, etiket: str = "Hesaplama") -> None:
         self._btn_ekstra.setText(etiket)
         self._btn_ekstra.setVisible(gorunur)
+        if gorunur:
+            self._btn_ekstra.setToolTip(
+                f"«{etiket}» — bu sekmeye özel hesaplama kuralları "
+                "(satış / alış / nakit kaynağı). Bilanço ve Gelir Tablosu’nu değiştirmez."
+            )
 
     def isaretle_son_guncelleme(self, when: datetime | None = None) -> None:
         """Başarılı rapor çekiminde sağdaki «Son: …» zaman damgasını günceller."""
