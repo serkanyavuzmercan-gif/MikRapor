@@ -118,14 +118,13 @@ class _CoverBackground(QWidget):
             p.end()
             return
         if self._fit == "contain":
-            # Tamamı sığsın (Trend gibi geniş görseller kırpılmasın)
-            scaled = self._src.scaled(
-                self.size(),
-                Qt.AspectRatioMode.KeepAspectRatio,
+            # Yatayda doldur, dikeyde üstten; yan boşluk yok, taşan alt kırpılır
+            scaled = self._src.scaledToWidth(
+                self.width(),
                 Qt.TransformationMode.SmoothTransformation,
             )
-            x = (self.width() - scaled.width()) // 2
-            y = max(0, (self.height() - scaled.height()) // 6)
+            x = 0
+            y = 0
         else:
             scaled = self._src.scaled(
                 self.size(),
