@@ -207,7 +207,8 @@ def build_nakit_akis_widget(na: NakitAkis, firma: str = "") -> QWidget:
     )
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
-    root.addWidget(head)
+    from ui.bilesenler import baslik_ile_gelecek_uyari
+    root.addWidget(baslik_ile_gelecek_uyari(head, na.bit))
 
     if na.hareket_sayisi == 0:
         uyari = QLabel(

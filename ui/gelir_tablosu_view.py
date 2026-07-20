@@ -66,7 +66,8 @@ def build_gelir_tablosu_widget(gt: GelirTablosu, firma: str = "") -> QWidget:
     )
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
-    root.addWidget(head)
+    from ui.bilesenler import baslik_ile_gelecek_uyari
+    root.addWidget(baslik_ile_gelecek_uyari(head, gt.bit))
 
     if gt.maliyet_eksik:
         uyari = QLabel(
