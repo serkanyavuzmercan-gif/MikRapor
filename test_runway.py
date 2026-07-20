@@ -5,7 +5,13 @@ from __future__ import annotations
 import unittest
 
 from domain.nakit_akis import AyNakit, NakitAkis
-from domain.runway import build_runway, runway_nakit_akistan
+from domain.runway import (
+    build_runway,
+    build_runway_takvim,
+    runway_nakit_akistan,
+    runway_takvim_kur,
+)
+from domain.tahsilat_alacak import VADE_KOVALAR
 
 
 class TestRunway(unittest.TestCase):
@@ -52,6 +58,49 @@ class TestRunway(unittest.TestCase):
         self.assertAlmostEqual(r.aylik_net_ort, -20000.0, places=2)  # (-30k-10k)/2
         self.assertEqual(r.baslangic_nakit, 90000.0)
         self.assertTrue(r.eriyor)
+
+
+class TestRunwayTakvim(unittest.TestCase):
+    def test_takvim_tukenme(self):
+        # 100k nakit; 1. ay 20k girer, aylık düzenli gider 60k → 1. ay -40k akış
+        r = build_runway_takvim(
+            baslangic_nakit=100000.0, baslangic_ay="2026-06",
+            alacak_vade={VADE_KOVALAR[1]: 20000.0},   # Bu hafta → 1. ay
+            borc_vade={VADE_KOVALAR[3]: 10000.0},      # Gelecek ay → 2. ay
+            aylik_gider=60000.0, ufuk_ay=6,
+        )
+        # Ay1: +20k -60k = -40k → nakit 60k. Ay2: -10k -60k = -70k → nakit -10k → tükenir.
+        self.assertEqual(r.aylar[0].nakit, 60000.0)
+        self.assertEqual(r.tukenme_ay, "2026-08")
+        self.assertFalse(r.surdurulebilir)
+
+    def test_takvim_saglikli(self):
+        r = build_runway_takvim(
+            baslangic_nakit=200000.0, baslangic_ay="2026-06",
+            alacak_vade={VADE_KOVALAR[1]: 100000.0}, borc_vade={},
+            aylik_gider=10000.0, ufuk_ay=4,
+        )
+        self.assertIsNone(r.tukenme_ay)
+        self.assertTrue(r.surdurulebilir)
+
+    def test_takvim_kur_adaptor(self):
+        na = NakitAkis(
+            bit="2026-06-30", kapanis_nakit=150000.0,
+            aylik=[AyNakit("2026-05", giris=0.0, cikis=0.0)],
+            cikis_kategori={"Personel / Maaş": 30000.0, "Genel giderler": 10000.0},
+            kredi_odeme=20000.0,
+        )
+
+        class _TA:
+            alacak_vade = {VADE_KOVALAR[1]: 50000.0}
+            borc_vade = {VADE_KOVALAR[1]: 5000.0}
+
+        r = runway_takvim_kur(na=na, ta=_TA(), ufuk_ay=3)
+        # düzenli gider = (30k+10k)/1 = 40k ; kredi = 20k/1 = 20k
+        self.assertAlmostEqual(r.aylik_gider, 40000.0, places=2)
+        self.assertAlmostEqual(r.aylik_kredi, 20000.0, places=2)
+        # Ay1: +50k -(5k+40k+20k)= -15k → nakit 135k
+        self.assertAlmostEqual(r.aylar[0].nakit, 135000.0, places=2)
 
 
 if __name__ == "__main__":
