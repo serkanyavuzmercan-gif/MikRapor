@@ -98,8 +98,9 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
         r_brut = r_extra + 1
     else:
         r_brut = r_extra
-    satir(r_brut, "Fiili Brüt Kâr", tl(gd.gercek_brut_kar), bold=True, renk=_renk(gd.gercek_brut_kar))
-    satir(r_brut + 1, "Fiili Brüt Marj", yuzde(gd.gercek_brut_marj), bold=True,
+    satir(r_brut, "Fiili Al-Sat Farkı", tl(gd.gercek_brut_kar), bold=True,
+          renk=_renk(gd.gercek_brut_kar))
+    satir(r_brut + 1, "Fiili Al-Sat Marjı", yuzde(gd.gercek_brut_marj), bold=True,
           renk=_renk(gd.gercek_brut_marj))
     if gd.resmi_smm is not None and gd.smm_stok_farki is not None:
         not2 = _satir_label(
@@ -374,13 +375,16 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
     hl.setSpacing(24)
     hero_left = QVBoxLayout()
     hero_left.setSpacing(2)
-    hb = QLabel("FİİLİ BRÜT MARJ")
+    hb = QLabel("FİİLİ AL-SAT MARJI")
     hb.setStyleSheet(f"color: {MUTED}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;")
     hv = QLabel(yuzde(gd.gercek_brut_marj))
     hv.setStyleSheet(
         f"color: {_renk(gd.gercek_brut_marj)}; font-size: 32px; font-weight: 800;"
     )
-    hs = QLabel(f"Fiili brüt kâr {tl(gd.gercek_brut_kar)}  ·  satış {tl(gd.gercek_satis)}")
+    hs = QLabel(
+        f"Satış − dönem alışı {tl(gd.gercek_brut_kar)}  ·  satış {tl(gd.gercek_satis)}  "
+        f"·  (SMM'e dayalı brüt marj değil)"
+    )
     hs.setStyleSheet(f"color: {FAINT}; font-size: 12px;")
     hero_left.addWidget(hb)
     hero_left.addWidget(hv)

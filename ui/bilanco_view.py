@@ -263,12 +263,13 @@ def _kpi_divider() -> QFrame:
 
 def build_bilanco_widget(b: Bilanco, firma: str = "") -> QWidget:
     """Bir Bilanço'dan, QScrollArea içine konacak yerel görünüm widget'ı üretir."""
+    # Fark tutarı DAİMA gösterilir — büyük mutlak fark küçük yüzdeyle gizlenmesin.
     if abs(b.fark) < 1.0:
         denge_txt, denge_vr = "Dengede", OK
     elif b.dengede:
-        denge_txt, denge_vr = f"≈ %{b.denge_yuzde:.2f}", WARN
+        denge_txt, denge_vr = f"≈ {tl(b.fark)}", WARN
     else:
-        denge_txt, denge_vr = "Fark var", BAD
+        denge_txt, denge_vr = f"Fark {tl(b.fark)}", BAD
     kz_vr = OK if b.donem_kz >= 0 else BAD
 
     content = QWidget()
@@ -289,6 +290,20 @@ def build_bilanco_widget(b: Bilanco, firma: str = "") -> QWidget:
     head.setTextFormat(Qt.TextFormat.RichText)
     from ui.bilesenler import baslik_ile_gelecek_uyari
     root.addWidget(baslik_ile_gelecek_uyari(head, b.asof))
+
+    # Maliyet kapanışı yapılmamışsa "Dönem Net Kârı" şişik görünür — uyar.
+    if b.maliyet_eksik:
+        uy = QLabel(
+            "⚠  Satışların maliyeti (62) bu tarih itibarıyla ~0 — maliyet kapanışı henüz "
+            "yapılmamış olabilir. Bu durumda aşağıdaki «Dönem Net Kârı» gerçekte olduğundan "
+            "yüksek (şişik) görünür."
+        )
+        uy.setWordWrap(True)
+        uy.setStyleSheet(
+            "QLabel { background: #fdf3e0; border: 1px solid #f0d090; border-radius: 8px; "
+            "color: #8a5a00; padding: 10px 14px; font-size: 12px; }"
+        )
+        root.addWidget(uy)
 
     # Tipografi KPI şeridi (kart yığını değil)
     strip = QFrame()
