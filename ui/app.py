@@ -447,7 +447,8 @@ class MikRaporWindow(QMainWindow):
 
     def _set_conn(self, text: str, connected: bool, *, tooltip: str = "") -> None:
         self._conn.setText(text)
-        self._conn.setToolTip(tooltip)
+        self._conn.setToolTip("")  # native kapalı; _NavTipBag kullan
+        self._firma_tip.set_text(tooltip)
         self._conn.setProperty("connected", connected)
         self._conn.style().unpolish(self._conn)
         self._conn.style().polish(self._conn)
