@@ -88,7 +88,7 @@ class RaporTab(QWidget):
         chrome.set_tek_tarih(self.TEK_TARIH)
         chrome.set_getir_etiket(self.GETIR_ETIKET)
         chrome.set_pdf_gorunur(self.PDF_DESTEK)
-        chrome.set_ekstra_gorunur(bool(self.EKSTRA_ETIKET), self.EKSTRA_ETIKET or "Ayarlar")
+        chrome.set_ekstra_gorunur(bool(self.EKSTRA_ETIKET), self.EKSTRA_ETIKET or "Hesaplama")
         # Aktif sekmenin durumunu yansıt
         if self._rapor_acik():
             chrome.set_csv_aktif(True)

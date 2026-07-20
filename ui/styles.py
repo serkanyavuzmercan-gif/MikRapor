@@ -307,6 +307,22 @@ QPushButton#exportBtn[hazir="false"] {{
     border-color: #dde2ea;
 }}
 
+/* Nakit & Kâr vb. sekme ayarı — dönem kısayollarından ayrı görünsün */
+QPushButton#ayarEkstraBtn {{
+    background-color: {NAVY_SOFT};
+    color: {NAVY};
+    border: 1px solid #c5d0de;
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 700;
+}}
+QPushButton#ayarEkstraBtn:hover {{
+    background-color: {ACCENT_SOFT};
+    color: {ACCENT};
+    border-color: {ACCENT};
+}}
+
 /* ---- Tahmin senaryo formu (sol panel — navy / teal) ---- */
 QFrame#tahminSolHost {{
     background: transparent;

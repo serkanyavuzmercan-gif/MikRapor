@@ -44,7 +44,7 @@ class GercekDurumTab(RaporTab):
     PDF_DESTEK = True
     HERO_ASSET = "empty-nakit-kar.png"
 
-    EKSTRA_ETIKET = "Ayarlar"
+    EKSTRA_ETIKET = "Hesaplama"
 
     _gd: GercekDurum | None = None
 
