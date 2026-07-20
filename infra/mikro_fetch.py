@@ -431,8 +431,10 @@ def fetch_nakit_akis_hareket(
 
     NAKİT hesap = kasa (cins 4) veya normal banka (cins 2, ban_hesap_tip<>1). KREDİ hesabı
     (ban_hesap_tip=1) nakit sayılmaz → ona giden/gelen para 'KRD' (kredi) olarak işaretlenir,
-    iç transfer DEĞİL. Karşı taraf aynı evrak no'lu satırdan bulunur (cari ise kod öneki, kredi
-    bankası ise 'KRD'). Nakit↔nakit transferleri elenir. cha_tip: 0=giriş, 1=çıkış.
+    iç transfer DEĞİL. Karşı taraf, aynı evrak no'lu VEYA aynı fiş referanslı (cha_trefno)
+    satırdan bulunur (cari ise kod öneki, kredi bankası ise 'KRD'). Tediye/Tahsilat makbuzunda
+    iki bacak evrak no ile değil cha_trefno ("FK-...") ile bağlıdır; evrak-no eşleşmesi tek
+    başına çoğu ödemeyi "?"e düşürür. Nakit↔nakit transferleri elenir. cha_tip: 0=giriş, 1=çıkış.
     Kredi ayrımı başarısız olursa (ör. ban_hesap_tip yok) sade sürüme düşülür.
     """
     bas, bit = _aralik(bas, bit)
@@ -464,9 +466,12 @@ def _fetch_nakit_akis_sql(
             "ISNULL(kb.ban_hesap_tip, -1) AS kban "
             "FROM CARI_HESAP_HAREKETLERI k WITH (NOLOCK) "
             "LEFT JOIN BANKALAR kb WITH (NOLOCK) ON kb.ban_kod = k.cha_kod "
-            "WHERE k.cha_evrakno_seri = c.cha_evrakno_seri AND k.cha_evrakno_sira = c.cha_evrakno_sira "
-            "AND k.cha_Guid <> c.cha_Guid AND k.cha_iptal = 0 "
-            "ORDER BY CASE WHEN k.cha_cari_cins = 0 THEN 0 ELSE 1 END"
+            "WHERE k.cha_Guid <> c.cha_Guid AND k.cha_iptal = 0 AND ("
+            "(k.cha_evrakno_seri = c.cha_evrakno_seri AND k.cha_evrakno_sira = c.cha_evrakno_sira) "
+            "OR (c.cha_trefno <> '' AND k.cha_trefno = c.cha_trefno)) "
+            "ORDER BY CASE WHEN k.cha_cari_cins = 0 THEN 0 ELSE 1 END, "
+            "CASE WHEN k.cha_evrakno_seri = c.cha_evrakno_seri "
+            "AND k.cha_evrakno_sira = c.cha_evrakno_sira THEN 0 ELSE 1 END"
             ") karsi "
         )
         cb_join = "LEFT JOIN BANKALAR cb WITH (NOLOCK) ON cb.ban_kod = c.cha_kod "
@@ -482,8 +487,11 @@ def _fetch_nakit_akis_sql(
             "OUTER APPLY ("
             "SELECT TOP 1 LEFT(LTRIM(k.cha_kod), 3) AS kprefix "
             "FROM CARI_HESAP_HAREKETLERI k WITH (NOLOCK) "
-            "WHERE k.cha_evrakno_seri = c.cha_evrakno_seri AND k.cha_evrakno_sira = c.cha_evrakno_sira "
-            "AND k.cha_Guid <> c.cha_Guid AND k.cha_iptal = 0 AND k.cha_cari_cins = 0"
+            "WHERE k.cha_Guid <> c.cha_Guid AND k.cha_iptal = 0 AND k.cha_cari_cins = 0 AND ("
+            "(k.cha_evrakno_seri = c.cha_evrakno_seri AND k.cha_evrakno_sira = c.cha_evrakno_sira) "
+            "OR (c.cha_trefno <> '' AND k.cha_trefno = c.cha_trefno)) "
+            "ORDER BY CASE WHEN k.cha_evrakno_seri = c.cha_evrakno_seri "
+            "AND k.cha_evrakno_sira = c.cha_evrakno_sira THEN 0 ELSE 1 END"
             ") karsi "
         )
         cb_join = ""
