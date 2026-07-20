@@ -68,6 +68,8 @@ class RaporTab(QWidget):
     # Sekmeye özel empty/soluk görsel (assets/<ad>). Boşsa DEFAULT_HERO_ASSET.
     # Konum, cover, solukluk tüm sekmelerde ortaktır — yalnız pixmap değişir.
     HERO_ASSET = ""
+    # "cover" (varsayılan) | "contain" (Trend gibi taşan görselleri sığdır)
+    HERO_FIT = "cover"
 
     def __init__(self, donem: DonemDurumu, parent: QWidget | None = None) -> None:
         super().__init__(parent)

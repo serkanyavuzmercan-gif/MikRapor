@@ -87,9 +87,16 @@ def _load_hero_pixmap(asset: str | None = None) -> QPixmap:
 
 
 class _CoverBackground(QWidget):
-    def __init__(self, pixmap: QPixmap, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        pixmap: QPixmap,
+        parent: QWidget | None = None,
+        *,
+        fit: str = "cover",
+    ) -> None:
         super().__init__(parent)
         self._src = pixmap
+        self._fit = fit if fit in ("cover", "contain") else "cover"
         self._opacity = 1.0
         self._soluk = False
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
@@ -104,18 +111,29 @@ class _CoverBackground(QWidget):
     def paintEvent(self, _ev) -> None:  # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.setClipRect(self.rect())
         # Soluk modda daha açık zemin; illüstrasyon düşük opaklıkla üstte
         p.fillRect(self.rect(), QColor("#eef3f7" if self._soluk else "#f7fafc"))
         if self._src.isNull() or self.width() < 2 or self.height() < 2:
             p.end()
             return
-        scaled = self._src.scaled(
-            self.size(),
-            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        x = (self.width() - scaled.width()) // 2
-        y = min(0, (self.height() - scaled.height()) // 3)
+        if self._fit == "contain":
+            # Tamamı sığsın (Trend gibi geniş görseller kırpılmasın)
+            scaled = self._src.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            x = (self.width() - scaled.width()) // 2
+            y = max(0, (self.height() - scaled.height()) // 6)
+        else:
+            scaled = self._src.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            x = (self.width() - scaled.width()) // 2
+            y = min(0, (self.height() - scaled.height()) // 3)
         p.setOpacity(self._opacity)
         p.drawPixmap(x, y, scaled)
         p.setOpacity(1.0)
@@ -330,13 +348,16 @@ class EmptyState(QWidget):
         cta_hint: str = "Getir",
         on_cta: Callable[[], None] | None = None,
         hero_asset: str | None = None,
+        hero_fit: str = "cover",
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("emptyState")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        self._bg = _CoverBackground(_load_hero_pixmap(hero_asset), self)
+        self._bg = _CoverBackground(
+            _load_hero_pixmap(hero_asset), self, fit=hero_fit,
+        )
         self._bg.lower()
         self._arka_plan = False
 

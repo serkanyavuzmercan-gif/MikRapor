@@ -72,6 +72,7 @@ def hos_geldin(
     on_cta: Callable[[], None] | None = None,
     cta: str = "",
     hero_asset: str | None = None,
+    hero_fit: str = "cover",
 ) -> QWidget:
     """Sekme boşken karşılama — Teal A: illüstrasyon + CTA butonu."""
     del emoji
@@ -91,7 +92,12 @@ def hos_geldin(
         aciklama_duz = aciklama_duz[:a] + aciklama_duz[b + 1 :]
     aciklama_duz = " ".join(aciklama_duz.split())
     return build_empty_state(
-        baslik, aciklama_duz, cta_hint=cta_text, on_cta=on_cta, hero_asset=hero_asset,
+        baslik,
+        aciklama_duz,
+        cta_hint=cta_text,
+        on_cta=on_cta,
+        hero_asset=hero_asset,
+        hero_fit=hero_fit,
     )
 
 

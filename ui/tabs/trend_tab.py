@@ -39,6 +39,7 @@ class TrendTab(RaporTab):
     BASLARKEN = "Stok, nakit ve mizan çekiliyor…"
     PDF_DESTEK = True
     HERO_ASSET = "empty-trendler.png"
+    HERO_FIT = "contain"
 
     _tr: TrendRapor | None = None
 
