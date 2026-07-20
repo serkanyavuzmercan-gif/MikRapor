@@ -1,6 +1,6 @@
 """Ortak üst chrome toolbar — Design A: marka bar (sekmeler) altında.
 
-Satır 1: tarih + Getir / PDF / CSV + dönem kısayol grupları + son güncelleme + durum
+Satır 1: tarih + hızlı dönem + Getir + PDF/CSV + son güncelleme + durum
 Satır 2: uzun rapor özeti chip şeridi (yalnız sonuç varken)
 """
 
@@ -33,6 +33,7 @@ _DURUM_RENK = {
     "hata": BAD,
 }
 _KISA_MAX = 44
+_EXPORT_PASIF_TIP = "Önce «Raporu Getir» ile raporu yükleyin"
 
 
 def _kisalt(metin: str, maks: int = _KISA_MAX) -> str:
@@ -64,7 +65,7 @@ class ChromeToolbar(QFrame):
         root.setContentsMargins(14, 10, 14, 8)
         root.setSpacing(8)
 
-        # —— Satır 1: kontroller + dönem grupları + son güncelleme ——
+        # Sıra: tarih → hızlı dönem → Getir → PDF/CSV → (sağda durum)
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
@@ -72,45 +73,12 @@ class ChromeToolbar(QFrame):
         self._aralik = DonemAralikAlani(donem)
         row.addWidget(self._aralik)
 
-        self._btn_ekstra = QPushButton("Ayarlar")
-        self._btn_ekstra.setObjectName("ghostBtn")
-        self._btn_ekstra.setVisible(False)
-        self._btn_ekstra.clicked.connect(self.ekstra_clicked.emit)
-        row.addWidget(self._btn_ekstra)
-
-        self._btn_getir = QPushButton("Raporu Getir")
-        self._btn_getir.setObjectName("primaryBtn")
-        self._btn_getir.clicked.connect(self.getir_clicked.emit)
-        row.addWidget(self._btn_getir)
-
-        self._btn_iptal = QPushButton("İptal")
-        self._btn_iptal.setObjectName("ghostBtn")
-        self._btn_iptal.setVisible(False)
-        self._btn_iptal.clicked.connect(self.iptal_clicked.emit)
-        row.addWidget(self._btn_iptal)
-
-        self._btn_pdf = QPushButton("PDF")
-        self._btn_pdf.setObjectName("ghostBtn")
-        self._btn_pdf.setIcon(icon_pdf(15))
-        self._btn_pdf.setIconSize(QSize(15, 15))
-        self._btn_pdf.setEnabled(False)
-        self._btn_pdf.clicked.connect(self.pdf_clicked.emit)
-        row.addWidget(self._btn_pdf)
-
-        self._btn_csv = QPushButton("CSV")
-        self._btn_csv.setObjectName("ghostBtn")
-        self._btn_csv.setIcon(icon_csv(15))
-        self._btn_csv.setIconSize(QSize(15, 15))
-        self._btn_csv.setEnabled(False)
-        self._btn_csv.clicked.connect(self.csv_clicked.emit)
-        row.addWidget(self._btn_csv)
-
-        # Dönem kısayolları — boşlukta gruplu şerit
+        # Hızlı dönem — tarihin hemen yanında
         self._kisayol_grp = QButtonGroup(self)
         self._kisayol_grp.setExclusive(True)
         kisayol_serit = QHBoxLayout()
-        kisayol_serit.setContentsMargins(4, 0, 0, 0)
-        kisayol_serit.setSpacing(8)
+        kisayol_serit.setContentsMargins(0, 0, 0, 0)
+        kisayol_serit.setSpacing(6)
         for grup in KISAYOL_GRUPLARI:
             kutu = QFrame()
             kutu.setObjectName("donemKisayol")
@@ -130,6 +98,46 @@ class ChromeToolbar(QFrame):
                 kl.addWidget(btn)
             kisayol_serit.addWidget(kutu)
         row.addLayout(kisayol_serit)
+
+        self._btn_ekstra = QPushButton("Ayarlar")
+        self._btn_ekstra.setObjectName("ghostBtn")
+        self._btn_ekstra.setVisible(False)
+        self._btn_ekstra.clicked.connect(self.ekstra_clicked.emit)
+        row.addWidget(self._btn_ekstra)
+
+        self._btn_getir = QPushButton("Raporu Getir")
+        self._btn_getir.setObjectName("primaryBtn")
+        self._btn_getir.clicked.connect(self.getir_clicked.emit)
+        row.addWidget(self._btn_getir)
+
+        self._btn_iptal = QPushButton("İptal")
+        self._btn_iptal.setObjectName("ghostBtn")
+        self._btn_iptal.setVisible(False)
+        self._btn_iptal.clicked.connect(self.iptal_clicked.emit)
+        row.addWidget(self._btn_iptal)
+
+        self._btn_pdf = QPushButton("PDF")
+        self._btn_pdf.setObjectName("exportBtn")
+        self._btn_pdf.setIcon(icon_pdf(15))
+        self._btn_pdf.setIconSize(QSize(15, 15))
+        self._btn_pdf.setCursor(Qt.CursorShape.ForbiddenCursor)
+        self._btn_pdf.setProperty("hazir", "false")
+        self._btn_pdf.setToolTip(_EXPORT_PASIF_TIP)
+        self._btn_pdf.clicked.connect(self._pdf_tikla)
+        row.addWidget(self._btn_pdf)
+
+        self._btn_csv = QPushButton("CSV")
+        self._btn_csv.setObjectName("exportBtn")
+        self._btn_csv.setIcon(icon_csv(15))
+        self._btn_csv.setIconSize(QSize(15, 15))
+        self._btn_csv.setCursor(Qt.CursorShape.ForbiddenCursor)
+        self._btn_csv.setProperty("hazir", "false")
+        self._btn_csv.setToolTip(_EXPORT_PASIF_TIP)
+        self._btn_csv.clicked.connect(self._csv_tikla)
+        row.addWidget(self._btn_csv)
+
+        self._pdf_hazir = False
+        self._csv_hazir = False
 
         row.addStretch(1)
 
@@ -184,9 +192,15 @@ class ChromeToolbar(QFrame):
 
     def set_pdf_aktif(self, aktif: bool) -> None:
         self._btn_pdf.setEnabled(aktif)
+        self._btn_pdf.setToolTip("PDF olarak kaydet" if aktif else _EXPORT_PASIF_TIP)
+        self._btn_pdf.setCursor(
+            Qt.CursorShape.PointingHandCursor if aktif else Qt.CursorShape.ForbiddenCursor)
 
     def set_csv_aktif(self, aktif: bool) -> None:
         self._btn_csv.setEnabled(aktif)
+        self._btn_csv.setToolTip("CSV olarak kaydet" if aktif else _EXPORT_PASIF_TIP)
+        self._btn_csv.setCursor(
+            Qt.CursorShape.PointingHandCursor if aktif else Qt.CursorShape.ForbiddenCursor)
 
     def set_getir_aktif(self, aktif: bool) -> None:
         self._btn_getir.setEnabled(aktif)
