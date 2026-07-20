@@ -243,6 +243,23 @@ QPushButton#ghostBtn {{
     font-size: 12px;
 }}
 
+/* ---- Tahmin senaryo formu ---- */
+QFrame#tahminForm {{
+    background-color: {SURFACE};
+    border: 1px solid {BORDER};
+    border-radius: 12px;
+}}
+QLabel#tahminFormBaslik {{
+    color: {NAVY};
+    font-size: 13px;
+    font-weight: 700;
+}}
+QLabel#tahminAlanEtiket {{
+    color: {MUTED};
+    font-size: 11px;
+    font-weight: 600;
+}}
+
 /* ---- Girdiler ---- */
 QLineEdit, QComboBox, QTextEdit, QAbstractSpinBox, QDateEdit {{
     background-color: {SURFACE};
