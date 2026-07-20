@@ -434,7 +434,10 @@ def fetch_nakit_akis_hareket(
     iç transfer DEĞİL. Karşı taraf, aynı evrak no'lu VEYA aynı fiş referanslı (cha_trefno)
     satırdan bulunur (cari ise kod öneki, kredi bankası ise 'KRD'). Tediye/Tahsilat makbuzunda
     iki bacak evrak no ile değil cha_trefno ("FK-...") ile bağlıdır; evrak-no eşleşmesi tek
-    başına çoğu ödemeyi "?"e düşürür. Nakit↔nakit transferleri elenir. cha_tip: 0=giriş, 1=çıkış.
+    başına çoğu ödemeyi "?"e düşürür. Karşı taraf cari satırda hiç yoksa (doğrudan muhasebeye
+    işlenen banka ödemesi: maaş 335 / vergi 360 / SGK 361 / kredi 300 / gider 770) karşı hesap
+    satırın cha_kasa_hizkod alanından alınır (BANKALAR ile ayrıştırılır — banka kodları TDHP 300
+    ile çakışabildiğinden). Nakit↔nakit transferleri elenir. cha_tip: 0=giriş, 1=çıkış.
     Kredi ayrımı başarısız olursa (ör. ban_hesap_tip yok) sade sürüme düşülür.
     """
     bas, bit = _aralik(bas, bit)
@@ -455,9 +458,21 @@ def _fetch_nakit_akis_sql(
     bit_son = _bit_son(bit)
     if kredi_ayir:
         nakit_kosul = "(c.cha_cari_cins = 4 OR (c.cha_cari_cins = 2 AND ISNULL(cb.ban_hesap_tip, 0) <> 1))"
+        # Karşı taraf cari satırda yoksa (doğrudan muhasebeye işlenen banka ödemesi:
+        # maaş 335 / vergi 360 / SGK 361 / kredi 300 / gider 770), karşı hesap bu satırın
+        # cha_kasa_hizkod alanındadır. BANKALAR ile ayrış — banka hesapları 300.02.x gibi
+        # kodlanıp TDHP 300 (kredi) ile çakışabildiğinden şart: kredi bankası → 'KRD',
+        # nakit banka → iç transfer (sayma), aksi halde muhasebe hesabı öneki.
+        hizkod_expr = (
+            "CASE WHEN hb.ban_kod IS NOT NULL AND ISNULL(hb.ban_hesap_tip, 0) = 1 THEN 'KRD' "
+            "WHEN hb.ban_kod IS NOT NULL THEN '' "
+            "WHEN LTRIM(RTRIM(ISNULL(c.cha_kasa_hizkod, ''))) <> '' "
+            "THEN LEFT(LTRIM(c.cha_kasa_hizkod), 3) ELSE '' END"
+        )
         prefix_expr = (
             "CASE WHEN karsi.kcins = 2 AND karsi.kban = 1 THEN 'KRD' "
-            "WHEN karsi.kcins = 0 THEN karsi.kprefix ELSE '' END"
+            "WHEN karsi.kcins = 0 THEN karsi.kprefix "
+            f"ELSE {hizkod_expr} END"
         )
         ic_transfer = "(karsi.kcins = 4 OR (karsi.kcins = 2 AND karsi.kban <> 1))"
         apply_join = (
@@ -474,7 +489,10 @@ def _fetch_nakit_akis_sql(
             "AND k.cha_evrakno_sira = c.cha_evrakno_sira THEN 0 ELSE 1 END"
             ") karsi "
         )
-        cb_join = "LEFT JOIN BANKALAR cb WITH (NOLOCK) ON cb.ban_kod = c.cha_kod "
+        cb_join = (
+            "LEFT JOIN BANKALAR cb WITH (NOLOCK) ON cb.ban_kod = c.cha_kod "
+            "LEFT JOIN BANKALAR hb WITH (NOLOCK) ON hb.ban_kod = LTRIM(RTRIM(c.cha_kasa_hizkod)) "
+        )
     else:
         nakit_kosul = "c.cha_cari_cins IN (2, 4)"
         prefix_expr = "ISNULL(karsi.kprefix, '')"
