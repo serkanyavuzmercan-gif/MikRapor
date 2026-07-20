@@ -307,7 +307,7 @@ class ChromeToolbar(QFrame):
         bas, bit = self._donem.bas_tarih(), self._donem.bit_tarih()
         eslesen: str | None = None
         for grup in KISAYOL_GRUPLARI:
-            for kod, _, _ in grup:
+            for kod, _ in grup:
                 k_bas, k_bit = kisayol_aralik(kod)
                 if bas == k_bas and bit == k_bit:
                     eslesen = kod
