@@ -42,8 +42,8 @@ from ui.tahmin_pdf import export_tahmin_pdf
 from ui.tahmin_view import build_tahmin_widget
 from ui.worker import IsFonksiyonu
 
-_PANEL_GENISLIK = 288
-_RAIL_GENISLIK = 40
+_PANEL_GENISLIK = 240
+_RAIL_GENISLIK = 36
 
 
 class TahminTab(RaporTab):
@@ -242,12 +242,12 @@ class TahminTab(RaporTab):
 
 
 class _SenaryoSolPanel(QFrame):
-    """Sol rail + açılır senaryo gövdesi. Varsayılan kapalı — içerik ferah kalır."""
+    """Sol rail + senaryo gövdesi. Varsayılan açık; dar navy–teal panel."""
 
     def __init__(self, alanlar: tuple[tuple[str, QWidget], ...]) -> None:
         super().__init__()
         self.setObjectName("tahminSolHost")
-        self._acik = False
+        self._acik = True
 
         host = QHBoxLayout(self)
         host.setContentsMargins(0, 0, 0, 0)
@@ -260,50 +260,71 @@ class _SenaryoSolPanel(QFrame):
         self._rail.setFixedWidth(_RAIL_GENISLIK)
         self._rail.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self._rail.setToolTip("Senaryo varsayımlarını aç")
+        self._rail.setVisible(False)
         self._rail.clicked.connect(self.ac)
         host.addWidget(self._rail)
 
         self._govde = QFrame()
         self._govde.setObjectName("tahminSolPanel")
         self._govde.setFixedWidth(_PANEL_GENISLIK)
-        self._govde.setVisible(False)
+        self._govde.setVisible(True)
         gl = QVBoxLayout(self._govde)
-        gl.setContentsMargins(14, 14, 14, 14)
-        gl.setSpacing(12)
+        gl.setContentsMargins(0, 0, 0, 0)
+        gl.setSpacing(0)
+
+        # Üst şerit — navy ton
+        baslik_wrap = QFrame()
+        baslik_wrap.setObjectName("tahminSolBaslikSerit")
+        bw = QVBoxLayout(baslik_wrap)
+        bw.setContentsMargins(14, 14, 12, 12)
+        bw.setSpacing(4)
 
         baslik_satir = QHBoxLayout()
-        baslik_satir.setSpacing(8)
+        baslik_satir.setSpacing(6)
+        col = QVBoxLayout()
+        col.setSpacing(2)
+        eyebrow = QLabel("TAHMİN")
+        eyebrow.setObjectName("tahminSolEyebrow")
+        col.addWidget(eyebrow)
         baslik = QLabel("Senaryo varsayımları")
         baslik.setObjectName("tahminFormBaslik")
         baslik.setWordWrap(True)
-        baslik_satir.addWidget(baslik, 1)
+        col.addWidget(baslik)
+        baslik_satir.addLayout(col, 1)
         kapat = QPushButton("‹")
         kapat.setObjectName("tahminSolKapat")
         kapat.setCursor(Qt.CursorShape.PointingHandCursor)
-        kapat.setFixedSize(28, 28)
+        kapat.setFixedSize(26, 26)
         kapat.setToolTip("Paneli kapat")
         kapat.clicked.connect(self.kapat)
         baslik_satir.addWidget(kapat, 0, Qt.AlignmentFlag.AlignTop)
-        gl.addLayout(baslik_satir)
-
+        bw.addLayout(baslik_satir)
         ipucu = QLabel("Değerleri düzenleyip projekte edin.")
-        ipucu.setObjectName("tahminAlanEtiket")
+        ipucu.setObjectName("tahminSolIpucu")
         ipucu.setWordWrap(True)
-        gl.addWidget(ipucu)
+        bw.addWidget(ipucu)
+        gl.addWidget(baslik_wrap)
+
+        govde_ic = QWidget()
+        gi = QVBoxLayout(govde_ic)
+        gi.setContentsMargins(14, 12, 14, 14)
+        gi.setSpacing(8)
 
         for etiket, w in alanlar:
             lbl = QLabel(etiket)
             lbl.setObjectName("tahminAlanEtiket")
-            gl.addWidget(lbl)
-            gl.addWidget(w)
+            gi.addWidget(lbl)
+            w.setObjectName("tahminAlanGirdi")
+            gi.addWidget(w)
 
-        gl.addStretch(1)
+        gi.addStretch(1)
 
         self.btn_projekte = QPushButton("Projekte Et")
         self.btn_projekte.setObjectName("primaryBtn")
         self.btn_projekte.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_projekte.setMinimumHeight(36)
-        gl.addWidget(self.btn_projekte)
+        gi.addWidget(self.btn_projekte)
+        gl.addWidget(govde_ic, 1)
 
         host.addWidget(self._govde)
 
