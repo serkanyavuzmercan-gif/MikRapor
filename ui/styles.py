@@ -119,6 +119,26 @@ QLabel#ozetChip {{
     font-size: 11px;
     font-weight: 600;
 }}
+QFrame#gelecekDonemUyari {{
+    background-color: {WARN_BG};
+    border: 1px solid #f0d4a0;
+    border-left: 4px solid {WARN};
+    border-radius: 8px;
+}}
+QLabel#gelecekDonemUyariBaslik {{
+    color: {WARN};
+    font-size: 12px;
+    font-weight: 700;
+    background: transparent;
+    border: none;
+}}
+QLabel#gelecekDonemUyariMetin {{
+    color: #7a4e0e;
+    font-size: 12px;
+    font-weight: 500;
+    background: transparent;
+    border: none;
+}}
 QFrame#donemKisayol {{
     background: {SURFACE};
     border: 1px solid {BORDER};

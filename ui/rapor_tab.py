@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import (
 from infra.config import MikroConfig, load_config
 from infra.mikro_api import MikroAPIError, MikroClient
 from infra.mikro_fetch import fetch_firma_adi
-from ui.bilesenler import csv_kaydet, hos_geldin
+from ui.bilesenler import csv_kaydet, gelecek_donem_uyari_kutusu, hos_geldin
 from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
 from ui.empty_state import DEFAULT_HERO_ASSET, HERO_SOLUK_OPACITY, build_soluk_arka_plan
@@ -191,6 +191,27 @@ class RaporTab(QWidget):
             self._chrome.set_durum(mesaj, tur)
 
     def _icerik_koy(self, widget: QWidget) -> None:
+        # Gelecek dönem: popup yerine sağ üstte sarı dikkat kutusu
+        if self._donem.bit_tarih() > QDate.currentDate():
+            wrap = QWidget()
+            wrap.setObjectName("raporIcerikWrap")
+            wrap.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            wrap.setStyleSheet("QWidget#raporIcerikWrap { background: transparent; }")
+            wlay = QVBoxLayout(wrap)
+            wlay.setContentsMargins(0, 0, 0, 0)
+            wlay.setSpacing(0)
+            ust = QHBoxLayout()
+            ust.setContentsMargins(16, 10, 16, 0)
+            ust.addStretch(1)
+            ust.addWidget(
+                gelecek_donem_uyari_kutusu(),
+                0,
+                Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight,
+            )
+            wlay.addLayout(ust)
+            wlay.addWidget(widget, 1)
+            widget = wrap
+
         stil = widget.styleSheet() or ""
         if PAGE_BG in stil:
             stil = stil.replace(PAGE_BG, _PAGE_BG_SOLUK)
@@ -232,7 +253,6 @@ class RaporTab(QWidget):
             return
         bit_d = self._donem.bit_tarih()
         if self.TEK_TARIH:
-            bas_d = bit_d
             bas = bit = bit_d.toString("yyyy-MM-dd")
         else:
             bas_d = self._donem.bas_tarih()
@@ -241,30 +261,6 @@ class RaporTab(QWidget):
                 return
             bas = bas_d.toString("yyyy-MM-dd")
             bit = bit_d.toString("yyyy-MM-dd")
-
-        bugun = QDate.currentDate()
-        if bit_d > bugun:
-            from ui.bilesenler import soru_evet_hayir
-
-            if self.TEK_TARIH:
-                tarih_yazi = f"Seçilen tarih ({bit_d.toString('dd.MM.yyyy')})"
-            else:
-                tarih_yazi = (
-                    f"Seçilen dönem ({bas_d.toString('dd.MM.yyyy')} — "
-                    f"{bit_d.toString('dd.MM.yyyy')})"
-                )
-            devam = soru_evet_hayir(
-                self,
-                "Gelecek dönem",
-                f"{tarih_yazi} bugünden ({bugun.toString('dd.MM.yyyy')}) sonra bitiyor.\n\n"
-                "Mikro'da henüz oluşmamış fişler olmadığı için rapor, bugüne kadarki "
-                "bakiyelere çok benzer görünebilir (ör. 4. çeyrek ≈ 3. çeyrek).\n\n"
-                "Yine de getirilsin mi?",
-                varsayilan_evet=False,
-            )
-            if not devam:
-                return
-
         self._calistir(self._is_hazirla(cfg, bas, bit))
 
     def _calistir(self, is_fn: IsFonksiyonu) -> None:
