@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis
+from domain.runway import runway_nakit_akistan
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _kpi_card
 from ui.gercek_durum_view import NEG, POZ, _card, _cizgi, _renk, _satir_label
 from ui.styles import PRIMARY_SOFT
@@ -188,6 +189,70 @@ def _trend_panel(na: NakitAkis) -> QFrame:
     return _card("AYLIK NAKİT AKIŞ TRENDİ", inner)
 
 
+_AY_KISA = ("Oca", "Şub", "Mar", "Nis", "May", "Haz",
+            "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara")
+
+
+def _ay_str(yyyymm: str) -> str:
+    """'2026-12' → 'Ara 2026'."""
+    try:
+        y, m = int(yyyymm[:4]), int(yyyymm[5:7])
+        return f"{_AY_KISA[m - 1]} {y}"
+    except (ValueError, IndexError):
+        return yyyymm
+
+
+def _runway_banner(na: NakitAkis) -> QWidget | None:
+    """Nakit runway özeti: 'paran kaç ay yeter / hangi ay eksiye düşer'."""
+    if na.hareket_sayisi == 0:
+        return None
+    r = runway_nakit_akistan(na, ufuk_ay=12)
+    hiz = ("+" if r.aylik_net_ort >= 0 else "−") + tl(abs(r.aylik_net_ort))
+    alt = (
+        f"Aylık ortalama net nakit {hiz}  ·  mevcut nakit {tl(r.baslangic_nakit)}"
+    )
+    if r.tukenme_ay is not None:
+        renk, bg, kenar = NEG, "#fdecec", "#f3b4b4"
+        gun = f"~{r.tukenme_gun} gün sonra " if r.tukenme_gun else ""
+        baslik = f"Nakit {gun}({_ay_str(r.tukenme_ay)}) eksiye düşüyor"
+        oneri = "→ Tahsilatı öne çek, öteleyebileceğin ödemeleri ertele."
+    elif r.eriyor:
+        renk, bg, kenar = "#b45309", "#fdf3e0", "#f0d090"
+        baslik = f"Nakit eriyor — 12 ay ufkunda tükenmiyor ama trend aşağı ({hiz}/ay)"
+        oneri = "→ Nakit hızını izle; giderleri gözden geçir."
+    else:
+        renk, bg, kenar = "#15803d", "#e8f6ee", "#bfe3cd"
+        baslik = f"Nakit güçleniyor — mevcut hızla artıyor ({hiz}/ay)"
+        oneri = ""
+
+    card = QFrame()
+    card.setObjectName("runwayBanner")
+    card.setStyleSheet(
+        f"QFrame#runwayBanner {{ background: {bg}; border: 1px solid {kenar}; "
+        f"border-radius: 12px; }}"
+    )
+    lay = QVBoxLayout(card)
+    lay.setContentsMargins(18, 12, 18, 12)
+    lay.setSpacing(2)
+    eyebrow = QLabel("NAKİT RUNWAY")
+    eyebrow.setStyleSheet(
+        f"color: {renk}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; "
+        "background: transparent;"
+    )
+    lay.addWidget(eyebrow)
+    bl = QLabel(baslik)
+    bl.setWordWrap(True)
+    bl.setStyleSheet(
+        f"color: {renk}; font-size: 18px; font-weight: 800; background: transparent;"
+    )
+    lay.addWidget(bl)
+    sub = QLabel(alt + (f"   {oneri}" if oneri else ""))
+    sub.setWordWrap(True)
+    sub.setStyleSheet(f"color: {MUTED}; font-size: 12px; background: transparent;")
+    lay.addWidget(sub)
+    return card
+
+
 def build_nakit_akis_widget(na: NakitAkis, firma: str = "") -> QWidget:
     """Bir NakitAkis'ten QScrollArea içine konacak yerel görünüm üretir."""
     content = QWidget()
@@ -232,6 +297,11 @@ def build_nakit_akis_widget(na: NakitAkis, firma: str = "") -> QWidget:
     kp_bg, kp_vr = (PRIMARY_SOFT, ACCENT) if na.kapanis_nakit >= 0 else ("#fdecec", NEG)
     kpi.addWidget(_kpi_card("KAPANIŞ NAKİT", tl(na.kapanis_nakit), kp_bg, kp_vr))
     root.addLayout(kpi)
+
+    # Nakit Runway — "paran kaç ay yeter / hangi ay eksiye düşer"
+    banner = _runway_banner(na)
+    if banner is not None:
+        root.addWidget(banner)
 
     row1 = QHBoxLayout()
     row1.setSpacing(20)
