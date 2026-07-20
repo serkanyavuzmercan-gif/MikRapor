@@ -14,9 +14,13 @@ from infra.config import load_config
 from ui.tarih_secici import TarihSecici
 
 
+def _calisma_yili() -> int:
+    return load_config().calisma_yili or QDate.currentDate().year()
+
+
 def _calisma_referans() -> QDate:
     """Kısayol bitiş referansı: çalışma yılı içindeyse bugün, değilse yıl sonu."""
-    yil = load_config().calisma_yili or QDate.currentDate().year()
+    yil = _calisma_yili()
     bugun = QDate.currentDate()
     if bugun.year() == yil:
         return bugun
@@ -25,12 +29,30 @@ def _calisma_referans() -> QDate:
     return QDate(yil, 1, 1)
 
 
-def kisayol_aralik(kod: str) -> tuple[QDate, QDate]:
-    """Bu ay / Bu çeyrek / Bu yıl aralıkları.
+# Toolbar / hızlı dönem grupları — (kod, kısa etiket, tooltip)
+KISAYOL_GRUPLARI: tuple[tuple[tuple[str, str, str], ...], ...] = (
+    (
+        ("q1", "1. Çeyrek", "Ocak — Mart"),
+        ("q2", "2. Çeyrek", "Nisan — Haziran"),
+        ("q3", "3. Çeyrek", "Temmuz — Eylül"),
+        ("q4", "4. Çeyrek", "Ekim — Aralık"),
+    ),
+    (
+        ("h1", "1. Yarı", "Ocak — Haziran"),
+        ("h2", "2. Yarı", "Temmuz — Aralık"),
+    ),
+    (
+        ("ay", "Bu ay", "İçinde bulunulan ay"),
+        ("yil", "Bu yıl", "Takvim yılı (1 Ocak — 31 Aralık)"),
+    ),
+)
 
-    Ay: ay başı → min(ay sonu, bugün).
-    Çeyrek: çeyrek başı → çeyrek sonu (ay ile çakışmasın diye tam çeyrek).
-    Yıl: 1 Ocak → 31 Aralık.
+
+def kisayol_aralik(kod: str) -> tuple[QDate, QDate]:
+    """Dönem kısayolu → (başlangıç, bitiş).
+
+    Çeyrek / yarıyıl / yıl: tam takvim aralığı.
+    Bu ay: ay başı → min(ay sonu, bugün).
     """
     ref = _calisma_referans()
     y, m = ref.year(), ref.month()
@@ -39,11 +61,20 @@ def kisayol_aralik(kod: str) -> tuple[QDate, QDate]:
         ay_son = bas.addMonths(1).addDays(-1)
         bit = ref if ay_son > ref else ay_son
         return bas, bit
+    if kod == "yil":
+        return QDate(y, 1, 1), QDate(y, 12, 31)
     if kod == "ceyrek":
         bas_ay = ((m - 1) // 3) * 3 + 1
         bas = QDate(y, bas_ay, 1)
-        bit = bas.addMonths(3).addDays(-1)
-        return bas, bit
+        return bas, bas.addMonths(3).addDays(-1)
+    if kod in ("q1", "q2", "q3", "q4"):
+        i = int(kod[1]) - 1
+        bas = QDate(y, i * 3 + 1, 1)
+        return bas, bas.addMonths(3).addDays(-1)
+    if kod == "h1":
+        return QDate(y, 1, 1), QDate(y, 6, 30)
+    if kod == "h2":
+        return QDate(y, 7, 1), QDate(y, 12, 31)
     return QDate(y, 1, 1), QDate(y, 12, 31)
 
 
