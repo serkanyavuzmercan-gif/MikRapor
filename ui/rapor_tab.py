@@ -35,6 +35,7 @@ from ui.empty_state import DEFAULT_HERO_ASSET, HERO_SOLUK_OPACITY, build_soluk_a
 from ui.mikro_settings_dialog import MikroAyarlarDialog
 from ui.styles import PAGE_BG
 from ui.worker import IsFonksiyonu, RaporWorker
+from ui.yukleniyor import YukleniyorEkrani
 
 # İçerik kökü yarı saydam beyaz — altındaki soluk illüstrasyon hafifçe görünsün
 _PAGE_BG_SOLUK = "rgba(255, 255, 255, 0.72)"
@@ -78,6 +79,7 @@ class RaporTab(QWidget):
         self._firma: str = ""
         self._chrome: ChromeToolbar | None = None
         self._status: QLabel | None = None
+        self._rapor_var = False
         self._build()
 
     def bagla_chrome(self, chrome: ChromeToolbar) -> None:
@@ -156,6 +158,11 @@ class RaporTab(QWidget):
         self._view.raise_()
 
         self._stack.addWidget(self._icerik_sayfa)
+
+        # 2: yükleniyor ara ekranı (fetch boyunca) — "program dondu" hissini önler
+        self._yukleniyor = YukleniyorEkrani(hero_asset=hero, hero_fit=hero_fit)
+        self._stack.addWidget(self._yukleniyor)
+
         self._stack.setCurrentIndex(0)
         layout.addWidget(self._stack, stretch=1)
 
@@ -210,6 +217,8 @@ class RaporTab(QWidget):
 
         self._arka.lower()
         self._view.raise_()
+        self._yukleniyor.durdur()
+        self._rapor_var = True
         self._stack.setCurrentIndex(1)
 
     def _ayarlar_tamam(self) -> MikroConfig | None:
@@ -259,6 +268,9 @@ class RaporTab(QWidget):
             self._chrome.set_getir_aktif(False)
             self._chrome.set_iptal_gorunur(True)
         self._durum(self.BASLARKEN)
+        self._yukleniyor.set_durum(self.BASLARKEN)
+        self._stack.setCurrentIndex(2)
+        self._yukleniyor.basla()
 
         worker = RaporWorker(is_fn, self)
         worker.ilerleme.connect(self._on_ilerleme)
@@ -272,6 +284,7 @@ class RaporTab(QWidget):
         if self.sender() is not None and self.sender() is not self._worker:
             return
         self._durum(mesaj)
+        self._yukleniyor.set_durum(mesaj)
 
     def _on_bitti(self, sonuc: object) -> None:
         if self.sender() is not None and self.sender() is not self._worker:
@@ -286,6 +299,8 @@ class RaporTab(QWidget):
     def _on_hata(self, mesaj: str) -> None:
         if self.sender() is not None and self.sender() is not self._worker:
             return
+        self._yukleniyor.durdur()
+        self._stack.setCurrentIndex(1 if self._rapor_var else 0)
         self._durum("Rapor getirilemedi.", "hata")
         QMessageBox.warning(self, "Mikro Hatası", mesaj)
 
@@ -310,6 +325,8 @@ class RaporTab(QWidget):
             self._worker = None
             w.wait(3000)
             w.deleteLater()
+        self._yukleniyor.durdur()
+        self._stack.setCurrentIndex(1 if self._rapor_var else 0)
         if self._chrome_aktif() and self._chrome is not None:
             self._chrome.set_getir_aktif(True)
             self._chrome.set_iptal_gorunur(False)
