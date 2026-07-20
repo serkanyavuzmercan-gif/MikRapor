@@ -364,6 +364,13 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
         )
         root.addWidget(uyari)
 
+    # Bulgular kartı — ham sayıları aksiyona dönük yoruma çevirir (boşsa gizli)
+    from domain.bulgular import gercek_durum_bulgulari
+    from ui.bilesenler import bulgular_karti
+    kart = bulgular_karti(gercek_durum_bulgulari(gd))
+    if kart is not None:
+        root.addWidget(kart)
+
     # Hero: fiili brüt marj önde (Teal A)
     hero = QFrame()
     hero.setObjectName("gdHero")
