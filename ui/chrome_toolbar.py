@@ -1,14 +1,17 @@
 """Ortak üst chrome toolbar — Design A: marka bar (sekmeler) altında.
 
-Satır 1: tarih + Getir / PDF / CSV + kısa durum
+Satır 1: tarih + Getir / PDF / CSV + dönem kısayolları + son güncelleme + kısa durum
 Satır 2: uzun rapor özeti chip şeridi (yalnız sonuç varken)
 """
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from datetime import datetime
+
+from PyQt6.QtCore import QDate, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QFontMetrics
 from PyQt6.QtWidgets import (
+    QButtonGroup,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -18,6 +21,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from infra.config import load_config
 from ui.donem import DonemDurumu
 from ui.icons import icon_csv, icon_pdf
 from ui.styles import BAD, MUTED, OK, WARN
@@ -31,12 +35,41 @@ _DURUM_RENK = {
 }
 _KISA_MAX = 44
 
+_KISAYOLLAR = (
+    ("ay", "Bu ay"),
+    ("ceyrek", "Bu çeyrek"),
+    ("yil", "Bu yıl"),
+)
+
 
 def _kisalt(metin: str, maks: int = _KISA_MAX) -> str:
     t = (metin or "").strip()
     if len(t) <= maks:
         return t
     return t[: max(1, maks - 1)].rstrip(" ·,;") + "…"
+
+
+def _calisma_referans() -> QDate:
+    """Kısayollar için bitiş: çalışma yılı içindeyse bugün, aksi halde yıl sonu."""
+    yil = load_config().calisma_yili or QDate.currentDate().year()
+    bugun = QDate.currentDate()
+    if bugun.year() == yil:
+        return bugun
+    if bugun.year() > yil:
+        return QDate(yil, 12, 31)
+    return QDate(yil, 1, 1)
+
+
+def _kisayol_aralik(kod: str) -> tuple[QDate, QDate]:
+    bit = _calisma_referans()
+    if kod == "ay":
+        return QDate(bit.year(), bit.month(), 1), bit
+    if kod == "ceyrek":
+        q = (bit.month() - 1) // 3
+        bas_ay = q * 3 + 1
+        return QDate(bit.year(), bas_ay, 1), bit
+    # yil
+    return QDate(bit.year(), 1, 1), bit
 
 
 class ChromeToolbar(QFrame):
@@ -55,12 +88,13 @@ class ChromeToolbar(QFrame):
         self._tek_tarih = False
         self._aktif_tab: object | None = None
         self._son_tur = "notr"
+        self._kisayol_kod: str | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 10, 14, 8)
         root.setSpacing(8)
 
-        # —— Satır 1: kontroller + kısa durum ——
+        # —— Satır 1: kontroller + kısayol + son güncelleme + kısa durum ——
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
@@ -101,7 +135,34 @@ class ChromeToolbar(QFrame):
         self._btn_csv.clicked.connect(self.csv_clicked.emit)
         row.addWidget(self._btn_csv)
 
+        # Dönem kısayolları (mavi boşluk)
+        self._kisayol_wrap = QFrame()
+        self._kisayol_wrap.setObjectName("donemKisayol")
+        kisayol_lay = QHBoxLayout(self._kisayol_wrap)
+        kisayol_lay.setContentsMargins(2, 2, 2, 2)
+        kisayol_lay.setSpacing(0)
+        self._kisayol_grp = QButtonGroup(self)
+        self._kisayol_grp.setExclusive(True)
+        self._kisayol_btn: dict[str, QPushButton] = {}
+        for kod, etiket in _KISAYOLLAR:
+            btn = QPushButton(etiket)
+            btn.setObjectName("donemKisayolBtn")
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            btn.clicked.connect(lambda _=False, k=kod: self._kisayol_uygula(k))
+            self._kisayol_grp.addButton(btn)
+            self._kisayol_btn[kod] = btn
+            kisayol_lay.addWidget(btn)
+        row.addWidget(self._kisayol_wrap)
+
         row.addStretch(1)
+
+        self._son = QLabel("")
+        self._son.setObjectName("sonGuncelleme")
+        self._son.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._son.setVisible(False)
+        row.addWidget(self._son)
 
         self._status = QLabel("")
         self._status.setObjectName("toolbarHint")
@@ -121,6 +182,9 @@ class ChromeToolbar(QFrame):
         self._ozet_lay.setSpacing(8)
         self._ozet_lay.addStretch(1)
         root.addWidget(self._ozet)
+
+        donem.degisti.connect(self._kisayol_senkron)
+        self._kisayol_senkron()
 
     def set_aktif_tab(self, tab: object | None) -> None:
         """Chrome'u hangi sekmenin kontrol ettiğini kaydet."""
@@ -159,6 +223,13 @@ class ChromeToolbar(QFrame):
         self._btn_ekstra.setText(etiket)
         self._btn_ekstra.setVisible(gorunur)
 
+    def isaretle_son_guncelleme(self, when: datetime | None = None) -> None:
+        """Başarılı rapor çekiminde sağdaki «Son: …» zaman damgasını günceller."""
+        dt = when or datetime.now()
+        self._son.setText(f"Son: {dt.strftime('%d.%m.%Y %H:%M')}")
+        self._son.setToolTip(f"Son güncelleme: {dt.strftime('%d.%m.%Y %H:%M:%S')}")
+        self._son.setVisible(True)
+
     def set_durum_mesaj(self, mesaj: str) -> None:
         self.set_durum(mesaj, self._son_tur)
 
@@ -188,6 +259,28 @@ class ChromeToolbar(QFrame):
             self._status.setToolTip(text if len(text) > _KISA_MAX else "")
             self._status.setVisible(True)
             self._ozet_temizle()
+
+    def _kisayol_uygula(self, kod: str) -> None:
+        bas, bit = _kisayol_aralik(kod)
+        self._donem.donem_ayarla(bas=bas, bit=bit)
+        self._kisayol_senkron()
+
+    def _kisayol_senkron(self) -> None:
+        """Mevcut dönem bir kısayola uyuyorsa o butonu işaretle."""
+        bas, bit = self._donem.bas_tarih(), self._donem.bit_tarih()
+        eslesen: str | None = None
+        for kod, _ in _KISAYOLLAR:
+            k_bas, k_bit = _kisayol_aralik(kod)
+            if bas == k_bas and bit == k_bit:
+                eslesen = kod
+                break
+        self._kisayol_kod = eslesen
+        self._kisayol_grp.setExclusive(False)
+        for kod, btn in self._kisayol_btn.items():
+            btn.blockSignals(True)
+            btn.setChecked(kod == eslesen)
+            btn.blockSignals(False)
+        self._kisayol_grp.setExclusive(True)
 
     def _ozet_temizle(self) -> None:
         while self._ozet_lay.count():

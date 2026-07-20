@@ -119,6 +119,35 @@ QLabel#ozetChip {{
     font-size: 11px;
     font-weight: 600;
 }}
+QFrame#donemKisayol {{
+    background: {SURFACE};
+    border: 1px solid {BORDER_STRONG};
+    border-radius: 8px;
+}}
+QPushButton#donemKisayolBtn {{
+    background: transparent;
+    color: {MUTED};
+    border: none;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    min-height: 22px;
+}}
+QPushButton#donemKisayolBtn:hover {{
+    background: {ACCENT_SOFT};
+    color: {ACCENT};
+}}
+QPushButton#donemKisayolBtn:checked {{
+    background: {ACCENT};
+    color: #ffffff;
+}}
+QLabel#sonGuncelleme {{
+    color: {FAINT};
+    font-size: 11px;
+    font-weight: 600;
+    padding: 0 4px;
+}}
 QWidget#emptyState {{
     background-color: {SURFACE};
     border: none;

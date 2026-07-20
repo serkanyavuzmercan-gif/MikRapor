@@ -281,6 +281,7 @@ class RaporTab(QWidget):
             self._chrome.set_csv_aktif(True)
             if self.PDF_DESTEK:
                 self._chrome.set_pdf_aktif(True)
+            self._chrome.isaretle_son_guncelleme()
         self._goster(sonuc)
 
     def _on_hata(self, mesaj: str) -> None:
