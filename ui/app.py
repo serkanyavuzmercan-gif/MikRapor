@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 
-from PyQt6.QtCore import QEvent, QPoint, QSize, Qt, QTimer
+from PyQt6.QtCore import QEvent, QObject, QPoint, QSize, Qt, QTimer
 from PyQt6.QtGui import QCloseEvent, QFont
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
@@ -96,7 +96,14 @@ class _NavTip(QFrame):
         col.addWidget(self._title)
         root.addLayout(col)
 
-    def show_text(self, text: str, anchor_global: QPoint) -> None:
+    def show_text(
+        self,
+        text: str,
+        anchor_global: QPoint,
+        *,
+        eyebrow: str = "RAPOR",
+    ) -> None:
+        self._eyebrow.setText(eyebrow)
         self._title.setText(text)
         self.adjustSize()
         w, h = self.width(), self.height()
@@ -114,6 +121,64 @@ class _NavTip(QFrame):
 
     def hide_tip(self) -> None:
         self.hide()
+
+
+class _NavTipBag(QObject):
+    """QWidget hover’da sekme stili _NavTip gösterir (native tooltip’i bastırır)."""
+
+    def __init__(
+        self,
+        widget: QWidget,
+        *,
+        text: str = "",
+        eyebrow: str = "RAPOR",
+        parent: QObject | None = None,
+    ) -> None:
+        super().__init__(parent or widget)
+        self._widget = widget
+        self._text = (text or "").strip()
+        self._eyebrow = eyebrow
+        self._tip = _NavTip()
+        self._visible = False
+        self._delay = QTimer(self)
+        self._delay.setSingleShot(True)
+        self._delay.setInterval(220)
+        self._delay.timeout.connect(self._reveal)
+        widget.setToolTip("")  # native Qt tooltip kapalı
+        widget.installEventFilter(self)
+
+    def set_text(self, text: str) -> None:
+        self._text = (text or "").strip()
+        if not self._text:
+            self._cancel()
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802
+        if obj is self._widget:
+            et = event.type()
+            if et == QEvent.Type.ToolTip:
+                return True
+            if et == QEvent.Type.Enter:
+                if self._text:
+                    self._delay.start()
+                return False
+            if et in (QEvent.Type.Leave, QEvent.Type.Hide, QEvent.Type.Close):
+                self._cancel()
+                return False
+        return super().eventFilter(obj, event)
+
+    def _reveal(self) -> None:
+        if not self._text or not self._widget.isVisible():
+            return
+        self._visible = True
+        rect = self._widget.rect()
+        anchor = self._widget.mapToGlobal(rect.center())
+        anchor.setY(self._widget.mapToGlobal(rect.bottomLeft()).y() + 4)
+        self._tip.show_text(self._text, anchor, eyebrow=self._eyebrow)
+
+    def _cancel(self) -> None:
+        self._delay.stop()
+        self._visible = False
+        self._tip.hide_tip()
 
 
 class HeaderTabBar(QTabBar):
@@ -315,14 +380,18 @@ class MikRaporWindow(QMainWindow):
 
         btn_ayar = QPushButton(" Ayarlar")
         btn_ayar.setObjectName("ghostBtn")
-        btn_ayar.setToolTip("Mikro Ayarları")
         btn_ayar.setIcon(icon_gear(14))
         btn_ayar.setIconSize(QSize(14, 14))
         btn_ayar.clicked.connect(self._on_ayarlar)
         header.addWidget(btn_ayar, alignment=Qt.AlignmentFlag.AlignVCenter)
+        self._ayar_tip = _NavTipBag(
+            btn_ayar, text="Mikro Ayarları", eyebrow="AYARLAR", parent=self)
+
         self._conn = QLabel()
         self._conn.setObjectName("connStatus")
+        self._conn.setCursor(Qt.CursorShape.ArrowCursor)
         header.addWidget(self._conn, alignment=Qt.AlignmentFlag.AlignVCenter)
+        self._firma_tip = _NavTipBag(self._conn, eyebrow="FİRMA", parent=self)
         layout.addWidget(brand_bar)
         self._conn.setText("○  Ayarlanmadı")
         self._conn.setProperty("connected", False)
@@ -378,7 +447,8 @@ class MikRaporWindow(QMainWindow):
 
     def _set_conn(self, text: str, connected: bool, *, tooltip: str = "") -> None:
         self._conn.setText(text)
-        self._conn.setToolTip(tooltip)
+        self._conn.setToolTip("")  # native kapalı; _NavTipBag kullan
+        self._firma_tip.set_text(tooltip)
         self._conn.setProperty("connected", connected)
         self._conn.style().unpolish(self._conn)
         self._conn.style().polish(self._conn)
