@@ -117,6 +117,7 @@ class RaporTab(QWidget):
         # 0: empty, 1: soluk arka + rapor — tüm sekmelerde aynı motor
         self._stack = QStackedWidget()
         hero = (self.HERO_ASSET or "").strip() or DEFAULT_HERO_ASSET
+        hero_fit = (self.HERO_FIT or "cover").strip() or "cover"
         self._empty = hos_geldin(
             self.EMOJI,
             self.BASLIK,
@@ -125,6 +126,7 @@ class RaporTab(QWidget):
             on_cta=self._on_getir,
             cta=self.GETIR_ETIKET,
             hero_asset=hero,
+            hero_fit=hero_fit,
         )
         self._stack.addWidget(self._empty)
 
@@ -134,7 +136,9 @@ class RaporTab(QWidget):
         ic_lay = QGridLayout(self._icerik_sayfa)
         ic_lay.setContentsMargins(0, 0, 0, 0)
         ic_lay.setSpacing(0)
-        self._arka = build_soluk_arka_plan(opacity=HERO_SOLUK_OPACITY, hero_asset=hero)
+        self._arka = build_soluk_arka_plan(
+            opacity=HERO_SOLUK_OPACITY, hero_asset=hero, hero_fit=hero_fit,
+        )
         ic_lay.addWidget(self._arka, 0, 0)
 
         self._view = QScrollArea()

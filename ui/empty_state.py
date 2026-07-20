@@ -450,9 +450,16 @@ class EmptyState(QWidget):
         self._yerlestir()
 
 
-def build_soluk_arka_plan(*, opacity: float = HERO_SOLUK_OPACITY, hero_asset: str | None = None) -> QWidget:
+def build_soluk_arka_plan(
+    *,
+    opacity: float = HERO_SOLUK_OPACITY,
+    hero_asset: str | None = None,
+    hero_fit: str = "cover",
+) -> QWidget:
     """Rapor içeriği altında soluk illüstrasyon — empty ile aynı solukluk."""
-    bg = _CoverBackground(_load_hero_pixmap(hero_asset or DEFAULT_HERO_ASSET))
+    bg = _CoverBackground(
+        _load_hero_pixmap(hero_asset or DEFAULT_HERO_ASSET), fit=hero_fit,
+    )
     bg.set_soluk(True, opacity=opacity)
     return bg
 
@@ -464,6 +471,7 @@ def build_empty_state(
     cta_hint: str = "Getir",
     on_cta: Callable[[], None] | None = None,
     hero_asset: str | None = None,
+    hero_fit: str = "cover",
 ) -> QWidget:
     return EmptyState(
         baslik,
@@ -471,4 +479,5 @@ def build_empty_state(
         cta_hint=cta_hint,
         on_cta=on_cta,
         hero_asset=hero_asset or DEFAULT_HERO_ASSET,
+        hero_fit=hero_fit,
     )

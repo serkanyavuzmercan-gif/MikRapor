@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 
 from PyQt6.QtCore import QEvent, QPoint, QSize, Qt, QTimer
-from PyQt6.QtGui import QCloseEvent, QColor, QFont
+from PyQt6.QtGui import QCloseEvent, QFont
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
