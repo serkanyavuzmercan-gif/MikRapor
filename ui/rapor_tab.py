@@ -217,7 +217,8 @@ class RaporTab(QWidget):
 
         self._arka.lower()
         self._view.raise_()
-        self._yukleniyor.durdur()
+        if getattr(self, "_yukleniyor", None) is not None:
+            self._yukleniyor.durdur()
         self._rapor_var = True
         self._stack.setCurrentIndex(1)
 
@@ -268,9 +269,10 @@ class RaporTab(QWidget):
             self._chrome.set_getir_aktif(False)
             self._chrome.set_iptal_gorunur(True)
         self._durum(self.BASLARKEN)
-        self._yukleniyor.set_durum(self.BASLARKEN)
-        self._stack.setCurrentIndex(2)
-        self._yukleniyor.basla()
+        if getattr(self, "_yukleniyor", None) is not None:
+            self._yukleniyor.set_durum(self.BASLARKEN)
+            self._stack.setCurrentIndex(2)
+            self._yukleniyor.basla()
 
         worker = RaporWorker(is_fn, self)
         worker.ilerleme.connect(self._on_ilerleme)
@@ -284,7 +286,8 @@ class RaporTab(QWidget):
         if self.sender() is not None and self.sender() is not self._worker:
             return
         self._durum(mesaj)
-        self._yukleniyor.set_durum(mesaj)
+        if getattr(self, "_yukleniyor", None) is not None:
+            self._yukleniyor.set_durum(mesaj)
 
     def _on_bitti(self, sonuc: object) -> None:
         if self.sender() is not None and self.sender() is not self._worker:
@@ -299,8 +302,9 @@ class RaporTab(QWidget):
     def _on_hata(self, mesaj: str) -> None:
         if self.sender() is not None and self.sender() is not self._worker:
             return
-        self._yukleniyor.durdur()
-        self._stack.setCurrentIndex(1 if self._rapor_var else 0)
+        if getattr(self, "_yukleniyor", None) is not None:
+            self._yukleniyor.durdur()
+            self._stack.setCurrentIndex(1 if self._rapor_var else 0)
         self._durum("Rapor getirilemedi.", "hata")
         QMessageBox.warning(self, "Mikro Hatası", mesaj)
 
@@ -325,8 +329,9 @@ class RaporTab(QWidget):
             self._worker = None
             w.wait(3000)
             w.deleteLater()
-        self._yukleniyor.durdur()
-        self._stack.setCurrentIndex(1 if self._rapor_var else 0)
+        if getattr(self, "_yukleniyor", None) is not None:
+            self._yukleniyor.durdur()
+            self._stack.setCurrentIndex(1 if self._rapor_var else 0)
         if self._chrome_aktif() and self._chrome is not None:
             self._chrome.set_getir_aktif(True)
             self._chrome.set_iptal_gorunur(False)
