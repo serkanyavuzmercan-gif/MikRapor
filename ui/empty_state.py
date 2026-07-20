@@ -337,6 +337,8 @@ class EmptyState(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self._bg = _CoverBackground(_load_hero_pixmap(hero_asset), self)
+        # Tablo gelinceki soluk arka plan görünümü — empty'de de aynı
+        self._bg.set_soluk(True, opacity=HERO_SOLUK_OPACITY)
         self._bg.lower()
         self._arka_plan = False
 
@@ -429,8 +431,8 @@ class EmptyState(QWidget):
         self._yerlestir()
 
 
-def build_soluk_arka_plan(*, opacity: float = 0.40, hero_asset: str | None = None) -> QWidget:
-    """Rapor içeriği altında soluk illüstrasyon — tüm sekmelerde aynı cover/soluk motoru."""
+def build_soluk_arka_plan(*, opacity: float = HERO_SOLUK_OPACITY, hero_asset: str | None = None) -> QWidget:
+    """Rapor içeriği altında soluk illüstrasyon — empty ile aynı solukluk."""
     bg = _CoverBackground(_load_hero_pixmap(hero_asset or DEFAULT_HERO_ASSET))
     bg.set_soluk(True, opacity=opacity)
     return bg

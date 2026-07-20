@@ -132,7 +132,7 @@ class RaporTab(QWidget):
         ic_lay = QGridLayout(self._icerik_sayfa)
         ic_lay.setContentsMargins(0, 0, 0, 0)
         ic_lay.setSpacing(0)
-        self._arka = build_soluk_arka_plan(opacity=_HERO_SOLUK_OPACITY, hero_asset=hero)
+        self._arka = build_soluk_arka_plan(opacity=HERO_SOLUK_OPACITY, hero_asset=hero)
         ic_lay.addWidget(self._arka, 0, 0)
 
         self._view = QScrollArea()
