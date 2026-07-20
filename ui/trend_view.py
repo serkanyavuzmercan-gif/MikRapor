@@ -20,8 +20,10 @@ from PyQt6.QtWidgets import (
 )
 
 from domain.mizan_bilanco import tl
+from domain.terimler import sade_oran
 from domain.trend import TrendRapor
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG
+from ui.nav_tip import bagla_nav_tip
 from ui.styles import BAD as NEG
 from ui.styles import BORDER, PANEL_BG
 from ui.styles import OK as POZ
@@ -213,18 +215,22 @@ def build_trend_widget(tr: TrendRapor, firma: str = "") -> QWidget:
     hl.setContentsMargins(20, 16, 20, 16)
     hl.setSpacing(24)
     cari = next((o for o in tr.oranlar if o.kod == "cari"), None)
-    for baslik, deger, vr in (
-        ("TOPLAM SATIŞ", tl(tr.toplam_satis), "#0f172a"),
-        ("TOPLAM BRÜT", tl(tr.toplam_brut), _renk(tr.toplam_brut)),
-        ("NAKİT NET", tl(tr.toplam_nakit_net), _renk(tr.toplam_nakit_net)),
+    for baslik, deger, vr, ipucu in (
+        ("TOPLAM SATIŞ", tl(tr.toplam_satis), "#0f172a", ""),
+        ("TOPLAM BRÜT", tl(tr.toplam_brut), _renk(tr.toplam_brut), ""),
+        ("NAKİT NET", tl(tr.toplam_nakit_net), _renk(tr.toplam_nakit_net), ""),
         ("CARİ ORAN", cari.metin() if cari else "—",
          (POZ if cari and cari.deger is not None and cari.deger >= 1 else NEG)
-         if cari and cari.deger is not None else MUTED),
+         if cari and cari.deger is not None else MUTED,
+         sade_oran("cari")),
     ):
         col = QVBoxLayout()
         col.setSpacing(2)
-        lb = QLabel(baslik)
+        # Açıklamasız KPI'ya hover'da sade açıklama (?) balonu bağlanır.
+        lb = QLabel(baslik + ("  ⓘ" if ipucu else ""))
         lb.setStyleSheet(f"color: {MUTED}; font-size: 11px; font-weight: 600;")
+        if ipucu:
+            bagla_nav_tip(lb, ipucu, eyebrow="TERİM")
         col.addWidget(lb)
         dv = QLabel(deger)
         dv.setStyleSheet(f"color: {vr}; font-size: 18px; font-weight: 800;")
