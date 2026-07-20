@@ -7,15 +7,16 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFileDialog,
     QFrame,
+    QHBoxLayout,
     QLabel,
     QMessageBox,
-    QVBoxLayout,
+    QSizePolicy,
     QWidget,
 )
 
@@ -30,25 +31,57 @@ DURUM_RENK = {
 }
 
 
+def _bitis_tarihi(bitis: str) -> QDate | None:
+    """'yyyy-MM-dd' veya 'yyyy-MM' → QDate (ay için ayın son günü)."""
+    s = (bitis or "").strip()
+    if len(s) >= 10:
+        d = QDate.fromString(s[:10], "yyyy-MM-dd")
+        return d if d.isValid() else None
+    if len(s) >= 7:
+        d = QDate.fromString(s[:7] + "-01", "yyyy-MM-dd")
+        if d.isValid():
+            return QDate(d.year(), d.month(), d.daysInMonth())
+    return None
+
+
+def donem_gelecek_mi(bitis: str) -> bool:
+    d = _bitis_tarihi(bitis)
+    return d is not None and d > QDate.currentDate()
+
+
 def gelecek_donem_uyari_kutusu() -> QFrame:
-    """Seçilen dönem henüz oluşmamışsa gösterilen sarı dikkat kutusu."""
+    """Tek satırlık sarı dikkat kutusu — başlık satırının sağına konur."""
     kutu = QFrame()
     kutu.setObjectName("gelecekDonemUyari")
-    kutu.setMaximumWidth(420)
-    lay = QVBoxLayout(kutu)
-    lay.setContentsMargins(12, 10, 12, 10)
-    lay.setSpacing(2)
-    baslik = QLabel("Dikkat")
-    baslik.setObjectName("gelecekDonemUyariBaslik")
-    lay.addWidget(baslik)
+    kutu.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    lay = QHBoxLayout(kutu)
+    lay.setContentsMargins(10, 5, 10, 5)
+    lay.setSpacing(0)
     metin = QLabel(
-        "Seçtiğiniz dönem verileri daha oluşmadığı için "
+        "Dikkat: Seçtiğiniz dönem verileri daha oluşmadığı için "
         "anlık dönem verileriniz gösteriliyor."
     )
     metin.setObjectName("gelecekDonemUyariMetin")
-    metin.setWordWrap(True)
+    metin.setWordWrap(False)
     lay.addWidget(metin)
     return kutu
+
+
+def baslik_ile_gelecek_uyari(head: QWidget, bitis: str) -> QWidget:
+    """Başlık + (gerekirse) sağda tek satır gelecek-dönem uyarısı; ekstra dikey alan yok."""
+    row = QWidget()
+    row.setStyleSheet("background: transparent;")
+    lay = QHBoxLayout(row)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.setSpacing(12)
+    lay.addWidget(head, 1)
+    if donem_gelecek_mi(bitis):
+        lay.addWidget(
+            gelecek_donem_uyari_kutusu(),
+            0,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
+    return row
 
 
 def durum_yaz(label: QLabel, mesaj: str, tur: str = "notr") -> None:

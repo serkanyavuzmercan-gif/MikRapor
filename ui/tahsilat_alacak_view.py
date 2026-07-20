@@ -203,7 +203,8 @@ def build_tahsilat_alacak_widget(ta: TahsilatAlacak, firma: str = "") -> QWidget
     )
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
-    root.addWidget(head)
+    from ui.bilesenler import baslik_ile_gelecek_uyari
+    root.addWidget(baslik_ile_gelecek_uyari(head, ta.bit))
 
     if ta.cari_sayisi == 0:
         uyari = QLabel(
