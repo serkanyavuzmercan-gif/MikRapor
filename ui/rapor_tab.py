@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -230,17 +230,41 @@ class RaporTab(QWidget):
         cfg = self._ayarlar_tamam()
         if cfg is None:
             return
+        bit_d = self._donem.bit_tarih()
         if self.TEK_TARIH:
-            bit = self._donem.bit_tarih().toString("yyyy-MM-dd")
-            bas = bit
+            bas_d = bit_d
+            bas = bit = bit_d.toString("yyyy-MM-dd")
         else:
             bas_d = self._donem.bas_tarih()
-            bit_d = self._donem.bit_tarih()
             if bas_d > bit_d:
                 QMessageBox.warning(self, "Tarih Hatası", "Başlangıç tarihi bitişten sonra olamaz.")
                 return
             bas = bas_d.toString("yyyy-MM-dd")
             bit = bit_d.toString("yyyy-MM-dd")
+
+        bugun = QDate.currentDate()
+        if bit_d > bugun:
+            from ui.bilesenler import soru_evet_hayir
+
+            if self.TEK_TARIH:
+                tarih_yazi = f"Seçilen tarih ({bit_d.toString('dd.MM.yyyy')})"
+            else:
+                tarih_yazi = (
+                    f"Seçilen dönem ({bas_d.toString('dd.MM.yyyy')} — "
+                    f"{bit_d.toString('dd.MM.yyyy')})"
+                )
+            devam = soru_evet_hayir(
+                self,
+                "Gelecek dönem",
+                f"{tarih_yazi} bugünden ({bugun.toString('dd.MM.yyyy')}) sonra bitiyor.\n\n"
+                "Mikro'da henüz oluşmamış fişler olmadığı için rapor, bugüne kadarki "
+                "bakiyelere çok benzer görünebilir (ör. 4. çeyrek ≈ 3. çeyrek).\n\n"
+                "Yine de getirilsin mi?",
+                varsayilan_evet=False,
+            )
+            if not devam:
+                return
+
         self._calistir(self._is_hazirla(cfg, bas, bit))
 
     def _calistir(self, is_fn: IsFonksiyonu) -> None:

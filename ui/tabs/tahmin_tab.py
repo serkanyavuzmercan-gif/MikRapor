@@ -52,9 +52,9 @@ class TahminTab(RaporTab):
     EMOJI = "🔮"
     BASLIK = "Tahmin"
     ACIKLAMA = (
-        "Geçmiş trendden otomatik tahmin üretir; varsayımları (büyüme, marj,<br>"
-        "gider) düzenleyip senaryonu görebilirsin: tahmini ciro, kâr ve nakit.<br>"
-        "<span style='color:#9aa0a8;'>Önce «Geçmişten Doldur», sonra istediğini değiştir.</span>")
+        "Üstteki tarih aralığı <b>geçmiş öğrenme dönemi</b>dir (satış, marj, nakit, gider).<br>"
+        "İleriye bakış süresi sol paneldeki <b>Ufuk</b> ile ayarlanır; «Projekte Et» ile senaryo üretilir.<br>"
+        "<span style='color:#9aa0a8;'>Önce «Geçmişten Doldur», sonra varsayımları değiştir.</span>")
     GETIR_ETIKET = "Geçmişten Doldur"
     BASLARKEN = "Geçmiş veri çekiliyor (satış, marj, nakit, gider)…"
     DONEM_ETIKET = "Geçmiş veri dönemi:"
