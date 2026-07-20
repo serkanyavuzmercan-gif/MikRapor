@@ -252,6 +252,33 @@ def fetch_kredi_anapara(client: MikroClient, bas: str, bit: str) -> float:
     return 0.0
 
 
+def fetch_kredi_gl(client: MikroClient, bas: str, bit: str) -> dict[str, float]:
+    """
+    Dönem içi GL kredi hareketi (iki yön): 300/303 borç = anapara ÖDEMESİ,
+    alacak = yeni KULLANIM.
+
+    Kredi taksitleri birçok kurulumda cari/banka hareketine değil doğrudan muhasebeye
+    işlenir → Nakit Akış'ın banka-hareket kaynağı krediyi hiç göremez. Bu sorgu
+    muhasebeden gerçeği okur; KREDİ ÖZETİ'nin yedek kaynağıdır.
+    """
+    bas = iso_tarih(bas, alan="tarih")
+    bit = iso_tarih(bit, alan="tarih")
+    sql = (
+        "SELECT SUM(CASE WHEN fis_meblag0 > 0 THEN fis_meblag0 ELSE 0 END) AS odeme, "
+        "SUM(CASE WHEN fis_meblag0 < 0 THEN -fis_meblag0 ELSE 0 END) AS kullanim "
+        "FROM MUHASEBE_FISLERI WITH (NOLOCK) "
+        "WHERE fis_iptal = 0 AND (fis_hesap_kod LIKE '300%' OR fis_hesap_kod LIKE '303%') "
+        f"AND fis_tarih >= '{bas}' AND fis_tarih < '{_bit_son(bit)}'"
+    )
+    rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+    if rows:
+        return {
+            "odeme": _f_local(get_row_value(rows[0], "odeme", "ODEME")),
+            "kullanim": _f_local(get_row_value(rows[0], "kullanim", "KULLANIM")),
+        }
+    return {"odeme": 0.0, "kullanim": 0.0}
+
+
 def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     """
     Belirli tarihe (asof = 'YYYY-MM-DD') kadar kümülatif mizan: hesap başına borç/alacak.
@@ -463,8 +490,12 @@ def _fetch_nakit_akis_sql(
         # cha_kasa_hizkod alanındadır. BANKALAR ile ayrış — banka hesapları 300.02.x gibi
         # kodlanıp TDHP 300 (kredi) ile çakışabildiğinden şart: kredi bankası → 'KRD',
         # nakit banka → iç transfer (sayma), aksi halde muhasebe hesabı öneki.
+        # cha_kasa_hizmet karşı tarafın TÜRÜdür (cha_cari_cins enum'u): 10=Finansal
+        # Sözleşme, 11=Kredi Sözleşmesi → doğrudan kredi (resmî Mikro API dokümanı,
+        # Tablo 51). Kod ne olursa olsun tür kazanır.
         hizkod_expr = (
-            "CASE WHEN hb.ban_kod IS NOT NULL AND ISNULL(hb.ban_hesap_tip, 0) = 1 THEN 'KRD' "
+            "CASE WHEN c.cha_kasa_hizmet IN (10, 11) THEN 'KRD' "
+            "WHEN hb.ban_kod IS NOT NULL AND ISNULL(hb.ban_hesap_tip, 0) = 1 THEN 'KRD' "
             "WHEN hb.ban_kod IS NOT NULL THEN '' "
             "WHEN LTRIM(RTRIM(ISNULL(c.cha_kasa_hizkod, ''))) <> '' "
             "THEN LEFT(LTRIM(c.cha_kasa_hizkod), 3) ELSE '' END"

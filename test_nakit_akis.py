@@ -116,5 +116,32 @@ class TestNakitAkis(unittest.TestCase):
         self.assertAlmostEqual(na.net_akis, 0, places=2)
 
 
+class TestKrediGLYedek(unittest.TestCase):
+    """Kredi banka hareketlerine işlenmemişse muhasebe (GL) tutarı gösterilmeli."""
+
+    def test_gl_yedegi_devreye_girer(self):
+        na = build_nakit_akis([], bas="2026-01-01", bit="2026-06-30")
+        self.assertAlmostEqual(na.kredi_odeme, 0.0, places=2)
+        na.kredi_odeme_gl = 1_435_866.96
+        na.kredi_kullanim_gl = 200_000.0
+        self.assertTrue(na.kredi_kaynak_gl)
+        self.assertAlmostEqual(na.kredi_odeme_gosterim, 1_435_866.96, places=2)
+        self.assertAlmostEqual(na.kredi_kullanim_gosterim, 200_000.0, places=2)
+        self.assertAlmostEqual(na.kredi_net_gosterim, 200_000.0 - 1_435_866.96, places=2)
+
+    def test_banka_hareketi_varsa_gl_kullanilmaz(self):
+        na = build_nakit_akis(
+            [_h("2026-01", 1, "300.01", 25000)], bas="2026-01-01", bit="2026-06-30")
+        na.kredi_odeme_gl = 999_999.0  # GL farklı olsa bile banka hareketi öncelikli
+        self.assertFalse(na.kredi_kaynak_gl)
+        self.assertAlmostEqual(na.kredi_odeme_gosterim, 25000.0, places=2)
+
+    def test_csv_kaynak_satiri(self):
+        na = build_nakit_akis([], bas="2026-01-01", bit="2026-06-30")
+        na.kredi_odeme_gl = 500_000.0
+        csv = nakit_akis_csv(na)
+        self.assertIn("muhasebe kayıtları (300/303)", csv)
+
+
 if __name__ == "__main__":
     unittest.main()

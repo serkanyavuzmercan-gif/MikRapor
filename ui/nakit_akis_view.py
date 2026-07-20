@@ -49,9 +49,15 @@ def _ozet_panel(na: NakitAkis) -> QFrame:
     g.addWidget(_cizgi(), 4, 0, 1, 2)
     satir(5, "Kapanış Nakit", tl(na.kapanis_nakit), bold=True, renk=_renk(na.kapanis_nakit))
     if abs(na.mutabakat_farki) > max(1000.0, na.kapanis_nakit * 0.01):
+        kredi_ek = (
+            f" ~{tl(na.kredi_odeme_gl)} kadarı muhasebeye işlenip banka hareketine "
+            "yansımayan kredi ödemesi olabilir."
+            if na.kredi_kaynak_gl and na.kredi_odeme_gl > 0.005 else ""
+        )
         not_lbl = _satir_label(
             f"Mutabakat: açılış + net akış = {tl(na.kapanis_hesaplanan)}; gerçek kapanışla "
-            f"{tl(na.mutabakat_farki)} fark (kur farkı / iç transfer / kapsam dışı hareket).",
+            f"{tl(na.mutabakat_farki)} fark (kur farkı / iç transfer / kapsam dışı hareket)."
+            f"{kredi_ek}",
             renk="#b45309", boyut=10)
         not_lbl.setWordWrap(True)
         g.addWidget(not_lbl, 6, 0, 1, 2)
@@ -105,17 +111,27 @@ def _kredi_panel(na: NakitAkis) -> QFrame:
         g.addWidget(_satir_label(ad, bold=bold), r, 0)
         g.addWidget(_satir_label(deger, bold=bold, renk=renk, sag=True), r, 1)
 
-    satir(0, "Kredi Kullanımı (giriş)", tl(na.kredi_kullanim), renk=POZ)
-    satir(1, "Kredi Ödemesi (çıkış)", tl(-na.kredi_odeme), renk=NEG)
-    satir(2, "Net Kredi", tl(na.kredi_net), bold=True, renk=_renk(na.kredi_net))
+    net = na.kredi_net_gosterim
+    satir(0, "Kredi Kullanımı (giriş)", tl(na.kredi_kullanim_gosterim), renk=POZ)
+    satir(1, "Kredi Ödemesi (çıkış)", tl(-na.kredi_odeme_gosterim), renk=NEG)
+    satir(2, "Net Kredi", tl(net), bold=True, renk=_renk(net))
     aciklama = (
-        "Dönemde net borçlanma (kullanım > ödeme)." if na.kredi_net > 0.005 else
-        "Dönemde net kredi geri ödemesi (borç azalıyor)." if na.kredi_net < -0.005 else
+        "Dönemde net borçlanma (kullanım > ödeme)." if net > 0.005 else
+        "Dönemde net kredi geri ödemesi (borç azalıyor)." if net < -0.005 else
         "Dönemde kredi hareketi dengede / yok."
     )
     not_lbl = _satir_label(aciklama, renk=FAINT, boyut=11)
     not_lbl.setWordWrap(True)
     g.addWidget(not_lbl, 3, 0, 1, 2)
+    if na.kredi_kaynak_gl:
+        uyari = _satir_label(
+            "⚠ Kredi taksitleri banka hareketlerine işlenmemiş — tutarlar muhasebe "
+            "kayıtlarından (300/303 hesap) alındı. Üstteki Toplam Çıkış bu ödemeleri "
+            "İÇERMEZ; mutabakat farkının bir kısmı budur.",
+            renk="#8a5a00", boyut=11,
+        )
+        uyari.setWordWrap(True)
+        g.addWidget(uyari, 4, 0, 1, 2)
     return _card("KREDİ ÖZETİ", inner)
 
 
