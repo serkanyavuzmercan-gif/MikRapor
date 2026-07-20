@@ -119,6 +119,19 @@ QLabel#ozetChip {{
     font-size: 11px;
     font-weight: 600;
 }}
+QPushButton#ozetIpucu {{
+    background: transparent;
+    color: {ACCENT};
+    border: none;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: right;
+}}
+QPushButton#ozetIpucu:hover {{
+    color: {ACCENT_HOVER};
+    text-decoration: underline;
+}}
 QFrame#gelecekDonemUyari {{
     background-color: {WARN_BG};
     border: 1px solid #f0d4a0;
