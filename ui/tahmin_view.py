@@ -1,8 +1,11 @@
 """
-Tahmin — yerel Qt görünümü (projeksiyon çıktısı).
+Tahmin — yerel Qt görünümü (ileriye dönük nakit tahmini).
 
-Varsayım formu sekmede (main.py) durur; burada tahmin SONUCU gösterilir: KPI, aylık projeksiyon
-tablosu (ciro / brüt kâr / net kâr / nakit) ve ciro+nakit grafiği. Kart/satır stilleri paylaşılır.
+İki ihtimali sade Türkçe ile yan yana anlatır:
+  • EN KÖTÜ İHTİMAL — bugünkü açık alacak/borçlar; yeni satış varsayılmaz (vade takvimi).
+  • NORMAL BEKLENTİ — her ay ortalama satış devam ederse (düzenlenebilir senaryo).
+Gerçek durum ikisinin arasında olur. Terimler bilinçli olarak Türkçe ve yalındır
+(runway / what-if gibi İngilizce ifadeler kullanılmaz).
 """
 
 from __future__ import annotations
@@ -38,62 +41,90 @@ def _ay_str(yyyymm: str) -> str:
         return yyyymm
 
 
-def _runway_banner_takvim(rt: RunwayTakvim) -> QFrame:
-    """Vade-takvimli runway özeti (gerçek açık kalemlere dayanır)."""
+def _kotu_ozet(rt: RunwayTakvim) -> str:
+    """En kötü ihtimalin tek cümlelik özeti."""
     if rt.tukenme_ay is not None:
-        renk, bg, kenar = NEG, "#fdecec", "#f3b4b4"
-        baslik = f"Nakit {_ay_str(rt.tukenme_ay)} ayında eksiye düşüyor"
-        oneri = "→ Tahsilatı öne çek, ödemeleri ertele; kısa vadeli finansman planla."
-    elif rt.gider_eksik:
-        # Gider okunamadıysa "sağlıklı" demek yanıltıcı — sarı, uyarılı.
-        renk, bg, kenar = "#b45309", "#fdf3e0", "#f0d090"
-        baslik = "Runway giderleri eksik — sonuç güvenilir değil"
-        oneri = ""
-    else:
-        renk, bg, kenar = "#15803d", "#e8f6ee", "#bfe3cd"
-        baslik = (f"Nakit {rt.ufuk_ay} ay boyunca pozitif "
-                  f"(en düşük {tl(rt.en_dusuk_nakit)} · {_ay_str(rt.en_dusuk_ay)})")
-        oneri = ""
-    card = QFrame()
-    card.setObjectName("rwBanner")
-    card.setStyleSheet(
-        f"QFrame#rwBanner {{ background: {bg}; border: 1px solid {kenar}; border-radius: 12px; }}"
+        return f"paran <b>{_ay_str(rt.tukenme_ay)}</b> ayında biter (eksiye düşer)"
+    return (f"paran {rt.ufuk_ay} ay boyunca yeter "
+            f"(en düşük {tl(rt.en_dusuk_nakit)})")
+
+
+def _normal_ozet(t: Tahmin) -> str:
+    """Normal beklentinin tek cümlelik özeti."""
+    n = len(t.aylar)
+    if t.en_dusuk_nakit < 0:
+        return (f"nakit yine de <b>{t.en_dusuk_ay}</b> ayında eksiye düşüyor "
+                f"({tl(t.en_dusuk_nakit)})")
+    return f"{n} ay sonunda nakitin <b>{tl(t.son_nakit)}</b> olur"
+
+
+def _iki_ihtimal_karti(rt: RunwayTakvim | None, t: Tahmin) -> QFrame:
+    """'Bu iki tablo ne?' sorusunu kökten çözen sade açıklama kartı."""
+    inner = QWidget()
+    inner.setStyleSheet("background: transparent;")
+    v = QVBoxLayout(inner)
+    v.setContentsMargins(0, 0, 0, 0)
+    v.setSpacing(9)
+
+    giris = QLabel("Nakitin nasıl gideceğini <b>iki ihtimalle</b> gösteriyoruz:")
+    giris.setTextFormat(Qt.TextFormat.RichText)
+    giris.setWordWrap(True)
+    giris.setStyleSheet("color: #374151; font-size: 13px; background: transparent;")
+    v.addWidget(giris)
+
+    def _satir(renk: str, bg: str, etiket: str, aciklama: str, ozet: str) -> QFrame:
+        f = QFrame()
+        f.setStyleSheet(
+            f"QFrame {{ background: {bg}; border: 1px solid {renk}44; border-radius: 10px; }}"
+        )
+        fl = QVBoxLayout(f)
+        fl.setContentsMargins(13, 10, 13, 10)
+        fl.setSpacing(2)
+        ust = QLabel(f"<span style='color:{renk};'>●</span> <b>{etiket}</b> — {aciklama}")
+        ust.setTextFormat(Qt.TextFormat.RichText)
+        ust.setWordWrap(True)
+        ust.setStyleSheet(f"color: {renk}; font-size: 13px; background: transparent;")
+        fl.addWidget(ust)
+        alt = QLabel(f"→ {ozet}")
+        alt.setTextFormat(Qt.TextFormat.RichText)
+        alt.setWordWrap(True)
+        alt.setStyleSheet("color: #374151; font-size: 13px; font-weight: 600; background: transparent;")
+        fl.addWidget(alt)
+        return f
+
+    if rt is not None and rt.aylar:
+        v.addWidget(_satir(
+            NEG, "#fdecec", "En kötü ihtimal",
+            "bugün elindeki alacak/borçlarla, <u>hiç yeni satış olmazsa</u>",
+            _kotu_ozet(rt)))
+    v.addWidget(_satir(
+        POZ, "#e8f6ee", "Normal beklenti",
+        "her ay ortalama satışın <u>devam ederse</u>",
+        _normal_ozet(t)))
+
+    kapanis = QLabel(
+        "Gerçek durum çoğu zaman bu ikisinin <b>arasında</b> olur. "
+        "Kötü ihtimale hazırlıklı ol; normalde bundan iyi gidersin."
     )
-    lay = QVBoxLayout(card)
-    lay.setContentsMargins(18, 12, 18, 12)
-    lay.setSpacing(2)
-    eyebrow = QLabel("NAKİT RUNWAY  ·  vade takvimi")
-    eyebrow.setStyleSheet(
-        f"color: {renk}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; "
-        "background: transparent;"
-    )
-    lay.addWidget(eyebrow)
-    bl = QLabel(baslik)
-    bl.setWordWrap(True)
-    bl.setStyleSheet(f"color: {renk}; font-size: 18px; font-weight: 800; background: transparent;")
-    lay.addWidget(bl)
-    kredi = f"  ·  aylık kredi {tl(rt.aylik_kredi)}" if rt.aylik_kredi > 0.005 else ""
-    sub = QLabel(
-        f"Mevcut nakit {tl(rt.baslangic_nakit)}  ·  aylık düzenli gider "
-        f"{tl(rt.aylik_gider)}{kredi}" + (f"   {oneri}" if oneri else "")
-    )
-    sub.setWordWrap(True)
-    sub.setStyleSheet(f"color: {MUTED}; font-size: 12px; background: transparent;")
-    lay.addWidget(sub)
-    if rt.gider_eksik:
+    kapanis.setTextFormat(Qt.TextFormat.RichText)
+    kapanis.setWordWrap(True)
+    kapanis.setStyleSheet(f"color: {MUTED}; font-size: 12px; background: transparent;")
+    v.addWidget(kapanis)
+
+    if rt is not None and rt.gider_eksik:
         uy = QLabel(
-            "⚠ Maaş / genel gider / kredi ödemeleri Mikro'dan kategorize edilemedi "
-            "(aylık düzenli gider 0 okundu). Bu yüzden runway giderleri EKSİK ve "
-            "gerçek durumdan iyimserdir — bu haliyle nakit krizini göremeyebilir."
+            "⚠ Maaş / gider / kredi ödemeleri Mikro'dan tam okunamadı; "
+            "«en kötü ihtimal» gerçekte olduğundan iyimser görünebilir."
         )
         uy.setWordWrap(True)
         uy.setStyleSheet("color: #8a5a00; font-size: 11.5px; font-weight: 600; background: transparent;")
-        lay.addWidget(uy)
-    return card
+        v.addWidget(uy)
+
+    return _card("NAKİT NE OLUR? — İKİ İHTİMAL", inner)
 
 
-def _runway_tablo_takvim(rt: RunwayTakvim) -> QFrame:
-    """Ay-ay nakit takvimi: girecek − çıkacak → kümülatif nakit."""
+def _kotu_tablo(rt: RunwayTakvim) -> QFrame:
+    """En kötü ihtimal: ay-ay girecek − çıkacak → kalan nakit."""
     inner = QWidget()
     inner.setStyleSheet("background: transparent;")
     g = QGridLayout(inner)
@@ -101,7 +132,7 @@ def _runway_tablo_takvim(rt: RunwayTakvim) -> QFrame:
     g.setHorizontalSpacing(14)
     g.setVerticalSpacing(7)
     g.setColumnStretch(0, 1)
-    for c, bs in ((1, "Girecek"), (2, "Çıkacak"), (3, "Net"), (4, "Nakit")):
+    for c, bs in ((1, "Girecek"), (2, "Çıkacak"), (3, "Aylık Fark"), (4, "Kalan Nakit")):
         g.addWidget(_satir_label(bs, renk=MUTED, boyut=11, bold=True, sag=True), 0, c)
     for i, a in enumerate(rt.aylar, start=1):
         g.addWidget(_satir_label(_ay_str(a.ay), bold=True), i, 0)
@@ -113,12 +144,13 @@ def _runway_tablo_takvim(rt: RunwayTakvim) -> QFrame:
                                  renk=_renk(a.net)), i, 3)
         g.addWidget(_satir_label(tl(a.nakit), sag=True, bold=True, renk=_renk(a.nakit)), i, 4)
     not_lbl = _satir_label(
-        "Konservatif taban senaryo: eldeki açık alacak/borç vadeleri + düzenli aylık giderler. "
-        "Yeni satış varsayılmaz — gerçek nakit büyük ihtimalle bundan daha iyi olur.",
+        "Bu tablo yeni satış saymaz: elindeki açık alacaklar girer, borçlar + her ayki "
+        "düzenli giderler çıkar. Bu yüzden «Girecek» birkaç ay sonra biter. Gerçekte yeni "
+        "satışlar olacağı için durum bundan daha iyi olur (bkz. alttaki «normal beklenti»).",
         renk=FAINT, boyut=11)
     not_lbl.setWordWrap(True)
     g.addWidget(not_lbl, len(rt.aylar) + 1, 0, 1, 5)
-    return _card("NAKİT TAKVİMİ  (ay-ay, vadeye göre)", inner)
+    return _card("① EN KÖTÜ İHTİMAL  ·  ay ay nakit (yeni satış yok)", inner)
 
 
 def _tablo_panel(t: Tahmin) -> QFrame:
@@ -141,7 +173,7 @@ def _tablo_panel(t: Tahmin) -> QFrame:
         g.addWidget(_satir_label(tl(a.net_kar), sag=True, renk=_renk(a.net_kar)), r, 3)
         g.addWidget(_satir_label(tl(a.nakit), sag=True, bold=True, renk=_renk(a.nakit)), r, 4)
         r += 1
-    return _card("AYLIK PROJEKSİYON", inner)
+    return _card("② NORMAL BEKLENTİ  ·  ay ay tahmin (satış devam eder)", inner)
 
 
 class _TahminChart(QWidget):
@@ -162,7 +194,7 @@ class _TahminChart(QWidget):
         cw, ch = w - sol - sag, h - ust - alt
         if not self._aylar or cw <= 0 or ch <= 0:
             p.setPen(QPen(QColor(FAINT)))
-            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "Projeksiyon yok")
+            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "Tahmin yok")
             p.end()
             return
         ciro = [a.ciro for a in self._aylar]
@@ -210,20 +242,30 @@ def _grafik_panel(t: Tahmin) -> QFrame:
     v.setContentsMargins(0, 0, 0, 0)
     v.setSpacing(6)
     lej = QLabel(
-        f"<span style='color:#99f6e4;'>■</span> Ciro (aylık) &nbsp;&nbsp;"
-        f"<span style='color:{ACCENT};'>▬</span> Nakit (kümülatif)"
+        f"<span style='color:#99f6e4;'>■</span> Aylık ciro &nbsp;&nbsp;"
+        f"<span style='color:{ACCENT};'>▬</span> Nakit (birikimli)"
     )
     lej.setStyleSheet("font-size: 11px; background: transparent;")
     lej.setTextFormat(Qt.TextFormat.RichText)
     v.addWidget(lej)
     v.addWidget(_TahminChart(t))
-    return _card("CİRO & NAKİT PROJEKSİYONU", inner)
+    return _card("CİRO VE NAKİT GRAFİĞİ  ·  normal beklenti", inner)
+
+
+def _bolum_basligi(metin: str, renk: str) -> QLabel:
+    lbl = QLabel(metin)
+    lbl.setTextFormat(Qt.TextFormat.RichText)
+    lbl.setWordWrap(True)
+    lbl.setStyleSheet(
+        f"color: {renk}; font-size: 12px; font-weight: 800; letter-spacing: 0.3px; "
+        "background: transparent; margin-top: 6px;")
+    return lbl
 
 
 def build_tahmin_widget(
     t: Tahmin, firma: str = "", runway: RunwayTakvim | None = None,
 ) -> QWidget:
-    """Bir Tahmin'den projeksiyon görünümü üretir; runway verilirse üstte gösterir."""
+    """Bir Tahmin'den görünüm üretir; runway (en kötü ihtimal) verilirse ikisini birlikte gösterir."""
     content = QWidget()
     content.setObjectName("tahminContent")
     content.setStyleSheet("QWidget#tahminContent { background: %s; }" % PAGE_BG)
@@ -231,25 +273,30 @@ def build_tahmin_widget(
     root.setContentsMargins(16, 14, 16, 16)
     root.setSpacing(14)
 
-    # Gerçek (vade-takvimli) runway — headline. Düzenlenebilir senaryo altta.
-    if runway is not None and runway.aylar:
-        root.addWidget(_runway_banner_takvim(runway))
-        root.addWidget(_runway_tablo_takvim(runway))
-        ayirac = QLabel("WHAT-IF SENARYO  ·  düzenlenebilir varsayımlar")
-        ayirac.setStyleSheet(
-            f"color: {MUTED}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; "
-            "background: transparent; margin-top: 4px;")
-        root.addWidget(ayirac)
+    var_runway = runway is not None and runway.aylar
+
+    # 0) "Bu iki tablo ne?" — sade açıklama kartı (en tepede)
+    root.addWidget(_iki_ihtimal_karti(runway, t))
+
+    # 1) En kötü ihtimal tablosu (vade takvimi)
+    if var_runway:
+        root.addWidget(_bolum_basligi(
+            "① EN KÖTÜ İHTİMAL — hiç yeni satış olmazsa", NEG))
+        root.addWidget(_kotu_tablo(runway))
+
+    # 2) Normal beklenti (düzenlenebilir senaryo)
+    root.addWidget(_bolum_basligi(
+        "② NORMAL BEKLENTİ — her ay ortalama satış devam ederse", POZ))
 
     v = t.varsayim
     firma_str = f" &nbsp;·&nbsp; <b>{firma}</b>" if firma else ""
     ilk = t.aylar[0].ay if t.aylar else ""
     son = t.aylar[-1].ay if t.aylar else ""
     head = QLabel(
-        f"<span style='color:{MUTED}; font-size:11px;'>TAHMİN &nbsp;·&nbsp; "
-        f"{ilk} → {son} ({len(t.aylar)} ay){firma_str}</span><br>"
+        f"<span style='color:{MUTED}; font-size:11px;'>{ilk} → {son} ({len(t.aylar)} ay)"
+        f"{firma_str}</span><br>"
         f"<span style='color:{FAINT}; font-size:11px;'>Varsayım: {v.ozet()}. "
-        f"Senaryoyu üstteki alanlardan değiştirip «Projekte Et»e basın.</span>"
+        f"Soldaki panelden rakamları değiştirip «Hesapla»ya basabilirsin.</span>"
     )
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
@@ -269,8 +316,9 @@ def build_tahmin_widget(
 
     if t.en_dusuk_nakit < 0:
         uyari = QLabel(
-            f"⚠ <b>Nakit {t.en_dusuk_ay} ayında eksiye düşüyor</b> ({tl(t.en_dusuk_nakit)}). "
-            "Büyüme, marj veya gider varsayımını gözden geçirin ya da finansman planlayın."
+            f"⚠ <b>Normal gidişte bile nakit {t.en_dusuk_ay} ayında eksiye düşüyor</b> "
+            f"({tl(t.en_dusuk_nakit)}). Büyüme, kâr oranı veya gideri gözden geçir ya da "
+            "kredi/finansman planla."
         )
         uyari.setWordWrap(True)
         uyari.setTextFormat(Qt.TextFormat.RichText)
