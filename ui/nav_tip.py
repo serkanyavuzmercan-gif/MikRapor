@@ -45,7 +45,7 @@ class NavTip(QFrame):
         col.addWidget(self._eyebrow)
         self._title = QLabel()
         self._title.setObjectName("navTipTitle")
-        self._title.setWordWrap(True)
+        self._title.setWordWrap(False)
         self._title.setMaximumWidth(340)
         title_font = QFont()
         title_font.setPointSize(10)
@@ -62,7 +62,21 @@ class NavTip(QFrame):
         eyebrow: str = "RAPOR",
     ) -> None:
         self._eyebrow.setText(eyebrow)
-        self._title.setText(text)
+        # Kısa metinlerde satır kırma (örn. «Temmuz — Aralık»); uzunlarda kaydır
+        plain = (text or "").strip()
+        wrap = ("\n" in plain) or (len(plain) > 42)
+        self._title.setWordWrap(wrap)
+        if wrap:
+            self._title.setMinimumWidth(0)
+            self._title.setMaximumWidth(340)
+            self._title.setText(plain)
+        else:
+            # Kırılmaz tire aralığı — Qt kısa kartta «Temmuz —» / «Aralık» yapmasın
+            self._title.setText(plain.replace(" — ", "\u00a0—\u00a0").replace(" - ", "\u00a0—\u00a0"))
+            self._title.setMinimumWidth(0)
+            self._title.setMaximumWidth(16777215)
+            self._title.adjustSize()
+            self._title.setMinimumWidth(self._title.sizeHint().width())
         self.adjustSize()
         w, h = self.width(), self.height()
         x = int(anchor_global.x() - w // 2)

@@ -86,7 +86,7 @@ class ChromeToolbar(QFrame):
             kl = QHBoxLayout(kutu)
             kl.setContentsMargins(3, 2, 3, 2)
             kl.setSpacing(2)
-            for kod, etiket in grup:
+            for kod, etiket, tip in grup:
                 btn = QPushButton(etiket)
                 btn.setObjectName("donemKisayolBtn")
                 btn.setCheckable(True)
@@ -95,6 +95,8 @@ class ChromeToolbar(QFrame):
                 btn.clicked.connect(lambda _=False, k=kod: self._kisayol_uygula(k))
                 self._kisayol_grp.addButton(btn)
                 self._kisayol_btn[kod] = btn
+                if tip:
+                    bagla_nav_tip(btn, tip, eyebrow="DÖNEM", parent=self)
                 kl.addWidget(btn)
             kisayol_serit.addWidget(kutu)
         row.addLayout(kisayol_serit)
