@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from domain.gercek_durum import AyTrend
 from domain.mizan_bilanco import Bilanco
 from domain.ortak import csv_sayi, yuzde
+from domain.terimler import sade_oran
 
 
 @dataclass
@@ -98,35 +99,21 @@ def build_finansal_oranlar(b: Bilanco) -> tuple[list[FinansalOran], dict[str, fl
         r = oran(pay, payda)
         return None if r is None else r * 100.0
 
+    # Açıklamalar formül tekrarı değil, sade dilde (bkz. domain.terimler).
     oranlar = [
-        FinansalOran(
-            "cari", "Cari Oran", oran(donen, kvyk), "x",
-            "Dönen varlıklar / Kısa vadeli yabancı kaynaklar",
-        ),
-        FinansalOran(
-            "asit", "Asit-Test (Likidite)", oran(donen - stok, kvyk), "x",
-            "(Dönen − Stok) / Kısa vadeli yabancı kaynaklar",
-        ),
-        FinansalOran(
-            "nakit_oran", "Nakit Oranı", oran(nakit, kvyk), "x",
-            "Nakit & benzeri / Kısa vadeli yabancı kaynaklar",
-        ),
-        FinansalOran(
-            "borc_oz", "Borç / Özkaynak", oran(yabanci, ozkaynak), "x",
-            "Yabancı kaynaklar / Özkaynaklar",
-        ),
-        FinansalOran(
-            "oz_oran", "Özkaynak Oranı", yuz(ozkaynak, aktif), "%",
-            "Özkaynaklar / Aktif toplam",
-        ),
-        FinansalOran(
-            "kv_oran", "Kısa Vadeli Borç Oranı", yuz(kvyk, aktif), "%",
-            "KVYK / Aktif toplam",
-        ),
-        FinansalOran(
-            "donen_oran", "Dönen Varlık Oranı", yuz(donen, aktif), "%",
-            "Dönen varlıklar / Aktif toplam",
-        ),
+        FinansalOran("cari", "Cari Oran", oran(donen, kvyk), "x", sade_oran("cari")),
+        FinansalOran("asit", "Asit-Test (Likidite)", oran(donen - stok, kvyk), "x",
+                     sade_oran("asit")),
+        FinansalOran("nakit_oran", "Nakit Oranı", oran(nakit, kvyk), "x",
+                     sade_oran("nakit_oran")),
+        FinansalOran("borc_oz", "Borç / Özkaynak", oran(yabanci, ozkaynak), "x",
+                     sade_oran("borc_oz")),
+        FinansalOran("oz_oran", "Özkaynak Oranı", yuz(ozkaynak, aktif), "%",
+                     sade_oran("oz_oran")),
+        FinansalOran("kv_oran", "Kısa Vadeli Borç Oranı", yuz(kvyk, aktif), "%",
+                     sade_oran("kv_oran")),
+        FinansalOran("donen_oran", "Dönen Varlık Oranı", yuz(donen, aktif), "%",
+                     sade_oran("donen_oran")),
     ]
     ozet = {
         "donen": donen, "duran": duran, "kvyk": kvyk, "uvyk": uvyk,
