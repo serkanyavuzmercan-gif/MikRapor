@@ -191,16 +191,40 @@ class ChromeToolbar(QFrame):
         self._btn_pdf.setVisible(gorunur)
 
     def set_pdf_aktif(self, aktif: bool) -> None:
-        self._btn_pdf.setEnabled(aktif)
+        self._pdf_hazir = aktif
+        self._btn_pdf.setProperty("hazir", "true" if aktif else "false")
         self._btn_pdf.setToolTip("PDF olarak kaydet" if aktif else _EXPORT_PASIF_TIP)
         self._btn_pdf.setCursor(
             Qt.CursorShape.PointingHandCursor if aktif else Qt.CursorShape.ForbiddenCursor)
+        self._btn_pdf.style().unpolish(self._btn_pdf)
+        self._btn_pdf.style().polish(self._btn_pdf)
 
     def set_csv_aktif(self, aktif: bool) -> None:
-        self._btn_csv.setEnabled(aktif)
+        self._csv_hazir = aktif
+        self._btn_csv.setProperty("hazir", "true" if aktif else "false")
         self._btn_csv.setToolTip("CSV olarak kaydet" if aktif else _EXPORT_PASIF_TIP)
         self._btn_csv.setCursor(
             Qt.CursorShape.PointingHandCursor if aktif else Qt.CursorShape.ForbiddenCursor)
+        self._btn_csv.style().unpolish(self._btn_csv)
+        self._btn_csv.style().polish(self._btn_csv)
+
+    def _pdf_tikla(self) -> None:
+        if not self._pdf_hazir:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, "PDF",
+                "PDF almak için önce «Raporu Getir» ile raporu yükleyin.")
+            return
+        self.pdf_clicked.emit()
+
+    def _csv_tikla(self) -> None:
+        if not self._csv_hazir:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, "CSV",
+                "CSV almak için önce «Raporu Getir» ile raporu yükleyin.")
+            return
+        self.csv_clicked.emit()
 
     def set_getir_aktif(self, aktif: bool) -> None:
         self._btn_getir.setEnabled(aktif)
