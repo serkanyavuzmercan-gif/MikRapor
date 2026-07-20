@@ -29,21 +29,21 @@ def _calisma_referans() -> QDate:
     return QDate(yil, 1, 1)
 
 
-# Toolbar / hızlı dönem grupları — (kod, kısa etiket, tooltip)
-KISAYOL_GRUPLARI: tuple[tuple[tuple[str, str, str], ...], ...] = (
+# Toolbar / hızlı dönem grupları — (kod, kısa etiket)
+KISAYOL_GRUPLARI: tuple[tuple[tuple[str, str], ...], ...] = (
     (
-        ("q1", "1. Çeyrek", "Ocak — Mart"),
-        ("q2", "2. Çeyrek", "Nisan — Haziran"),
-        ("q3", "3. Çeyrek", "Temmuz — Eylül"),
-        ("q4", "4. Çeyrek", "Ekim — Aralık"),
+        ("q1", "1. Çeyrek"),
+        ("q2", "2. Çeyrek"),
+        ("q3", "3. Çeyrek"),
+        ("q4", "4. Çeyrek"),
     ),
     (
-        ("h1", "1. Yarı", "Ocak — Haziran"),
-        ("h2", "2. Yarı", "Temmuz — Aralık"),
+        ("h1", "1. Yarı"),
+        ("h2", "2. Yarı"),
     ),
     (
-        ("ay", "Bu ay", "İçinde bulunulan ay"),
-        ("yil", "Bu yıl", "Takvim yılı (1 Ocak — 31 Aralık)"),
+        ("ay", "Bu ay"),
+        ("yil", "Bu yıl"),
     ),
 )
 

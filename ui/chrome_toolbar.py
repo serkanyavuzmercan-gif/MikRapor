@@ -86,7 +86,7 @@ class ChromeToolbar(QFrame):
             kl = QHBoxLayout(kutu)
             kl.setContentsMargins(3, 2, 3, 2)
             kl.setSpacing(2)
-            for kod, etiket, _tip in grup:
+            for kod, etiket in grup:
                 btn = QPushButton(etiket)
                 btn.setObjectName("donemKisayolBtn")
                 btn.setCheckable(True)
