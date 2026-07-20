@@ -30,6 +30,7 @@ class TahsilatAlacakTab(RaporTab):
     GETIR_ETIKET = "Tahsilat / Alacak Getir"
     BASLARKEN = "Cari açık kalemler çekiliyor…"
     PDF_DESTEK = True
+    HERO_ASSET = "empty-tahsilat.png"
 
     _ta: TahsilatAlacak | None = None
 
