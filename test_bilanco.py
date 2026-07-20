@@ -66,6 +66,31 @@ class TestBilanco(unittest.TestCase):
         self.assertIn("DENGEDE", html)
         self.assertIn("Bankalar", html)
 
+    def test_buyuk_mutlak_fark_dengede_sayilmaz(self):
+        # 500M aktif, 499M pasif → fark 1M ama %0,2. Küçük yüzde büyük farkı GİZLEMEMELİ.
+        rows = [
+            {"hesap_kodu": "102.01", "borc": 500_000_000, "alacak": 0},
+            {"hesap_kodu": "500.01", "borc": 0, "alacak": 499_000_000},
+        ]
+        b = build_bilanco(rows, asof="2026-06-30")
+        self.assertAlmostEqual(b.fark, 1_000_000.0, places=2)
+        self.assertLess(b.denge_yuzde, 1.0)   # yüzde küçük
+        self.assertFalse(b.dengede)           # ama mutlak fark büyük → dengesiz
+
+    def test_maliyet_eksik_sinyali(self):
+        # Net satış 100k, SMM (62) ~0 → maliyet kapanışı yapılmamış → şişik kâr uyarısı
+        eksik = build_bilanco([
+            {"hesap_kodu": "600.01", "borc": 0, "alacak": 100000},
+            {"hesap_kodu": "620.01", "borc": 1000, "alacak": 0},
+        ], asof="2026-06-30")
+        self.assertTrue(eksik.maliyet_eksik)
+        # Normal SMM varsa uyarı yok
+        tam = build_bilanco([
+            {"hesap_kodu": "600.01", "borc": 0, "alacak": 100000},
+            {"hesap_kodu": "620.01", "borc": 70000, "alacak": 0},
+        ], asof="2026-06-30")
+        self.assertFalse(tam.maliyet_eksik)
+
 
 if __name__ == "__main__":
     unittest.main()

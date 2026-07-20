@@ -89,6 +89,10 @@ class BilancoSatir:
     tutar: float
 
 
+# Bu mutlak tutarın (TL) üstündeki fark "≈ dengede" sayılmaz — küçük yüzdeyle gizlenmesin.
+DENGE_TL_ESIK = 1000.0
+
+
 @dataclass
 class Bilanco:
     asof: str = ""
@@ -99,6 +103,7 @@ class Bilanco:
     digit_net: dict = field(default_factory=dict)
     aktif_toplam: float = 0.0
     pasif_toplam: float = 0.0
+    maliyet_eksik: bool = False   # 62 (SMM) ~0 iken satış var → dönem kârı şişik görünür
 
     @property
     def fark(self) -> float:
@@ -110,7 +115,11 @@ class Bilanco:
 
     @property
     def dengede(self) -> bool:
-        return abs(self.fark) < 1.0 or self.denge_yuzde < 1.0
+        # Yaklaşık dengede: hem ORANSAL hem MUTLAK fark küçük olmalı. Aksi halde
+        # milyonluk bir mutlak fark, büyük toplamlar yüzünden küçük yüzdeyle gizlenirdi.
+        return abs(self.fark) < 1.0 or (
+            self.denge_yuzde < 1.0 and abs(self.fark) < DENGE_TL_ESIK
+        )
 
 
 def build_bilanco(rows: list[dict], asof: str = "") -> Bilanco:
@@ -152,6 +161,13 @@ def build_bilanco(rows: list[dict], asof: str = "") -> Bilanco:
     b.donem_kz = donem_kz
     b.pasif_toplam += donem_kz
     b.digit_net = dict(digit_net)
+
+    # Maliyet kapanışı yapılmamışsa (62 SMM ~0 iken net satış varsa) dönem net kârı
+    # şişik görünür — bilançonun "Dönem Net Kârı" satırı da bundan etkilenir. Uyar.
+    net_satis = sum(s.tutar for s in b.sonuc if s.ana[:2] in ("60", "61"))
+    smm = sum(s.tutar for s in b.sonuc if s.ana[:2] == "62")
+    b.maliyet_eksik = net_satis > 0 and abs(smm) < 0.05 * net_satis
+
     return b
 
 

@@ -91,7 +91,11 @@ class NavTip(QFrame):
         self.raise_()
 
     def hide_tip(self) -> None:
-        self.hide()
+        # Uygulama kapanışında C++ nesnesi zaten silinmiş olabilir → savunmacı gizle.
+        try:
+            self.hide()
+        except RuntimeError:
+            pass
 
 
 class NavTipBag(QObject):
