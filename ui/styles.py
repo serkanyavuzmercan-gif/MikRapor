@@ -272,6 +272,28 @@ QPushButton#ghostBtn {{
     font-size: 12px;
 }}
 
+/* PDF / CSV — aktif/pasif net ayrılsın (hazir property) */
+QPushButton#exportBtn {{
+    background-color: {SURFACE};
+    color: {SUBINK};
+    border: 1px solid {BORDER_STRONG};
+    text-align: center;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 8px;
+}}
+QPushButton#exportBtn[hazir="true"]:hover {{
+    background-color: {ACCENT_SOFT};
+    color: {ACCENT};
+    border-color: {ACCENT};
+}}
+QPushButton#exportBtn[hazir="false"] {{
+    background-color: #eef1f5;
+    color: #b0b8c4;
+    border-color: #dde2ea;
+}}
+
 /* ---- Tahmin senaryo formu (sol panel) ---- */
 QFrame#tahminSolHost {{
     background: transparent;
