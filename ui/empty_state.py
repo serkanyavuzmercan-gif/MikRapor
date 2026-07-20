@@ -104,18 +104,20 @@ class _CoverBackground(QWidget):
     def paintEvent(self, _ev) -> None:  # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.setClipRect(self.rect())
         # Soluk modda daha açık zemin; illüstrasyon düşük opaklıkla üstte
         p.fillRect(self.rect(), QColor("#eef3f7" if self._soluk else "#f7fafc"))
         if self._src.isNull() or self.width() < 2 or self.height() < 2:
             p.end()
             return
+        # Pencereye sığdır (contain) — üst kenara hizalı, taşma yok
         scaled = self._src.scaled(
             self.size(),
-            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
         x = (self.width() - scaled.width()) // 2
-        y = min(0, (self.height() - scaled.height()) // 3)
+        y = 0
         p.setOpacity(self._opacity)
         p.drawPixmap(x, y, scaled)
         p.setOpacity(1.0)
