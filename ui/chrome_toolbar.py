@@ -242,11 +242,11 @@ class ChromeToolbar(QFrame):
     def set_ekstra_gorunur(self, gorunur: bool, etiket: str = "Hesaplama") -> None:
         self._btn_ekstra.setText(etiket)
         self._btn_ekstra.setVisible(gorunur)
-        # Nakit & Kâr: Getir + Hesaplama solda, PDF/CSV sağda; diğer sekmeler eski sıra
+        # Getir (+ Hesaplama) solda; PDF/CSV her sekmede sağda
         self._diz_aksiyonlar(nakit=gorunur)
 
     def _diz_aksiyonlar(self, *, nakit: bool) -> None:
-        """Aksiyon sırasını sekme tipine göre dizer (widget’ları silmeden taşır)."""
+        """Getir (+ isteğe bağlı Hesaplama) | … | PDF | CSV | Son | durum."""
         self._nakit_modu = nakit
         lay = self._aksiyon_lay
         while lay.count():
@@ -259,14 +259,9 @@ class ChromeToolbar(QFrame):
         lay.addWidget(self._btn_iptal)
         if nakit:
             lay.addWidget(self._btn_ekstra)
-            lay.addStretch(1)
-            lay.addWidget(self._btn_pdf)
-            lay.addWidget(self._btn_csv)
-        else:
-            lay.addWidget(self._btn_pdf)
-            lay.addWidget(self._btn_csv)
-            # ekstra gizli kalsa da layout’ta tutma — görünür olunca nakit modu kullanır
-            lay.addStretch(1)
+        lay.addStretch(1)
+        lay.addWidget(self._btn_pdf)
+        lay.addWidget(self._btn_csv)
         lay.addWidget(self._son)
         lay.addWidget(self._status)
 
