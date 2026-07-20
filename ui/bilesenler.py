@@ -7,12 +7,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFileDialog,
+    QFrame,
     QLabel,
     QMessageBox,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -25,6 +28,27 @@ DURUM_RENK = {
     "uyari": WARN,
     "hata": BAD,
 }
+
+
+def gelecek_donem_uyari_kutusu() -> QFrame:
+    """Seçilen dönem henüz oluşmamışsa gösterilen sarı dikkat kutusu."""
+    kutu = QFrame()
+    kutu.setObjectName("gelecekDonemUyari")
+    kutu.setMaximumWidth(420)
+    lay = QVBoxLayout(kutu)
+    lay.setContentsMargins(12, 10, 12, 10)
+    lay.setSpacing(2)
+    baslik = QLabel("Dikkat")
+    baslik.setObjectName("gelecekDonemUyariBaslik")
+    lay.addWidget(baslik)
+    metin = QLabel(
+        "Seçtiğiniz dönem verileri daha oluşmadığı için "
+        "anlık dönem verileriniz gösteriliyor."
+    )
+    metin.setObjectName("gelecekDonemUyariMetin")
+    metin.setWordWrap(True)
+    lay.addWidget(metin)
+    return kutu
 
 
 def durum_yaz(label: QLabel, mesaj: str, tur: str = "notr") -> None:
