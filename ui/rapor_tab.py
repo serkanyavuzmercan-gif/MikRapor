@@ -31,13 +31,15 @@ from infra.mikro_fetch import fetch_firma_adi
 from ui.bilesenler import csv_kaydet, hos_geldin
 from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
-from ui.empty_state import build_soluk_arka_plan
+from ui.empty_state import DEFAULT_HERO_ASSET, build_soluk_arka_plan
 from ui.mikro_settings_dialog import MikroAyarlarDialog
 from ui.styles import PAGE_BG
 from ui.worker import IsFonksiyonu, RaporWorker
 
 # İçerik kökü yarı saydam beyaz — altındaki soluk illüstrasyon hafifçe görünsün
 _PAGE_BG_SOLUK = "rgba(255, 255, 255, 0.72)"
+# Tüm sekmelerde tablo altı illüstrasyon solukluğu (Bilanço / Gelir ile aynı)
+_HERO_SOLUK_OPACITY = 0.40
 
 
 def firma_getir(cfg: MikroConfig, client: MikroClient) -> str:
@@ -65,7 +67,9 @@ class RaporTab(QWidget):
     TARIH_GENISLIK = 130
     PDF_DESTEK = False
     EKSTRA_ETIKET = ""  # doluysa chrome'da ekstra buton (ör. Ayarlar)
-    HERO_ASSET = ""  # boşsa ortak hero; doluysa assets/<ad> (ör. empty-gelir.png)
+    # Sekmeye özel empty/soluk görsel (assets/<ad>). Boşsa DEFAULT_HERO_ASSET.
+    # Konum, cover, solukluk tüm sekmelerde ortaktır — yalnız pixmap değişir.
+    HERO_ASSET = ""
 
     def __init__(self, donem: DonemDurumu, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -110,9 +114,9 @@ class RaporTab(QWidget):
 
         self._ust_alan(layout)
 
-        # 0: empty (Anında Bilanço ile aynı düzen), 1: soluk arka + rapor
+        # 0: empty, 1: soluk arka + rapor — tüm sekmelerde aynı motor
         self._stack = QStackedWidget()
-        hero = self.HERO_ASSET or None
+        hero = (self.HERO_ASSET or "").strip() or DEFAULT_HERO_ASSET
         self._empty = hos_geldin(
             self.EMOJI,
             self.BASLIK,
@@ -130,7 +134,7 @@ class RaporTab(QWidget):
         ic_lay = QGridLayout(self._icerik_sayfa)
         ic_lay.setContentsMargins(0, 0, 0, 0)
         ic_lay.setSpacing(0)
-        self._arka = build_soluk_arka_plan(opacity=0.40, hero_asset=hero)
+        self._arka = build_soluk_arka_plan(opacity=_HERO_SOLUK_OPACITY, hero_asset=hero)
         ic_lay.addWidget(self._arka, 0, 0)
 
         self._view = QScrollArea()

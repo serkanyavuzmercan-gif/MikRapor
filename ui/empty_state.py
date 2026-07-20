@@ -59,19 +59,24 @@ _CLUSTER_H = (
     + _BODY_H + _GAP_BODY_CTA + _CTA_H + _CTA_BOTTOM_PAD
 )
 
+# Bilanço ile aynı varsayılan hero; sekme HERO_ASSET ile override edilir
+DEFAULT_HERO_ASSET = "anasayfalogo.png"
+_HERO_FALLBACKS = (
+    "anasayfalogo.png",
+    "mikrapor-hero-illustration.png",
+    "empty-hero.png",
+    "empty-bilanco.png",
+)
+
 
 def _load_hero_pixmap(asset: str | None = None) -> QPixmap:
+    """Önce istenen asset; yoksa ortak fallback zinciri. Cover/soluk hep aynı widget'ta."""
     adaylar: list[str] = []
     if asset:
         adaylar.append(asset)
-    adaylar.extend(
-        (
-            "anasayfalogo.png",
-            "mikrapor-hero-illustration.png",
-            "empty-hero.png",
-            "empty-bilanco.png",
-        )
-    )
+    for ad in _HERO_FALLBACKS:
+        if ad not in adaylar:
+            adaylar.append(ad)
     for ad in adaylar:
         pix = QPixmap(str(asset_path(ad)))
         if not pix.isNull():
@@ -422,9 +427,9 @@ class EmptyState(QWidget):
         self._yerlestir()
 
 
-def build_soluk_arka_plan(*, opacity: float = 0.32, hero_asset: str | None = None) -> QWidget:
-    """Rapor içeriği altında kullanılacak soluk illüstrasyon zemini."""
-    bg = _CoverBackground(_load_hero_pixmap(hero_asset))
+def build_soluk_arka_plan(*, opacity: float = 0.40, hero_asset: str | None = None) -> QWidget:
+    """Rapor içeriği altında soluk illüstrasyon — tüm sekmelerde aynı cover/soluk motoru."""
+    bg = _CoverBackground(_load_hero_pixmap(hero_asset or DEFAULT_HERO_ASSET))
     bg.set_soluk(True, opacity=opacity)
     return bg
 
@@ -438,5 +443,9 @@ def build_empty_state(
     hero_asset: str | None = None,
 ) -> QWidget:
     return EmptyState(
-        baslik, aciklama, cta_hint=cta_hint, on_cta=on_cta, hero_asset=hero_asset,
+        baslik,
+        aciklama,
+        cta_hint=cta_hint,
+        on_cta=on_cta,
+        hero_asset=hero_asset or DEFAULT_HERO_ASSET,
     )
