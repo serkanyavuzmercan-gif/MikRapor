@@ -143,10 +143,13 @@ def _kotu_tablo(rt: RunwayTakvim) -> QFrame:
         g.addWidget(_satir_label(("+" if a.net >= 0 else "") + tl(a.net), sag=True,
                                  renk=_renk(a.net)), i, 3)
         g.addWidget(_satir_label(tl(a.nakit), sag=True, bold=True, renk=_renk(a.nakit)), i, 4)
+    kredi_s = f" + kredi taksidi {tl(rt.aylik_kredi)}" if rt.aylik_kredi > 0.005 else ""
+    gider_s = f" + düzenli gider {tl(rt.aylik_gider)}" if rt.aylik_gider > 0.005 else ""
     not_lbl = _satir_label(
-        "Bu tablo yeni satış saymaz: elindeki açık alacaklar girer, borçlar + her ayki "
-        "düzenli giderler çıkar. Bu yüzden «Girecek» birkaç ay sonra biter. Gerçekte yeni "
-        "satışlar olacağı için durum bundan daha iyi olur (bkz. alttaki «normal beklenti»).",
+        f"Çıkacak = satıcılara açık borçlar (vadesine göre){gider_s}{kredi_s}. "
+        "Girecek = müşterilerden açık alacaklar (vadesine göre). Vadesi geçmiş birikim tek "
+        "aya yığılmaz, 3 aya yayılır. Bu tablo yeni satış saymaz — bu yüzden «Girecek» "
+        "birkaç ay sonra biter; gerçek durum bundan iyi olur (bkz. «normal beklenti»).",
         renk=FAINT, boyut=11)
     not_lbl.setWordWrap(True)
     g.addWidget(not_lbl, len(rt.aylar) + 1, 0, 1, 5)
@@ -162,17 +165,27 @@ def _tablo_panel(t: Tahmin) -> QFrame:
     g.setVerticalSpacing(6)
     g.setColumnStretch(0, 1)
 
-    for c, b in ((0, "Ay"), (1, "Ciro"), (2, "Brüt Kâr"), (3, "Net Kâr"), (4, "Nakit")):
+    for c, b in ((0, "Ay"), (1, "Girecek (satış)"), (2, "Çıkacak (mal + gider)"),
+                 (3, "Aylık Fark"), (4, "Kalan Nakit")):
         g.addWidget(_satir_label(b, renk=MUTED, boyut=11, bold=True,
                                  sag=(c != 0)), 0, c)
     r = 1
     for a in t.aylar:
-        g.addWidget(_satir_label(a.ay, renk="#374151"), r, 0)
-        g.addWidget(_satir_label(tl(a.ciro), sag=True), r, 1)
-        g.addWidget(_satir_label(tl(a.brut_kar), sag=True), r, 2)
-        g.addWidget(_satir_label(tl(a.net_kar), sag=True, renk=_renk(a.net_kar)), r, 3)
+        cikis = a.ciro - a.net_kar  # mal maliyeti + aylık sabit gider
+        g.addWidget(_satir_label(_ay_str(a.ay) if len(a.ay) >= 7 else a.ay,
+                                 renk="#374151"), r, 0)
+        g.addWidget(_satir_label(tl(a.ciro), sag=True, renk=POZ), r, 1)
+        g.addWidget(_satir_label(tl(cikis), sag=True, renk=NEG), r, 2)
+        g.addWidget(_satir_label(("+" if a.net_kar >= 0 else "") + tl(a.net_kar),
+                                 sag=True, renk=_renk(a.net_kar)), r, 3)
         g.addWidget(_satir_label(tl(a.nakit), sag=True, bold=True, renk=_renk(a.nakit)), r, 4)
         r += 1
+    not_lbl = _satir_label(
+        "Çıkacak = satılan malın maliyeti + aylık sabit gider (yeni mal alımı bunun içinde). "
+        "Aylık Fark = Girecek − Çıkacak. Kalan Nakit = önceki ay + aylık fark.",
+        renk=FAINT, boyut=11)
+    not_lbl.setWordWrap(True)
+    g.addWidget(not_lbl, r, 0, 1, 5)
     return _card("② NORMAL BEKLENTİ  ·  ay ay tahmin (satış devam eder)", inner)
 
 

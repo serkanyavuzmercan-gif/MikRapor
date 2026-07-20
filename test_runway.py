@@ -83,6 +83,19 @@ class TestRunwayTakvim(unittest.TestCase):
         self.assertIsNone(r.tukenme_ay)
         self.assertTrue(r.surdurulebilir)
 
+    def test_gecikmis_uc_aya_yayilir(self):
+        # Gecikmiş birikim tek aya yığılmaz — 3 aya eşit dağıtılır (alacak + borç).
+        r = build_runway_takvim(
+            baslangic_nakit=0.0, baslangic_ay="2026-06",
+            alacak_vade={VADE_KOVALAR[0]: 90000.0},
+            borc_vade={VADE_KOVALAR[0]: 30000.0},
+            aylik_gider=0.0, aylik_kredi=0.0, ufuk_ay=4,
+        )
+        for i in range(3):
+            self.assertAlmostEqual(r.aylar[i].giren, 30000.0, places=2)
+            self.assertAlmostEqual(r.aylar[i].cikan, 10000.0, places=2)
+        self.assertAlmostEqual(r.aylar[3].giren, 0.0, places=2)
+
     def test_gider_eksik_bayragi(self):
         eksik = build_runway_takvim(
             baslangic_nakit=500000.0, baslangic_ay="2026-06",

@@ -18,14 +18,16 @@ from domain.tahsilat_alacak import VADE_KOVALAR
 
 GUN_AY = 30.44  # ortalama ay uzunluğu (gün)
 
-# Tahsilat vade kovası (index) → projeksiyonda hangi ay (1-indexli).
-# Gecikmiş + Bu hafta + Bu ay → 1. ay; Gelecek ay → 2.; Sonrası → 3.
-_KOVA_AY = {
-    VADE_KOVALAR[0]: 1,  # Gecikmiş
-    VADE_KOVALAR[1]: 1,  # Bu hafta (0–7g)
-    VADE_KOVALAR[2]: 1,  # Bu ay (8–30g)
-    VADE_KOVALAR[3]: 2,  # Gelecek ay (31–60g)
-    VADE_KOVALAR[4]: 3,  # Sonrası (60+g)
+# Tahsilat vade kovası (index) → (ay, pay) dağılımı (ay 1-indexli).
+# GECİKMİŞ kalemler tek ayda çözülmez: hepsini 1. aya yığmak girişi de çıkışı da
+# absürt uca şişirir ("ortası yok"). Gecikmiş birikim 3 aya eşit yayılır — hem
+# alacakta hem borçta. Diğer kovalar vadesinin ayına gider.
+_KOVA_DAGILIM = {
+    VADE_KOVALAR[0]: ((1, 1 / 3), (2, 1 / 3), (3, 1 / 3)),  # Gecikmiş → 3 aya yay
+    VADE_KOVALAR[1]: ((1, 1.0),),  # Bu hafta (0–7g)
+    VADE_KOVALAR[2]: ((1, 1.0),),  # Bu ay (8–30g)
+    VADE_KOVALAR[3]: ((2, 1.0),),  # Gelecek ay (31–60g)
+    VADE_KOVALAR[4]: ((3, 1.0),),  # Sonrası (60+g)
 }
 
 
@@ -171,9 +173,11 @@ def build_runway_takvim(
     ay_giren: dict[int, float] = defaultdict(float)
     ay_cikan: dict[int, float] = defaultdict(float)
     for kova, tutar in (alacak_vade or {}).items():
-        ay_giren[_KOVA_AY.get(kova, 3)] += tutar
+        for ay_n, pay in _KOVA_DAGILIM.get(kova, ((3, 1.0),)):
+            ay_giren[ay_n] += tutar * pay
     for kova, tutar in (borc_vade or {}).items():
-        ay_cikan[_KOVA_AY.get(kova, 3)] += tutar
+        for ay_n, pay in _KOVA_DAGILIM.get(kova, ((3, 1.0),)):
+            ay_cikan[ay_n] += tutar * pay
 
     nakit = baslangic_nakit
     r.en_dusuk_nakit = nakit

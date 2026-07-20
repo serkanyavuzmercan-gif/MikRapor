@@ -181,7 +181,14 @@ class TahminTab(RaporTab):
             gd = build_gercek_durum(stok_rows=stok_rows, stok_aylik=stok_aylik, bas=bas, bit=bit)
             bildir("Nakit bakiyesi ve hareketleri çekiliyor…")
             kapanis_rows = fetch_cari_bakiye(client, bit)
-            baslangic_nakit = nakit_bakiye(kapanis_rows)
+            # Başlangıç nakit GL'den (Bilanço "Nakit ve Benzerleri" ile birebir).
+            # Cari-hareket nakiti döviz kuru yüzünden ~47 kat şişebiliyor (25M gibi
+            # hayalet rakamlar) — GL okunamazsa ancak o zaman cari'ye düşülür.
+            try:
+                gl_nakit: float | None = nakit_gl_ozetten(fetch_bakiye_ozet(client, bit))
+            except MikroAPIError:
+                gl_nakit = None
+            baslangic_nakit = gl_nakit if gl_nakit is not None else nakit_bakiye(kapanis_rows)
             hareket_rows = fetch_nakit_akis_hareket(client, bas, bit)
             donem_delta = fetch_nakit_delta(client, bas, bit)
             na = build_nakit_akis(hareket_rows, bakiye_kapanis_rows=kapanis_rows,
@@ -193,8 +200,6 @@ class TahminTab(RaporTab):
                 vade_gun_map = fetch_cari_vade_gun(client)
                 acik_rows = fetch_acik_kalemler(client, bit, bas, bit)
                 ta = build_tahsilat_alacak(acik_rows, vade_gun_map=vade_gun_map, bas=bas, bit=bit)
-                # Başlangıç nakit GL'den (Bilanço ile birebir) — cari nakit döviz-kur şişik olabilir.
-                gl_nakit = nakit_gl_ozetten(fetch_bakiye_ozet(client, bit))
                 # Gider + kredi bozuk nakit-kategorisinden DEĞİL, doğrulanmış GL'den:
                 #   gider ≈ gelir tablosu 63 (faaliyet) + 66 (finansman) / ay
                 #   kredi ≈ 300/303 anapara ödemesi / ay
@@ -203,7 +208,8 @@ class TahminTab(RaporTab):
                 gider_proxy = -(gt.faaliyet_gideri + gt.finansman_gideri) / ay
                 kredi_proxy = fetch_kredi_anapara(client, bas, bit) / ay
                 runway = runway_takvim_kur(
-                    na=na, ta=ta, baslangic_ay=bit[:7], ufuk_ay=6, baslangic_nakit=gl_nakit,
+                    na=na, ta=ta, baslangic_ay=bit[:7], ufuk_ay=6,
+                    baslangic_nakit=baslangic_nakit,
                     aylik_gider=gider_proxy, aylik_kredi=kredi_proxy)
             except MikroAPIError:
                 runway = None
