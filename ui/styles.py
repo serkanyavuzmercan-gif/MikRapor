@@ -399,20 +399,20 @@ QWidget#navTipHost {{
 QFrame#navTipCard {{
     background-color: {SURFACE};
     border: 1px solid #cfe0ea;
-    border-radius: 10px;
+    border-radius: 8px;
 }}
 QFrame#navTipAccent {{
     background-color: {ACCENT};
     border: none;
-    border-radius: 2px;
+    border-radius: 1px;
 }}
 QLabel#navTipEyebrow {{
     color: {ACCENT};
     background: transparent;
     border: none;
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 1.1px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
     padding: 0;
 }}
 QLabel#navTipTitle {{
@@ -420,6 +420,7 @@ QLabel#navTipTitle {{
     background: transparent;
     border: none;
     padding: 0;
+    font-size: 11px;
 }}
 """
 
