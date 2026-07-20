@@ -337,8 +337,6 @@ class EmptyState(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self._bg = _CoverBackground(_load_hero_pixmap(hero_asset), self)
-        # Tablo gelinceki soluk arka plan görünümü — empty'de de aynı
-        self._bg.set_soluk(True, opacity=HERO_SOLUK_OPACITY)
         self._bg.lower()
         self._arka_plan = False
 
