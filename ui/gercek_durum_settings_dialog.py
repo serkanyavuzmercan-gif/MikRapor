@@ -7,16 +7,20 @@ Varsayılan profil MikRapor önerilen ayarlarıdır.
 
 from __future__ import annotations
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFrame,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from domain.gercek_durum_ayarlar import (
@@ -27,6 +31,7 @@ from domain.gercek_durum_ayarlar import (
     GercekDurumAyarlar,
 )
 from infra.config import config_path, load_gercek_durum_ayarlar, save_gercek_durum_ayarlar
+from ui.styles import ACCENT, ACCENT_SOFT, BORDER, MUTED, NAVY, NAVY_SOFT, SURFACE
 
 
 def _combo_secenekler(combo: QComboBox, secenekler: list[tuple[str, str]], secili: str) -> None:
@@ -42,57 +47,102 @@ def _combo_secenekler(combo: QComboBox, secenekler: list[tuple[str, str]], secil
 class GercekDurumAyarlarDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Nakit & Kârlılık Ayarları")
-        self.setMinimumWidth(560)
+        self.setWindowTitle("Nakit & Kârlılık — Hesaplama")
+        self.setObjectName("gdAyarDialog")
+        self.setMinimumWidth(440)
+        self.setMaximumWidth(480)
         self._ayarlar = load_gercek_durum_ayarlar()
         self._build_ui()
 
     def _build_ui(self) -> None:
-        layout = QVBoxLayout(self)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        info = QLabel(
-            "Mikro'da kayıt tarzı firmadan firmaya değişir. Bu kurallar yalnızca "
-            "«Nakit & Kârlılık» sekmesini etkiler; Bilanço / Gelir Tablosu değişmez. "
-            "Şüphede «stok_diag_cli» ve «cari_diag_cli» ile teşhis çalıştırın."
+        # —— Lacivert başlık ——
+        baslik = QFrame()
+        baslik.setObjectName("gdAyarBaslik")
+        bl = QVBoxLayout(baslik)
+        bl.setContentsMargins(18, 16, 18, 14)
+        bl.setSpacing(4)
+        ey = QLabel("NAKİT & KÂRLILIK")
+        ey.setObjectName("gdAyarEyebrow")
+        bl.addWidget(ey)
+        bas = QLabel("Hesaplama kuralları")
+        bas.setObjectName("gdAyarBaslikYazi")
+        bl.addWidget(bas)
+        acik = QLabel(
+            "Yalnızca bu sekmeyi etkiler. Bilanço ve Gelir Tablosu değişmez."
         )
-        info.setWordWrap(True)
-        info.setStyleSheet("color: #9aa0a8;")
-        layout.addWidget(info)
+        acik.setObjectName("gdAyarAciklama")
+        acik.setWordWrap(True)
+        bl.addWidget(acik)
+        root.addWidget(baslik)
+
+        govde = QWidget()
+        gl = QVBoxLayout(govde)
+        gl.setContentsMargins(18, 16, 18, 16)
+        gl.setSpacing(12)
+
+        kart = QFrame()
+        kart.setObjectName("gdAyarKart")
+        kl = QVBoxLayout(kart)
+        kl.setContentsMargins(14, 12, 14, 12)
+        kl.setSpacing(10)
 
         form = QFormLayout()
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(10)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
         self._satis = QComboBox()
+        self._satis.setObjectName("gdAyarCombo")
         _combo_secenekler(self._satis, SATIS_BAZI_SECENEKLERI, self._ayarlar.satis_bazi)
-        form.addRow("Satış toplamı:", self._satis)
+        form.addRow(self._lbl("Satış toplamı"), self._satis)
 
         self._alis = QComboBox()
+        self._alis.setObjectName("gdAyarCombo")
         _combo_secenekler(self._alis, ALIS_BAZI_SECENEKLERI, self._ayarlar.alis_bazi)
-        form.addRow("Alış toplamı:", self._alis)
+        form.addRow(self._lbl("Alış toplamı"), self._alis)
 
         self._nakit = QComboBox()
+        self._nakit.setObjectName("gdAyarCombo")
         _combo_secenekler(self._nakit, NAKIT_KAYNAK_SECENEKLERI, self._ayarlar.nakit_kaynak)
-        form.addRow("Nakit bakiyesi:", self._nakit)
+        form.addRow(self._lbl("Nakit bakiyesi"), self._nakit)
 
         self._alacak_borc = QComboBox()
+        self._alacak_borc.setObjectName("gdAyarCombo")
         _combo_secenekler(self._alacak_borc, ALACAK_BORC_SECENEKLERI, self._ayarlar.alacak_borc_kaynak)
-        form.addRow("Alacak / borç:", self._alacak_borc)
+        form.addRow(self._lbl("Alacak / borç"), self._alacak_borc)
+        kl.addLayout(form)
 
-        self._kredi_haric = QCheckBox("Kredi bankalarını nakitten hariç tut (300.*, ban_hesap_tip=1)")
+        self._kredi_haric = QCheckBox("Kredi bankalarını nakitten hariç tut")
+        self._kredi_haric.setObjectName("gdAyarCheck")
+        self._kredi_haric.setToolTip("300.* · ban_hesap_tip=1")
         self._kredi_haric.setChecked(self._ayarlar.banka_kredi_haric)
-        form.addRow("", self._kredi_haric)
+        kl.addWidget(self._kredi_haric)
 
         self._avans_goster = QCheckBox("Müşteri avansı satırını göster")
+        self._avans_goster.setObjectName("gdAyarCheck")
         self._avans_goster.setChecked(self._ayarlar.musteri_avans_goster)
-        form.addRow("", self._avans_goster)
+        kl.addWidget(self._avans_goster)
 
-        layout.addLayout(form)
+        gl.addWidget(kart)
 
-        varsayilan = QPushButton("Varsayılana Dön")
+        alt = QHBoxLayout()
+        alt.setSpacing(8)
+        varsayilan = QPushButton("Varsayılana dön")
+        varsayilan.setObjectName("ghostBtn")
+        varsayilan.setCursor(Qt.CursorShape.PointingHandCursor)
         varsayilan.clicked.connect(self._on_varsayilan)
-        layout.addWidget(varsayilan)
+        alt.addWidget(varsayilan)
+        alt.addStretch(1)
+        gl.addLayout(alt)
 
-        path_lbl = QLabel(f"Kayıt: {config_path()} → «gercek_durum»")
-        path_lbl.setStyleSheet("color: #9aa0a8; font-size: 10px;")
-        layout.addWidget(path_lbl)
+        path_lbl = QLabel(f"Kayıt: {config_path().name} → gercek_durum")
+        path_lbl.setObjectName("gdAyarPath")
+        gl.addWidget(path_lbl)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
@@ -101,7 +151,81 @@ class GercekDurumAyarlarDialog(QDialog):
         buttons.rejected.connect(self.reject)
         from ui.bilesenler import dialog_kaydet_iptal
         dialog_kaydet_iptal(buttons)
-        layout.addWidget(buttons)
+        kaydet = buttons.button(QDialogButtonBox.StandardButton.Save)
+        if kaydet is not None:
+            kaydet.setObjectName("primaryBtn")
+            kaydet.setCursor(Qt.CursorShape.PointingHandCursor)
+        gl.addWidget(buttons)
+
+        root.addWidget(govde)
+        self._uygula_stil()
+
+    @staticmethod
+    def _lbl(metin: str) -> QLabel:
+        lbl = QLabel(metin)
+        lbl.setObjectName("gdAyarEtiket")
+        return lbl
+
+    def _uygula_stil(self) -> None:
+        self.setStyleSheet(
+            f"""
+            QDialog#gdAyarDialog {{ background: {SURFACE}; }}
+            QFrame#gdAyarBaslik {{
+                background: {NAVY};
+                border: none;
+            }}
+            QLabel#gdAyarEyebrow {{
+                color: #99f6e4;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 1px;
+                background: transparent;
+            }}
+            QLabel#gdAyarBaslikYazi {{
+                color: #f1f5f9;
+                font-size: 16px;
+                font-weight: 700;
+                background: transparent;
+            }}
+            QLabel#gdAyarAciklama {{
+                color: #a8bdd4;
+                font-size: 12px;
+                background: transparent;
+            }}
+            QFrame#gdAyarKart {{
+                background: {NAVY_SOFT};
+                border: 1px solid {BORDER};
+                border-left: 3px solid {ACCENT};
+                border-radius: 10px;
+            }}
+            QLabel#gdAyarEtiket {{
+                color: {NAVY};
+                font-size: 12px;
+                font-weight: 600;
+                background: transparent;
+            }}
+            QComboBox#gdAyarCombo {{
+                background: {SURFACE};
+                border: 1px solid #c5d0de;
+                border-radius: 8px;
+                padding: 6px 10px;
+                min-height: 22px;
+            }}
+            QComboBox#gdAyarCombo:hover {{ border-color: {ACCENT}; }}
+            QComboBox#gdAyarCombo:focus {{ border: 1px solid {ACCENT}; }}
+            QCheckBox#gdAyarCheck {{
+                color: {NAVY};
+                font-size: 12px;
+                font-weight: 600;
+                spacing: 8px;
+            }}
+            QLabel#gdAyarPath {{
+                color: {MUTED};
+                font-size: 10px;
+                background: transparent;
+            }}
+            """
+        )
 
     def _on_varsayilan(self) -> None:
         self._ayarlar = GercekDurumAyarlar.varsayilan()

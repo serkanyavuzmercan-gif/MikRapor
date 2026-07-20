@@ -99,16 +99,21 @@ class ChromeToolbar(QFrame):
             kisayol_serit.addWidget(kutu)
         row.addLayout(kisayol_serit)
 
+        # Aksiyonlar — Nakit & Kâr’da sıra farklı (Getir+Hesaplama | … | PDF/CSV sağda)
+        self._aksiyon = QWidget()
+        self._aksiyon.setObjectName("chromeAksiyon")
+        self._aksiyon_lay = QHBoxLayout(self._aksiyon)
+        self._aksiyon_lay.setContentsMargins(0, 0, 0, 0)
+        self._aksiyon_lay.setSpacing(8)
+
         self._btn_getir = QPushButton("Raporu Getir")
         self._btn_getir.setObjectName("primaryBtn")
         self._btn_getir.clicked.connect(self.getir_clicked.emit)
-        row.addWidget(self._btn_getir)
 
         self._btn_iptal = QPushButton("İptal")
         self._btn_iptal.setObjectName("ghostBtn")
         self._btn_iptal.setVisible(False)
         self._btn_iptal.clicked.connect(self.iptal_clicked.emit)
-        row.addWidget(self._btn_iptal)
 
         self._btn_pdf = QPushButton("PDF")
         self._btn_pdf.setObjectName("exportBtn")
@@ -118,7 +123,6 @@ class ChromeToolbar(QFrame):
         self._btn_pdf.setProperty("hazir", "false")
         self._btn_pdf.setToolTip(_EXPORT_PASIF_TIP)
         self._btn_pdf.clicked.connect(self._pdf_tikla)
-        row.addWidget(self._btn_pdf)
 
         self._btn_csv = QPushButton("CSV")
         self._btn_csv.setObjectName("exportBtn")
@@ -128,12 +132,10 @@ class ChromeToolbar(QFrame):
         self._btn_csv.setProperty("hazir", "false")
         self._btn_csv.setToolTip(_EXPORT_PASIF_TIP)
         self._btn_csv.clicked.connect(self._csv_tikla)
-        row.addWidget(self._btn_csv)
 
         self._pdf_hazir = False
         self._csv_hazir = False
 
-        # Sekmeye özel (ör. Nakit & Kâr hesaplama ayarları) — dönemlerden ayrı
         self._btn_ekstra = QPushButton("Hesaplama")
         self._btn_ekstra.setObjectName("ayarEkstraBtn")
         self._btn_ekstra.setIcon(icon_gear(14))
@@ -144,15 +146,11 @@ class ChromeToolbar(QFrame):
             "Bu sekmeye özel hesaplama kuralları (satış/alış/nakit kaynağı)."
         )
         self._btn_ekstra.clicked.connect(self.ekstra_clicked.emit)
-        row.addWidget(self._btn_ekstra)
-
-        row.addStretch(1)
 
         self._son = QLabel("")
         self._son.setObjectName("sonGuncelleme")
         self._son.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._son.setVisible(False)
-        row.addWidget(self._son)
 
         self._status = QLabel("")
         self._status.setObjectName("toolbarHint")
@@ -160,7 +158,10 @@ class ChromeToolbar(QFrame):
         self._status.setWordWrap(False)
         self._status.setVisible(False)
         self._status.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        row.addWidget(self._status)
+
+        self._nakit_modu = False
+        self._diz_aksiyonlar(nakit=False)
+        row.addWidget(self._aksiyon, 1)
         root.addLayout(row)
 
         # —— Satır 2: özet chip şeridi ——
@@ -247,6 +248,33 @@ class ChromeToolbar(QFrame):
                 f"«{etiket}» — bu sekmeye özel hesaplama kuralları "
                 "(satış / alış / nakit kaynağı). Bilanço ve Gelir Tablosu’nu değiştirmez."
             )
+        # Nakit & Kâr: Getir + Hesaplama solda, PDF/CSV sağda; diğer sekmeler eski sıra
+        self._diz_aksiyonlar(nakit=gorunur)
+
+    def _diz_aksiyonlar(self, *, nakit: bool) -> None:
+        """Aksiyon sırasını sekme tipine göre dizer (widget’ları silmeden taşır)."""
+        self._nakit_modu = nakit
+        lay = self._aksiyon_lay
+        while lay.count():
+            item = lay.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(self._aksiyon)
+
+        lay.addWidget(self._btn_getir)
+        lay.addWidget(self._btn_iptal)
+        if nakit:
+            lay.addWidget(self._btn_ekstra)
+            lay.addStretch(1)
+            lay.addWidget(self._btn_pdf)
+            lay.addWidget(self._btn_csv)
+        else:
+            lay.addWidget(self._btn_pdf)
+            lay.addWidget(self._btn_csv)
+            # ekstra gizli kalsa da layout’ta tutma — görünür olunca nakit modu kullanır
+            lay.addStretch(1)
+        lay.addWidget(self._son)
+        lay.addWidget(self._status)
 
     def isaretle_son_guncelleme(self, when: datetime | None = None) -> None:
         """Başarılı rapor çekiminde sağdaki «Son: …» zaman damgasını günceller."""
