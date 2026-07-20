@@ -294,56 +294,80 @@ QPushButton#exportBtn[hazir="false"] {{
     border-color: #dde2ea;
 }}
 
-/* ---- Tahmin senaryo formu (sol panel) ---- */
+/* ---- Tahmin senaryo formu (sol panel — navy / teal) ---- */
 QFrame#tahminSolHost {{
     background: transparent;
     border: none;
 }}
 QPushButton#tahminSolRail {{
-    background-color: {SURFACE};
-    color: {ACCENT};
-    border: 1px solid {BORDER};
-    border-left: none;
+    background-color: {NAVY};
+    color: {ACCENT_MUTED};
+    border: none;
     border-top-right-radius: 10px;
     border-bottom-right-radius: 10px;
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 1px;
     padding: 10px 4px;
 }}
 QPushButton#tahminSolRail:hover {{
-    background-color: {ACCENT_SOFT};
-    color: {ACCENT_HOVER};
+    background-color: {ACCENT};
+    color: #ffffff;
 }}
 QFrame#tahminSolPanel {{
-    background-color: {SURFACE};
+    background-color: #e9f1f4;
     border: none;
-    border-right: 1px solid {BORDER};
+    border-right: 1px solid #c5d4de;
+    border-left: 3px solid {ACCENT};
+}}
+QFrame#tahminSolBaslikSerit {{
+    background-color: {NAVY};
+    border: none;
+}}
+QLabel#tahminSolEyebrow {{
+    color: {ACCENT_MUTED};
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+}}
+QLabel#tahminSolIpucu {{
+    color: #a8bdd4;
+    font-size: 11px;
+    font-weight: 500;
 }}
 QPushButton#tahminSolKapat {{
-    background: {ACCENT_SOFT};
-    color: {ACCENT};
-    border: 1px solid #cce8e2;
+    background: rgba(255, 255, 255, 0.12);
+    color: #e2eaf4;
+    border: 1px solid rgba(255, 255, 255, 0.22);
     border-radius: 6px;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     padding: 0;
 }}
 QPushButton#tahminSolKapat:hover {{
     background: {ACCENT};
     color: #ffffff;
+    border-color: {ACCENT};
 }}
 QLabel#tahminFormBaslik {{
-    color: {NAVY};
+    color: #f1f5f9;
     font-size: 13px;
     font-weight: 700;
 }}
 QLabel#tahminAlanEtiket {{
-    color: {MUTED};
+    color: {NAVY};
     font-size: 11px;
     font-weight: 600;
+}}
+QAbstractSpinBox#tahminAlanGirdi {{
+    background-color: #ffffff;
+    color: {INK_SOFT};
+    border: 1px solid #c5d4de;
+    border-radius: 8px;
+    padding: 6px 8px;
+}}
+QAbstractSpinBox#tahminAlanGirdi:focus {{
+    border: 1px solid {ACCENT};
 }}
 
 /* ---- Girdiler ---- */
