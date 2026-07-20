@@ -11,9 +11,22 @@ sürüm (4b) tahsilat vade takvimi + düzenli gider kırılımıyla gün-gün ke
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 
+from domain.tahsilat_alacak import VADE_KOVALAR
+
 GUN_AY = 30.44  # ortalama ay uzunluğu (gün)
+
+# Tahsilat vade kovası (index) → projeksiyonda hangi ay (1-indexli).
+# Gecikmiş + Bu hafta + Bu ay → 1. ay; Gelecek ay → 2.; Sonrası → 3.
+_KOVA_AY = {
+    VADE_KOVALAR[0]: 1,  # Gecikmiş
+    VADE_KOVALAR[1]: 1,  # Bu hafta (0–7g)
+    VADE_KOVALAR[2]: 1,  # Bu ay (8–30g)
+    VADE_KOVALAR[3]: 2,  # Gelecek ay (31–60g)
+    VADE_KOVALAR[4]: 3,  # Sonrası (60+g)
+}
 
 
 def _ay_ekle(yyyymm: str, k: int) -> str:
@@ -101,4 +114,98 @@ def runway_nakit_akistan(na, *, baslangic_ay: str = "", ufuk_ay: int = 12) -> Ru
         aylik_net_ort=aylik_net_ort,
         baslangic_ay=baslangic_ay,
         ufuk_ay=ufuk_ay,
+    )
+
+
+# --- 4b: Takvim tabanlı (vade) runway -------------------------------------
+
+@dataclass
+class RunwayTakvimAy:
+    ay: str            # YYYY-MM
+    giren: float = 0.0 # o ay beklenen tahsilat (açık alacak vadesi)
+    cikan: float = 0.0 # o ay beklenen ödeme (satıcı vadesi + düzenli gider + kredi)
+    nakit: float = 0.0 # ay sonu kümülatif nakit
+
+    @property
+    def net(self) -> float:
+        return self.giren - self.cikan
+
+
+@dataclass
+class RunwayTakvim:
+    baslangic_nakit: float = 0.0
+    aylik_gider: float = 0.0      # düzenli aylık gider (maaş+SGK+vergi+genel)
+    aylik_kredi: float = 0.0      # düzenli aylık kredi ödemesi
+    ufuk_ay: int = 6
+    aylar: list[RunwayTakvimAy] = field(default_factory=list)
+    tukenme_ay: str | None = None
+    en_dusuk_nakit: float = 0.0
+    en_dusuk_ay: str = ""
+
+    @property
+    def surdurulebilir(self) -> bool:
+        return self.tukenme_ay is None
+
+
+def build_runway_takvim(
+    *,
+    baslangic_nakit: float,
+    baslangic_ay: str,
+    alacak_vade: dict | None = None,
+    borc_vade: dict | None = None,
+    aylik_gider: float = 0.0,
+    aylik_kredi: float = 0.0,
+    ufuk_ay: int = 6,
+) -> RunwayTakvim:
+    """
+    Açık alacak/borç vade kovaları aylara dağıtılıp düzenli gider + kredi ile
+    ay-ay nakit projeksiyonu. KONSERVATİF: açık kalemler bittikten sonra yeni
+    satış varsaymaz — yalnız düzenli giderler devam eder (en kötü hal / taban).
+    """
+    r = RunwayTakvim(
+        baslangic_nakit=baslangic_nakit, aylik_gider=aylik_gider,
+        aylik_kredi=aylik_kredi, ufuk_ay=max(1, ufuk_ay),
+    )
+    ay_giren: dict[int, float] = defaultdict(float)
+    ay_cikan: dict[int, float] = defaultdict(float)
+    for kova, tutar in (alacak_vade or {}).items():
+        ay_giren[_KOVA_AY.get(kova, 3)] += tutar
+    for kova, tutar in (borc_vade or {}).items():
+        ay_cikan[_KOVA_AY.get(kova, 3)] += tutar
+
+    nakit = baslangic_nakit
+    r.en_dusuk_nakit = nakit
+    r.en_dusuk_ay = baslangic_ay
+    for n in range(1, r.ufuk_ay + 1):
+        giren = ay_giren.get(n, 0.0)
+        cikan = ay_cikan.get(n, 0.0) + aylik_gider + aylik_kredi
+        nakit += giren - cikan
+        ay = _ay_ekle(baslangic_ay, n)
+        r.aylar.append(RunwayTakvimAy(ay=ay, giren=giren, cikan=cikan, nakit=nakit))
+        if nakit < r.en_dusuk_nakit:
+            r.en_dusuk_nakit, r.en_dusuk_ay = nakit, ay
+        if r.tukenme_ay is None and nakit < 0:
+            r.tukenme_ay = ay
+    return r
+
+
+def runway_takvim_kur(*, na, ta, baslangic_ay: str = "", ufuk_ay: int = 6) -> RunwayTakvim:
+    """
+    NakitAkis (mevcut nakit + düzenli gider run-rate) + TahsilatAlacak (vade takvimi)
+    birleşiminden takvim runway'i kurar. Düzenli gider = maaş+SGK+vergi+genel gider aylık
+    ortalaması; kredi = kredi ödemesi aylık ortalaması.
+    """
+    ay_sayisi = max(1, len(getattr(na, "aylik", None) or [1]))
+    ck = getattr(na, "cikis_kategori", {}) or {}
+    duzenli = (
+        ck.get("Personel / Maaş", 0.0) + ck.get("SGK", 0.0)
+        + ck.get("Vergi", 0.0) + ck.get("Genel giderler", 0.0)
+    ) / ay_sayisi
+    kredi = getattr(na, "kredi_odeme", 0.0) / ay_sayisi
+    if not baslangic_ay:
+        baslangic_ay = (getattr(na, "bit", "") or "")[:7]
+    return build_runway_takvim(
+        baslangic_nakit=na.kapanis_nakit, baslangic_ay=baslangic_ay,
+        alacak_vade=getattr(ta, "alacak_vade", {}), borc_vade=getattr(ta, "borc_vade", {}),
+        aylik_gider=duzenli, aylik_kredi=kredi, ufuk_ay=ufuk_ay,
     )

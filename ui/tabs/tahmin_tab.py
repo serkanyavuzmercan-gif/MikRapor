@@ -25,11 +25,15 @@ from PyQt6.QtWidgets import (
 from domain.gercek_durum import build_gercek_durum
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import build_nakit_akis, nakit_bakiye
+from domain.runway import RunwayTakvim, runway_takvim_kur
 from domain.tahmin import Tahmin, TahminVarsayim, build_tahmin, oner_varsayim, tahmin_csv
+from domain.tahsilat_alacak import build_tahsilat_alacak
 from infra.config import MikroConfig
-from infra.mikro_api import MikroClient
+from infra.mikro_api import MikroAPIError, MikroClient
 from infra.mikro_fetch import (
+    fetch_acik_kalemler,
     fetch_cari_bakiye,
+    fetch_cari_vade_gun,
     fetch_nakit_akis_hareket,
     fetch_nakit_delta,
     fetch_stok_aylik,
@@ -63,6 +67,7 @@ class TahminTab(RaporTab):
     HERO_ASSET = "empty-tahmin.png"
 
     _t: Tahmin | None = None
+    _runway: RunwayTakvim | None = None
 
     def _ilk_mesaj(self) -> str:
         return "Hazır"
@@ -171,6 +176,16 @@ class TahminTab(RaporTab):
             donem_delta = fetch_nakit_delta(client, bas, bit)
             na = build_nakit_akis(hareket_rows, bakiye_kapanis_rows=kapanis_rows,
                                   donem_delta=donem_delta, bas=bas, bit=bit)
+            # Vade-takvimli runway (gerçek açık kalemlerden) — başarısız olsa da tahmin üretilir.
+            runway: RunwayTakvim | None = None
+            try:
+                bildir("Açık alacak/borç vadeleri çekiliyor (runway)…")
+                vade_gun_map = fetch_cari_vade_gun(client)
+                acik_rows = fetch_acik_kalemler(client, bit, bas, bit)
+                ta = build_tahsilat_alacak(acik_rows, vade_gun_map=vade_gun_map, bas=bas, bit=bit)
+                runway = runway_takvim_kur(na=na, ta=ta, baslangic_ay=bit[:7], ufuk_ay=6)
+            except MikroAPIError:
+                runway = None
             bildir("Varsayımlar öneriliyor…")
             satis_serisi = [a.satis for a in gd.trend]
             ay_sayisi = max(1, len(na.aylik))
@@ -182,13 +197,14 @@ class TahminTab(RaporTab):
                 baslangic_nakit=baslangic_nakit, aylik_sabit_gider=sabit_gider,
                 baslangic_ay=bit[:7], ufuk_ay=ufuk,
             )
-            return {"varsayim": v, "firma": firma_getir(cfg, client)}
+            return {"varsayim": v, "firma": firma_getir(cfg, client), "runway": runway}
 
         return is_fn
 
     def _goster(self, sonuc: dict[str, Any]) -> None:
         v: TahminVarsayim = sonuc["varsayim"]
         self._firma = sonuc["firma"]
+        self._runway = sonuc.get("runway")
         self._sp_nakit.setValue(v.baslangic_nakit)
         self._sp_ciro.setValue(v.baz_ciro)
         self._sp_buyume.setValue(v.buyume_yuzde)
@@ -210,7 +226,8 @@ class TahminTab(RaporTab):
             ufuk_ay=self._sp_ufuk.value(),
         )
         self._t = build_tahmin(v)
-        self._icerik_koy(build_tahmin_widget(self._t, firma=self._firma))
+        self._icerik_koy(build_tahmin_widget(
+            self._t, firma=self._firma, runway=getattr(self, "_runway", None)))
         if self._chrome is not None:
             self._chrome.set_csv_aktif(True)
             self._chrome.set_pdf_aktif(True)
