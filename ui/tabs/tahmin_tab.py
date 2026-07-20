@@ -60,9 +60,9 @@ class TahminTab(RaporTab):
     EMOJI = "🔮"
     BASLIK = "Tahmin"
     ACIKLAMA = (
-        "Üstteki tarih aralığı <b>geçmiş öğrenme dönemi</b>dir (satış, marj, nakit, gider).<br>"
-        "İleriye bakış süresi sol paneldeki <b>Ufuk</b> ile ayarlanır; «Projekte Et» ile senaryo üretilir.<br>"
-        "<span style='color:#9aa0a8;'>Önce «Geçmişten Doldur», sonra varsayımları değiştir.</span>")
+        "Üstteki tarih aralığı <b>geçmişten öğrenme dönemi</b>dir (satış, kâr, nakit, gider).<br>"
+        "Kaç ay ileriye bakılacağı sol paneldeki <b>Kaç ay ileri</b> ile ayarlanır; «Hesapla» ile tahmin üretilir.<br>"
+        "<span style='color:#9aa0a8;'>Önce «Geçmişten Doldur», sonra rakamları değiştir.</span>")
     GETIR_ETIKET = "Geçmişten Doldur"
     BASLARKEN = "Geçmiş veri çekiliyor (satış, marj, nakit, gider)…"
     DONEM_ETIKET = "Geçmiş veri dönemi:"
@@ -100,12 +100,12 @@ class TahminTab(RaporTab):
             sp.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         alanlar = (
-            ("Başlangıç nakit", self._sp_nakit),
-            ("Baz aylık ciro", self._sp_ciro),
+            ("Bugünkü nakit", self._sp_nakit),
+            ("Aylık ortalama ciro", self._sp_ciro),
             ("Aylık büyüme", self._sp_buyume),
-            ("Brüt marj", self._sp_marj),
+            ("Kâr oranı (brüt marj)", self._sp_marj),
             ("Aylık sabit gider", self._sp_gider),
-            ("Ufuk", self._sp_ufuk),
+            ("Kaç ay ileri", self._sp_ufuk),
         )
         self._senaryo = _SenaryoSolPanel(alanlar)
         self._btn_projekte = self._senaryo.btn_projekte
@@ -226,7 +226,7 @@ class TahminTab(RaporTab):
         self._sp_marj.setValue(v.marj_yuzde)
         self._sp_gider.setValue(v.sabit_gider)
         self._senaryo.ac()
-        self._durum("Geçmişten dolduruldu — varsayımları düzenleyip «Projekte Et»e basabilirsin.", "iyi")
+        self._durum("Geçmişten dolduruldu — rakamları düzenleyip «Hesapla»ya basabilirsin.", "iyi")
         self._on_projekte()
 
     def _on_projekte(self) -> None:
@@ -329,7 +329,7 @@ class _SenaryoSolPanel(QFrame):
         kapat.clicked.connect(self.kapat)
         baslik_satir.addWidget(kapat, 0, Qt.AlignmentFlag.AlignTop)
         bw.addLayout(baslik_satir)
-        ipucu = QLabel("Değerleri düzenleyip projekte edin.")
+        ipucu = QLabel("Rakamları değiştirip «Hesapla»ya bas.")
         ipucu.setObjectName("tahminSolIpucu")
         ipucu.setWordWrap(True)
         bw.addWidget(ipucu)
@@ -349,7 +349,7 @@ class _SenaryoSolPanel(QFrame):
 
         gi.addStretch(1)
 
-        self.btn_projekte = QPushButton("Projekte Et")
+        self.btn_projekte = QPushButton("Hesapla")
         self.btn_projekte.setObjectName("primaryBtn")
         self.btn_projekte.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_projekte.setMinimumHeight(36)

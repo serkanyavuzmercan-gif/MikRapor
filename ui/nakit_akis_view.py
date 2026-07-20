@@ -234,7 +234,7 @@ def _runway_banner(na: NakitAkis) -> QWidget | None:
     lay = QVBoxLayout(card)
     lay.setContentsMargins(18, 12, 18, 12)
     lay.setSpacing(2)
-    eyebrow = QLabel("NAKİT RUNWAY")
+    eyebrow = QLabel("NAKİT NE KADAR YETER?")
     eyebrow.setStyleSheet(
         f"color: {renk}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; "
         "background: transparent;"
