@@ -15,7 +15,6 @@ from PyQt6.QtGui import QColor, QFont, QHideEvent, QPainter, QShowEvent
 from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
-    QHBoxLayout,
     QLabel,
     QSizePolicy,
     QVBoxLayout,
@@ -23,8 +22,9 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.empty_state import build_soluk_arka_plan
-from ui.resources import app_logo_pixmap
 from ui.styles import ACCENT, BORDER, MUTED, NAVY, SUBINK
+
+_KART_GENISLIK = 420
 
 
 class _Spinner(QWidget):
@@ -80,17 +80,6 @@ class _Spinner(QWidget):
         p.end()
 
 
-def _iskelet_kutu(yukseklik: int, *, radius: int = 10) -> QFrame:
-    """Açık gri, yuvarlak köşeli iskelet bloğu (içerik gelene dek yer tutar)."""
-    f = QFrame()
-    f.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-    f.setFixedHeight(yukseklik)
-    f.setStyleSheet(
-        f"background: #eef1f5; border: 1px solid {BORDER}; border-radius: {radius}px;"
-    )
-    return f
-
-
 class YukleniyorEkrani(QWidget):
     """Fetch boyunca gösterilen ara ekran; set_durum() ile canlı durum güncellenir."""
 
@@ -126,40 +115,32 @@ class YukleniyorEkrani(QWidget):
         kart = QFrame()
         kart.setObjectName("yukleniyorKart")
         kart.setStyleSheet(
-            "QFrame#yukleniyorKart { background: rgba(255,255,255,0.94); "
+            "QFrame#yukleniyorKart { background: rgba(255,255,255,0.96); "
             f"border: 1px solid {BORDER}; border-radius: 16px; }}"
         )
-        kart.setMaximumWidth(560)
+        kart.setFixedWidth(_KART_GENISLIK)
+        kart.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         kl = QVBoxLayout(kart)
-        kl.setContentsMargins(30, 26, 30, 26)
-        kl.setSpacing(14)
-        kl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        kl.setContentsMargins(28, 24, 28, 22)
+        kl.setSpacing(12)
 
-        # Marka + dönen gösterge yan yana
-        ust = QHBoxLayout()
-        ust.setSpacing(14)
-        ust.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        self._spinner = _Spinner(52)
-        ust.addWidget(self._spinner, alignment=Qt.AlignmentFlag.AlignVCenter)
-        mark = QLabel()
-        mark.setStyleSheet("background: transparent;")
-        pm = app_logo_pixmap(34)
-        if not pm.isNull():
-            mark.setPixmap(pm)
-            mark.setFixedSize(pm.size())
-        ust.addWidget(mark, alignment=Qt.AlignmentFlag.AlignVCenter)
+        # Dönen gösterge (ortada, tek başına — daha sade)
+        self._spinner = _Spinner(48)
+        kl.addWidget(self._spinner, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+        # Marka
         marka_ad = QLabel("MikRapor")
         mf = QFont()
-        mf.setPixelSize(20)
+        mf.setPixelSize(17)
         mf.setWeight(QFont.Weight.ExtraBold)
         marka_ad.setFont(mf)
         marka_ad.setStyleSheet(f"color: {NAVY}; background: transparent;")
-        ust.addWidget(marka_ad, alignment=Qt.AlignmentFlag.AlignVCenter)
-        kl.addLayout(ust)
+        marka_ad.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        kl.addWidget(marka_ad)
 
         self._baslik = QLabel(baslik)
         bf = QFont()
-        bf.setPixelSize(18)
+        bf.setPixelSize(17)
         bf.setWeight(QFont.Weight.Bold)
         self._baslik.setFont(bf)
         self._baslik.setStyleSheet(f"color: {ACCENT}; background: transparent;")
@@ -174,23 +155,11 @@ class YukleniyorEkrani(QWidget):
         )
         kl.addWidget(self._durum)
 
-        ipucu = QLabel("Çok sayıda hareket varsa bu birkaç saniye sürebilir · üstteki «İptal» ile durdurabilirsiniz")
+        ipucu = QLabel("Birkaç saniye sürebilir · «İptal» ile durdurabilirsin")
         ipucu.setWordWrap(True)
         ipucu.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        ipucu.setStyleSheet(
-            f"color: {MUTED}; font-size: 11px; background: transparent;"
-        )
+        ipucu.setStyleSheet(f"color: {MUTED}; font-size: 11px; background: transparent;")
         kl.addWidget(ipucu)
-
-        # İskelet: 4 KPI kartı + 2 geniş bant (rapor yerleşimini taklit)
-        kpi = QHBoxLayout()
-        kpi.setSpacing(12)
-        for _ in range(4):
-            kpi.addWidget(_iskelet_kutu(58))
-        kl.addSpacing(4)
-        kl.addLayout(kpi)
-        kl.addWidget(_iskelet_kutu(20, radius=6))
-        kl.addWidget(_iskelet_kutu(20, radius=6))
 
         d.addWidget(kart, alignment=Qt.AlignmentFlag.AlignHCenter)
         d.addStretch(2)
