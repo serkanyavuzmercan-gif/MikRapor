@@ -17,11 +17,12 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QSizePolicy,
+    QVBoxLayout,
     QWidget,
 )
 
 from ui.empty_state import build_empty_state
-from ui.styles import BAD, MUTED, OK, WARN
+from ui.styles import BAD, BORDER, MUTED, OK, WARN
 
 DURUM_RENK = {
     "notr": MUTED,
@@ -29,6 +30,43 @@ DURUM_RENK = {
     "uyari": WARN,
     "hata": BAD,
 }
+
+_BULGU_RENK = {"kritik": BAD, "uyari": WARN, "bilgi": "#2563eb", "iyi": OK}
+
+
+def bulgular_karti(bulgular: list, baslik: str = "BULGULAR") -> QWidget | None:
+    """Kural-tabanlı bulguları (domain.bulgular.Bulgu) kart olarak çizer; boşsa None."""
+    if not bulgular:
+        return None
+    card = QFrame()
+    card.setObjectName("bulgularKarti")
+    card.setStyleSheet(
+        f"QFrame#bulgularKarti {{ background: #ffffff; border: 1px solid {BORDER}; "
+        f"border-radius: 12px; }}"
+    )
+    lay = QVBoxLayout(card)
+    lay.setContentsMargins(16, 12, 16, 12)
+    lay.setSpacing(9)
+    bl = QLabel(baslik)
+    bl.setStyleSheet(
+        f"color: {MUTED}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; "
+        "background: transparent;"
+    )
+    lay.addWidget(bl)
+    for bg in bulgular:
+        renk = _BULGU_RENK.get(bg.siddet, MUTED)
+        oneri = (
+            f" &nbsp;<span style='color:{MUTED};'>→ {bg.oneri}</span>" if bg.oneri else ""
+        )
+        satir = QLabel(
+            f"<span style='color:{renk}; font-weight:800;'>●&nbsp; {bg.baslik}</span>"
+            f"<span style='color:#374151;'> — {bg.metin}</span>{oneri}"
+        )
+        satir.setTextFormat(Qt.TextFormat.RichText)
+        satir.setWordWrap(True)
+        satir.setStyleSheet("font-size: 12.5px; background: transparent;")
+        lay.addWidget(satir)
+    return card
 
 
 def _bitis_tarihi(bitis: str) -> QDate | None:
