@@ -51,6 +51,7 @@ class TahminTab(RaporTab):
     DONEM_ETIKET = "Geçmiş veri dönemi:"
     TARIH_GENISLIK = 120
     PDF_DESTEK = True
+    HERO_ASSET = "empty-tahmin.png"
 
     _t: Tahmin | None = None
 
