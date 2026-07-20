@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from domain.gelir_tablosu import build_gelir_tablosu
 from domain.gercek_durum import build_gercek_durum
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import build_nakit_akis, nakit_bakiye, nakit_gl_ozetten
@@ -35,6 +36,8 @@ from infra.mikro_fetch import (
     fetch_bakiye_ozet,
     fetch_cari_bakiye,
     fetch_cari_vade_gun,
+    fetch_gelir_tablosu,
+    fetch_kredi_anapara,
     fetch_nakit_akis_hareket,
     fetch_nakit_delta,
     fetch_stok_aylik,
@@ -186,8 +189,16 @@ class TahminTab(RaporTab):
                 ta = build_tahsilat_alacak(acik_rows, vade_gun_map=vade_gun_map, bas=bas, bit=bit)
                 # Başlangıç nakit GL'den (Bilanço ile birebir) — cari nakit döviz-kur şişik olabilir.
                 gl_nakit = nakit_gl_ozetten(fetch_bakiye_ozet(client, bit))
+                # Gider + kredi bozuk nakit-kategorisinden DEĞİL, doğrulanmış GL'den:
+                #   gider ≈ gelir tablosu 63 (faaliyet) + 66 (finansman) / ay
+                #   kredi ≈ 300/303 anapara ödemesi / ay
+                gt = build_gelir_tablosu(fetch_gelir_tablosu(client, bas, bit), bas=bas, bit=bit)
+                ay = max(1, len(na.aylik))
+                gider_proxy = -(gt.faaliyet_gideri + gt.finansman_gideri) / ay
+                kredi_proxy = fetch_kredi_anapara(client, bas, bit) / ay
                 runway = runway_takvim_kur(
-                    na=na, ta=ta, baslangic_ay=bit[:7], ufuk_ay=6, baslangic_nakit=gl_nakit)
+                    na=na, ta=ta, baslangic_ay=bit[:7], ufuk_ay=6, baslangic_nakit=gl_nakit,
+                    aylik_gider=gider_proxy, aylik_kredi=kredi_proxy)
             except MikroAPIError:
                 runway = None
             bildir("Varsayımlar öneriliyor…")

@@ -71,6 +71,8 @@ class GelirTablosu:
     donem_kari: float = 0.0
     net_kar: float = 0.0
     hesap_sayisi: int = 0
+    faaliyet_gideri: float = 0.0   # 63 (pazarlama+genel yönetim+ArGe), işaretli (negatif)
+    finansman_gideri: float = 0.0  # 66 (kredi faizi vb.), işaretli (negatif)
 
     @property
     def maliyet_eksik(self) -> bool:
@@ -175,6 +177,8 @@ def build_gelir_tablosu(rows: list[dict], bas: str = "", bit: str = "") -> Gelir
     gt.faaliyet_kari = faaliyet_kari
     gt.donem_kari = donem_kari
     gt.net_kar = net_kar
+    gt.faaliyet_gideri = grup_toplam("63")   # işaretli (gider → negatif)
+    gt.finansman_gideri = grup_toplam("66")
     return gt
 
 

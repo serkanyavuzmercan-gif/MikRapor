@@ -194,27 +194,33 @@ def build_runway_takvim(
 def runway_takvim_kur(
     *, na, ta, baslangic_ay: str = "", ufuk_ay: int = 6,
     baslangic_nakit: float | None = None,
+    aylik_gider: float | None = None,
+    aylik_kredi: float | None = None,
 ) -> RunwayTakvim:
     """
-    NakitAkis (düzenli gider run-rate) + TahsilatAlacak (vade takvimi) birleşiminden
-    takvim runway'i kurar. Düzenli gider = maaş+SGK+vergi+genel gider aylık ortalaması;
-    kredi = kredi ödemesi aylık ortalaması.
+    NakitAkis + TahsilatAlacak (vade takvimi) birleşiminden takvim runway'i kurar.
 
     baslangic_nakit verilirse (GL/mizan nakiti) onu kullanır — cari-hareket nakiti döviz
     kuru yüzünden onlarca kat şişebildiği için GÜVENİLİR kaynak GL'dir.
+
+    aylik_gider / aylik_kredi verilirse onlar kullanılır (önerilen: gelir tablosu 63+66
+    gideri ve GL 300/303 kredi anaparası). Verilmezse nakit-akış kategorisinden türetilir —
+    ama o kaynak maaş/gider/krediyi çoğu kurulumda "Diğer/?"e attığından 0 çıkabilir.
     """
     ay_sayisi = max(1, len(getattr(na, "aylik", None) or [1]))
-    ck = getattr(na, "cikis_kategori", {}) or {}
-    duzenli = (
-        ck.get("Personel / Maaş", 0.0) + ck.get("SGK", 0.0)
-        + ck.get("Vergi", 0.0) + ck.get("Genel giderler", 0.0)
-    ) / ay_sayisi
-    kredi = getattr(na, "kredi_odeme", 0.0) / ay_sayisi
+    if aylik_gider is None:
+        ck = getattr(na, "cikis_kategori", {}) or {}
+        aylik_gider = (
+            ck.get("Personel / Maaş", 0.0) + ck.get("SGK", 0.0)
+            + ck.get("Vergi", 0.0) + ck.get("Genel giderler", 0.0)
+        ) / ay_sayisi
+    if aylik_kredi is None:
+        aylik_kredi = getattr(na, "kredi_odeme", 0.0) / ay_sayisi
     if not baslangic_ay:
         baslangic_ay = (getattr(na, "bit", "") or "")[:7]
     nakit = baslangic_nakit if baslangic_nakit is not None else na.kapanis_nakit
     return build_runway_takvim(
         baslangic_nakit=nakit, baslangic_ay=baslangic_ay,
         alacak_vade=getattr(ta, "alacak_vade", {}), borc_vade=getattr(ta, "borc_vade", {}),
-        aylik_gider=duzenli, aylik_kredi=kredi, ufuk_ay=ufuk_ay,
+        aylik_gider=aylik_gider, aylik_kredi=aylik_kredi, ufuk_ay=ufuk_ay,
     )

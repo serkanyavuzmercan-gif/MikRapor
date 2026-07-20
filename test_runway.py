@@ -108,6 +108,20 @@ class TestRunwayTakvim(unittest.TestCase):
         r = runway_takvim_kur(na=na, ta=_TA(), baslangic_nakit=530000.0, ufuk_ay=3)
         self.assertEqual(r.baslangic_nakit, 530000.0)  # cari 24.7M DEĞİL
 
+    def test_gider_kredi_override(self):
+        # Gider/kredi override verilince nakit-kategorisi yerine onlar kullanılmalı.
+        na = NakitAkis(bit="2026-06-30", kapanis_nakit=100000.0,
+                       aylik=[AyNakit("2026-05", giris=0.0, cikis=0.0)])
+
+        class _TA:
+            alacak_vade: dict = {}
+            borc_vade: dict = {}
+
+        r = runway_takvim_kur(na=na, ta=_TA(), aylik_gider=30000.0, aylik_kredi=10000.0,
+                              ufuk_ay=2)
+        self.assertFalse(r.gider_eksik)           # override ile gider var
+        self.assertAlmostEqual(r.aylar[0].cikan, 40000.0, places=2)  # 30k + 10k
+
     def test_nakit_gl_ozetten(self):
         from domain.nakit_akis import nakit_gl_ozetten
         rows = [
