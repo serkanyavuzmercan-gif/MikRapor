@@ -14,6 +14,39 @@ from infra.config import load_config
 from ui.tarih_secici import TarihSecici
 
 
+def _calisma_referans() -> QDate:
+    """Kısayol bitiş referansı: çalışma yılı içindeyse bugün, değilse yıl sonu."""
+    yil = load_config().calisma_yili or QDate.currentDate().year()
+    bugun = QDate.currentDate()
+    if bugun.year() == yil:
+        return bugun
+    if bugun.year() > yil:
+        return QDate(yil, 12, 31)
+    return QDate(yil, 1, 1)
+
+
+def kisayol_aralik(kod: str) -> tuple[QDate, QDate]:
+    """Bu ay / Bu çeyrek / Bu yıl aralıkları.
+
+    Ay: ay başı → min(ay sonu, bugün).
+    Çeyrek: çeyrek başı → çeyrek sonu (ay ile çakışmasın diye tam çeyrek).
+    Yıl: 1 Ocak → 31 Aralık.
+    """
+    ref = _calisma_referans()
+    y, m = ref.year(), ref.month()
+    if kod == "ay":
+        bas = QDate(y, m, 1)
+        ay_son = bas.addMonths(1).addDays(-1)
+        bit = ref if ay_son > ref else ay_son
+        return bas, bit
+    if kod == "ceyrek":
+        bas_ay = ((m - 1) // 3) * 3 + 1
+        bas = QDate(y, bas_ay, 1)
+        bit = bas.addMonths(3).addDays(-1)
+        return bas, bit
+    return QDate(y, 1, 1), QDate(y, 12, 31)
+
+
 class DonemDurumu(QObject):
     """Tüm rapor sekmelerinde paylaşılan dönem. Bilanço bitiş tarihi = bit."""
 

@@ -23,13 +23,18 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.icons import icon_calendar, icon_chevron_down
-from ui.styles import BORDER_STRONG, INK_SOFT, MUTED, SURFACE
+from ui.styles import ACCENT, ACCENT_SOFT, BORDER, BORDER_STRONG, INK_SOFT, MUTED, SURFACE
 
 _ALAN_YUKSEKLIK = 36
 _FMT = "dd.MM.yyyy"
 _MASK = "00.00.0000"
 _POPUP_PAY = 8
 
+_KISAYOLLAR = (
+    ("ay", "Bu ay"),
+    ("ceyrek", "Bu çeyrek"),
+    ("yil", "Bu yıl"),
+)
 
 def _popup_siniri(anchor: QWidget) -> QRect:
     """Ana uygulama penceresinin client alanı (Popup değil); yoksa ekran."""
@@ -314,6 +319,40 @@ class DonemAralikAlani(QFrame):
             pl.setContentsMargins(12, 12, 12, 12)
             pl.setSpacing(10)
 
+            hizli = QLabel("Hızlı dönem")
+            hizli.setStyleSheet(f"color: {MUTED}; font-size: 11px; font-weight: 600;")
+            pl.addWidget(hizli)
+
+            kisayol_row = QHBoxLayout()
+            kisayol_row.setContentsMargins(0, 0, 0, 0)
+            kisayol_row.setSpacing(6)
+            self._kisayol_btn: dict[str, QPushButton] = {}
+            for kod, etiket in _KISAYOLLAR:
+                btn = QPushButton(etiket)
+                btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                btn.setStyleSheet(
+                    f"QPushButton {{"
+                    f"  background: {SURFACE}; color: {INK_SOFT};"
+                    f"  border: 1px solid {BORDER_STRONG}; border-radius: 6px;"
+                    f"  padding: 5px 10px; font-size: 12px; font-weight: 600;"
+                    f"}}"
+                    f"QPushButton:hover {{ background: {ACCENT_SOFT}; color: {ACCENT};"
+                    f"  border-color: {ACCENT}; }}"
+                    f"QPushButton[aktif=\"true\"] {{ background: {ACCENT}; color: #ffffff;"
+                    f"  border-color: {ACCENT}; }}"
+                )
+                btn.clicked.connect(lambda _=False, k=kod: self._kisayol_uygula(k))
+                self._kisayol_btn[kod] = btn
+                kisayol_row.addWidget(btn)
+            kisayol_row.addStretch(1)
+            pl.addLayout(kisayol_row)
+
+            cizgi = QFrame()
+            cizgi.setFrameShape(QFrame.Shape.HLine)
+            cizgi.setStyleSheet(f"color: {BORDER};")
+            pl.addWidget(cizgi)
+
             row1 = QHBoxLayout()
             lbl1 = QLabel("Başlangıç")
             lbl1.setStyleSheet(f"color: {MUTED}; font-size: 11px;")
@@ -338,12 +377,43 @@ class DonemAralikAlani(QFrame):
         self._bas.setDate(self._donem.bas_tarih())
         self._bit.setDate(self._donem.bit_tarih())
         self._uzaktan = False
+        self._kisayol_senkron()
         below = self.mapToGlobal(QPoint(0, self.height() + 4))
         prefer_left = self.mapToGlobal(QPoint(0, 0)).x()
         _popup_yerlestir(self._popup, anchor=self, below=below, prefer_left=prefer_left)
         self._popup.show()
         self._popup.raise_()
         self._bas.odakla()
+
+    def _kisayol_uygula(self, kod: str) -> None:
+        from ui.donem import kisayol_aralik
+
+        bas, bit = kisayol_aralik(kod)
+        self._uzaktan = True
+        self._bas.setDate(bas)
+        self._bit.setDate(bit)
+        self._uzaktan = False
+        self._donem.donem_ayarla(bas=bas, bit=bit)
+        self._kisayol_senkron()
+        if self._popup is not None:
+            self._popup.close()
+
+    def _kisayol_senkron(self) -> None:
+        if not getattr(self, "_kisayol_btn", None):
+            return
+        from ui.donem import kisayol_aralik
+
+        bas, bit = self._donem.bas_tarih(), self._donem.bit_tarih()
+        eslesen: str | None = None
+        for kod, _ in _KISAYOLLAR:
+            k_bas, k_bit = kisayol_aralik(kod)
+            if bas == k_bas and bit == k_bit:
+                eslesen = kod
+                break
+        for kod, btn in self._kisayol_btn.items():
+            btn.setProperty("aktif", "true" if kod == eslesen else "false")
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
 
     def _popup_tarih_degisti(self, _d: QDate) -> None:
         if self._uzaktan:
@@ -356,3 +426,4 @@ class DonemAralikAlani(QFrame):
             self._bit.setDate(bit)
             self._uzaktan = False
         self._donem.donem_ayarla(bas=bas, bit=bit)
+        self._kisayol_senkron()
