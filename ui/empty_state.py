@@ -110,13 +110,12 @@ class _CoverBackground(QWidget):
         if self._src.isNull() or self.width() < 2 or self.height() < 2:
             p.end()
             return
-        # Pencereye sığdır (contain) — üst kenara hizalı, taşma yok
-        scaled = self._src.scaled(
-            self.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
+        # Yatayda pencereyi doldur; dikeyde üst kenara yapış (yan boşluk yok)
+        scaled = self._src.scaledToWidth(
+            self.width(),
             Qt.TransformationMode.SmoothTransformation,
         )
-        x = (self.width() - scaled.width()) // 2
+        x = 0
         y = 0
         p.setOpacity(self._opacity)
         p.drawPixmap(x, y, scaled)
