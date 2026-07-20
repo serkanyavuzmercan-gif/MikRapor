@@ -52,8 +52,8 @@ _SEKME_ETIKETLERI = (
     ("Gelir", "Gelir Tablosu"),
     ("Nakit & Kâr", "Nakit & Kârlılık"),
     ("Tahsilat", "Tahsilat & Alacak"),
-    ("Nakit Akış", "Nakit Akış"),
-    ("Tahmin", "Tahmin"),
+    ("Nakit Akış", "Nakit Akış Analizi"),
+    ("Tahmin", "Tahmin & Projeksiyon"),
     ("Trend", "Trend & Oranlar"),
 )
 
