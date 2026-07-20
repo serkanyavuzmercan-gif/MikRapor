@@ -79,6 +79,10 @@ class NakitAkis:
     diger_cikis_kirilim: list = field(default_factory=list)
     kredi_kullanim: float = 0.0
     kredi_odeme: float = 0.0
+    # Muhasebeden (GL 300/303) tespit edilen kredi — kredi taksitleri banka hareketlerine
+    # hiç işlenmemiş kurulumlarda yedek kaynak (0 göstermek yerine gerçeği göster).
+    kredi_odeme_gl: float = 0.0
+    kredi_kullanim_gl: float = 0.0
     aylik: list = field(default_factory=list)
     hareket_sayisi: int = 0
 
@@ -98,6 +102,28 @@ class NakitAkis:
     @property
     def kredi_net(self) -> float:
         return self.kredi_kullanim - self.kredi_odeme
+
+    # --- Gösterim: banka hareketi krediyi görmüyorsa muhasebe (GL) tutarı ---
+
+    @property
+    def kredi_odeme_gosterim(self) -> float:
+        return self.kredi_odeme if self.kredi_odeme > 0.005 else self.kredi_odeme_gl
+
+    @property
+    def kredi_kullanim_gosterim(self) -> float:
+        return self.kredi_kullanim if self.kredi_kullanim > 0.005 else self.kredi_kullanim_gl
+
+    @property
+    def kredi_net_gosterim(self) -> float:
+        return self.kredi_kullanim_gosterim - self.kredi_odeme_gosterim
+
+    @property
+    def kredi_kaynak_gl(self) -> bool:
+        """Gösterilen kredi rakamlarından en az biri muhasebeden (GL) mi geldi?"""
+        return (
+            (self.kredi_odeme <= 0.005 < self.kredi_odeme_gl)
+            or (self.kredi_kullanim <= 0.005 < self.kredi_kullanim_gl)
+        )
 
 
 def nakit_bakiye(bakiye_rows: list[dict] | None) -> float:
@@ -211,9 +237,11 @@ def nakit_akis_csv(na: NakitAkis) -> str:
         out.append(f"ÇIKIŞLAR;{etiket};{s(tutar)}")
     for prefix, tutar in na.diger_cikis_kirilim:
         out.append(f"ÇIKIŞLAR (diğer kırılım);{prefix};{s(tutar)}")
-    out.append(f"KREDİ;Kredi Kullanımı;{s(na.kredi_kullanim)}")
-    out.append(f"KREDİ;Kredi Ödemesi;{s(na.kredi_odeme)}")
-    out.append(f"KREDİ;Net Kredi;{s(na.kredi_net)}")
+    out.append(f"KREDİ;Kredi Kullanımı;{s(na.kredi_kullanim_gosterim)}")
+    out.append(f"KREDİ;Kredi Ödemesi;{s(na.kredi_odeme_gosterim)}")
+    out.append(f"KREDİ;Net Kredi;{s(na.kredi_net_gosterim)}")
+    if na.kredi_kaynak_gl:
+        out.append("KREDİ;Kaynak;muhasebe kayıtları (300/303) — banka hareketlerinde yok")
     for a in na.aylik:
         out.append(f"AYLIK;{a.ay} giriş;{s(a.giris)}")
         out.append(f"AYLIK;{a.ay} çıkış;{s(a.cikis)}")

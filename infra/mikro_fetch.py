@@ -252,6 +252,33 @@ def fetch_kredi_anapara(client: MikroClient, bas: str, bit: str) -> float:
     return 0.0
 
 
+def fetch_kredi_gl(client: MikroClient, bas: str, bit: str) -> dict[str, float]:
+    """
+    Dönem içi GL kredi hareketi (iki yön): 300/303 borç = anapara ÖDEMESİ,
+    alacak = yeni KULLANIM.
+
+    Kredi taksitleri birçok kurulumda cari/banka hareketine değil doğrudan muhasebeye
+    işlenir → Nakit Akış'ın banka-hareket kaynağı krediyi hiç göremez. Bu sorgu
+    muhasebeden gerçeği okur; KREDİ ÖZETİ'nin yedek kaynağıdır.
+    """
+    bas = iso_tarih(bas, alan="tarih")
+    bit = iso_tarih(bit, alan="tarih")
+    sql = (
+        "SELECT SUM(CASE WHEN fis_meblag0 > 0 THEN fis_meblag0 ELSE 0 END) AS odeme, "
+        "SUM(CASE WHEN fis_meblag0 < 0 THEN -fis_meblag0 ELSE 0 END) AS kullanim "
+        "FROM MUHASEBE_FISLERI WITH (NOLOCK) "
+        "WHERE fis_iptal = 0 AND (fis_hesap_kod LIKE '300%' OR fis_hesap_kod LIKE '303%') "
+        f"AND fis_tarih >= '{bas}' AND fis_tarih < '{_bit_son(bit)}'"
+    )
+    rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+    if rows:
+        return {
+            "odeme": _f_local(get_row_value(rows[0], "odeme", "ODEME")),
+            "kullanim": _f_local(get_row_value(rows[0], "kullanim", "KULLANIM")),
+        }
+    return {"odeme": 0.0, "kullanim": 0.0}
+
+
 def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     """
     Belirli tarihe (asof = 'YYYY-MM-DD') kadar kümülatif mizan: hesap başına borç/alacak.

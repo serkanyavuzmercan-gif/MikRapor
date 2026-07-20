@@ -10,8 +10,13 @@ from PyQt6.QtWidgets import QFileDialog, QMessageBox
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis, build_nakit_akis, nakit_akis_csv
 from infra.config import MikroConfig
-from infra.mikro_api import MikroClient
-from infra.mikro_fetch import fetch_cari_bakiye, fetch_nakit_akis_hareket, fetch_nakit_delta
+from infra.mikro_api import MikroAPIError, MikroClient
+from infra.mikro_fetch import (
+    fetch_cari_bakiye,
+    fetch_kredi_gl,
+    fetch_nakit_akis_hareket,
+    fetch_nakit_delta,
+)
 from ui.nakit_akis_pdf import export_nakit_akis_pdf
 from ui.nakit_akis_view import build_nakit_akis_widget
 from ui.rapor_tab import RaporTab, firma_getir
@@ -46,6 +51,16 @@ class NakitAkisTab(RaporTab):
             na = build_nakit_akis(
                 hareket_rows, bakiye_kapanis_rows=kapanis_rows,
                 donem_delta=donem_delta, bas=bas, bit=bit)
+            # Banka hareketlerinde kredi hiç görünmüyorsa muhasebeden (300/303) yedek al —
+            # kredi taksitleri birçok kurulumda cari harekete değil doğrudan GL'ye işlenir.
+            if na.kredi_odeme < 0.005 and na.kredi_kullanim < 0.005:
+                try:
+                    bildir("Kredi hareketi muhasebeden okunuyor…")
+                    kgl = fetch_kredi_gl(client, bas, bit)
+                    na.kredi_odeme_gl = kgl.get("odeme", 0.0)
+                    na.kredi_kullanim_gl = kgl.get("kullanim", 0.0)
+                except MikroAPIError:
+                    pass
             return {"na": na, "firma": firma_getir(cfg, client)}
 
         return is_fn
@@ -60,8 +75,9 @@ class NakitAkisTab(RaporTab):
             f"Çıkış {tl(na.toplam_cikis)}",
             f"Net {tl(na.net_akis)}",
         ]
-        if na.kredi_odeme > 0.005 or na.kredi_kullanim > 0.005:
-            parts.append(f"Kredi net {tl(na.kredi_net)}")
+        if na.kredi_odeme_gosterim > 0.005 or na.kredi_kullanim_gosterim > 0.005:
+            kaynak = " (muhasebeden)" if na.kredi_kaynak_gl else ""
+            parts.append(f"Kredi net {tl(na.kredi_net_gosterim)}{kaynak}")
         if na.hareket_sayisi == 0:
             parts.insert(0, "⚠ banka/kasa hareketi yok — dönem/yıl kontrol edin")
         self._durum(
