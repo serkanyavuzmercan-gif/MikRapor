@@ -287,7 +287,8 @@ def build_bilanco_widget(b: Bilanco, firma: str = "") -> QWidget:
     )
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
-    root.addWidget(head)
+    from ui.bilesenler import baslik_ile_gelecek_uyari
+    root.addWidget(baslik_ile_gelecek_uyari(head, b.asof))
 
     # Tipografi KPI şeridi (kart yığını değil)
     strip = QFrame()
