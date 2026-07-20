@@ -7,6 +7,8 @@ Varsayılan profil MikRapor önerilen ayarlarıdır.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -31,7 +33,19 @@ from domain.gercek_durum_ayarlar import (
     GercekDurumAyarlar,
 )
 from infra.config import config_path, load_gercek_durum_ayarlar, save_gercek_durum_ayarlar
-from ui.styles import ACCENT, ACCENT_SOFT, BORDER, MUTED, NAVY, NAVY_SOFT, SURFACE
+from ui.icons import icon_chevron_down
+from ui.styles import ACCENT, ACCENT_SOFT, BORDER, BORDER_STRONG, MUTED, NAVY, NAVY_SOFT, SURFACE
+
+_CHEVRON_PNG = Path(__file__).resolve().parent.parent / "assets" / "chevron-down-teal.png"
+
+
+def _chevron_qss_url() -> str:
+    """QSS image: yolu oluştur (yoksa çiz)."""
+    if not _CHEVRON_PNG.exists():
+        _CHEVRON_PNG.parent.mkdir(parents=True, exist_ok=True)
+        icon_chevron_down(12, ACCENT).pixmap(12, 12).save(str(_CHEVRON_PNG), "PNG")
+    # QSS Windows’ta forward slash ister
+    return _CHEVRON_PNG.as_posix()
 
 
 def _combo_secenekler(combo: QComboBox, secenekler: list[tuple[str, str]], secili: str) -> None:
@@ -72,7 +86,8 @@ class GercekDurumAyarlarDialog(QDialog):
         bas.setObjectName("gdAyarBaslikYazi")
         bl.addWidget(bas)
         acik = QLabel(
-            "Yalnızca bu sekmeyi etkiler. Bilanço ve Gelir Tablosu değişmez."
+            "Yalnızca bu sekmeyi etkiler. Kurallar «Raporu Getir» sırasında uygulanır; "
+            "PDF/CSV ekrandaki aynı sonucu dışa aktarır. Bilanço / Gelir değişmez."
         )
         acik.setObjectName("gdAyarAciklama")
         acik.setWordWrap(True)
@@ -167,6 +182,7 @@ class GercekDurumAyarlarDialog(QDialog):
         return lbl
 
     def _uygula_stil(self) -> None:
+        ok_url = _chevron_qss_url()
         self.setStyleSheet(
             f"""
             QDialog#gdAyarDialog {{ background: {SURFACE}; }}
@@ -206,13 +222,29 @@ class GercekDurumAyarlarDialog(QDialog):
             }}
             QComboBox#gdAyarCombo {{
                 background: {SURFACE};
+                color: {NAVY};
                 border: 1px solid #c5d0de;
                 border-radius: 8px;
-                padding: 6px 10px;
-                min-height: 22px;
+                padding: 6px 36px 6px 10px;
+                min-height: 24px;
             }}
             QComboBox#gdAyarCombo:hover {{ border-color: {ACCENT}; }}
             QComboBox#gdAyarCombo:focus {{ border: 1px solid {ACCENT}; }}
+            QComboBox#gdAyarCombo::drop-down {{
+                subcontrol-origin: padding;
+                subcontrol-position: center right;
+                width: 30px;
+                border: none;
+                border-left: 1px solid {BORDER_STRONG};
+                background: {ACCENT_SOFT};
+                border-top-right-radius: 7px;
+                border-bottom-right-radius: 7px;
+            }}
+            QComboBox#gdAyarCombo::down-arrow {{
+                image: url({ok_url});
+                width: 12px;
+                height: 12px;
+            }}
             QCheckBox#gdAyarCheck {{
                 color: {NAVY};
                 font-size: 12px;
