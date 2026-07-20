@@ -44,6 +44,11 @@ def _runway_banner_takvim(rt: RunwayTakvim) -> QFrame:
         renk, bg, kenar = NEG, "#fdecec", "#f3b4b4"
         baslik = f"Nakit {_ay_str(rt.tukenme_ay)} ayında eksiye düşüyor"
         oneri = "→ Tahsilatı öne çek, ödemeleri ertele; kısa vadeli finansman planla."
+    elif rt.gider_eksik:
+        # Gider okunamadıysa "sağlıklı" demek yanıltıcı — sarı, uyarılı.
+        renk, bg, kenar = "#b45309", "#fdf3e0", "#f0d090"
+        baslik = "Runway giderleri eksik — sonuç güvenilir değil"
+        oneri = ""
     else:
         renk, bg, kenar = "#15803d", "#e8f6ee", "#bfe3cd"
         baslik = (f"Nakit {rt.ufuk_ay} ay boyunca pozitif "
@@ -75,6 +80,15 @@ def _runway_banner_takvim(rt: RunwayTakvim) -> QFrame:
     sub.setWordWrap(True)
     sub.setStyleSheet(f"color: {MUTED}; font-size: 12px; background: transparent;")
     lay.addWidget(sub)
+    if rt.gider_eksik:
+        uy = QLabel(
+            "⚠ Maaş / genel gider / kredi ödemeleri Mikro'dan kategorize edilemedi "
+            "(aylık düzenli gider 0 okundu). Bu yüzden runway giderleri EKSİK ve "
+            "gerçek durumdan iyimserdir — bu haliyle nakit krizini göremeyebilir."
+        )
+        uy.setWordWrap(True)
+        uy.setStyleSheet("color: #8a5a00; font-size: 11.5px; font-weight: 600; background: transparent;")
+        lay.addWidget(uy)
     return card
 
 
