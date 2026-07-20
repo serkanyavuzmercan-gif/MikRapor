@@ -376,8 +376,9 @@ class MikRaporWindow(QMainWindow):
         if tab is not None:
             tab._on_ekstra()
 
-    def _set_conn(self, text: str, connected: bool) -> None:
+    def _set_conn(self, text: str, connected: bool, *, tooltip: str = "") -> None:
         self._conn.setText(text)
+        self._conn.setToolTip(tooltip)
         self._conn.setProperty("connected", connected)
         self._conn.style().unpolish(self._conn)
         self._conn.style().polish(self._conn)
@@ -411,7 +412,8 @@ class MikRaporWindow(QMainWindow):
         kod = cfg.firma_kodu or "—"
         ad = (cfg.firma_adi or "").strip()
         label = f"●  Firma {kod}" + (f" · {ad[:18]}" if ad else "")
-        self._set_conn(label, True)
+        tip = f"Firma {kod}" + (f" · {ad}" if ad else "")
+        self._set_conn(label, True, tooltip=tip)
 
     def _on_ping_hata(self, _msg: str) -> None:
         self._set_conn("○  Bağlanılamadı", False)
