@@ -29,7 +29,6 @@ from PyQt6.QtWidgets import (
 from infra.config import MikroConfig, config_path, load_config, save_config
 from infra.mikro_api import MikroClient
 from infra.mikro_fetch import fetch_firma_adi
-from ui.nav_tip import bagla_nav_tip
 from ui.worker import RaporWorker
 
 
@@ -70,12 +69,6 @@ class MikroAyarlarDialog(QDialog):
         self._sifre_gun = QLineEdit(self._cfg.sifre_gun)
         self._sifre_gun.setEchoMode(QLineEdit.EchoMode.Password)
         self._sifre_gun.setPlaceholderText("Mikro kullanıcı şifresi")
-        bagla_nav_tip(
-            self._sifre_gun,
-            "Mikro API kimlik doğrulamasında kullanılan kullanıcı şifresi (zorunlu).",
-            eyebrow="AYARLAR",
-            parent=self,
-        )
 
         form.addRow("Mikro API adresi:", self._base_url)
         form.addRow("API anahtarı:", self._api_key)
@@ -99,14 +92,6 @@ class MikroAyarlarDialog(QDialog):
 
         self._tls_dogrula = QCheckBox("TLS sertifikasını doğrula")
         self._tls_dogrula.setChecked(self._cfg.tls_dogrula)
-        bagla_nav_tip(
-            self._tls_dogrula,
-            "Mikro sunucunuzda geçerli (imzalı) bir sertifika varsa açın. "
-            "Self-signed sertifika kullanan kurulumlarda (yaygın durum) kapalı bırakın; "
-            "kapalıyken sertifika doğrulanmaz.",
-            eyebrow="AYARLAR",
-            parent=self,
-        )
         self._tls_dogrula.toggled.connect(self._on_tls_toggled)
         form.addRow("", self._tls_dogrula)
 

@@ -37,7 +37,6 @@ from infra.mikro_fetch import (
 )
 from ui.bilesenler import hos_geldin, para_spin, yuzde_spin
 from ui.empty_state import DEFAULT_HERO_ASSET, HERO_SOLUK_OPACITY, build_soluk_arka_plan
-from ui.nav_tip import bagla_nav_tip
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.tahmin_pdf import export_tahmin_pdf
 from ui.tahmin_view import build_tahmin_widget
@@ -260,7 +259,6 @@ class _SenaryoSolPanel(QFrame):
         self._rail.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._rail.setFixedWidth(_RAIL_GENISLIK)
         self._rail.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-        bagla_nav_tip(self._rail, "Senaryo varsayımlarını aç", eyebrow="TAHMİN", parent=self)
         self._rail.setVisible(False)
         self._rail.clicked.connect(self.ac)
         host.addWidget(self._rail)
@@ -296,7 +294,6 @@ class _SenaryoSolPanel(QFrame):
         kapat.setObjectName("tahminSolKapat")
         kapat.setCursor(Qt.CursorShape.PointingHandCursor)
         kapat.setFixedSize(26, 26)
-        bagla_nav_tip(kapat, "Paneli kapat", eyebrow="TAHMİN", parent=self)
         kapat.clicked.connect(self.kapat)
         baslik_satir.addWidget(kapat, 0, Qt.AlignmentFlag.AlignTop)
         bw.addLayout(baslik_satir)

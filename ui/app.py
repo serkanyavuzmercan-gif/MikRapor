@@ -260,8 +260,6 @@ class MikRaporWindow(QMainWindow):
         btn_ayar.setIconSize(QSize(14, 14))
         btn_ayar.clicked.connect(self._on_ayarlar)
         header.addWidget(btn_ayar, alignment=Qt.AlignmentFlag.AlignVCenter)
-        self._ayar_tip = bagla_nav_tip(
-            btn_ayar, text="Mikro Ayarları", eyebrow="AYARLAR", parent=self)
 
         self._conn = QLabel()
         self._conn.setObjectName("connStatus")
