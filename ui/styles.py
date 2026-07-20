@@ -386,23 +386,31 @@ QLabel {{ color: {INK_SOFT}; }}
 QToolTip {{
     background-color: {SURFACE};
     color: {NAVY};
-    border: 1px solid {ACCENT_MUTED};
+    border: 1px solid #d5e2eb;
     border-radius: 8px;
     padding: 8px 12px;
     font-size: 12px;
     font-weight: 600;
 }}
-QFrame#navTip {{
-    background-color: {SURFACE};
-    border: 1px solid #d7e3ec;
-    border-radius: 10px;
-}}
-QFrame#navTipAccent {{
-    background-color: {ACCENT};
+QWidget#navTipHost {{
+    background: transparent;
     border: none;
-    border-radius: 2px;
 }}
-QLabel#navTipLabel {{
+QFrame#navTipCard {{
+    background-color: {SURFACE};
+    border: 1px solid #d5e2eb;
+    border-radius: 12px;
+}}
+QLabel#navTipEyebrow {{
+    color: {ACCENT};
+    background: transparent;
+    border: none;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.1px;
+    padding: 0;
+}}
+QLabel#navTipTitle {{
     color: {NAVY};
     background: transparent;
     border: none;

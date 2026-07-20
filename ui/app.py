@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import sys
 
-from PyQt6.QtCore import QEvent, QPoint, QSize, Qt, QTimer
-from PyQt6.QtGui import QCloseEvent, QColor, QFont
+from PyQt6.QtCore import QEvent, QPoint, QPropertyAnimation, QSize, Qt, QTimer, QEasingCurve
+from PyQt6.QtGui import QCloseEvent, QColor, QFont, QPainter, QPainterPath, QPen
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
@@ -58,41 +58,98 @@ _SEKME_ETIKETLERI = (
 )
 
 
-class _NavTip(QFrame):
-    """Header sekme hover ipucu — kurumsal, gölgeli pill."""
+class _NavTip(QWidget):
+    """Header sekme hover — caret’li, fade’li kurumsal kart."""
+
+    _CARET = 8
 
     def __init__(self) -> None:
-        super().__init__(None, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
-        self.setObjectName("navTip")
+        flags = (
+            Qt.WindowType.ToolTip
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.NoDropShadowWindowHint
+        )
+        super().__init__(None, flags)
+        self.setObjectName("navTipHost")
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(12, 8, 14, 8)
-        lay.setSpacing(8)
-        accent = QFrame()
-        accent.setObjectName("navTipAccent")
-        accent.setFixedWidth(3)
-        accent.setFixedHeight(16)
-        lay.addWidget(accent, alignment=Qt.AlignmentFlag.AlignVCenter)
-        self._lbl = QLabel()
-        self._lbl.setObjectName("navTipLabel")
-        font = QFont()
-        font.setPointSize(11)
-        font.setWeight(QFont.Weight.DemiBold)
-        self._lbl.setFont(font)
-        lay.addWidget(self._lbl)
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(18)
-        shadow.setOffset(0, 4)
-        shadow.setColor(QColor(15, 23, 42, 55))
-        self.setGraphicsEffect(shadow)
 
-    def show_text(self, text: str, global_pos: QPoint) -> None:
-        self._lbl.setText(text)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(10, self._CARET + 2, 10, 10)
+        root.setSpacing(0)
+
+        self._card = QFrame()
+        self._card.setObjectName("navTipCard")
+        card_lay = QVBoxLayout(self._card)
+        card_lay.setContentsMargins(14, 10, 16, 11)
+        card_lay.setSpacing(3)
+
+        self._eyebrow = QLabel("RAPOR")
+        self._eyebrow.setObjectName("navTipEyebrow")
+        card_lay.addWidget(self._eyebrow)
+
+        self._title = QLabel()
+        self._title.setObjectName("navTipTitle")
+        title_font = QFont()
+        title_font.setPointSize(12)
+        title_font.setWeight(QFont.Weight.Bold)
+        self._title.setFont(title_font)
+        card_lay.addWidget(self._title)
+
+        root.addWidget(self._card)
+
+        shadow = QGraphicsDropShadowEffect(self._card)
+        shadow.setBlurRadius(22)
+        shadow.setOffset(0, 6)
+        shadow.setColor(QColor(15, 58, 95, 48))
+        self._card.setGraphicsEffect(shadow)
+
+        self._fade = QPropertyAnimation(self, b"windowOpacity", self)
+        self._fade.setDuration(140)
+        self._fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+    def paintEvent(self, _ev) -> None:  # noqa: N802
+        # Üst caret — kartın ortasına bakacak şekilde
+        if self.width() < 20:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        cx = self.width() / 2.0
+        top = 2.0
+        path = QPainterPath()
+        path.moveTo(cx, top)
+        path.lineTo(cx + self._CARET, top + self._CARET)
+        path.lineTo(cx - self._CARET, top + self._CARET)
+        path.closeSubpath()
+        p.setPen(QPen(QColor("#d5e2eb"), 1.0))
+        p.setBrush(QColor("#ffffff"))
+        p.drawPath(path)
+        # Caret ile kart birleşimi: alt çizgiyi kapat
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#ffffff"))
+        p.drawRect(int(cx - self._CARET + 1), int(top + self._CARET - 1), self._CARET * 2 - 2, 4)
+        p.end()
+
+    def show_text(self, text: str, anchor_global: QPoint) -> None:
+        self._title.setText(text)
         self.adjustSize()
-        self.move(global_pos)
+        # Kartı sekme ortasına hizala (caret merkez)
+        x = anchor_global.x() - self.width() // 2
+        y = anchor_global.y()
+        self.move(x, y)
+        self._fade.stop()
+        self.setWindowOpacity(0.0)
         self.show()
         self.raise_()
+        self._fade.setStartValue(0.0)
+        self._fade.setEndValue(1.0)
+        self._fade.start()
+
+    def hide_tip(self) -> None:
+        self._fade.stop()
+        self.hide()
+        self.setWindowOpacity(1.0)
 
 
 class HeaderTabBar(QTabBar):
@@ -107,7 +164,12 @@ class HeaderTabBar(QTabBar):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self._tip = _NavTip()
         self._tip_idx = -1
+        self._pending_idx = -1
         self.setMouseTracking(True)
+        self._delay = QTimer(self)
+        self._delay.setSingleShot(True)
+        self._delay.setInterval(220)
+        self._delay.timeout.connect(self._reveal_tip)
 
     def minimumSizeHint(self) -> QSize:
         s = super().minimumSizeHint()
@@ -125,40 +187,53 @@ class HeaderTabBar(QTabBar):
 
     def event(self, event: QEvent) -> bool:  # noqa: N802 — Qt API
         if event.type() == QEvent.Type.ToolTip:
-            return True  # native tooltip kapalı — özel tip kullanıyoruz
+            return True
         return super().event(event)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
         super().mouseMoveEvent(event)
         idx = self.tabAt(event.position().toPoint())
         if idx < 0:
-            self._hide_tip()
+            self._cancel_tip()
             return
         tip = self.tabToolTip(idx).strip()
         label = self.tabText(idx).strip()
         if not tip or tip == label:
-            self._hide_tip()
+            self._cancel_tip()
             return
-        if idx != self._tip_idx or not self._tip.isVisible():
-            self._tip_idx = idx
-            rect = self.tabRect(idx)
-            # Sekmenin altında, ortalanmış
-            pos = self.mapToGlobal(rect.bottomLeft())
-            pos.setX(pos.x() + max(0, (rect.width() - 120) // 2))
-            pos.setY(pos.y() + 6)
-            self._tip.show_text(tip, pos)
+        if idx == self._tip_idx and self._tip.isVisible():
+            return
+        self._pending_idx = idx
+        self._delay.start()
 
     def leaveEvent(self, event) -> None:  # noqa: N802
-        self._hide_tip()
+        self._cancel_tip()
         super().leaveEvent(event)
 
     def hideEvent(self, event) -> None:  # noqa: N802
-        self._hide_tip()
+        self._cancel_tip()
         super().hideEvent(event)
 
-    def _hide_tip(self) -> None:
+    def _reveal_tip(self) -> None:
+        idx = self._pending_idx
+        if idx < 0 or idx >= self.count():
+            return
+        tip = self.tabToolTip(idx).strip()
+        label = self.tabText(idx).strip()
+        if not tip or tip == label:
+            return
+        self._tip_idx = idx
+        rect = self.tabRect(idx)
+        # Sekmenin alt orta noktası
+        anchor = self.mapToGlobal(rect.center())
+        anchor.setY(self.mapToGlobal(rect.bottomLeft()).y() + 4)
+        self._tip.show_text(tip, anchor)
+
+    def _cancel_tip(self) -> None:
+        self._delay.stop()
+        self._pending_idx = -1
         self._tip_idx = -1
-        self._tip.hide()
+        self._tip.hide_tip()
 
 
 def _try_activate_existing_instance() -> bool:
