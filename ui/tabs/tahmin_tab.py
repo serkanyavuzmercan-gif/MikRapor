@@ -49,6 +49,7 @@ from ui.rapor_tab import RaporTab, firma_getir
 from ui.tahmin_pdf import export_tahmin_pdf
 from ui.tahmin_view import build_tahmin_widget
 from ui.worker import IsFonksiyonu
+from ui.yukleniyor import YukleniyorEkrani
 
 _PANEL_GENISLIK = 240
 _RAIL_GENISLIK = 36
@@ -156,6 +157,11 @@ class TahminTab(RaporTab):
         self._view.raise_()
 
         self._stack.addWidget(self._icerik_sayfa)
+
+        # 2: yükleniyor ara ekranı (RaporTab._calistir bunu bekler)
+        self._yukleniyor = YukleniyorEkrani(hero_asset=hero, hero_fit=hero_fit)
+        self._stack.addWidget(self._yukleniyor)
+
         self._stack.setCurrentIndex(0)
         sag_lay.addWidget(self._stack, stretch=1)
         root.addWidget(sag, 1)
