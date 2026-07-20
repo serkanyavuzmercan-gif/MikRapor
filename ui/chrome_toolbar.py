@@ -248,6 +248,33 @@ class ChromeToolbar(QFrame):
                 f"«{etiket}» — bu sekmeye özel hesaplama kuralları "
                 "(satış / alış / nakit kaynağı). Bilanço ve Gelir Tablosu’nu değiştirmez."
             )
+        # Nakit & Kâr: Getir + Hesaplama solda, PDF/CSV sağda; diğer sekmeler eski sıra
+        self._diz_aksiyonlar(nakit=gorunur)
+
+    def _diz_aksiyonlar(self, *, nakit: bool) -> None:
+        """Aksiyon sırasını sekme tipine göre dizer (widget’ları silmeden taşır)."""
+        self._nakit_modu = nakit
+        lay = self._aksiyon_lay
+        while lay.count():
+            item = lay.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(self._aksiyon)
+
+        lay.addWidget(self._btn_getir)
+        lay.addWidget(self._btn_iptal)
+        if nakit:
+            lay.addWidget(self._btn_ekstra)
+            lay.addStretch(1)
+            lay.addWidget(self._btn_pdf)
+            lay.addWidget(self._btn_csv)
+        else:
+            lay.addWidget(self._btn_pdf)
+            lay.addWidget(self._btn_csv)
+            # ekstra gizli kalsa da layout’ta tutma — görünür olunca nakit modu kullanır
+            lay.addStretch(1)
+        lay.addWidget(self._son)
+        lay.addWidget(self._status)
 
     def isaretle_son_guncelleme(self, when: datetime | None = None) -> None:
         """Başarılı rapor çekiminde sağdaki «Son: …» zaman damgasını günceller."""
