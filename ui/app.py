@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import sys
 
-from PyQt6.QtCore import QEvent, QObject, QPoint, QSize, Qt, QTimer
-from PyQt6.QtGui import QCloseEvent, QFont
+from PyQt6.QtCore import QEvent, QSize, Qt, QTimer
+from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
@@ -31,6 +31,7 @@ from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
 from ui.icons import icon_gear
 from ui.mikro_settings_dialog import MikroAyarlarDialog
+from ui.nav_tip import NavTip, bagla_nav_tip
 from ui.rapor_tab import RaporTab
 from ui.resources import app_icon, app_logo_pixmap
 from ui.styles import APP_STYLESHEET
@@ -57,130 +58,6 @@ _SEKME_ETIKETLERI = (
 )
 
 
-class _NavTip(QFrame):
-    """Header sekme hover — Windows’ta kararlı opak kurumsal kart (layered hata yok)."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            None,
-            Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint,
-        )
-        self.setObjectName("navTipCard")
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        # Translucent + DropShadow Windows’ta UpdateLayeredWindowIndirect hatası verir
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
-
-        root = QHBoxLayout(self)
-        root.setContentsMargins(8, 6, 10, 6)
-        root.setSpacing(7)
-
-        accent = QFrame()
-        accent.setObjectName("navTipAccent")
-        accent.setFixedWidth(2)
-        accent.setFixedHeight(20)
-        root.addWidget(accent, alignment=Qt.AlignmentFlag.AlignVCenter)
-
-        col = QVBoxLayout()
-        col.setContentsMargins(0, 0, 0, 0)
-        col.setSpacing(1)
-        self._eyebrow = QLabel("RAPOR")
-        self._eyebrow.setObjectName("navTipEyebrow")
-        col.addWidget(self._eyebrow)
-        self._title = QLabel()
-        self._title.setObjectName("navTipTitle")
-        title_font = QFont()
-        title_font.setPointSize(10)
-        title_font.setWeight(QFont.Weight.DemiBold)
-        self._title.setFont(title_font)
-        col.addWidget(self._title)
-        root.addLayout(col)
-
-    def show_text(
-        self,
-        text: str,
-        anchor_global: QPoint,
-        *,
-        eyebrow: str = "RAPOR",
-    ) -> None:
-        self._eyebrow.setText(eyebrow)
-        self._title.setText(text)
-        self.adjustSize()
-        w, h = self.width(), self.height()
-        x = int(anchor_global.x() - w // 2)
-        y = int(anchor_global.y() + 6)
-        # Ekran dışına taşmayı engelle
-        screen = QApplication.screenAt(anchor_global) or QApplication.primaryScreen()
-        if screen is not None:
-            geo = screen.availableGeometry()
-            x = max(geo.left() + 4, min(x, geo.right() - w - 4))
-            y = max(geo.top() + 4, min(y, geo.bottom() - h - 4))
-        self.move(x, y)
-        self.show()
-        self.raise_()
-
-    def hide_tip(self) -> None:
-        self.hide()
-
-
-class _NavTipBag(QObject):
-    """QWidget hover’da sekme stili _NavTip gösterir (native tooltip’i bastırır)."""
-
-    def __init__(
-        self,
-        widget: QWidget,
-        *,
-        text: str = "",
-        eyebrow: str = "RAPOR",
-        parent: QObject | None = None,
-    ) -> None:
-        super().__init__(parent or widget)
-        self._widget = widget
-        self._text = (text or "").strip()
-        self._eyebrow = eyebrow
-        self._tip = _NavTip()
-        self._visible = False
-        self._delay = QTimer(self)
-        self._delay.setSingleShot(True)
-        self._delay.setInterval(220)
-        self._delay.timeout.connect(self._reveal)
-        widget.setToolTip("")  # native Qt tooltip kapalı
-        widget.installEventFilter(self)
-
-    def set_text(self, text: str) -> None:
-        self._text = (text or "").strip()
-        if not self._text:
-            self._cancel()
-
-    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802
-        if obj is self._widget:
-            et = event.type()
-            if et == QEvent.Type.ToolTip:
-                return True
-            if et == QEvent.Type.Enter:
-                if self._text:
-                    self._delay.start()
-                return False
-            if et in (QEvent.Type.Leave, QEvent.Type.Hide, QEvent.Type.Close):
-                self._cancel()
-                return False
-        return super().eventFilter(obj, event)
-
-    def _reveal(self) -> None:
-        if not self._text or not self._widget.isVisible():
-            return
-        self._visible = True
-        rect = self._widget.rect()
-        anchor = self._widget.mapToGlobal(rect.center())
-        anchor.setY(self._widget.mapToGlobal(rect.bottomLeft()).y() + 4)
-        self._tip.show_text(self._text, anchor, eyebrow=self._eyebrow)
-
-    def _cancel(self) -> None:
-        self._delay.stop()
-        self._visible = False
-        self._tip.hide_tip()
-
-
 class HeaderTabBar(QTabBar):
     """Header nav — eşit genişlik; özel kurumsal tooltip."""
 
@@ -191,7 +68,7 @@ class HeaderTabBar(QTabBar):
         self.setUsesScrollButtons(False)
         self.setElideMode(Qt.TextElideMode.ElideNone)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self._tip = _NavTip()
+        self._tip = NavTip()
         self._tip_idx = -1
         self._pending_idx = -1
         self.setMouseTracking(True)
@@ -253,10 +130,9 @@ class HeaderTabBar(QTabBar):
             return
         self._tip_idx = idx
         rect = self.tabRect(idx)
-        # Sekmenin alt orta noktası
         anchor = self.mapToGlobal(rect.center())
         anchor.setY(self.mapToGlobal(rect.bottomLeft()).y() + 4)
-        self._tip.show_text(tip, anchor)
+        self._tip.show_text(tip, anchor, eyebrow="RAPOR")
 
     def _cancel_tip(self) -> None:
         self._delay.stop()
@@ -384,14 +260,14 @@ class MikRaporWindow(QMainWindow):
         btn_ayar.setIconSize(QSize(14, 14))
         btn_ayar.clicked.connect(self._on_ayarlar)
         header.addWidget(btn_ayar, alignment=Qt.AlignmentFlag.AlignVCenter)
-        self._ayar_tip = _NavTipBag(
+        self._ayar_tip = bagla_nav_tip(
             btn_ayar, text="Mikro Ayarları", eyebrow="AYARLAR", parent=self)
 
         self._conn = QLabel()
         self._conn.setObjectName("connStatus")
         self._conn.setCursor(Qt.CursorShape.ArrowCursor)
         header.addWidget(self._conn, alignment=Qt.AlignmentFlag.AlignVCenter)
-        self._firma_tip = _NavTipBag(self._conn, eyebrow="FİRMA", parent=self)
+        self._firma_tip = bagla_nav_tip(self._conn, eyebrow="FİRMA", parent=self)
         layout.addWidget(brand_bar)
         self._conn.setText("○  Ayarlanmadı")
         self._conn.setProperty("connected", False)
@@ -447,7 +323,7 @@ class MikRaporWindow(QMainWindow):
 
     def _set_conn(self, text: str, connected: bool, *, tooltip: str = "") -> None:
         self._conn.setText(text)
-        self._conn.setToolTip("")  # native kapalı; _NavTipBag kullan
+        self._conn.setToolTip("")  # native kapalı; NavTipBag kullan
         self._firma_tip.set_text(tooltip)
         self._conn.setProperty("connected", connected)
         self._conn.style().unpolish(self._conn)

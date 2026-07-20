@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 
 from ui.donem import KISAYOL_GRUPLARI, DonemDurumu, kisayol_aralik
 from ui.icons import icon_csv, icon_gear, icon_pdf
+from ui.nav_tip import NavTipBag, bagla_nav_tip
 from ui.styles import BAD, MUTED, OK, WARN
 from ui.tarih_secici import DonemAralikAlani
 
@@ -60,6 +61,8 @@ class ChromeToolbar(QFrame):
         self._aktif_tab: object | None = None
         self._son_tur = "notr"
         self._kisayol_btn: dict[str, QPushButton] = {}
+        self._kisayol_tip: dict[str, NavTipBag] = {}
+        self._ozet_tip_baglar: list[NavTipBag] = []
 
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 10, 14, 8)
@@ -91,10 +94,11 @@ class ChromeToolbar(QFrame):
                 btn.setCheckable(True)
                 btn.setCursor(Qt.CursorShape.PointingHandCursor)
                 btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                btn.setToolTip(tip)
                 btn.clicked.connect(lambda _=False, k=kod: self._kisayol_uygula(k))
                 self._kisayol_grp.addButton(btn)
                 self._kisayol_btn[kod] = btn
+                self._kisayol_tip[kod] = bagla_nav_tip(
+                    btn, tip, eyebrow="DÖNEM", parent=self)
                 kl.addWidget(btn)
             kisayol_serit.addWidget(kutu)
         row.addLayout(kisayol_serit)
@@ -121,8 +125,9 @@ class ChromeToolbar(QFrame):
         self._btn_pdf.setIconSize(QSize(15, 15))
         self._btn_pdf.setCursor(Qt.CursorShape.ForbiddenCursor)
         self._btn_pdf.setProperty("hazir", "false")
-        self._btn_pdf.setToolTip(_EXPORT_PASIF_TIP)
         self._btn_pdf.clicked.connect(self._pdf_tikla)
+        self._pdf_tip = bagla_nav_tip(
+            self._btn_pdf, _EXPORT_PASIF_TIP, eyebrow="DIŞA AKTAR", parent=self)
 
         self._btn_csv = QPushButton("CSV")
         self._btn_csv.setObjectName("exportBtn")
@@ -130,8 +135,9 @@ class ChromeToolbar(QFrame):
         self._btn_csv.setIconSize(QSize(15, 15))
         self._btn_csv.setCursor(Qt.CursorShape.ForbiddenCursor)
         self._btn_csv.setProperty("hazir", "false")
-        self._btn_csv.setToolTip(_EXPORT_PASIF_TIP)
         self._btn_csv.clicked.connect(self._csv_tikla)
+        self._csv_tip = bagla_nav_tip(
+            self._btn_csv, _EXPORT_PASIF_TIP, eyebrow="DIŞA AKTAR", parent=self)
 
         self._pdf_hazir = False
         self._csv_hazir = False
@@ -142,15 +148,19 @@ class ChromeToolbar(QFrame):
         self._btn_ekstra.setIconSize(QSize(14, 14))
         self._btn_ekstra.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_ekstra.setVisible(False)
-        self._btn_ekstra.setToolTip(
-            "Bu sekmeye özel hesaplama kuralları (satış/alış/nakit kaynağı)."
-        )
         self._btn_ekstra.clicked.connect(self.ekstra_clicked.emit)
+        self._ekstra_tip = bagla_nav_tip(
+            self._btn_ekstra,
+            "Bu sekmeye özel hesaplama kuralları (satış/alış/nakit kaynağı).",
+            eyebrow="HESAPLAMA",
+            parent=self,
+        )
 
         self._son = QLabel("")
         self._son.setObjectName("sonGuncelleme")
         self._son.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._son.setVisible(False)
+        self._son_tip = bagla_nav_tip(self._son, eyebrow="ZAMAN", parent=self)
 
         self._status = QLabel("")
         self._status.setObjectName("toolbarHint")
@@ -158,6 +168,14 @@ class ChromeToolbar(QFrame):
         self._status.setWordWrap(False)
         self._status.setVisible(False)
         self._status.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self._status_tip = bagla_nav_tip(self._status, eyebrow="DURUM", parent=self)
+
+        self._getir_tip = bagla_nav_tip(
+            self._btn_getir, "Seçili dönem için raporu Mikro’dan getir",
+            eyebrow="AKSİYON", parent=self)
+        self._iptal_tip = bagla_nav_tip(
+            self._btn_iptal, "Devam eden işlemi iptal et",
+            eyebrow="AKSİYON", parent=self)
 
         self._nakit_modu = False
         self._diz_aksiyonlar(nakit=False)
@@ -201,7 +219,7 @@ class ChromeToolbar(QFrame):
     def set_pdf_aktif(self, aktif: bool) -> None:
         self._pdf_hazir = aktif
         self._btn_pdf.setProperty("hazir", "true" if aktif else "false")
-        self._btn_pdf.setToolTip("PDF olarak kaydet" if aktif else _EXPORT_PASIF_TIP)
+        self._pdf_tip.set_text("PDF olarak kaydet" if aktif else _EXPORT_PASIF_TIP)
         self._btn_pdf.setCursor(
             Qt.CursorShape.PointingHandCursor if aktif else Qt.CursorShape.ForbiddenCursor)
         self._btn_pdf.style().unpolish(self._btn_pdf)
@@ -210,7 +228,7 @@ class ChromeToolbar(QFrame):
     def set_csv_aktif(self, aktif: bool) -> None:
         self._csv_hazir = aktif
         self._btn_csv.setProperty("hazir", "true" if aktif else "false")
-        self._btn_csv.setToolTip("CSV olarak kaydet" if aktif else _EXPORT_PASIF_TIP)
+        self._csv_tip.set_text("CSV olarak kaydet" if aktif else _EXPORT_PASIF_TIP)
         self._btn_csv.setCursor(
             Qt.CursorShape.PointingHandCursor if aktif else Qt.CursorShape.ForbiddenCursor)
         self._btn_csv.style().unpolish(self._btn_csv)
@@ -244,7 +262,7 @@ class ChromeToolbar(QFrame):
         self._btn_ekstra.setText(etiket)
         self._btn_ekstra.setVisible(gorunur)
         if gorunur:
-            self._btn_ekstra.setToolTip(
+            self._ekstra_tip.set_text(
                 f"«{etiket}» — bu sekmeye özel hesaplama kuralları "
                 "(satış / alış / nakit kaynağı). Bilanço ve Gelir Tablosu’nu değiştirmez."
             )
@@ -280,7 +298,7 @@ class ChromeToolbar(QFrame):
         """Başarılı rapor çekiminde sağdaki «Son: …» zaman damgasını günceller."""
         dt = when or datetime.now()
         self._son.setText(f"Son: {dt.strftime('%d.%m.%Y %H:%M')}")
-        self._son.setToolTip(f"Son güncelleme: {dt.strftime('%d.%m.%Y %H:%M:%S')}")
+        self._son_tip.set_text(f"Son güncelleme: {dt.strftime('%d.%m.%Y %H:%M:%S')}")
         self._son.setVisible(True)
 
     def set_durum_mesaj(self, mesaj: str) -> None:
@@ -295,7 +313,7 @@ class ChromeToolbar(QFrame):
 
         if not text:
             self._status.clear()
-            self._status.setToolTip("")
+            self._status_tip.set_text("")
             self._status.setVisible(False)
             self._ozet_temizle()
             return
@@ -303,12 +321,12 @@ class ChromeToolbar(QFrame):
         parts = [p.strip() for p in text.split(" · ") if p.strip()]
         if len(parts) >= 2:
             self._status.setText("Getirildi")
-            self._status.setToolTip(text)
+            self._status_tip.set_text(text)
             self._status.setVisible(True)
             self._ozet_doldur(parts, renk)
         else:
             self._status.setText(_kisalt(text))
-            self._status.setToolTip(text if len(text) > _KISA_MAX else "")
+            self._status_tip.set_text(text if len(text) > _KISA_MAX else "")
             self._status.setVisible(True)
             self._ozet_temizle()
 
@@ -337,6 +355,7 @@ class ChromeToolbar(QFrame):
         self._kisayol_grp.setExclusive(True)
 
     def _ozet_temizle(self) -> None:
+        self._ozet_tip_baglar.clear()
         while self._ozet_lay.count():
             item = self._ozet_lay.takeAt(0)
             w = item.widget()
@@ -351,7 +370,8 @@ class ChromeToolbar(QFrame):
         for p in parts[:6]:
             chip = QLabel(p)
             chip.setObjectName("ozetChip")
-            chip.setToolTip(p)
+            self._ozet_tip_baglar.append(
+                bagla_nav_tip(chip, p, eyebrow="ÖZET", parent=self))
             fm = QFontMetrics(chip.font())
             if fm.horizontalAdvance(p) > 220:
                 chip.setText(fm.elidedText(p, Qt.TextElideMode.ElideRight, 220))

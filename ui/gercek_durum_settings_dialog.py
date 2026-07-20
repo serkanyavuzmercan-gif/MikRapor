@@ -34,6 +34,7 @@ from domain.gercek_durum_ayarlar import (
 )
 from infra.config import config_path, load_gercek_durum_ayarlar, save_gercek_durum_ayarlar
 from ui.icons import icon_chevron_down
+from ui.nav_tip import bagla_nav_tip
 from ui.styles import ACCENT, ACCENT_SOFT, BORDER, BORDER_STRONG, MUTED, NAVY, NAVY_SOFT, SURFACE
 
 _CHEVRON_PNG = Path(__file__).resolve().parent.parent / "assets" / "chevron-down-teal.png"
@@ -134,7 +135,8 @@ class GercekDurumAyarlarDialog(QDialog):
 
         self._kredi_haric = QCheckBox("Kredi bankalarını nakitten hariç tut")
         self._kredi_haric.setObjectName("gdAyarCheck")
-        self._kredi_haric.setToolTip("300.* · ban_hesap_tip=1")
+        bagla_nav_tip(
+            self._kredi_haric, "300.* · ban_hesap_tip=1", eyebrow="HESAPLAMA", parent=self)
         self._kredi_haric.setChecked(self._ayarlar.banka_kredi_haric)
         kl.addWidget(self._kredi_haric)
 

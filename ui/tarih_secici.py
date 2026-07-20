@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.icons import icon_calendar, icon_chevron_down
+from ui.nav_tip import bagla_nav_tip
 from ui.styles import BORDER_STRONG, INK_SOFT, MUTED, SURFACE
 
 _ALAN_YUKSEKLIK = 36
@@ -108,7 +109,12 @@ class _TarihSatiri(QLineEdit):
         self.setFixedSize(genislik, _ALAN_YUKSEKLIK)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.setToolTip("Tarihi yazın (gg.aa.yyyy) veya sağdaki takvim ile seçin")
+        bagla_nav_tip(
+            self,
+            "Tarihi yazın (gg.aa.yyyy) veya sağdaki takvim ile seçin",
+            eyebrow="TARİH",
+            parent=self,
+        )
         self.setCursorPosition(0)
         self.editingFinished.connect(self._bitince)
         self.textChanged.connect(self._yazildi)
@@ -180,7 +186,7 @@ class TarihSecici(QWidget):
         self._btn.setFixedSize(36, _ALAN_YUKSEKLIK)
         self._btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._btn.setToolTip("Takvimi aç")
+        bagla_nav_tip(self._btn, "Takvimi aç", eyebrow="TARİH", parent=self)
         self._btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._btn.clicked.connect(self._takvim_ac)
 
@@ -262,6 +268,12 @@ class DonemAralikAlani(QFrame):
         self.setFixedHeight(_ALAN_YUKSEKLIK)
         self.setMinimumWidth(220)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        bagla_nav_tip(
+            self,
+            "Başlangıç ve bitiş tarihini seçmek için tıklayın",
+            eyebrow="DÖNEM",
+            parent=self,
+        )
         self.setStyleSheet(
             f"QFrame#donemAralik {{"
             f"  background: {SURFACE};"
