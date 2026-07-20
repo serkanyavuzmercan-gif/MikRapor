@@ -61,6 +61,8 @@ _CLUSTER_H = (
 
 # Bilanço ile aynı varsayılan hero; sekme HERO_ASSET ile override edilir
 DEFAULT_HERO_ASSET = "anasayfalogo.png"
+# Empty + tablo-altı soluk illüstrasyon opaklığı (aynı görünüm)
+HERO_SOLUK_OPACITY = 0.40
 _HERO_FALLBACKS = (
     "anasayfalogo.png",
     "mikrapor-hero-illustration.png",

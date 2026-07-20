@@ -31,15 +31,13 @@ from infra.mikro_fetch import fetch_firma_adi
 from ui.bilesenler import csv_kaydet, hos_geldin
 from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
-from ui.empty_state import DEFAULT_HERO_ASSET, build_soluk_arka_plan
+from ui.empty_state import DEFAULT_HERO_ASSET, HERO_SOLUK_OPACITY, build_soluk_arka_plan
 from ui.mikro_settings_dialog import MikroAyarlarDialog
 from ui.styles import PAGE_BG
 from ui.worker import IsFonksiyonu, RaporWorker
 
 # İçerik kökü yarı saydam beyaz — altındaki soluk illüstrasyon hafifçe görünsün
 _PAGE_BG_SOLUK = "rgba(255, 255, 255, 0.72)"
-# Tüm sekmelerde tablo altı illüstrasyon solukluğu (Bilanço / Gelir ile aynı)
-_HERO_SOLUK_OPACITY = 0.40
 
 
 def firma_getir(cfg: MikroConfig, client: MikroClient) -> str:
