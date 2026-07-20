@@ -398,8 +398,13 @@ QWidget#navTipHost {{
 }}
 QFrame#navTipCard {{
     background-color: {SURFACE};
-    border: 1px solid #d5e2eb;
-    border-radius: 12px;
+    border: 1px solid #cfe0ea;
+    border-radius: 10px;
+}}
+QFrame#navTipAccent {{
+    background-color: {ACCENT};
+    border: none;
+    border-radius: 2px;
 }}
 QLabel#navTipEyebrow {{
     color: {ACCENT};

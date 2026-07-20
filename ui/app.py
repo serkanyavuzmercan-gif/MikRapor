@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import sys
 
-from PyQt6.QtCore import QEvent, QPoint, QPropertyAnimation, QSize, Qt, QTimer, QEasingCurve
-from PyQt6.QtGui import QCloseEvent, QColor, QFont, QPainter, QPainterPath, QPen
+from PyQt6.QtCore import QEvent, QPoint, QSize, Qt, QTimer
+from PyQt6.QtGui import QCloseEvent, QColor, QFont
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -58,98 +57,63 @@ _SEKME_ETIKETLERI = (
 )
 
 
-class _NavTip(QWidget):
-    """Header sekme hover — caret’li, fade’li kurumsal kart."""
-
-    _CARET = 8
+class _NavTip(QFrame):
+    """Header sekme hover — Windows’ta kararlı opak kurumsal kart (layered hata yok)."""
 
     def __init__(self) -> None:
-        flags = (
-            Qt.WindowType.ToolTip
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.NoDropShadowWindowHint
+        super().__init__(
+            None,
+            Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint,
         )
-        super().__init__(None, flags)
-        self.setObjectName("navTipHost")
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setObjectName("navTipCard")
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        # Translucent + DropShadow Windows’ta UpdateLayeredWindowIndirect hatası verir
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(10, self._CARET + 2, 10, 10)
-        root.setSpacing(0)
+        root = QHBoxLayout(self)
+        root.setContentsMargins(12, 9, 14, 9)
+        root.setSpacing(10)
 
-        self._card = QFrame()
-        self._card.setObjectName("navTipCard")
-        card_lay = QVBoxLayout(self._card)
-        card_lay.setContentsMargins(14, 10, 16, 11)
-        card_lay.setSpacing(3)
+        accent = QFrame()
+        accent.setObjectName("navTipAccent")
+        accent.setFixedWidth(3)
+        accent.setFixedHeight(28)
+        root.addWidget(accent, alignment=Qt.AlignmentFlag.AlignVCenter)
 
+        col = QVBoxLayout()
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(2)
         self._eyebrow = QLabel("RAPOR")
         self._eyebrow.setObjectName("navTipEyebrow")
-        card_lay.addWidget(self._eyebrow)
-
+        col.addWidget(self._eyebrow)
         self._title = QLabel()
         self._title.setObjectName("navTipTitle")
         title_font = QFont()
         title_font.setPointSize(12)
         title_font.setWeight(QFont.Weight.Bold)
         self._title.setFont(title_font)
-        card_lay.addWidget(self._title)
-
-        root.addWidget(self._card)
-
-        shadow = QGraphicsDropShadowEffect(self._card)
-        shadow.setBlurRadius(22)
-        shadow.setOffset(0, 6)
-        shadow.setColor(QColor(15, 58, 95, 48))
-        self._card.setGraphicsEffect(shadow)
-
-        self._fade = QPropertyAnimation(self, b"windowOpacity", self)
-        self._fade.setDuration(140)
-        self._fade.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-    def paintEvent(self, _ev) -> None:  # noqa: N802
-        # Üst caret — kartın ortasına bakacak şekilde
-        if self.width() < 20:
-            return
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        cx = self.width() / 2.0
-        top = 2.0
-        path = QPainterPath()
-        path.moveTo(cx, top)
-        path.lineTo(cx + self._CARET, top + self._CARET)
-        path.lineTo(cx - self._CARET, top + self._CARET)
-        path.closeSubpath()
-        p.setPen(QPen(QColor("#d5e2eb"), 1.0))
-        p.setBrush(QColor("#ffffff"))
-        p.drawPath(path)
-        # Caret ile kart birleşimi: alt çizgiyi kapat
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor("#ffffff"))
-        p.drawRect(int(cx - self._CARET + 1), int(top + self._CARET - 1), self._CARET * 2 - 2, 4)
-        p.end()
+        col.addWidget(self._title)
+        root.addLayout(col)
 
     def show_text(self, text: str, anchor_global: QPoint) -> None:
         self._title.setText(text)
         self.adjustSize()
-        # Kartı sekme ortasına hizala (caret merkez)
-        x = anchor_global.x() - self.width() // 2
-        y = anchor_global.y()
+        w, h = self.width(), self.height()
+        x = int(anchor_global.x() - w // 2)
+        y = int(anchor_global.y() + 6)
+        # Ekran dışına taşmayı engelle
+        screen = QApplication.screenAt(anchor_global) or QApplication.primaryScreen()
+        if screen is not None:
+            geo = screen.availableGeometry()
+            x = max(geo.left() + 4, min(x, geo.right() - w - 4))
+            y = max(geo.top() + 4, min(y, geo.bottom() - h - 4))
         self.move(x, y)
-        self._fade.stop()
-        self.setWindowOpacity(0.0)
         self.show()
         self.raise_()
-        self._fade.setStartValue(0.0)
-        self._fade.setEndValue(1.0)
-        self._fade.start()
 
     def hide_tip(self) -> None:
-        self._fade.stop()
         self.hide()
-        self.setWindowOpacity(1.0)
 
 
 class HeaderTabBar(QTabBar):
