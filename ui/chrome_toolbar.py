@@ -1,7 +1,6 @@
 """Ortak üst chrome toolbar — Design A: marka bar (sekmeler) altında.
 
-Satır 1: tarih + hızlı dönem + Getir + PDF/CSV + son güncelleme + durum
-Satır 2: uzun rapor özeti chip şeridi (yalnız sonuç varken)
+Tek satır: tarih + hızlı dönem + Getir + PDF/CSV + son güncelleme + kısa durum.
 """
 
 from __future__ import annotations
@@ -9,7 +8,6 @@ from __future__ import annotations
 from datetime import datetime
 
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QFontMetrics
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -45,7 +43,7 @@ def _kisalt(metin: str, maks: int = _KISA_MAX) -> str:
 
 
 class ChromeToolbar(QFrame):
-    """Paylaşılan dönem + aksiyon şeridi + özet bandı."""
+    """Paylaşılan dönem + aksiyon şeridi."""
 
     getir_clicked = pyqtSignal()
     iptal_clicked = pyqtSignal()
@@ -165,16 +163,6 @@ class ChromeToolbar(QFrame):
         row.addWidget(self._aksiyon, 1)
         root.addLayout(row)
 
-        # —— Satır 2: özet chip şeridi ——
-        self._ozet = QFrame()
-        self._ozet.setObjectName("ozetSerit")
-        self._ozet.setVisible(False)
-        self._ozet_lay = QHBoxLayout(self._ozet)
-        self._ozet_lay.setContentsMargins(2, 2, 2, 2)
-        self._ozet_lay.setSpacing(8)
-        self._ozet_lay.addStretch(1)
-        root.addWidget(self._ozet)
-
         donem.degisti.connect(self._kisayol_senkron)
         self._kisayol_senkron()
 
@@ -277,7 +265,7 @@ class ChromeToolbar(QFrame):
         self.set_durum(mesaj, self._son_tur)
 
     def set_durum(self, mesaj: str, tur: str = "notr") -> None:
-        """Kısa durum sağda; « · » ile ayrılmış uzun özet alt şeritte chip olur."""
+        """Sağda kısa durum. (Chip özet şeridi kaldırıldı — özet zaten sayfada.)"""
         self._son_tur = tur
         text = (mesaj or "").strip()
         renk = _DURUM_RENK.get(tur, MUTED)
@@ -286,18 +274,12 @@ class ChromeToolbar(QFrame):
         if not text:
             self._status.clear()
             self._status.setVisible(False)
-            self._ozet_temizle()
             return
 
+        # Çok parçalı özet gelirse yalnız "Getirildi" göster; tek parça ise kısa metni.
         parts = [p.strip() for p in text.split(" · ") if p.strip()]
-        if len(parts) >= 2:
-            self._status.setText("Getirildi")
-            self._status.setVisible(True)
-            self._ozet_doldur(parts, renk)
-        else:
-            self._status.setText(_kisalt(text))
-            self._status.setVisible(True)
-            self._ozet_temizle()
+        self._status.setText("Getirildi" if len(parts) >= 2 else _kisalt(text))
+        self._status.setVisible(True)
 
     def _kisayol_uygula(self, kod: str) -> None:
         bas, bit = kisayol_aralik(kod)
@@ -323,26 +305,3 @@ class ChromeToolbar(QFrame):
             btn.blockSignals(False)
         self._kisayol_grp.setExclusive(True)
 
-    def _ozet_temizle(self) -> None:
-        while self._ozet_lay.count():
-            item = self._ozet_lay.takeAt(0)
-            w = item.widget()
-            if w is not None:
-                w.deleteLater()
-        self._ozet_lay.addStretch(1)
-        self._ozet.setVisible(False)
-
-    def _ozet_doldur(self, parts: list[str], _renk: str) -> None:
-        self._ozet_temizle()
-        self._ozet_lay.takeAt(self._ozet_lay.count() - 1)  # stretch'i kaldır
-        for p in parts[:6]:
-            chip = QLabel(p)
-            chip.setObjectName("ozetChip")
-            fm = QFontMetrics(chip.font())
-            if fm.horizontalAdvance(p) > 220:
-                chip.setText(fm.elidedText(p, Qt.TextElideMode.ElideRight, 220))
-                bagla_nav_tip(chip, p, eyebrow="ÖZET")
-            self._ozet_lay.addWidget(chip, 0, Qt.AlignmentFlag.AlignVCenter)
-        self._ozet_lay.addStretch(1)
-        # "Hesaplama Kuralları" düğmesi kendini anlattığı için ayrı ipucu yazısı kaldırıldı.
-        self._ozet.setVisible(True)

@@ -256,15 +256,11 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
     root.setSpacing(14)
 
     firma_str = f" &nbsp;·&nbsp; <b>{firma}</b>" if firma else ""
-    profil = (
-        f"<br><span style='font-size:10px;'>Profil: {gd.ayar_ozet}</span>" if gd.ayar_ozet else ""
-    )
     head = QLabel(
         f"<span style='color:{MUTED}; font-size:11px;'>NAKİT &amp; KÂRLILIK &nbsp;·&nbsp; "
         f"{gd.bas} → {gd.bit} dönemi{firma_str}</span><br>"
-        f"<span style='color:{FAINT}; font-size:11px;'>Doğrudan Mikro'dan — faturalar "
-        f"muhasebeleştirilmeden, deponuzdan geçen mal ve bankadan geçen para üzerinden "
-        f"işletmenin fiili kârlılığını ve nakdini hesaplar.{profil}</span>"
+        f"<span style='color:{FAINT}; font-size:11px;'>Faturalar muhasebeleşmeden; "
+        f"stok ve banka hareketinden <b>fiili</b> kârlılık.</span>"
     )
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
