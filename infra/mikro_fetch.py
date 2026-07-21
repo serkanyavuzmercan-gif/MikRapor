@@ -252,6 +252,35 @@ def fetch_kredi_anapara(client: MikroClient, bas: str, bit: str) -> float:
     return 0.0
 
 
+def fetch_kredi_taksitleri(
+    client: MikroClient, bit: str, *, ay_ileri: int = 24,
+) -> list[dict[str, Any]]:
+    """
+    Ödenmemiş, iptal edilmemiş banka kredisi taksitleri (yaklaşan ödeme takvimi).
+
+    KREDI_SOZLESMESI_TAKSIT_TANIMLARI (298) + KREDI_SOZLESMESI_TANIMLARI (297, banka için).
+    Ödenmemiş = krsoztaksit_odemeevraksira = 0 (ödeme evrakı bağlanmamış). İptal/kapalı
+    sözleşmeler krsoz_iptal / krsoztaksit_iptal = 0 ile elenir. Vadesi geçmiş ama ödenmemiş
+    taksitler de dahildir (hâlâ borç). Her satır: ay (YYYY-MM), vade, tutar (toplam taksit),
+    anapara, faiz, banka kodu.
+    """
+    bit = iso_tarih(bit, alan="tarih")
+    sql = (
+        "SELECT CONVERT(char(7), t.krsoztaksit_vade, 23) AS ay, "
+        "CONVERT(char(10), t.krsoztaksit_vade, 23) AS vade, "
+        "t.krsoztaksit_taksit AS tutar, t.krsoztaksit_anapara AS anapara, "
+        "t.krsoztaksit_faiz AS faiz, ISNULL(s.krsoz_sozbankakodu, '') AS banka "
+        "FROM KREDI_SOZLESMESI_TAKSIT_TANIMLARI t WITH (NOLOCK) "
+        "LEFT JOIN KREDI_SOZLESMESI_TANIMLARI s WITH (NOLOCK) "
+        "ON s.krsoz_kodu = t.krsoztaksit_sozkodu "
+        "WHERE ISNULL(t.krsoztaksit_iptal, 0) = 0 AND ISNULL(s.krsoz_iptal, 0) = 0 "
+        "AND ISNULL(t.krsoztaksit_odemeevraksira, 0) = 0 "
+        f"AND t.krsoztaksit_vade < DATEADD(MONTH, {int(ay_ileri)}, '{bit}') "
+        "ORDER BY t.krsoztaksit_vade"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
 def fetch_kredi_gl(client: MikroClient, bas: str, bit: str) -> dict[str, float]:
     """
     Dönem içi GL kredi hareketi (iki yön): 300/303 borç = anapara ÖDEMESİ,

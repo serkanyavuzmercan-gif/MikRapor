@@ -158,17 +158,29 @@ def build_runway_takvim(
     borc_vade: dict | None = None,
     aylik_gider: float = 0.0,
     aylik_kredi: float = 0.0,
+    kredi_takvimi: dict | None = None,
     ufuk_ay: int = 6,
 ) -> RunwayTakvim:
     """
     Açık alacak/borç vade kovaları aylara dağıtılıp düzenli gider + kredi ile
     ay-ay nakit projeksiyonu. KONSERVATİF: açık kalemler bittikten sonra yeni
     satış varsaymaz — yalnız düzenli giderler devam eder (en kötü hal / taban).
+
+    kredi_takvimi verilirse ({YYYY-MM: tutar}, gerçek taksit planı) her ay o aya
+    ait taksit kullanılır (yoksa 0 — kredi bitmiş); verilmezse düz aylik_kredi.
     """
+    # Kredi ayağı: gerçek taksit takvimi > düz ortalama
+    if kredi_takvimi:
+        kredi_aylar = [v for v in kredi_takvimi.values() if v > 0.005]
+        aylik_kredi_disp = sum(kredi_aylar) / len(kredi_aylar) if kredi_aylar else 0.0
+        kredi_var = bool(kredi_aylar)
+    else:
+        aylik_kredi_disp = aylik_kredi
+        kredi_var = aylik_kredi > 0.005
     r = RunwayTakvim(
         baslangic_nakit=baslangic_nakit, aylik_gider=aylik_gider,
-        aylik_kredi=aylik_kredi, ufuk_ay=max(1, ufuk_ay),
-        gider_eksik=(aylik_gider + aylik_kredi) < 1.0,
+        aylik_kredi=aylik_kredi_disp, ufuk_ay=max(1, ufuk_ay),
+        gider_eksik=(aylik_gider < 1.0 and not kredi_var),
     )
     ay_giren: dict[int, float] = defaultdict(float)
     ay_cikan: dict[int, float] = defaultdict(float)
@@ -183,10 +195,11 @@ def build_runway_takvim(
     r.en_dusuk_nakit = nakit
     r.en_dusuk_ay = baslangic_ay
     for n in range(1, r.ufuk_ay + 1):
-        giren = ay_giren.get(n, 0.0)
-        cikan = ay_cikan.get(n, 0.0) + aylik_gider + aylik_kredi
-        nakit += giren - cikan
         ay = _ay_ekle(baslangic_ay, n)
+        kredi_bu_ay = kredi_takvimi.get(ay, 0.0) if kredi_takvimi is not None else aylik_kredi
+        giren = ay_giren.get(n, 0.0)
+        cikan = ay_cikan.get(n, 0.0) + aylik_gider + kredi_bu_ay
+        nakit += giren - cikan
         r.aylar.append(RunwayTakvimAy(ay=ay, giren=giren, cikan=cikan, nakit=nakit))
         if nakit < r.en_dusuk_nakit:
             r.en_dusuk_nakit, r.en_dusuk_ay = nakit, ay
@@ -200,6 +213,7 @@ def runway_takvim_kur(
     baslangic_nakit: float | None = None,
     aylik_gider: float | None = None,
     aylik_kredi: float | None = None,
+    kredi_takvimi: dict | None = None,
 ) -> RunwayTakvim:
     """
     NakitAkis + TahsilatAlacak (vade takvimi) birleşiminden takvim runway'i kurar.
@@ -226,5 +240,6 @@ def runway_takvim_kur(
     return build_runway_takvim(
         baslangic_nakit=nakit, baslangic_ay=baslangic_ay,
         alacak_vade=getattr(ta, "alacak_vade", {}), borc_vade=getattr(ta, "borc_vade", {}),
-        aylik_gider=aylik_gider, aylik_kredi=aylik_kredi, ufuk_ay=ufuk_ay,
+        aylik_gider=aylik_gider, aylik_kredi=aylik_kredi,
+        kredi_takvimi=kredi_takvimi, ufuk_ay=ufuk_ay,
     )
