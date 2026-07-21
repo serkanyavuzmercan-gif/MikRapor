@@ -342,7 +342,7 @@ def build_nakit_akis_widget(
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
     from ui.bilesenler import baslik_ile_gelecek_uyari
-    root.addWidget(baslik_ile_gelecek_uyari(head, na.bit))
+    root.addWidget(baslik_ile_gelecek_uyari(head, na.bit, kaynak="canli"))
 
     if na.hareket_sayisi == 0:
         uyari = QLabel(

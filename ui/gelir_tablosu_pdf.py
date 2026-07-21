@@ -17,7 +17,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from domain.gelir_tablosu import GelirTablosu, yuzde
 from domain.mizan_bilanco import tl
 from ui.bilanco_pdf import DARK, FONT, FONT_B, GRAY, LINE, NAVY
-from ui.pdf_ortak import dipnot_ekle, letterhead
+from ui.pdf_ortak import dipnot_ekle, letterhead_sade, pdf_ciz
 
 
 def _govde(gt: GelirTablosu) -> Table:
@@ -62,14 +62,11 @@ def export_gelir_tablosu_pdf(gt: GelirTablosu, path: str | Path, firma: str = ""
     out = Path(path)
     doc = SimpleDocTemplate(
         str(out), pagesize=A4,
-        leftMargin=18 * mm, rightMargin=18 * mm, topMargin=15 * mm, bottomMargin=14 * mm,
+        leftMargin=18 * mm, rightMargin=18 * mm, topMargin=26 * mm, bottomMargin=22 * mm,
         title="Gelir Tablosu", author=firma or "MikRapor",
     )
     elems: list = []
-    letterhead(
-        elems, firma=firma, baslik="GELİR TABLOSU",
-        bas=gt.bas, bit=gt.bit,
-    )
+    letterhead_sade(elems, firma=firma, bas=gt.bas, bit=gt.bit)
     # Maliyet eksik uyarısı yalnızca uygulama ekranında; PDF'e konmaz.
     elems.append(_govde(gt))
 
@@ -91,5 +88,5 @@ def export_gelir_tablosu_pdf(gt: GelirTablosu, path: str | Path, firma: str = ""
         kaynak="Mikro GL mizan · Hesap planı: TDHP",
     )
 
-    doc.build(elems)
+    pdf_ciz(doc, elems, baslik="GELİR TABLOSU")
     return out

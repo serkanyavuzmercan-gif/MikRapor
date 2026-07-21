@@ -77,10 +77,33 @@ class HeaderTabBar(QTabBar):
         self._delay.setInterval(220)
         self._delay.timeout.connect(self._reveal_tip)
 
+    # "Gelir" (index 1) ile "Nakit Kâr" (index 2) arasına grup ayracı:
+    # resmî (GL) tablar | canlı (fatura/stok) tablar.
+    _AYRAC_SONRASI = 1
+
     def minimumSizeHint(self) -> QSize:
         s = super().minimumSizeHint()
         s.setWidth(0)
         return s
+
+    def paintEvent(self, event) -> None:  # noqa: N802 — Qt API
+        super().paintEvent(event)
+        i = self._AYRAC_SONRASI
+        if self.count() <= i + 1:
+            return
+        from PyQt6.QtGui import QColor, QPainter, QPen
+        r = self.tabRect(i)
+        if not r.isValid():
+            return
+        x = r.right() + 1
+        inset = int(r.height() * 0.24)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        pen = QPen(QColor("#c3ccd8"))
+        pen.setWidth(1)
+        p.setPen(pen)
+        p.drawLine(x, r.top() + inset, x, r.bottom() - inset)
+        p.end()
 
     def tabSizeHint(self, index: int) -> QSize:
         base = super().tabSizeHint(index)

@@ -61,13 +61,16 @@ def build_gelir_tablosu_widget(gt: GelirTablosu, firma: str = "") -> QWidget:
     head = QLabel(
         f"<span style='color:{MUTED}; font-size:11px;'>GELİR TABLOSU &nbsp;·&nbsp; "
         f"{gt.bas} → {gt.bit} dönemi{firma_str}</span><br>"
+        f"<span style='color:{NAVY}; font-size:12px;'>Bu dönemde şirket <b>kazandı mı, "
+        f"kaybetti mi?</b> Satıştan başlar; maliyet ve giderler düşülür. En alttaki "
+        f"«<b>Dönem Net Kârı</b>» cebe kalan tutardır.</span><br>"
         f"<span style='color:{FAINT}; font-size:11px;'>Dönem Net Kârı, bilançodaki "
         f"«Dönem Net Kârı» ile birebir tutar (aynı 6xx hesaplarından) — yerleşik mutabakat.</span>"
     )
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
     from ui.bilesenler import baslik_ile_gelecek_uyari
-    root.addWidget(baslik_ile_gelecek_uyari(head, gt.bit))
+    root.addWidget(baslik_ile_gelecek_uyari(head, gt.bit, kaynak="resmi"))
 
     if gt.maliyet_eksik:
         uyari = QLabel(
@@ -96,6 +99,15 @@ def build_gelir_tablosu_widget(gt: GelirTablosu, firma: str = "") -> QWidget:
     t.setColumnWidth(1, 160)
     _doldur(t, gt)
     panel = _panel("GELİR TABLOSU (Kâr/Zarar)", t)
-    panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-    root.addWidget(panel, 1)
+    # Tek sütun şelale tüm ekrana yayılınca etiket–tutar arası dev boşluk oluşuyor;
+    # tabloyu okunur bir "belge genişliğine" (~700px) sabitleyip sola yaslıyoruz.
+    # min+max birlikte: sağdaki stretch faktörü paneli büzemesin, 700–720 arası dursun.
+    panel.setMinimumWidth(700)
+    panel.setMaximumWidth(720)
+    panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+    satir = QHBoxLayout()
+    satir.setContentsMargins(0, 0, 0, 0)
+    satir.addWidget(panel, 0)
+    satir.addStretch(1)
+    root.addLayout(satir, 1)
     return content

@@ -295,7 +295,7 @@ def build_bilanco_widget(b: Bilanco, firma: str = "") -> QWidget:
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
     from ui.bilesenler import baslik_ile_gelecek_uyari
-    root.addWidget(baslik_ile_gelecek_uyari(head, b.asof))
+    root.addWidget(baslik_ile_gelecek_uyari(head, b.asof, kaynak="resmi"))
 
     # Maliyet kapanışı yapılmamışsa "Dönem Net Kârı" şişik görünür — uyar (varlık-borç doğru).
     if b.maliyet_eksik:
