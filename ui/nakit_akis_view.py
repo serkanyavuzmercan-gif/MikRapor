@@ -51,8 +51,7 @@ def _ozet_panel(na: NakitAkis) -> QFrame:
     satir(5, "Kapanış Nakit", tl(na.kapanis_nakit), bold=True, renk=_renk(na.kapanis_nakit))
     if abs(na.mutabakat_farki) > max(1000.0, na.kapanis_nakit * 0.01):
         kredi_ek = (
-            f" ~{tl(na.kredi_odeme_gl)} kadarı muhasebeye işlenip banka hareketine "
-            "yansımayan kredi ödemesi olabilir."
+            f" Bunun ~{tl(na.kredi_odeme_gl)}'si muhasebedeki kredi ödemesidir."
             if na.kredi_kaynak_gl and na.kredi_odeme_gl > 0.005 else ""
         )
         not_lbl = _satir_label(
@@ -126,10 +125,9 @@ def _kredi_panel(na: NakitAkis) -> QFrame:
     g.addWidget(not_lbl, 3, 0, 1, 2)
     if na.kredi_kaynak_gl:
         uyari = _satir_label(
-            "⚠ Kredi taksitleri banka hareketlerine işlenmemiş — tutarlar muhasebe "
-            "kayıtlarından (300/303 hesap) alındı. Üstteki Toplam Çıkış bu ödemeleri "
-            "İÇERMEZ; mutabakat farkının bir kısmı budur.",
-            renk="#8a5a00", boyut=11,
+            "Bu rakamlar muhasebe kayıtlarından (300/303) alındı; üstteki Toplam "
+            "Çıkış'a dâhil değildir.",
+            renk=FAINT, boyut=11,
         )
         uyari.setWordWrap(True)
         g.addWidget(uyari, 4, 0, 1, 2)

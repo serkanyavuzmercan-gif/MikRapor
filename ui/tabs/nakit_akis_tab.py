@@ -67,9 +67,9 @@ class NakitAkisTab(RaporTab):
             kredi: KrediOzet | None = None
             try:
                 bildir("Kredi taksit takvimi çekiliyor…")
-                taksitler = taksitleri_derle(fetch_kredi_taksitleri(client, bit, ay_ileri=18))
+                taksitler = taksitleri_derle(fetch_kredi_taksitleri(client, ay_ileri=18))
                 if taksitler:
-                    kredi = kredi_ozet(taksitler, bugun_ay=bit[:7], en_fazla=8)
+                    kredi = kredi_ozet(taksitler, en_fazla=8)
             except MikroAPIError:
                 kredi = None
             return {"na": na, "firma": firma_getir(cfg, client), "kredi": kredi}

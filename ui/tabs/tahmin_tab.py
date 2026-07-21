@@ -225,7 +225,7 @@ class TahminTab(RaporTab):
                 # çok daha doğru. Okunamazsa GL 300/303 ortalamasına düşülür.
                 try:
                     bildir("Kredi taksit takvimi çekiliyor…")
-                    taksitler = taksitleri_derle(fetch_kredi_taksitleri(client, bit, ay_ileri=18))
+                    taksitler = taksitleri_derle(fetch_kredi_taksitleri(client, ay_ileri=18))
                 except MikroAPIError:
                     taksitler = []
                 if taksitler:
