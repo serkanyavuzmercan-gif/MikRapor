@@ -24,7 +24,7 @@ from reportlab.platypus import (
 )
 
 from domain.mizan_bilanco import AKTIF_BOLUM, PASIF_BOLUM, Bilanco, tl
-from ui.pdf_ortak import dipnot_ekle, letterhead
+from ui.pdf_ortak import dipnot_ekle, letterhead_sade, pdf_ciz
 
 FONT = "Helvetica"
 FONT_B = "Helvetica-Bold"
@@ -141,17 +141,14 @@ def export_bilanco_pdf(
     out = Path(path)
     doc = SimpleDocTemplate(
         str(out), pagesize=A4,
-        leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=12 * mm,
+        leftMargin=16 * mm, rightMargin=16 * mm, topMargin=26 * mm, bottomMargin=22 * mm,
         title="Bilanço", author=firma or "MikRapor",
     )
     elems: list = []
 
     donem_bas = (bas or "").strip() or bilanco.asof
     donem_bit = (bit or "").strip() or bilanco.asof
-    letterhead(
-        elems, firma=firma, baslik="BİLANÇO",
-        bas=donem_bas, bit=donem_bit,
-    )
+    letterhead_sade(elems, firma=firma, bas=donem_bas, bit=donem_bit)
 
     body = Table([[_side_table(bilanco, "aktif"), _side_table(bilanco, "pasif")]],
                  colWidths=[90 * mm, 90 * mm])
@@ -175,5 +172,5 @@ def export_bilanco_pdf(
         ek=ek,
     )
 
-    doc.build(elems)
+    pdf_ciz(doc, elems, baslik="BİLANÇO")
     return out

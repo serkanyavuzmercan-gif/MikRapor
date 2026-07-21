@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -50,16 +51,87 @@ def tr_tarih(asof: str) -> str:
 
 
 def pdf_doc(path: Path, *, title: str, firma: str = "") -> SimpleDocTemplate:
+    # Üst/alt marj kurumsal header/footer bandına yer açacak şekilde geniş.
     return SimpleDocTemplate(
         str(path),
         pagesize=A4,
         leftMargin=18 * mm,
         rightMargin=18 * mm,
-        topMargin=15 * mm,
-        bottomMargin=14 * mm,
+        topMargin=26 * mm,
+        bottomMargin=22 * mm,
         title=title,
         author=firma or "MikRapor",
     )
+
+
+_FOOTER_METIN = (
+    "MikRapor · Hidroteknik A.Ş. yazılım ekibi tarafından oluşturulmuş, "
+    "Mikro ERP tabanlı bir raporlama programıdır."
+)
+_MARKA_GRI = colors.HexColor("#475569")
+
+
+def _logo_yolu() -> str | None:
+    """assets/logo-mark.png tam yolu (paketli/geliştirme); yoksa None."""
+    base = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]
+    p = base / "assets" / "logo-mark.png"
+    return str(p) if p.is_file() else None
+
+
+_LOGO = _logo_yolu()
+
+
+def _ciz_header_footer(canvas, doc, *, baslik: str = "") -> None:
+    """Her sayfaya kurumsal header (logo + marka) ve footer (logo + metin + sayfa no)."""
+    canvas.saveState()
+    w, h = A4
+    lm, rm = doc.leftMargin, doc.rightMargin
+
+    # ---- HEADER ----
+    y_logo = h - 17 * mm
+    if _LOGO:
+        canvas.drawImage(_LOGO, lm, y_logo, width=11 * mm, height=11 * mm,
+                         mask="auto", preserveAspectRatio=True, anchor="sw")
+    tx = lm + 13.5 * mm
+    canvas.setFillColor(NAVY)
+    canvas.setFont(FONT_B, 14)
+    canvas.drawString(tx, y_logo + 5.4 * mm, "MikRapor")
+    canvas.setFillColor(GRAY)
+    canvas.setFont(FONT, 7.5)
+    canvas.drawString(tx, y_logo + 1.2 * mm, "Finansal Raporlama")
+    if baslik:
+        canvas.setFillColor(ACCENT)
+        canvas.setFont(FONT_B, 10.5)
+        canvas.drawRightString(w - rm, y_logo + 3.4 * mm, baslik)
+    canvas.setStrokeColor(NAVY)
+    canvas.setLineWidth(1.1)
+    canvas.line(lm, h - 20 * mm, w - rm, h - 20 * mm)
+
+    # ---- FOOTER ----
+    canvas.setStrokeColor(LINE)
+    canvas.setLineWidth(0.5)
+    canvas.line(lm, 15 * mm, w - rm, 15 * mm)
+    canvas.setFillColor(GRAY)
+    canvas.setFont(FONT, 7.5)
+    canvas.drawCentredString(w / 2, 10.6 * mm, _FOOTER_METIN)
+    if _LOGO:
+        canvas.drawImage(_LOGO, lm, 5.6 * mm, width=4.6 * mm, height=4.6 * mm,
+                         mask="auto", preserveAspectRatio=True, anchor="sw")
+    canvas.setFillColor(_MARKA_GRI)
+    canvas.setFont(FONT_B, 7.5)
+    canvas.drawString(lm + 5.8 * mm, 7 * mm, "MikRapor")
+    canvas.setFillColor(GRAY)
+    canvas.setFont(FONT, 7.5)
+    canvas.drawRightString(w - rm, 7 * mm, f"Sayfa {doc.page}")
+    canvas.restoreState()
+
+
+def pdf_ciz(doc: SimpleDocTemplate, elems: list, *, baslik: str = "") -> None:
+    """doc.build — her sayfaya kurumsal header/footer çizer."""
+    def _sayfa(canvas, d):
+        _ciz_header_footer(canvas, d, baslik=baslik)
+
+    doc.build(elems, onFirstPage=_sayfa, onLaterPages=_sayfa)
 
 
 def letterhead(
@@ -106,6 +178,24 @@ def letterhead(
             ParagraphStyle("d", fontName=FONT, fontSize=9, textColor=GRAY, leading=12),
         ))
     elems.append(Spacer(1, 8))
+
+
+def letterhead_sade(
+    elems: list, *, firma: str, bas: str = "", bit: str = "", donem: str = "",
+) -> None:
+    """Sayfa header'lı PDF'ler için sade içerik başlığı: firma + dönem (marka/başlık sayfa header'ında)."""
+    if firma:
+        elems.append(Paragraph(
+            firma,
+            ParagraphStyle("firma", fontName=FONT_B, fontSize=14, textColor=DARK, leading=17),
+        ))
+    donem_yazi = (donem or "").strip() or donem_satiri(bas, bit)
+    if donem_yazi:
+        elems.append(Paragraph(
+            donem_yazi,
+            ParagraphStyle("d", fontName=FONT, fontSize=9, textColor=GRAY, leading=12),
+        ))
+    elems.append(HRFlowable(width="100%", thickness=0.8, color=LINE, spaceBefore=4, spaceAfter=8))
 
 
 def donem_satiri(bas: str = "", bit: str = "") -> str:
