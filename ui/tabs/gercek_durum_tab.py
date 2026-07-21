@@ -45,7 +45,7 @@ class GercekDurumTab(RaporTab):
     PDF_DESTEK = True
     HERO_ASSET = "empty-nakit-kar.png"
 
-    EKSTRA_ETIKET = "Hesaplama"
+    EKSTRA_ETIKET = "Hesaplama Kuralları"
 
     _gd: GercekDurum | None = None
 
