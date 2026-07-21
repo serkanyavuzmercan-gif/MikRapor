@@ -8,6 +8,8 @@ Bu yüzden gövde yerel widget'larla çizilir: AKTİF | PASİF iki `QTreeWidget`
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QBrush, QColor, QFont
 from PyQt6.QtWidgets import (
@@ -16,6 +18,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QPushButton,
     QSizePolicy,
     QTreeWidget,
     QTreeWidgetItem,
@@ -261,8 +264,14 @@ def _kpi_divider() -> QFrame:
     return line
 
 
-def build_bilanco_widget(b: Bilanco, firma: str = "") -> QWidget:
-    """Bir Bilanço'dan, QScrollArea içine konacak yerel görünüm widget'ı üretir."""
+def build_bilanco_widget(
+    b: Bilanco, firma: str = "", on_yil_gec: Callable[[int], None] | None = None,
+) -> QWidget:
+    """Bir Bilanço'dan, QScrollArea içine konacak yerel görünüm widget'ı üretir.
+
+    on_yil_gec verilirse, maliyet kapanışı eksik (açık yıl) uyarısına "geçen yıl
+    kapanışına geç" düğmesi eklenir; tıklanınca on_yil_gec(hedef_yil) çağrılır.
+    """
     # Fark tutarı DAİMA gösterilir — büyük mutlak fark küçük yüzdeyle gizlenmesin.
     if abs(b.fark) < 1.0:
         denge_txt, denge_vr = "Dengede", OK
@@ -291,19 +300,47 @@ def build_bilanco_widget(b: Bilanco, firma: str = "") -> QWidget:
     from ui.bilesenler import baslik_ile_gelecek_uyari
     root.addWidget(baslik_ile_gelecek_uyari(head, b.asof))
 
-    # Maliyet kapanışı yapılmamışsa "Dönem Net Kârı" şişik görünür — uyar.
+    # Maliyet kapanışı yapılmamışsa "Dönem Net Kârı" şişik görünür — uyar + geçen yıla geç.
     if b.maliyet_eksik:
+        uy_box = QFrame()
+        uy_box.setObjectName("maliyetUyari")
+        uy_box.setStyleSheet(
+            "QFrame#maliyetUyari { background: #fdf3e0; border: 1px solid #f0d090; "
+            "border-radius: 8px; }"
+        )
+        ub = QVBoxLayout(uy_box)
+        ub.setContentsMargins(12, 10, 12, 10)
+        ub.setSpacing(8)
         uy = QLabel(
             "⚠  Satışların maliyeti (62) bu tarih itibarıyla ~0 — maliyet kapanışı henüz "
             "yapılmamış olabilir. Bu durumda aşağıdaki «Dönem Net Kârı» gerçekte olduğundan "
-            "yüksek (şişik) görünür."
+            "yüksek (şişik) görünür. Kesin sonuç için kapanmış bir yıla bakmak daha doğrudur."
         )
         uy.setWordWrap(True)
-        uy.setStyleSheet(
-            "QLabel { background: #fdf3e0; border: 1px solid #f0d090; border-radius: 8px; "
-            "color: #8a5a00; padding: 10px 14px; font-size: 12px; }"
-        )
-        root.addWidget(uy)
+        uy.setStyleSheet("color: #8a5a00; font-size: 12px; background: transparent; border: none;")
+        ub.addWidget(uy)
+        if on_yil_gec is not None:
+            try:
+                hedef_yil = int(str(b.asof)[:4]) - 1
+            except (ValueError, TypeError):
+                hedef_yil = 0
+            if hedef_yil > 0:
+                brow = QHBoxLayout()
+                brow.setContentsMargins(0, 0, 0, 0)
+                btn = QPushButton(f"🔁  {hedef_yil} kapanışına geç")
+                btn.setObjectName("yilGecBtn")
+                btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                btn.setStyleSheet(
+                    "QPushButton#yilGecBtn { background: #8a5a00; color: #ffffff; border: none; "
+                    "border-radius: 6px; padding: 7px 14px; font-size: 12px; font-weight: 700; } "
+                    "QPushButton#yilGecBtn:hover { background: #a06a10; }"
+                )
+                btn.clicked.connect(lambda _=False, y=hedef_yil: on_yil_gec(y))
+                brow.addWidget(btn)
+                brow.addStretch(1)
+                ub.addLayout(brow)
+        root.addWidget(uy_box)
 
     # Tipografi KPI şeridi (kart yığını değil)
     strip = QFrame()
