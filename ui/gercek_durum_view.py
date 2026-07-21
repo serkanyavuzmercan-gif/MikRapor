@@ -9,8 +9,8 @@ paneli, resmi gelir tablosu ile fiili operasyonu yan yana koyup farkın mutabaka
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QRectF, QSize, Qt
-from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPen
+from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -202,46 +202,40 @@ def _karsilastirma_panel(gd: GercekDurum) -> QFrame:
     return _card("RESMİ vs FİİLİ  (mutabakat)", _ic(t, notlar))
 
 
-def _nakit_panel(gd: GercekDurum) -> QFrame:
-    t = _agac(2, [(1, 150)])
-    _tsatir(t, [_c("Para Giren (tahsilat)"), _c(tl(gd.nakit_giren), renk=POZ, sag=True)])
-    _tsatir(t, [_c("Para Çıkan (tediye) (−)"), _c(tl(-gd.nakit_cikan), renk=NEG, sag=True)])
-    _tsatir(t, [_c("Net Nakit Akışı", kalin=True),
-                _c(tl(gd.nakit_net), renk=_renk(gd.nakit_net), kalin=True, sag=True)])
-    _tsatir(t, [_c("Nakit Mevcudu (banka+kasa)", kalin=True),
-                _c(tl(gd.nakit_mevcut), renk=_renk(gd.nakit_mevcut), kalin=True, sag=True)])
-    if gd.nakit_banka > 0.005 or gd.nakit_kasa > 0.005:
-        _tsatir(t, [_c("      banka", renk=_MID), _c(tl(gd.nakit_banka), renk=_MID, sag=True)])
-        _tsatir(t, [_c("      kasa", renk=_MID), _c(tl(gd.nakit_kasa), renk=_MID, sag=True)])
-    _tsatir(t, [_c("Alacaklar (müşteri)"), _c(tl(gd.alacak), sag=True)])
-    if gd.musteri_avans > 0.005 and gd.musteri_avans_goster:
-        _tsatir(t, [_c("Müşteri avansı (−)"), _c(tl(-gd.musteri_avans), renk=NEG, sag=True)])
-    _tsatir(t, [_c("Borçlar (satıcı)"),
-                _c(tl(gd.borc), renk=NEG if gd.borc else _DARK, sag=True)])
-    if gd.satici_avans > 0.005:
-        _tsatir(t, [_c("Satıcı avansı"), _c(tl(gd.satici_avans), renk=POZ, sag=True)])
+def _isletme_sermayesi_panel(gd: GercekDurum) -> QFrame:
+    """İşini kendi kaynağıyla döndürebiliyor mu? — bu taba ÖZGÜ sentez.
+
+    Nakit akışı Nakit Akış tab'ının, alacak/borç dökümü Tahsilat tab'ının işi;
+    burada yalnızca 'işletme sermayesi' denklemini (nakit + net alacak − net borç)
+    tek rakama indirgeriz — başka hiçbir tab bu sentezi yapmıyor.
+    """
+    net_alacak = gd.alacak - gd.musteri_avans
+    net_borc = gd.borc - gd.satici_avans
+
+    t = _agac(2, [(1, 160)])
+    _tsatir(t, [_c("Nakit (banka + kasa)"), _c(tl(gd.nakit_mevcut), sag=True)])
+    _tsatir(t, [_c("Tahsil edilecek (net alacak)"), _c(tl(net_alacak), renk=POZ, sag=True)])
+    _tsatir(t, [_c("Ödenecek (net borç) (−)"), _c(tl(-net_borc), renk=NEG, sag=True)])
     _tsatir(t, [_c("Net İşletme Sermayesi", kalin=True),
                 _c(tl(gd.net_isletme_sermayesi), renk=_renk(gd.net_isletme_sermayesi),
                    kalin=True, sag=True)])
     _fit_height(t)
 
-    notlar: list[tuple[str, str]] = []
-    kaynak = {
-        "cari": "Alacak/borç: cari · Nakit: cari",
-        "cari+gl": "Alacak/borç: cari · Nakit: GL mizan",
-        "gl": "Alacak/borç: cari · Nakit: GL mizan",
-        "mizan": "Alacak/borç ve nakit: GL mizan",
-        "bakiye_ozet": "GL özet bakiyelerinden",
-    }.get(gd.bakiye_kaynagi, "")
-    if kaynak:
-        notlar.append((kaynak, MUTED))
+    if gd.net_isletme_sermayesi >= 0:
+        yorum = ("İşletme sermayesi = nakit + tahsil edeceklerin − ödeyeceklerin. "
+                 "<b>Pozitif</b> — günlük işini büyük ölçüde kendi kaynağınla döndürebiliyorsun.")
+    else:
+        yorum = ("İşletme sermayesi = nakit + tahsil edeceklerin − ödeyeceklerin. "
+                 "<b>Eksi</b> — kısa vadeli borçların nakit+alacağını aşıyor; işi döndürmek için "
+                 "dış kaynak (kredi / öz sermaye) gerekir.")
+    notlar: list[tuple[str, str]] = [(yorum, MUTED)]
     if gd.gl_alacak is not None and gd.bakiye_kaynagi in ("cari", "cari+gl", "gl"):
         fark = abs((gd.gl_alacak or 0) - gd.alacak) + abs((gd.gl_borc or 0) - gd.borc)
         if fark > 1000:
             notlar.append((
                 f"GL mizan farkı: alacak {tl(gd.gl_alacak)} · borç {tl(gd.gl_borc or 0)} "
                 f"· nakit {tl(gd.gl_nakit_mevcut or 0)} — cari ile GL uyumsuz olabilir.", "#b45309"))
-    return _card("NAKİT & İŞLETME SERMAYESİ  (cari bakiye)", _ic(t, notlar))
+    return _card("İŞLETME SERMAYESİ  (günlük işi çevirecek net kaynak)", _ic(t, notlar))
 
 
 def _cizgi() -> QFrame:
@@ -250,96 +244,6 @@ def _cizgi() -> QFrame:
     f.setStyleSheet("color: #e2e6ec; background: #e2e6ec;")
     f.setFixedHeight(1)
     return f
-
-
-_ALIS_RENK = "#8b5cf6"  # mor — satış/brüt/nakit renklerinden ayrışsın
-
-
-class _TrendChart(QWidget):
-    """Aylık Satış, Alış, Brüt Kâr ve Net Nakit'i ek bağımlılık olmadan çizen mini grafik."""
-
-    def __init__(self, gd: GercekDurum, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._aylar = gd.trend
-        self.setMinimumHeight(220)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.setStyleSheet("background: transparent;")
-
-    def paintEvent(self, _ev) -> None:  # noqa: N802 (Qt override)
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w, h = self.width(), self.height()
-        sol, sag, ust, alt = 8, 8, 14, 26
-        cw, ch = w - sol - sag, h - ust - alt
-        if not self._aylar or cw <= 0 or ch <= 0:
-            p.setPen(QPen(QColor(FAINT)))
-            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "Trend için veri yok")
-            p.end()
-            return
-
-        seriler = [(a.satis, a.alis, a.brut, a.nakit_net) for a in self._aylar]
-        # Net nakit / brüt negatif olabildiği için ölçek [min, max] ve 0 çizgisine göre
-        min_v = min((min(vs) for vs in seriler), default=0.0)
-        max_v = max((max(vs) for vs in seriler), default=0.0)
-        min_v = min(min_v, 0.0)
-        max_v = max(max_v, 0.0)
-        span = (max_v - min_v) or 1.0
-
-        n = len(self._aylar)
-        grup_w = cw / n
-        bar_w = min(14.0, grup_w / 5.4)
-        renkler = (QColor(ACCENT), QColor(_ALIS_RENK), QColor(POZ), QColor("#d97706"))
-
-        def y_of(v: float) -> float:
-            return ust + ch * ((max_v - v) / span)
-
-        # sıfır çizgisi
-        p.setPen(QPen(QColor("#cbd5e1"), 1, Qt.PenStyle.DashLine))
-        zy = y_of(0.0)
-        p.drawLine(int(sol), int(zy), int(sol + cw), int(zy))
-
-        p.setFont(QFont("Segoe UI", 7))
-        for i, a in enumerate(self._aylar):
-            cx = sol + grup_w * i + grup_w / 2
-            vals = (a.satis, a.alis, a.brut, a.nakit_net)
-            for j, v in enumerate(vals):
-                bx = cx + (j - 1.5) * (bar_w + 2) - bar_w / 2
-                vy = y_of(v)
-                top = min(vy, zy)
-                bh = abs(vy - zy)
-                p.fillRect(QRectF(bx, top, bar_w, max(1.0, bh)), renkler[j])
-            p.setPen(QPen(QColor(MUTED)))
-            ay_kisa = a.ay[2:] if len(a.ay) >= 7 else a.ay  # 'YY-MM'
-            p.drawText(QRectF(sol + grup_w * i, h - alt + 4, grup_w, alt - 6),
-                       Qt.AlignmentFlag.AlignCenter, ay_kisa)
-        p.end()
-
-
-def _trend_panel(gd: GercekDurum) -> QFrame:
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    v = QVBoxLayout(inner)
-    v.setContentsMargins(0, 0, 0, 0)
-    v.setSpacing(6)
-    lej = QLabel(
-        f"<span style='color:{ACCENT};'>■</span> Satış &nbsp;&nbsp;"
-        f"<span style='color:{_ALIS_RENK};'>■</span> Alış &nbsp;&nbsp;"
-        f"<span style='color:{POZ};'>■</span> Brüt Kâr &nbsp;&nbsp;"
-        "<span style='color:#d97706;'>■</span> Net Nakit"
-    )
-    lej.setStyleSheet("font-size: 11px; background: transparent;")
-    lej.setTextFormat(Qt.TextFormat.RichText)
-    v.addWidget(lej)
-    v.addWidget(_TrendChart(gd))
-    not_lbl = QLabel(
-        "Bir ayda <b>Alış &gt; Satış</b> ise Brüt Kâr eksi görünür — o ay zarar değil, "
-        "stok biriktirmişsindir (mal sonra satılır). Gerçek marj için dönemin tümüne bak."
-    )
-    not_lbl.setWordWrap(True)
-    not_lbl.setTextFormat(Qt.TextFormat.RichText)
-    not_lbl.setStyleSheet(f"color: {FAINT}; font-size: 11px; background: transparent;")
-    v.addWidget(not_lbl)
-    return _card("AYLIK TREND", inner)
 
 
 def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
@@ -440,14 +344,13 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
         col.addWidget(dv)
         hl.addLayout(col, 1)
     root.addWidget(hero)
+    # İşletme sermayesi — hero'nun hemen altında, öne çıkarıldı (bu taba özgü sentez).
+    root.addWidget(_isletme_sermayesi_panel(gd))
 
     row1 = QHBoxLayout()
     row1.setSpacing(20)
     row1.addWidget(_operasyonel_panel(gd), 1)
     row1.addWidget(_karsilastirma_panel(gd), 1)
     root.addLayout(row1)
-
-    root.addWidget(_trend_panel(gd))
-    root.addWidget(_nakit_panel(gd))
     root.addStretch(1)
     return content
