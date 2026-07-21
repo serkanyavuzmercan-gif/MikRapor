@@ -51,6 +51,18 @@ class TestGercekDurum(unittest.TestCase):
         self.assertAlmostEqual(gd.satis_irsaliye, 37000.0, places=2)
         self.assertAlmostEqual(gd.satis_fatura, 5000.0, places=2)
 
+    def test_irsaliye_siniflandirilmayana_sizmaz(self):
+        # Alış irsaliyesi (ev=12) fatura bazında tanınan kümede yok; ama BİLİNEN bir
+        # evraktip olduğu için "diğer giriş (sınıflandırılmayan)"a düşmemeli — yoksa
+        # aynı tutar iki satırda (alış irsaliyesi + diğer giriş) çift görünür.
+        gd = build_gercek_durum(stok_rows=_stok_ozet(), satis_bazi="fatura", alis_bazi="fatura")
+        self.assertAlmostEqual(gd.alis_irsaliye, 2000.0, places=2)
+        self.assertAlmostEqual(gd.siniflandirilmayan_giris, 0.0, places=2)
+        # Gerçekten bilinmeyen bir evraktip eklenirse o sınıflandırılmayana düşer.
+        rows = [*_stok_ozet(), {"sth_tip": 0, "sth_evraktip": 99, "tutar": 500.0, "adet": 1}]
+        gd2 = build_gercek_durum(stok_rows=rows, satis_bazi="fatura", alis_bazi="fatura")
+        self.assertAlmostEqual(gd2.siniflandirilmayan_giris, 500.0, places=2)
+
     def test_nakit_ve_bakiye(self):
         gd = build_gercek_durum(
             stok_rows=_stok_ozet(), nakit_rows=_nakit_ozet(), bakiye_rows=_bakiye_ozet())

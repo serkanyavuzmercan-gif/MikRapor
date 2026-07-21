@@ -211,7 +211,9 @@ def _siniflandir_stok(
                 out["satis_fatura"] += tutar
             if ev in sat_kume:
                 out["satis"] += tutar
-            else:
+            elif ev not in (EVRAKTIP_SATIS_IRSALIYE, EVRAKTIP_SATIS_FATURA):
+                # Yalnız GERÇEKTEN bilinmeyen evraktip; baz gereği hariç tutulan
+                # irsaliye/fatura zaten kendi satırında sayıldı (çift göstermeyelim).
                 out["siniflandirilmayan_cikis"] += tutar
         elif tip == ALIS_TIP:
             out["tum_giris"] += tutar
@@ -221,7 +223,7 @@ def _siniflandir_stok(
                 out["alis_irsaliye"] += tutar
             if ev in alis_kume:
                 out["alis"] += tutar
-            else:
+            elif ev not in (EVRAKTIP_ALIS_FATURA, EVRAKTIP_ALIS_IRSALIYE):
                 out["siniflandirilmayan_giris"] += tutar
     # Bilinen evraktip dışı hareket varsa tüm çıkış/girişe düş (sıfır görünmesin)
     if out["satis"] < 0.005 and out["tum_cikis"] > 0.005:
