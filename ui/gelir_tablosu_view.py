@@ -26,8 +26,13 @@ from ui.bilanco_view import (
 )
 from ui.styles import ACCENT, PRIMARY_SOFT
 
+_SOLUK = "#94a3b8"  # maliyet kapanışı yokken şişik kâr satırları
+
 
 def _doldur(t, gt: GelirTablosu) -> None:
+    # Maliyet kapanışı yoksa kâr sonuçları (brüt/faaliyet/net) şişik → soluklaştır.
+    # Net Satışlar gerçek olduğu için normal kalır.
+    kapanis_yok = gt.maliyet_eksik
     for s in gt.satirlar:
         if s.tip == "bolum":
             _section(t, s.etiket)
@@ -35,15 +40,20 @@ def _doldur(t, gt: GelirTablosu) -> None:
             _row(t, f"   {s.etiket}", s.tutar or 0.0)
         else:  # sonuc — yürüyen ara/nihai sonuç (vurgulu)
             if s.etiket.startswith("DÖNEM NET"):
-                renk = "#15803d" if (s.tutar or 0) >= 0 else "#b91c1c"
+                if kapanis_yok:
+                    renk = _SOLUK
+                else:
+                    renk = "#15803d" if (s.tutar or 0) >= 0 else "#b91c1c"
                 _row(t, s.etiket, s.tutar or 0.0, big=True, renk=renk)
+            elif kapanis_yok and not s.etiket.startswith("NET SATIŞLAR"):
+                _row(t, s.etiket, s.tutar or 0.0, bold=True, renk=_SOLUK)
             else:
                 _row(t, s.etiket, s.tutar or 0.0, bold=True, renk=NAVY)
     _fit_height(t)
 
 
-def _kpi_marj(baslik: str, tutar: float, marj: float, bg: str, vrenk: str):
-    return _kpi_card(f"{baslik}  ·  {yuzde(marj)}", tl(tutar), bg, vrenk)
+_KPI_SOLUK_BG = "#eef1f5"
+_KPI_SOLUK_VR = "#94a3b8"
 
 
 def build_gelir_tablosu_widget(gt: GelirTablosu, firma: str = "") -> QWidget:
@@ -87,12 +97,25 @@ def build_gelir_tablosu_widget(gt: GelirTablosu, firma: str = "") -> QWidget:
         )
         root.addWidget(uyari)
 
+    ke = gt.maliyet_eksik
+
+    def _kar_kpi(baslik: str, tutar: float, marj: float, *, son: bool = False):
+        # Kapanış yoksa: şişik kâr → gri + "kapanış öncesi", sahte % gösterme.
+        if ke:
+            dipnot = "kapanış öncesi · güvenilmez" if son else "kapanış öncesi"
+            return _kpi_card(baslik, "≈ " + tl(tutar), _KPI_SOLUK_BG, _KPI_SOLUK_VR, alt=dipnot)
+        bg, vr = (nk_bg, nk_vr) if son else (PRIMARY_SOFT, ACCENT)
+        return _kpi_card(f"{baslik}  ·  {yuzde(marj)}", tl(tutar), bg, vr)
+
     kpi = QHBoxLayout()
     kpi.setSpacing(12)
-    kpi.addWidget(_kpi_card("NET SATIŞLAR", tl(gt.net_satislar), PRIMARY_SOFT, ACCENT))
-    kpi.addWidget(_kpi_marj("BRÜT KÂR", gt.brut_kar, gt.brut_marj, PRIMARY_SOFT, ACCENT))
-    kpi.addWidget(_kpi_marj("FAALİYET KÂRI", gt.faaliyet_kari, gt.faaliyet_marj, PRIMARY_SOFT, ACCENT))
-    kpi.addWidget(_kpi_marj("DÖNEM NET KÂRI", gt.net_kar, gt.net_marj, nk_bg, nk_vr))
+    kpi.addWidget(_kpi_card(
+        "NET SATIŞLAR", tl(gt.net_satislar), PRIMARY_SOFT, ACCENT,
+        alt="gerçekleşen ciro" if ke else "",
+    ))
+    kpi.addWidget(_kar_kpi("BRÜT KÂR", gt.brut_kar, gt.brut_marj))
+    kpi.addWidget(_kar_kpi("FAALİYET KÂRI", gt.faaliyet_kari, gt.faaliyet_marj))
+    kpi.addWidget(_kar_kpi("DÖNEM NET KÂRI", gt.net_kar, gt.net_marj, son=True))
     root.addLayout(kpi)
 
     t = _tree()
