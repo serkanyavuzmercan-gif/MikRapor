@@ -13,6 +13,7 @@ from infra.mikro_api import MikroClient
 from infra.mikro_fetch import fetch_mizan
 from ui.bilanco_pdf import export_bilanco_pdf
 from ui.bilanco_view import build_bilanco_widget
+from ui.bilesenler import varsayilan_kayit_yolu
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.worker import IsFonksiyonu
 
@@ -48,11 +49,16 @@ class BilancoTab(RaporTab):
 
         return is_fn
 
+    def _yil_gec(self, yil: int) -> None:
+        """Bilanço uyarısındaki «geçen yıl kapanışına geç» — dönemi taşı + yeniden getir."""
+        self._donem.yil_ayarla(yil)
+        self._on_getir()
+
     def _goster(self, sonuc: dict[str, Any]) -> None:
         b: Bilanco = sonuc["bilanco"]
         self._bilanco = b
         self._firma = sonuc["firma"]
-        self._icerik_koy(build_bilanco_widget(b, firma=self._firma))
+        self._icerik_koy(build_bilanco_widget(b, firma=self._firma, on_yil_gec=self._yil_gec))
         n = sonuc["hesap_sayisi"]
         if abs(b.fark) < 1.0:
             self._durum(f"{n} hesap · Aktif=Pasif ✓ dengede.", "iyi")
@@ -65,7 +71,8 @@ class BilancoTab(RaporTab):
         if not self._bilanco:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "PDF Kaydet", f"bilanco_{self._bilanco.asof}.pdf", "PDF (*.pdf)")
+            self, "PDF Kaydet",
+            varsayilan_kayit_yolu(f"bilanco_{self._bilanco.asof}.pdf"), "PDF (*.pdf)")
         if not path:
             return
         # Chrome’daki tarih aralığı (TEK_TARIH veri için bit’i kullanır; PDF’de ikisi de yazılır)

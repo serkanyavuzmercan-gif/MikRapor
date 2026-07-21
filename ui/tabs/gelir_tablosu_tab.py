@@ -13,6 +13,7 @@ from domain.ortak import yuzde
 from infra.config import MikroConfig
 from infra.mikro_api import MikroClient
 from infra.mikro_fetch import fetch_gelir_tablosu
+from ui.bilesenler import varsayilan_kayit_yolu
 from ui.gelir_tablosu_pdf import export_gelir_tablosu_pdf
 from ui.gelir_tablosu_view import build_gelir_tablosu_widget
 from ui.rapor_tab import RaporTab, firma_getir
@@ -59,7 +60,8 @@ class GelirTablosuTab(RaporTab):
         if not self._gt:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "PDF Kaydet", f"gelir_tablosu_{self._gt.bas}_{self._gt.bit}.pdf", "PDF (*.pdf)")
+            self, "PDF Kaydet",
+            varsayilan_kayit_yolu(f"gelir_tablosu_{self._gt.bas}_{self._gt.bit}.pdf"), "PDF (*.pdf)")
         if not path:
             return
         try:

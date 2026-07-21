@@ -12,6 +12,7 @@ from domain.tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak, tahsil
 from infra.config import MikroConfig
 from infra.mikro_api import MikroClient
 from infra.mikro_fetch import fetch_acik_kalemler, fetch_cari_vade_gun
+from ui.bilesenler import varsayilan_kayit_yolu
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.tahsilat_alacak_pdf import export_tahsilat_alacak_pdf
 from ui.tahsilat_alacak_view import build_tahsilat_alacak_widget
@@ -75,7 +76,8 @@ class TahsilatAlacakTab(RaporTab):
             return
         path, _ = QFileDialog.getSaveFileName(
             self, "PDF Kaydet",
-            f"tahsilat_alacak_{self._ta.bas}_{self._ta.bit}.pdf", "PDF (*.pdf)")
+            varsayilan_kayit_yolu(f"tahsilat_alacak_{self._ta.bas}_{self._ta.bit}.pdf"),
+            "PDF (*.pdf)")
         if not path:
             return
         try:

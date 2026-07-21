@@ -19,6 +19,7 @@ from infra.mikro_fetch import (
     fetch_nakit_akis_hareket,
     fetch_nakit_delta,
 )
+from ui.bilesenler import varsayilan_kayit_yolu
 from ui.nakit_akis_pdf import export_nakit_akis_pdf
 from ui.nakit_akis_view import build_nakit_akis_widget
 from ui.rapor_tab import RaporTab, firma_getir
@@ -101,7 +102,8 @@ class NakitAkisTab(RaporTab):
         if not self._na:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "PDF Kaydet", f"nakit_akis_{self._na.bas}_{self._na.bit}.pdf", "PDF (*.pdf)")
+            self, "PDF Kaydet",
+            varsayilan_kayit_yolu(f"nakit_akis_{self._na.bas}_{self._na.bit}.pdf"), "PDF (*.pdf)")
         if not path:
             return
         try:
