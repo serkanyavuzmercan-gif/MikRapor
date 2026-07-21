@@ -348,7 +348,7 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
     from ui.bilesenler import baslik_ile_gelecek_uyari
-    root.addWidget(baslik_ile_gelecek_uyari(head, gd.bit))
+    root.addWidget(baslik_ile_gelecek_uyari(head, gd.bit, kaynak="canli"))
 
     if gd.stok_kirilim_sayisi == 0:
         uyari = QLabel(

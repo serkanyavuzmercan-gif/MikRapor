@@ -105,13 +105,53 @@ def gelecek_donem_uyari_kutusu() -> QFrame:
     return kutu
 
 
-def baslik_ile_gelecek_uyari(head: QWidget, bitis: str) -> QWidget:
-    """Başlık + (gerekirse) sağda tek satır gelecek-dönem uyarısı; ekstra dikey alan yok."""
+# Kaynak rozetleri: raporun hangi "deftere" dayandığını tek bakışta ayırır.
+#  resmi → MUHASEBE_FISLERI (yevmiye/GL) · maliyet kapanışına tabi (Bilanço, Gelir)
+#  canli → STOK/CARI hareketleri · fatura anı, kapanış beklemez (diğer tablar)
+_KAYNAK_ROZET = {
+    "resmi": (
+        "📘 Resmî defter",
+        "#1f3a5f", "#eef2f8", "#c7d2e0",
+        "Resmî muhasebe defterinden (yevmiye / GL hesapları).\n"
+        "Satılan malın maliyeti (62) ancak dönem sonu «maliyet kapanışı» "
+        "çalışınca işlenir; açık dönemde brüt/net kâr olduğundan yüksek görünebilir.",
+    ),
+    "canli": (
+        "⚡ Canlı veri",
+        "#0f766e", "#e8f5f2", "#bfe0d9",
+        "Fatura, stok ve cari hareketlerinden canlı hesaplanır.\n"
+        "Her stok çıkışının maliyeti Mikro'da sürekli tutulur; maliyet "
+        "kapanışını beklemez, günün gerçeğini yansıtır.",
+    ),
+}
+
+
+def kaynak_rozeti(kaynak: str) -> QLabel | None:
+    """'resmi' | 'canli' → küçük kaynak rozeti (pill). Bilinmeyen kaynak → None."""
+    veri = _KAYNAK_ROZET.get(kaynak)
+    if not veri:
+        return None
+    metin, renk, bg, kenar, ipucu = veri
+    lbl = QLabel(metin)
+    lbl.setToolTip(ipucu)
+    lbl.setStyleSheet(
+        f"QLabel {{ color: {renk}; background: {bg}; border: 1px solid {kenar}; "
+        f"border-radius: 9px; padding: 2px 9px; font-size: 11px; font-weight: 700; }}"
+    )
+    lbl.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+    return lbl
+
+
+def baslik_ile_gelecek_uyari(head: QWidget, bitis: str, kaynak: str = "") -> QWidget:
+    """Başlık + (varsa) solda kaynak rozeti + (gerekirse) sağda gelecek-dönem uyarısı."""
     row = QWidget()
     row.setStyleSheet("background: transparent;")
     lay = QHBoxLayout(row)
     lay.setContentsMargins(0, 0, 0, 0)
     lay.setSpacing(12)
+    rozet = kaynak_rozeti(kaynak)
+    if rozet is not None:
+        lay.addWidget(rozet, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
     lay.addWidget(head, 1)
     if donem_gelecek_mi(bitis):
         lay.addWidget(

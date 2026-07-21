@@ -319,7 +319,7 @@ def build_tahmin_widget(
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
     from ui.bilesenler import baslik_ile_gelecek_uyari
-    root.addWidget(baslik_ile_gelecek_uyari(head, v.baslangic_ay))
+    root.addWidget(baslik_ile_gelecek_uyari(head, v.baslangic_ay, kaynak="canli"))
 
     kpi = QHBoxLayout()
     kpi.setSpacing(12)

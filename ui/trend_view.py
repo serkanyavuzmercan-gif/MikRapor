@@ -203,7 +203,7 @@ def build_trend_widget(tr: TrendRapor, firma: str = "") -> QWidget:
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
     from ui.bilesenler import baslik_ile_gelecek_uyari
-    root.addWidget(baslik_ile_gelecek_uyari(head, tr.bit))
+    root.addWidget(baslik_ile_gelecek_uyari(head, tr.bit, kaynak="canli"))
 
     # Hero KPI şeridi
     hero = QFrame()
