@@ -344,13 +344,5 @@ class ChromeToolbar(QFrame):
                 bagla_nav_tip(chip, p, eyebrow="ÖZET")
             self._ozet_lay.addWidget(chip, 0, Qt.AlignmentFlag.AlignVCenter)
         self._ozet_lay.addStretch(1)
-        if self._nakit_modu:
-            ipucu = QPushButton(
-                "Kuralları değiştirmek için Hesaplama’yı kullanın.")
-            ipucu.setObjectName("hesaplamaIpucu")
-            ipucu.setCursor(Qt.CursorShape.PointingHandCursor)
-            ipucu.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            ipucu.setFlat(True)
-            ipucu.clicked.connect(self.ekstra_clicked.emit)
-            self._ozet_lay.addWidget(ipucu, 0, Qt.AlignmentFlag.AlignVCenter)
+        # "Hesaplama Kuralları" düğmesi kendini anlattığı için ayrı ipucu yazısı kaldırıldı.
         self._ozet.setVisible(True)

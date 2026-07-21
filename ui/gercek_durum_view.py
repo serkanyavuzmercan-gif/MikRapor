@@ -9,24 +9,31 @@ paneli, resmi gelir tablosu ile fiili operasyonu yan yana koyup farkın mutabaka
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QRectF, Qt
-from PyQt6.QtGui import QColor, QFont, QPainter, QPen
+from PyQt6.QtCore import QRectF, QSize, Qt
+from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QSizePolicy,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from domain.gercek_durum import GercekDurum, yuzde
 from domain.mizan_bilanco import tl
-from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG
+from ui.bilanco_view import _TREE_QSS, ACCENT, FAINT, MUTED, PAGE_BG, _fit_height
 from ui.styles import BAD as NEG
 from ui.styles import BORDER, PANEL_BG
 from ui.styles import OK as POZ
+
+# Tablo yazı hiyerarşisi: ana satır koyu, alt kalem okunur gri (FAINT değil).
+_DARK = "#1f2937"
+_MID = "#475569"
 
 
 def _renk(v: float) -> str:
@@ -63,131 +70,162 @@ def _satir_label(text: str, *, renk: str = "#374151", bold: bool = False,
     return lbl
 
 
+def _agac(kolon: int, sabit: list[tuple[int, int]]) -> QTreeWidget:
+    """Hover + zebra'lı, seçimsiz mini tablo. col0 esner; `sabit` kolonlar sabit genişlik."""
+    t = QTreeWidget()
+    t.setColumnCount(kolon)
+    t.setHeaderHidden(True)
+    t.setRootIsDecorated(False)
+    t.setIndentation(0)
+    t.setUniformRowHeights(False)
+    t.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    t.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+    t.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    t.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    t.setAlternatingRowColors(True)
+    t.setMouseTracking(True)
+    t.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+    t.viewport().setMouseTracking(True)
+    t.viewport().setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+    t.setStyleSheet(_TREE_QSS)
+    hdr = t.header()
+    hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+    for c, w in sabit:
+        hdr.setSectionResizeMode(c, QHeaderView.ResizeMode.Fixed)
+        t.setColumnWidth(c, w)
+    return t
+
+
+def _c(text: str, *, renk: str = _DARK, kalin: bool = False, sag: bool = False) -> tuple:
+    """Bir hücre tarifi (metin, renk, kalınlık, sağa-yaslı)."""
+    return (text, renk, kalin, sag)
+
+
+def _tsatir(t: QTreeWidget, hucreler: list[tuple]) -> QTreeWidgetItem:
+    it = QTreeWidgetItem([h[0] for h in hucreler])
+    it.setSizeHint(0, QSize(0, 30))
+    for c, (_text, renk, kalin, sag) in enumerate(hucreler):
+        f = it.font(c)
+        f.setBold(kalin)
+        it.setFont(c, f)
+        it.setForeground(c, QBrush(QColor(renk)))
+        if sag:
+            it.setTextAlignment(c, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    t.addTopLevelItem(it)
+    return it
+
+
+def _ic(tree: QTreeWidget, notlar: list[tuple[str, str]] = ()) -> QWidget:
+    """Ağaç + (varsa) altına açıklama notları."""
+    w = QWidget()
+    w.setStyleSheet("background: transparent;")
+    v = QVBoxLayout(w)
+    v.setContentsMargins(0, 0, 0, 0)
+    v.setSpacing(8)
+    v.addWidget(tree)
+    for metin, renk in notlar:
+        lbl = QLabel(metin)
+        lbl.setWordWrap(True)
+        lbl.setStyleSheet(f"color: {renk}; font-size: 11px; background: transparent;")
+        v.addWidget(lbl)
+    return w
+
+
 def _operasyonel_panel(gd: GercekDurum) -> QFrame:
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    g = QGridLayout(inner)
-    g.setContentsMargins(0, 0, 0, 0)
-    g.setHorizontalSpacing(12)
-    g.setVerticalSpacing(7)
-    g.setColumnStretch(0, 1)
-
-    def satir(r: int, ad: str, deger: str, *, bold: bool = False, renk: str = "#374151") -> None:
-        g.addWidget(_satir_label(ad, bold=bold), r, 0)
-        g.addWidget(_satir_label(deger, bold=bold, renk=renk, sag=True), r, 1)
-
+    t = _agac(2, [(1, 150)])
     baz = "İrsaliye + Fatura" if gd.satis_bazi == "sevk" else "Yalnız Fatura"
-    satir(0, f"Fiili Satış  ({baz})", tl(gd.gercek_satis), bold=True)
-    g.addWidget(_satir_label("    • satış irsaliyesi", renk=FAINT, boyut=11), 1, 0)
-    g.addWidget(_satir_label(tl(gd.satis_irsaliye), renk=FAINT, boyut=11, sag=True), 1, 1)
-    g.addWidget(_satir_label("    • satış faturası", renk=FAINT, boyut=11), 2, 0)
-    g.addWidget(_satir_label(tl(gd.satis_fatura), renk=FAINT, boyut=11, sag=True), 2, 1)
-    satir(3, "Fiili Alış (−)", tl(-gd.gercek_alis))
-    g.addWidget(_satir_label("    • alış faturası (toplam alış)", renk=FAINT, boyut=11), 4, 0)
-    g.addWidget(_satir_label(tl(gd.alis_fatura), renk=FAINT, boyut=11, sag=True), 4, 1)
-    r_extra = 5
+    _tsatir(t, [_c(f"Fiili Satış  ({baz})", kalin=True),
+                _c(tl(gd.gercek_satis), kalin=True, sag=True)])
+    _tsatir(t, [_c("      satış irsaliyesi", renk=_MID),
+                _c(tl(gd.satis_irsaliye), renk=_MID, sag=True)])
+    _tsatir(t, [_c("      satış faturası", renk=_MID),
+                _c(tl(gd.satis_fatura), renk=_MID, sag=True)])
+    _tsatir(t, [_c("Fiili Alış (−)", kalin=True),
+                _c(tl(-gd.gercek_alis), kalin=True, sag=True)])
+    _tsatir(t, [_c("      alış faturası (toplam alış)", renk=_MID),
+                _c(tl(gd.alis_fatura), renk=_MID, sag=True)])
     if gd.alis_irsaliye > 0.005 and gd.gercek_alis != gd.alis_irsaliye:
-        g.addWidget(_satir_label(
-            "    • alış irsaliyesi (bilgi — çift sayım olmasın diye toplama dahil değil)",
-            renk=FAINT, boyut=11), 5, 0)
-        g.addWidget(_satir_label(tl(gd.alis_irsaliye), renk=FAINT, boyut=11, sag=True), 5, 1)
-        r_extra = 6
+        _tsatir(t, [_c("      alış irsaliyesi (bilgi — toplama dahil değil)", renk=_MID),
+                    _c(tl(gd.alis_irsaliye), renk=_MID, sag=True)])
     if gd.siniflandirilmayan_giris > 0.005:
-        g.addWidget(_satir_label("    • diğer giriş (evraktip?)", renk=FAINT, boyut=11), r_extra, 0)
-        g.addWidget(_satir_label(tl(gd.siniflandirilmayan_giris), renk=FAINT, boyut=11, sag=True), r_extra, 1)
-        r_brut = r_extra + 1
-    else:
-        r_brut = r_extra
-    satir(r_brut, "Fiili Al-Sat Farkı", tl(gd.gercek_brut_kar), bold=True,
-          renk=_renk(gd.gercek_brut_kar))
-    satir(r_brut + 1, "Fiili Al-Sat Marjı", yuzde(gd.gercek_brut_marj), bold=True,
-          renk=_renk(gd.gercek_brut_marj))
+        _tsatir(t, [_c("      diğer giriş (evrak tipi tanınmayan)", renk=_MID),
+                    _c(tl(gd.siniflandirilmayan_giris), renk=_MID, sag=True)])
+    _tsatir(t, [_c("Fiili Al-Sat Farkı", kalin=True),
+                _c(tl(gd.gercek_brut_kar), renk=_renk(gd.gercek_brut_kar), kalin=True, sag=True)])
+    _tsatir(t, [_c("Fiili Al-Sat Marjı", kalin=True),
+                _c(yuzde(gd.gercek_brut_marj), renk=_renk(gd.gercek_brut_marj), kalin=True, sag=True)])
+    _fit_height(t)
+
+    notlar: list[tuple[str, str]] = []
     if gd.resmi_smm is not None and gd.smm_stok_farki is not None:
-        not2 = _satir_label(
+        notlar.append((
             f"Resmi SMM (GL 62xx) {tl(gd.resmi_smm)} − stok alış {tl(gd.gercek_alis)} "
-            f"= {tl(gd.smm_stok_farki)} fark (623, stok değişimi, maliyet kapanışı).",
-            renk=FAINT, boyut=11)
-        not2.setWordWrap(True)
-        g.addWidget(not2, r_brut + 2, 0, 1, 2)
-    return _card("OPERASYONEL KÂRLILIK  (stok hareketinden)", inner)
+            f"= {tl(gd.smm_stok_farki)} fark (623, stok değişimi, maliyet kapanışı).", MUTED))
+    return _card("OPERASYONEL KÂRLILIK  (stok hareketinden)", _ic(t, notlar))
 
 
 def _karsilastirma_panel(gd: GercekDurum) -> QFrame:
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    g = QGridLayout(inner)
-    g.setContentsMargins(0, 0, 0, 0)
-    g.setHorizontalSpacing(12)
-    g.setVerticalSpacing(8)
-    g.setColumnStretch(0, 1)
-
-    for c, baslik in ((1, "Resmi"), (2, "Fiili"), (3, "Fark")):
-        g.addWidget(_satir_label(baslik, renk=MUTED, boyut=11, bold=True, sag=True), 0, c)
-
-    def kolon3(r: int, ad: str, resmi: str, gercek: str, fark: str, fark_renk: str) -> None:
-        g.addWidget(_satir_label(ad, bold=True), r, 0)
-        g.addWidget(_satir_label(resmi, sag=True), r, 1)
-        g.addWidget(_satir_label(gercek, sag=True, bold=True), r, 2)
-        g.addWidget(_satir_label(fark, sag=True, bold=True, renk=fark_renk), r, 3)
+    t = _agac(4, [(1, 118), (2, 132), (3, 128)])
+    _tsatir(t, [_c(""), _c("Resmi", renk=MUTED, kalin=True, sag=True),
+                _c("Fiili", renk=MUTED, kalin=True, sag=True),
+                _c("Fark", renk=MUTED, kalin=True, sag=True)])
 
     if gd.resmi_brut_marj is None:
-        g.addWidget(_satir_label("Resmi gelir tablosu yüklenemedi.", renk=FAINT), 1, 0, 1, 4)
-        return _card("RESMİ vs FİİLİ", inner)
+        _tsatir(t, [_c("Resmi gelir tablosu yüklenemedi.", renk=_MID), _c(""), _c(""), _c("")])
+        _fit_height(t)
+        return _card("RESMİ vs FİİLİ", _ic(t))
 
     mf = gd.marj_farki or 0.0
-    kolon3(1, "Brüt Marj", yuzde(gd.resmi_brut_marj), yuzde(gd.gercek_brut_marj),
-           ("+" if mf >= 0 else "") + yuzde(mf), _renk(mf))
+    _tsatir(t, [_c("Brüt Marj", kalin=True), _c(yuzde(gd.resmi_brut_marj), sag=True),
+                _c(yuzde(gd.gercek_brut_marj), kalin=True, sag=True),
+                _c(("+" if mf >= 0 else "") + yuzde(mf), renk=_renk(mf), kalin=True, sag=True)])
     if gd.resmi_brut_kar is not None:
-        bk_fark = gd.gercek_brut_kar - gd.resmi_brut_kar
-        kolon3(2, "Brüt Kâr", tl(gd.resmi_brut_kar), tl(gd.gercek_brut_kar),
-               ("+" if bk_fark >= 0 else "") + tl(bk_fark), _renk(bk_fark))
+        bk = gd.gercek_brut_kar - gd.resmi_brut_kar
+        _tsatir(t, [_c("Brüt Kâr", kalin=True), _c(tl(gd.resmi_brut_kar), sag=True),
+                    _c(tl(gd.gercek_brut_kar), kalin=True, sag=True),
+                    _c(("+" if bk >= 0 else "") + tl(bk), renk=_renk(bk), kalin=True, sag=True)])
     if gd.resmi_smm is not None:
         sf = gd.smm_stok_farki or 0.0
-        kolon3(3, "Maliyet (SMM / Stok Alış)",
-               tl(gd.resmi_smm), tl(gd.gercek_alis),
-               ("+" if sf >= 0 else "") + tl(sf), _renk(-sf))
+        _tsatir(t, [_c("Maliyet (SMM / Stok Alış)", kalin=True), _c(tl(gd.resmi_smm), sag=True),
+                    _c(tl(gd.gercek_alis), kalin=True, sag=True),
+                    _c(("+" if sf >= 0 else "") + tl(sf), renk=_renk(-sf), kalin=True, sag=True)])
     if gd.gizlenen_brut is not None:
-        g.addWidget(_satir_label("Fiili − resmi brüt farkı (yaklaşık)", bold=True), 4, 0)
-        g.addWidget(_satir_label(("+" if gd.gizlenen_brut >= 0 else "") + tl(gd.gizlenen_brut),
-                                 sag=True, bold=True, renk=_renk(gd.gizlenen_brut)), 4, 1, 1, 3)
+        _tsatir(t, [_c("Fiili − resmi brüt farkı (yaklaşık)", kalin=True), _c(""), _c(""),
+                    _c(("+" if gd.gizlenen_brut >= 0 else "") + tl(gd.gizlenen_brut),
+                       renk=_renk(gd.gizlenen_brut), kalin=True, sag=True)])
+    _fit_height(t)
 
-    not_lbl = _satir_label(
+    notlar = [(
         "Fiili marj = depodan çıkan − giren mal. Resmi SMM ek olarak 623 (navlun/gümrük vb.) ve "
         "dönem stok değişimini içerir; iki rakam bu yüzden farklı çıkar. Fark muhasebe "
-        "zamanlamasıdır, bir tutarsızlık değildir.",
-        renk=FAINT, boyut=11)
-    not_lbl.setWordWrap(True)
-    g.addWidget(not_lbl, 5, 0, 1, 4)
-    return _card("RESMİ vs FİİLİ  (mutabakat)", inner)
+        "zamanlamasıdır, bir tutarsızlık değildir.", MUTED)]
+    return _card("RESMİ vs FİİLİ  (mutabakat)", _ic(t, notlar))
 
 
 def _nakit_panel(gd: GercekDurum) -> QFrame:
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    g = QGridLayout(inner)
-    g.setContentsMargins(0, 0, 0, 0)
-    g.setHorizontalSpacing(12)
-    g.setVerticalSpacing(7)
-    g.setColumnStretch(0, 1)
-
-    def satir(r: int, ad: str, deger: str, *, bold: bool = False, renk: str = "#374151") -> None:
-        g.addWidget(_satir_label(ad, bold=bold), r, 0)
-        g.addWidget(_satir_label(deger, bold=bold, renk=renk, sag=True), r, 1)
-
-    satir(0, "Para Giren (tahsilat)", tl(gd.nakit_giren), renk=POZ)
-    satir(1, "Para Çıkan (tediye) (−)", tl(-gd.nakit_cikan), renk=NEG)
-    satir(2, "Net Nakit Akışı", tl(gd.nakit_net), bold=True, renk=_renk(gd.nakit_net))
-    g.addWidget(_cizgi(), 3, 0, 1, 2)
-    satir(4, "Nakit Mevcudu (banka+kasa)", tl(gd.nakit_mevcut), bold=True,
-          renk=_renk(gd.nakit_mevcut))
+    t = _agac(2, [(1, 150)])
+    _tsatir(t, [_c("Para Giren (tahsilat)"), _c(tl(gd.nakit_giren), renk=POZ, sag=True)])
+    _tsatir(t, [_c("Para Çıkan (tediye) (−)"), _c(tl(-gd.nakit_cikan), renk=NEG, sag=True)])
+    _tsatir(t, [_c("Net Nakit Akışı", kalin=True),
+                _c(tl(gd.nakit_net), renk=_renk(gd.nakit_net), kalin=True, sag=True)])
+    _tsatir(t, [_c("Nakit Mevcudu (banka+kasa)", kalin=True),
+                _c(tl(gd.nakit_mevcut), renk=_renk(gd.nakit_mevcut), kalin=True, sag=True)])
     if gd.nakit_banka > 0.005 or gd.nakit_kasa > 0.005:
-        g.addWidget(_satir_label("    • banka", renk=FAINT, boyut=11), 5, 0)
-        g.addWidget(_satir_label(tl(gd.nakit_banka), renk=FAINT, boyut=11, sag=True), 5, 1)
-        g.addWidget(_satir_label("    • kasa", renk=FAINT, boyut=11), 6, 0)
-        g.addWidget(_satir_label(tl(gd.nakit_kasa), renk=FAINT, boyut=11, sag=True), 6, 1)
-        r_kaynak = 7
-    else:
-        r_kaynak = 5
+        _tsatir(t, [_c("      banka", renk=_MID), _c(tl(gd.nakit_banka), renk=_MID, sag=True)])
+        _tsatir(t, [_c("      kasa", renk=_MID), _c(tl(gd.nakit_kasa), renk=_MID, sag=True)])
+    _tsatir(t, [_c("Alacaklar (müşteri)"), _c(tl(gd.alacak), sag=True)])
+    if gd.musteri_avans > 0.005 and gd.musteri_avans_goster:
+        _tsatir(t, [_c("Müşteri avansı (−)"), _c(tl(-gd.musteri_avans), renk=NEG, sag=True)])
+    _tsatir(t, [_c("Borçlar (satıcı)"),
+                _c(tl(gd.borc), renk=NEG if gd.borc else _DARK, sag=True)])
+    if gd.satici_avans > 0.005:
+        _tsatir(t, [_c("Satıcı avansı"), _c(tl(gd.satici_avans), renk=POZ, sag=True)])
+    _tsatir(t, [_c("Net İşletme Sermayesi", kalin=True),
+                _c(tl(gd.net_isletme_sermayesi), renk=_renk(gd.net_isletme_sermayesi),
+                   kalin=True, sag=True)])
+    _fit_height(t)
+
+    notlar: list[tuple[str, str]] = []
     kaynak = {
         "cari": "Alacak/borç: cari · Nakit: cari",
         "cari+gl": "Alacak/borç: cari · Nakit: GL mizan",
@@ -196,35 +234,14 @@ def _nakit_panel(gd: GercekDurum) -> QFrame:
         "bakiye_ozet": "GL özet bakiyelerinden",
     }.get(gd.bakiye_kaynagi, "")
     if kaynak:
-        not_k = _satir_label(kaynak, renk=FAINT, boyut=10)
-        g.addWidget(not_k, r_kaynak, 0, 1, 2)
-        r_alacak = r_kaynak + 1
-    else:
-        r_alacak = r_kaynak
-    satir(r_alacak, "Alacaklar (müşteri)", tl(gd.alacak))
-    if gd.musteri_avans > 0.005 and gd.musteri_avans_goster:
-        satir(r_alacak + 1, "Müşteri avansı (−)", tl(-gd.musteri_avans), renk=NEG)
-        r_borc = r_alacak + 2
-    else:
-        r_borc = r_alacak + 1
-    satir(r_borc, "Borçlar (satıcı)", tl(gd.borc), renk=NEG if gd.borc else "#374151")
-    if gd.satici_avans > 0.005:
-        satir(r_borc + 1, "Satıcı avansı", tl(gd.satici_avans), renk=POZ)
-        r_nis = r_borc + 2
-    else:
-        r_nis = r_borc + 1
-    satir(r_nis, "Net İşletme Sermayesi", tl(gd.net_isletme_sermayesi), bold=True,
-          renk=_renk(gd.net_isletme_sermayesi))
+        notlar.append((kaynak, MUTED))
     if gd.gl_alacak is not None and gd.bakiye_kaynagi in ("cari", "cari+gl", "gl"):
         fark = abs((gd.gl_alacak or 0) - gd.alacak) + abs((gd.gl_borc or 0) - gd.borc)
         if fark > 1000:
-            not_gl = _satir_label(
+            notlar.append((
                 f"GL mizan farkı: alacak {tl(gd.gl_alacak)} · borç {tl(gd.gl_borc or 0)} "
-                f"· nakit {tl(gd.gl_nakit_mevcut or 0)} — cari ile GL uyumsuz olabilir.",
-                renk="#b45309", boyut=10)
-            not_gl.setWordWrap(True)
-            g.addWidget(not_gl, r_nis + 1, 0, 1, 2)
-    return _card("NAKİT & İŞLETME SERMAYESİ  (cari bakiye)", inner)
+                f"· nakit {tl(gd.gl_nakit_mevcut or 0)} — cari ile GL uyumsuz olabilir.", "#b45309"))
+    return _card("NAKİT & İŞLETME SERMAYESİ  (cari bakiye)", _ic(t, notlar))
 
 
 def _cizgi() -> QFrame:
