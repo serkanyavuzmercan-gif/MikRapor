@@ -215,8 +215,8 @@ def _panel(baslik: str, t: QTreeWidget) -> QFrame:
     return card
 
 
-def _kpi_card(baslik: str, deger: str, bg: str, vrenk: str) -> QFrame:
-    """Klasik soft kart (diğer sekmeler için)."""
+def _kpi_card(baslik: str, deger: str, bg: str, vrenk: str, *, alt: str = "") -> QFrame:
+    """Klasik soft kart (diğer sekmeler için). alt: küçük dipnot satırı (opsiyonel)."""
     card = QFrame()
     card.setObjectName("kpiCard")
     card.setStyleSheet(
@@ -234,6 +234,10 @@ def _kpi_card(baslik: str, deger: str, bg: str, vrenk: str) -> QFrame:
     )
     lay.addWidget(b)
     lay.addWidget(v)
+    if alt:
+        a = QLabel(alt)
+        a.setStyleSheet(f"color: {FAINT}; font-size: 10px; font-weight: 600; background: transparent;")
+        lay.addWidget(a)
     return card
 
 
