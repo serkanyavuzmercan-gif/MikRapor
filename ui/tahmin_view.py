@@ -72,33 +72,38 @@ def _iki_ihtimal_karti(rt: RunwayTakvim | None, t: Tahmin) -> QFrame:
     giris.setStyleSheet("color: #374151; font-size: 13px; background: transparent;")
     v.addWidget(giris)
 
-    def _satir(renk: str, bg: str, etiket: str, aciklama: str, ozet: str) -> QFrame:
+    def _satir(renk: str, bg: str, kenar: str, etiket: str, aciklama: str, ozet: str) -> QFrame:
+        # Object-name ile kapsanır: aksi halde QSS 'QFrame' kuralı QLabel'lara da
+        # (QLabel, QFrame'den türer) yansıyıp "iç içe çerçeveler" görünürdü.
         f = QFrame()
+        f.setObjectName("ihtimalBlok")
         f.setStyleSheet(
-            f"QFrame {{ background: {bg}; border: 1px solid {renk}44; border-radius: 10px; }}"
+            "QFrame#ihtimalBlok { background: %s; border: none; "
+            "border-left: 3px solid %s; border-radius: 8px; }" % (bg, kenar)
         )
         fl = QVBoxLayout(f)
-        fl.setContentsMargins(13, 10, 13, 10)
-        fl.setSpacing(2)
+        fl.setContentsMargins(14, 11, 14, 11)
+        fl.setSpacing(3)
         ust = QLabel(f"<span style='color:{renk};'>●</span> <b>{etiket}</b> — {aciklama}")
         ust.setTextFormat(Qt.TextFormat.RichText)
         ust.setWordWrap(True)
-        ust.setStyleSheet(f"color: {renk}; font-size: 13px; background: transparent;")
+        ust.setStyleSheet(f"color: {renk}; font-size: 13px; background: transparent; border: none;")
         fl.addWidget(ust)
         alt = QLabel(f"→ {ozet}")
         alt.setTextFormat(Qt.TextFormat.RichText)
         alt.setWordWrap(True)
-        alt.setStyleSheet("color: #374151; font-size: 13px; font-weight: 600; background: transparent;")
+        alt.setStyleSheet(
+            "color: #374151; font-size: 13px; font-weight: 600; background: transparent; border: none;")
         fl.addWidget(alt)
         return f
 
     if rt is not None and rt.aylar:
         v.addWidget(_satir(
-            NEG, "#fdecec", "En kötü ihtimal",
+            NEG, "#fdf0f0", "#e79a9a", "En kötü ihtimal",
             "bugün elindeki alacak/borçlarla, <u>hiç yeni satış olmazsa</u>",
             _kotu_ozet(rt)))
     v.addWidget(_satir(
-        POZ, "#e8f6ee", "Normal beklenti",
+        POZ, "#eef7f1", "#9cc9ac", "Normal beklenti",
         "her ay ortalama satışın <u>devam ederse</u>",
         _normal_ozet(t)))
 
