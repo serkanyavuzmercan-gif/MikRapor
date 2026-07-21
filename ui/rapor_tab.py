@@ -10,7 +10,6 @@ arka planda biten işler yalnızca kendi içerik alanını doldurur.
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Any
 
 from PyQt6.QtCore import Qt
@@ -251,9 +250,6 @@ class RaporTab(QWidget):
                 return
             bas = bas_d.toString("yyyy-MM-dd")
             bit = bit_d.toString("yyyy-MM-dd")
-        # Mikro CalismaYili'yi seçili dönemin yılına ayarla — kullanıcı ayarlara
-        # girmeden başka yıla (ör. geçen yıl kapanışı) bakabilsin. Yıl = bitiş yılı.
-        cfg = replace(cfg, calisma_yili=int(bit[:4]))
         self._calistir(self._is_hazirla(cfg, bas, bit))
 
     def _calistir(self, is_fn: IsFonksiyonu) -> None:

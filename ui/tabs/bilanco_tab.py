@@ -49,16 +49,11 @@ class BilancoTab(RaporTab):
 
         return is_fn
 
-    def _yil_gec(self, yil: int) -> None:
-        """Bilanço uyarısındaki «geçen yıl kapanışına geç» — dönemi taşı + yeniden getir."""
-        self._donem.yil_ayarla(yil)
-        self._on_getir()
-
     def _goster(self, sonuc: dict[str, Any]) -> None:
         b: Bilanco = sonuc["bilanco"]
         self._bilanco = b
         self._firma = sonuc["firma"]
-        self._icerik_koy(build_bilanco_widget(b, firma=self._firma, on_yil_gec=self._yil_gec))
+        self._icerik_koy(build_bilanco_widget(b, firma=self._firma))
         n = sonuc["hesap_sayisi"]
         if abs(b.fark) < 1.0:
             self._durum(f"{n} hesap · Aktif=Pasif ✓ dengede.", "iyi")
