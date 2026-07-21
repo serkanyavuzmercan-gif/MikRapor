@@ -8,11 +8,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PyQt6.QtCore import QDate, QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QFontMetrics
 from PyQt6.QtWidgets import (
     QButtonGroup,
-    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -71,21 +70,6 @@ class ChromeToolbar(QFrame):
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
-
-        # Yıl seçici — ayarlara girmeden başka yılın verisine geç (ör. geçen yıl kapanışı)
-        self._yil = QComboBox()
-        self._yil.setObjectName("yilSecici")
-        self._yil.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._yil.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._yil.setMinimumWidth(76)
-        suan = QDate.currentDate().year()
-        for y in range(suan, suan - 7, -1):
-            self._yil.addItem(str(y), y)
-        bagla_nav_tip(
-            self._yil, "Hangi yılın verisi gösterilsin? Ayarlara girmene gerek yok.",
-            eyebrow="YIL", parent=self)
-        self._yil.activated.connect(self._yil_secildi)
-        row.addWidget(self._yil)
 
         self._aralik = DonemAralikAlani(donem)
         row.addWidget(self._aralik)
@@ -192,9 +176,7 @@ class ChromeToolbar(QFrame):
         root.addWidget(self._ozet)
 
         donem.degisti.connect(self._kisayol_senkron)
-        donem.degisti.connect(self._yil_senkron)
         self._kisayol_senkron()
-        self._yil_senkron()
 
     def set_aktif_tab(self, tab: object | None) -> None:
         """Chrome'u hangi sekmenin kontrol ettiğini kaydet."""
@@ -317,35 +299,18 @@ class ChromeToolbar(QFrame):
             self._status.setVisible(True)
             self._ozet_temizle()
 
-    def _yil_secildi(self, _idx: int) -> None:
-        yil = self._yil.currentData()
-        if yil is not None:
-            self._donem.yil_ayarla(int(yil))
-
-    def _yil_senkron(self) -> None:
-        """Combo'yu seçili dönemin yılına getir (liste dışıysa başa ekle)."""
-        yil = self._donem.referans_yil()
-        self._yil.blockSignals(True)
-        idx = self._yil.findData(yil)
-        if idx < 0:
-            self._yil.insertItem(0, str(yil), yil)
-            idx = 0
-        self._yil.setCurrentIndex(idx)
-        self._yil.blockSignals(False)
-
     def _kisayol_uygula(self, kod: str) -> None:
-        bas, bit = kisayol_aralik(kod, self._donem.referans_yil())
+        bas, bit = kisayol_aralik(kod)
         self._donem.donem_ayarla(bas=bas, bit=bit)
         self._kisayol_senkron()
 
     def _kisayol_senkron(self) -> None:
         """Mevcut dönem bir kısayola uyuyorsa o butonu işaretle."""
         bas, bit = self._donem.bas_tarih(), self._donem.bit_tarih()
-        ref_yil = self._donem.referans_yil()
         eslesen: str | None = None
         for grup in KISAYOL_GRUPLARI:
             for kod, _, _ in grup:
-                k_bas, k_bit = kisayol_aralik(kod, ref_yil)
+                k_bas, k_bit = kisayol_aralik(kod)
                 if bas == k_bas and bit == k_bit:
                     eslesen = kod
                     break

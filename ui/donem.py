@@ -53,13 +53,12 @@ KISAYOL_GRUPLARI: tuple[tuple[tuple[str, str, str], ...], ...] = (
 )
 
 
-def kisayol_aralik(kod: str, ref_yil: int | None = None) -> tuple[QDate, QDate]:
+def kisayol_aralik(kod: str) -> tuple[QDate, QDate]:
     """Dönem kısayolu → (başlangıç, bitiş).
 
-    ref_yil verilirse o yıl referans alınır (toolbar yıl seçici); yoksa çalışma yılı.
     Çeyrek / yarıyıl / yıl: tam takvim aralığı. Bu ay: ay başı → min(ay sonu, bugün).
     """
-    ref = _referans_tarih(ref_yil) if ref_yil else _calisma_referans()
+    ref = _calisma_referans()
     y, m = ref.year(), ref.month()
     if kod == "ay":
         bas = QDate(y, m, 1)
@@ -100,23 +99,6 @@ class DonemDurumu(QObject):
 
     def bit_tarih(self) -> QDate:
         return self._bit
-
-    def referans_yil(self) -> int:
-        """Kısayolların dayandığı yıl = seçili bitiş yılı (yıl seçici bunu değiştirir)."""
-        return self._bit.year()
-
-    def yil_ayarla(self, yil: int) -> None:
-        """Dönemi verilen yıla taşır (1 Ocak → bugün/yıl sonu). Toolbar yıl seçici + Bilanço."""
-        yil = int(yil)
-        bugun = QDate.currentDate()
-        bas = QDate(yil, 1, 1)
-        if bugun.year() == yil:
-            bit = bugun
-        elif bugun.year() > yil:
-            bit = QDate(yil, 12, 31)
-        else:
-            bit = QDate(yil, 1, 1)
-        self.donem_ayarla(bas=bas, bit=bit)
 
     def donem_ayarla(
         self,

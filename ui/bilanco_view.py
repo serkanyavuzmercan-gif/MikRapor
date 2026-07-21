@@ -8,8 +8,6 @@ Bu yüzden gövde yerel widget'larla çizilir: AKTİF | PASİF iki `QTreeWidget`
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QBrush, QColor, QFont
 from PyQt6.QtWidgets import (
@@ -18,7 +16,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QPushButton,
     QSizePolicy,
     QTreeWidget,
     QTreeWidgetItem,
@@ -240,19 +237,24 @@ def _kpi_card(baslik: str, deger: str, bg: str, vrenk: str) -> QFrame:
     return card
 
 
-def _kpi_metric(baslik: str, deger: str, *, vrenk: str = INK) -> QWidget:
-    """Tipografi KPI — ağır kart yok (Teal A bilanço şeridi)."""
+def _kpi_metric(baslik: str, deger: str, *, vrenk: str = INK, alt: str = "") -> QWidget:
+    """Tipografi KPI — ağır kart yok (Teal A bilanço şeridi). alt: küçük dipnot satırı."""
     w = QWidget()
     w.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     lay = QVBoxLayout(w)
     lay.setContentsMargins(8, 4, 8, 4)
-    lay.setSpacing(2)
+    lay.setSpacing(1)
     b = QLabel(baslik)
     b.setStyleSheet(f"color: {MUTED}; font-size: 11px; font-weight: 600; letter-spacing: 0.4px;")
     v = QLabel(deger)
     v.setStyleSheet(f"color: {vrenk}; font-size: 20px; font-weight: 800;")
     lay.addWidget(b)
     lay.addWidget(v)
+    if alt:
+        a = QLabel(alt)
+        a.setWordWrap(True)
+        a.setStyleSheet(f"color: {FAINT}; font-size: 10px; font-weight: 600;")
+        lay.addWidget(a)
     return w
 
 
@@ -264,14 +266,8 @@ def _kpi_divider() -> QFrame:
     return line
 
 
-def build_bilanco_widget(
-    b: Bilanco, firma: str = "", on_yil_gec: Callable[[int], None] | None = None,
-) -> QWidget:
-    """Bir Bilanço'dan, QScrollArea içine konacak yerel görünüm widget'ı üretir.
-
-    on_yil_gec verilirse, maliyet kapanışı eksik (açık yıl) uyarısına "geçen yıl
-    kapanışına geç" düğmesi eklenir; tıklanınca on_yil_gec(hedef_yil) çağrılır.
-    """
+def build_bilanco_widget(b: Bilanco, firma: str = "") -> QWidget:
+    """Bir Bilanço'dan, QScrollArea içine konacak yerel görünüm widget'ı üretir."""
     # Fark tutarı DAİMA gösterilir — büyük mutlak fark küçük yüzdeyle gizlenmesin.
     if abs(b.fark) < 1.0:
         denge_txt, denge_vr = "Dengede", OK
@@ -292,55 +288,29 @@ def build_bilanco_widget(
     head = QLabel(
         f"<span style='color:{MUTED}; font-size:12px; letter-spacing:0.3px;'>"
         f"ANINDA BİLANÇO  ·  {b.asof} tarihi itibarıyla{firma_str}</span><br>"
-        f"<span style='color:{FAINT}; font-size:11px;'>canlı/yönetim bilançosu — "
-        f"kesin dönem sonucu için ay sonu kapanışı esastır</span>"
+        f"<span style='color:{FAINT}; font-size:11px;'>Bugünkü <b>varlık–borç durumu</b> "
+        f"(nakit · alacak · borç · kredi · stok · özkaynak). «Dönem Net Kârı» ise ancak "
+        f"maliyet kapanışından sonra kesindir — açık yılda tahminidir.</span>"
     )
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
     from ui.bilesenler import baslik_ile_gelecek_uyari
     root.addWidget(baslik_ile_gelecek_uyari(head, b.asof))
 
-    # Maliyet kapanışı yapılmamışsa "Dönem Net Kârı" şişik görünür — uyar + geçen yıla geç.
+    # Maliyet kapanışı yapılmamışsa "Dönem Net Kârı" şişik görünür — uyar (varlık-borç doğru).
     if b.maliyet_eksik:
-        uy_box = QFrame()
-        uy_box.setObjectName("maliyetUyari")
-        uy_box.setStyleSheet(
-            "QFrame#maliyetUyari { background: #fdf3e0; border: 1px solid #f0d090; "
-            "border-radius: 8px; }"
-        )
-        ub = QVBoxLayout(uy_box)
-        ub.setContentsMargins(12, 10, 12, 10)
-        ub.setSpacing(8)
         uy = QLabel(
-            "⚠  Satışların maliyeti (62) bu tarih itibarıyla ~0 — maliyet kapanışı henüz "
-            "yapılmamış olabilir. Bu durumda aşağıdaki «Dönem Net Kârı» gerçekte olduğundan "
-            "yüksek (şişik) görünür. Kesin sonuç için kapanmış bir yıla bakmak daha doğrudur."
+            "ℹ  Satışların maliyeti (62) bu tarih itibarıyla ~0 — maliyet kapanışı henüz "
+            "yapılmamış. <b>Varlık-borç durumu doğru</b>; yalnız «Dönem Net Kârı» kapanış "
+            "öncesi olduğu için şişik/tahminidir. Kesin dönem kârı için yıl/ay kapanışı esastır."
         )
         uy.setWordWrap(True)
-        uy.setStyleSheet("color: #8a5a00; font-size: 12px; background: transparent; border: none;")
-        ub.addWidget(uy)
-        if on_yil_gec is not None:
-            try:
-                hedef_yil = int(str(b.asof)[:4]) - 1
-            except (ValueError, TypeError):
-                hedef_yil = 0
-            if hedef_yil > 0:
-                brow = QHBoxLayout()
-                brow.setContentsMargins(0, 0, 0, 0)
-                btn = QPushButton(f"🔁  {hedef_yil} kapanışına geç")
-                btn.setObjectName("yilGecBtn")
-                btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                btn.setStyleSheet(
-                    "QPushButton#yilGecBtn { background: #8a5a00; color: #ffffff; border: none; "
-                    "border-radius: 6px; padding: 7px 14px; font-size: 12px; font-weight: 700; } "
-                    "QPushButton#yilGecBtn:hover { background: #a06a10; }"
-                )
-                btn.clicked.connect(lambda _=False, y=hedef_yil: on_yil_gec(y))
-                brow.addWidget(btn)
-                brow.addStretch(1)
-                ub.addLayout(brow)
-        root.addWidget(uy_box)
+        uy.setTextFormat(Qt.TextFormat.RichText)
+        uy.setStyleSheet(
+            "QLabel { background: #fdf3e0; border: 1px solid #f0d090; border-radius: 8px; "
+            "color: #8a5a00; padding: 10px 14px; font-size: 12px; }"
+        )
+        root.addWidget(uy)
 
     # Tipografi KPI şeridi (kart yığını değil)
     strip = QFrame()
@@ -356,7 +326,13 @@ def build_bilanco_widget(
     kpi.addWidget(_kpi_divider())
     kpi.addWidget(_kpi_metric("TOPLAM PASİF", tl(b.pasif_toplam), vrenk=NAVY), 1)
     kpi.addWidget(_kpi_divider())
-    kpi.addWidget(_kpi_metric("DÖNEM NET K/Z", tl(b.donem_kz), vrenk=kz_vr), 1)
+    if b.maliyet_eksik:
+        # Açık yıl: maliyet kapanmadığından kâr şişik → soluk göster + tahmini etiketle.
+        kpi.addWidget(_kpi_metric(
+            "DÖNEM NET K/Z", "≈ " + tl(b.donem_kz), vrenk=MUTED,
+            alt="kapanış öncesi · tahmini"), 1)
+    else:
+        kpi.addWidget(_kpi_metric("DÖNEM NET K/Z", tl(b.donem_kz), vrenk=kz_vr), 1)
     kpi.addWidget(_kpi_divider())
     kpi.addWidget(_kpi_metric("DENGE", denge_txt, vrenk=denge_vr), 1)
     root.addWidget(strip)
