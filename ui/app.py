@@ -50,7 +50,7 @@ INSTANCE_KEY = "MercanSoftware.MikRapor.SingleInstance"
 _SEKME_ETIKETLERI = (
     ("Bilanço", "Anında Bilanço"),
     ("Gelir", "Gelir Tablosu"),
-    ("Nakit & Kâr", "Nakit & Kârlılık"),
+    ("Nakit Kâr", "Nakit & Kârlılık"),
     ("Tahsilat", "Tahsilat & Alacak"),
     ("Nakit Akış", "Nakit Akış Analizi"),
     ("Tahmin", "Tahmin & Projeksiyon"),
