@@ -19,6 +19,7 @@ from infra.mikro_fetch import (
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
+from ui.bilesenler import varsayilan_kayit_yolu
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.trend_pdf import export_trend_pdf
 from ui.trend_view import build_trend_widget
@@ -96,7 +97,8 @@ class TrendTab(RaporTab):
         if not self._tr:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "PDF Kaydet", f"trend_oranlar_{self._tr.bas}_{self._tr.bit}.pdf", "PDF (*.pdf)")
+            self, "PDF Kaydet",
+            varsayilan_kayit_yolu(f"trend_oranlar_{self._tr.bas}_{self._tr.bit}.pdf"), "PDF (*.pdf)")
         if not path:
             return
         try:

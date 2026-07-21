@@ -22,6 +22,7 @@ from infra.mikro_fetch import (
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
+from ui.bilesenler import varsayilan_kayit_yolu
 from ui.gercek_durum_pdf import export_gercek_durum_pdf
 from ui.gercek_durum_settings_dialog import GercekDurumAyarlarDialog
 from ui.gercek_durum_view import build_gercek_durum_widget
@@ -119,7 +120,8 @@ class GercekDurumTab(RaporTab):
         if not self._gd:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "PDF Kaydet", f"nakit_karlilik_{self._gd.bas}_{self._gd.bit}.pdf", "PDF (*.pdf)")
+            self, "PDF Kaydet",
+            varsayilan_kayit_yolu(f"nakit_karlilik_{self._gd.bas}_{self._gd.bit}.pdf"), "PDF (*.pdf)")
         if not path:
             return
         try:

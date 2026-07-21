@@ -52,7 +52,7 @@ from infra.mikro_fetch import (
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
-from ui.bilesenler import hos_geldin, para_spin, yuzde_spin
+from ui.bilesenler import hos_geldin, para_spin, varsayilan_kayit_yolu, yuzde_spin
 from ui.empty_state import DEFAULT_HERO_ASSET, HERO_SOLUK_OPACITY, build_soluk_arka_plan
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.tahmin_pdf import export_tahmin_pdf
@@ -299,7 +299,8 @@ class TahminTab(RaporTab):
         if not self._t:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "PDF Kaydet", f"tahmin_{self._t.varsayim.baslangic_ay}.pdf", "PDF (*.pdf)")
+            self, "PDF Kaydet",
+            varsayilan_kayit_yolu(f"tahmin_{self._t.varsayim.baslangic_ay}.pdf"), "PDF (*.pdf)")
         if not path:
             return
         try:

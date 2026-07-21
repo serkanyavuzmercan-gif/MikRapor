@@ -196,8 +196,30 @@ def hos_geldin(
     )
 
 
+def masaustu_dizin() -> Path:
+    """Kaydetme diyaloglarının varsayılan açılış yeri: kullanıcı masaüstü.
+
+    Sırasıyla ~/Desktop, ~/OneDrive/Desktop (yönlendirilmiş kurulumlar), ~/Masaüstü denenir;
+    hiçbiri yoksa ev dizinine düşülür. Türkçe Windows'ta klasörün fiziksel adı 'Desktop'tır.
+    """
+    home = Path.home()
+    for aday in (home / "Desktop", home / "OneDrive" / "Desktop", home / "Masaüstü"):
+        try:
+            if aday.is_dir():
+                return aday
+        except OSError:
+            continue
+    return home
+
+
+def varsayilan_kayit_yolu(dosya_adi: str) -> str:
+    """PDF/CSV kaydetme diyaloğu için varsayılan tam yol — masaüstü + dosya adı."""
+    return str(masaustu_dizin() / dosya_adi)
+
+
 def csv_kaydet(parent: QWidget, status: QLabel | None, varsayilan_ad: str, icerik: str) -> str | None:
-    path, _ = QFileDialog.getSaveFileName(parent, "CSV Kaydet", varsayilan_ad, "CSV (*.csv)")
+    path, _ = QFileDialog.getSaveFileName(
+        parent, "CSV Kaydet", varsayilan_kayit_yolu(varsayilan_ad), "CSV (*.csv)")
     if not path:
         return None
     try:

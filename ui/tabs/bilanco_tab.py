@@ -13,6 +13,7 @@ from infra.mikro_api import MikroClient
 from infra.mikro_fetch import fetch_mizan
 from ui.bilanco_pdf import export_bilanco_pdf
 from ui.bilanco_view import build_bilanco_widget
+from ui.bilesenler import varsayilan_kayit_yolu
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.worker import IsFonksiyonu
 
@@ -65,7 +66,8 @@ class BilancoTab(RaporTab):
         if not self._bilanco:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "PDF Kaydet", f"bilanco_{self._bilanco.asof}.pdf", "PDF (*.pdf)")
+            self, "PDF Kaydet",
+            varsayilan_kayit_yolu(f"bilanco_{self._bilanco.asof}.pdf"), "PDF (*.pdf)")
         if not path:
             return
         # Chrome’daki tarih aralığı (TEK_TARIH veri için bit’i kullanır; PDF’de ikisi de yazılır)
