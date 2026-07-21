@@ -145,10 +145,10 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
     _tsatir(t, [_c("      alış faturası (toplam alış)", renk=_MID),
                 _c(tl(gd.alis_fatura), renk=_MID, sag=True)])
     if gd.alis_irsaliye > 0.005 and gd.gercek_alis != gd.alis_irsaliye:
-        _tsatir(t, [_c("      alış irsaliyesi (bilgi — toplama dahil değil)", renk=_MID),
+        _tsatir(t, [_c("      alış irsaliyesi (dahil değil)", renk=_MID),
                     _c(tl(gd.alis_irsaliye), renk=_MID, sag=True)])
     if gd.siniflandirilmayan_giris > 0.005:
-        _tsatir(t, [_c("      diğer giriş (evrak tipi tanınmayan)", renk=_MID),
+        _tsatir(t, [_c("      diğer giriş (tanınmayan)", renk=_MID),
                     _c(tl(gd.siniflandirilmayan_giris), renk=_MID, sag=True)])
     _tsatir(t, [_c("Fiili Al-Sat Farkı", kalin=True),
                 _c(tl(gd.gercek_brut_kar), renk=_renk(gd.gercek_brut_kar), kalin=True, sag=True)])
@@ -190,7 +190,7 @@ def _karsilastirma_panel(gd: GercekDurum) -> QFrame:
                     _c(tl(gd.gercek_alis), kalin=True, sag=True),
                     _c(("+" if sf >= 0 else "") + tl(sf), renk=_renk(-sf), kalin=True, sag=True)])
     if gd.gizlenen_brut is not None:
-        _tsatir(t, [_c("Fiili − resmi brüt farkı (yaklaşık)", kalin=True), _c(""), _c(""),
+        _tsatir(t, [_c("Fiili − resmi fark (yaklaşık)", kalin=True), _c(""), _c(""),
                     _c(("+" if gd.gizlenen_brut >= 0 else "") + tl(gd.gizlenen_brut),
                        renk=_renk(gd.gizlenen_brut), kalin=True, sag=True)])
     _fit_height(t)
@@ -322,16 +322,18 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
         f"color: {_renk(gd.gercek_brut_marj)}; font-size: 32px; font-weight: 800;"
     )
     hs = QLabel(
-        f"Satış − dönem alışı {tl(gd.gercek_brut_kar)}  ·  satış {tl(gd.gercek_satis)}  "
-        f"·  (SMM'e dayalı brüt marj değil)"
+        f"satış {tl(gd.gercek_satis)} − dönem alışı {tl(gd.gercek_alis)}  ·  "
+        f"stok hareketinden (SMM'e dayalı brüt marj değil)"
     )
     hs.setStyleSheet(f"color: {FAINT}; font-size: 12px;")
     hero_left.addWidget(hb)
     hero_left.addWidget(hv)
     hero_left.addWidget(hs)
     hl.addLayout(hero_left, 2)
+    # Hero metrikleri bu taba ÖZGÜ: fiili brüt kâr (TL) + işletme sermayesi.
+    # Net nakit akışı Nakit Akış tab'ının manşeti olduğu için burada tekrarlanmaz.
     for baslik, deger, vr in (
-        ("NET NAKİT AKIŞI", tl(gd.nakit_net), _renk(gd.nakit_net)),
+        ("FİİLİ BRÜT KÂR", tl(gd.gercek_brut_kar), _renk(gd.gercek_brut_kar)),
         ("NET İŞLETME SERMAYESİ", tl(gd.net_isletme_sermayesi), _renk(gd.net_isletme_sermayesi)),
     ):
         col = QVBoxLayout()
@@ -344,13 +346,14 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
         col.addWidget(dv)
         hl.addLayout(col, 1)
     root.addWidget(hero)
-    # İşletme sermayesi — hero'nun hemen altında, öne çıkarıldı (bu taba özgü sentez).
-    root.addWidget(_isletme_sermayesi_panel(gd))
-
+    # Üç tablo yan yana: İşletme Sermayesi (bu taba özgü, öne çıkan) + Operasyonel + Mutabakat.
+    # Yan yana dizmek hem yatay boşluğu değerlendirir hem tek sütunlu tablodaki dev boşluğu keser.
+    # Mutabakat 4 sütunlu olduğu için biraz daha geniş pay (3:3:4).
     row1 = QHBoxLayout()
-    row1.setSpacing(20)
-    row1.addWidget(_operasyonel_panel(gd), 1)
-    row1.addWidget(_karsilastirma_panel(gd), 1)
+    row1.setSpacing(16)
+    row1.addWidget(_isletme_sermayesi_panel(gd), 3)
+    row1.addWidget(_operasyonel_panel(gd), 3)
+    row1.addWidget(_karsilastirma_panel(gd), 4)
     root.addLayout(row1)
     root.addStretch(1)
     return content
