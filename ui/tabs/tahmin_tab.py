@@ -24,9 +24,10 @@ from PyQt6.QtWidgets import (
 
 from domain.gelir_tablosu import build_gelir_tablosu
 from domain.gercek_durum import build_gercek_durum
+from domain.kredi import kredi_takvimi_ay, taksitleri_derle
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import build_nakit_akis, nakit_bakiye, nakit_gl_ozetten
-from domain.runway import RunwayTakvim, runway_takvim_kur
+from domain.runway import RunwayTakvim, _ay_ekle, runway_takvim_kur
 from domain.tahmin import (
     Tahmin,
     TahminVarsayim,
@@ -45,6 +46,7 @@ from infra.mikro_fetch import (
     fetch_cari_vade_gun,
     fetch_gelir_tablosu,
     fetch_kredi_anapara,
+    fetch_kredi_taksitleri,
     fetch_nakit_akis_hareket,
     fetch_nakit_delta,
     fetch_stok_aylik,
@@ -219,11 +221,25 @@ class TahminTab(RaporTab):
                 gt = build_gelir_tablosu(fetch_gelir_tablosu(client, bas, bit), bas=bas, bit=bit)
                 ay = max(1, len(na.aylik))
                 gider_proxy = -(gt.faaliyet_gideri + gt.finansman_gideri) / ay
-                kredi_proxy = fetch_kredi_anapara(client, bas, bit) / ay
+                # Kredi ayağı: gerçek taksit takvimi (ödenmemiş taksitler) — düz ortalamadan
+                # çok daha doğru. Okunamazsa GL 300/303 ortalamasına düşülür.
+                try:
+                    bildir("Kredi taksit takvimi çekiliyor…")
+                    taksitler = taksitleri_derle(fetch_kredi_taksitleri(client, bit, ay_ileri=18))
+                except MikroAPIError:
+                    taksitler = []
+                if taksitler:
+                    ilk_ay = _ay_ekle(bit[:7], 1)  # runway 1. projeksiyon ayı
+                    kredi_takvimi = kredi_takvimi_ay(taksitler, ilk_ay=ilk_ay)
+                    kredi_proxy = None
+                else:
+                    kredi_takvimi = None
+                    kredi_proxy = fetch_kredi_anapara(client, bas, bit) / ay
                 runway = runway_takvim_kur(
                     na=na, ta=ta, baslangic_ay=bit[:7], ufuk_ay=6,
                     baslangic_nakit=baslangic_nakit,
-                    aylik_gider=gider_proxy, aylik_kredi=kredi_proxy)
+                    aylik_gider=gider_proxy, aylik_kredi=kredi_proxy or 0.0,
+                    kredi_takvimi=kredi_takvimi)
             except MikroAPIError:
                 runway = None
             bildir("Varsayımlar öneriliyor…")

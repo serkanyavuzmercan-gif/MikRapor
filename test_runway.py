@@ -96,6 +96,19 @@ class TestRunwayTakvim(unittest.TestCase):
             self.assertAlmostEqual(r.aylar[i].cikan, 10000.0, places=2)
         self.assertAlmostEqual(r.aylar[3].giren, 0.0, places=2)
 
+    def test_kredi_takvimi_ay_ay_kullanilir(self):
+        # Gerçek taksit takvimi: her ay o aya ait taksit; taksit bitince 0.
+        r = build_runway_takvim(
+            baslangic_nakit=500000.0, baslangic_ay="2026-09",
+            alacak_vade={}, borc_vade={}, aylik_gider=0.0,
+            kredi_takvimi={"2026-10": 100000.0, "2026-11": 100000.0},  # 2 ay taksit
+            ufuk_ay=4,
+        )
+        self.assertAlmostEqual(r.aylar[0].cikan, 100000.0, places=2)  # Eki
+        self.assertAlmostEqual(r.aylar[1].cikan, 100000.0, places=2)  # Kas
+        self.assertAlmostEqual(r.aylar[2].cikan, 0.0, places=2)       # Ara — taksit bitti
+        self.assertFalse(r.gider_eksik)  # kredi takvimi var
+
     def test_gider_eksik_bayragi(self):
         eksik = build_runway_takvim(
             baslangic_nakit=500000.0, baslangic_ay="2026-06",

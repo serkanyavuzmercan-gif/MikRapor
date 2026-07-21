@@ -235,8 +235,11 @@ def _cizgi() -> QFrame:
     return f
 
 
+_ALIS_RENK = "#8b5cf6"  # mor — satış/brüt/nakit renklerinden ayrışsın
+
+
 class _TrendChart(QWidget):
-    """Aylık Satış, Brüt Kâr ve Net Nakit'i ek bağımlılık olmadan çizen mini grafik."""
+    """Aylık Satış, Alış, Brüt Kâr ve Net Nakit'i ek bağımlılık olmadan çizen mini grafik."""
 
     def __init__(self, gd: GercekDurum, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -257,18 +260,18 @@ class _TrendChart(QWidget):
             p.end()
             return
 
-        seriler = [(a.satis, a.brut, a.nakit_net) for a in self._aylar]
-        # Net nakit negatif olabildiği için ölçek [min, max] aralığına ve 0 çizgisine göre
-        min_v = min((min(s, b, n) for s, b, n in seriler), default=0.0)
-        max_v = max((max(s, b, n) for s, b, n in seriler), default=0.0)
+        seriler = [(a.satis, a.alis, a.brut, a.nakit_net) for a in self._aylar]
+        # Net nakit / brüt negatif olabildiği için ölçek [min, max] ve 0 çizgisine göre
+        min_v = min((min(vs) for vs in seriler), default=0.0)
+        max_v = max((max(vs) for vs in seriler), default=0.0)
         min_v = min(min_v, 0.0)
         max_v = max(max_v, 0.0)
         span = (max_v - min_v) or 1.0
 
         n = len(self._aylar)
         grup_w = cw / n
-        bar_w = min(18.0, grup_w / 4.2)
-        renkler = (QColor(ACCENT), QColor(POZ), QColor("#d97706"))
+        bar_w = min(14.0, grup_w / 5.4)
+        renkler = (QColor(ACCENT), QColor(_ALIS_RENK), QColor(POZ), QColor("#d97706"))
 
         def y_of(v: float) -> float:
             return ust + ch * ((max_v - v) / span)
@@ -281,9 +284,9 @@ class _TrendChart(QWidget):
         p.setFont(QFont("Segoe UI", 7))
         for i, a in enumerate(self._aylar):
             cx = sol + grup_w * i + grup_w / 2
-            vals = (a.satis, a.brut, a.nakit_net)
+            vals = (a.satis, a.alis, a.brut, a.nakit_net)
             for j, v in enumerate(vals):
-                bx = cx + (j - 1) * (bar_w + 2) - bar_w / 2
+                bx = cx + (j - 1.5) * (bar_w + 2) - bar_w / 2
                 vy = y_of(v)
                 top = min(vy, zy)
                 bh = abs(vy - zy)
@@ -303,6 +306,7 @@ def _trend_panel(gd: GercekDurum) -> QFrame:
     v.setSpacing(6)
     lej = QLabel(
         f"<span style='color:{ACCENT};'>■</span> Satış &nbsp;&nbsp;"
+        f"<span style='color:{_ALIS_RENK};'>■</span> Alış &nbsp;&nbsp;"
         f"<span style='color:{POZ};'>■</span> Brüt Kâr &nbsp;&nbsp;"
         "<span style='color:#d97706;'>■</span> Net Nakit"
     )
@@ -310,6 +314,14 @@ def _trend_panel(gd: GercekDurum) -> QFrame:
     lej.setTextFormat(Qt.TextFormat.RichText)
     v.addWidget(lej)
     v.addWidget(_TrendChart(gd))
+    not_lbl = QLabel(
+        "Bir ayda <b>Alış &gt; Satış</b> ise Brüt Kâr eksi görünür — o ay zarar değil, "
+        "stok biriktirmişsindir (mal sonra satılır). Gerçek marj için dönemin tümüne bak."
+    )
+    not_lbl.setWordWrap(True)
+    not_lbl.setTextFormat(Qt.TextFormat.RichText)
+    not_lbl.setStyleSheet(f"color: {FAINT}; font-size: 11px; background: transparent;")
+    v.addWidget(not_lbl)
     return _card("AYLIK TREND", inner)
 
 

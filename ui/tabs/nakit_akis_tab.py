@@ -7,6 +7,7 @@ from typing import Any
 
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
+from domain.kredi import KrediOzet, kredi_ozet, taksitleri_derle
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis, build_nakit_akis, nakit_akis_csv
 from infra.config import MikroConfig
@@ -14,6 +15,7 @@ from infra.mikro_api import MikroAPIError, MikroClient
 from infra.mikro_fetch import (
     fetch_cari_bakiye,
     fetch_kredi_gl,
+    fetch_kredi_taksitleri,
     fetch_nakit_akis_hareket,
     fetch_nakit_delta,
 )
@@ -61,7 +63,16 @@ class NakitAkisTab(RaporTab):
                     na.kredi_kullanim_gl = kgl.get("kullanim", 0.0)
                 except MikroAPIError:
                     pass
-            return {"na": na, "firma": firma_getir(cfg, client)}
+            # Yaklaşan (ödenmemiş) kredi taksitleri — takvimden
+            kredi: KrediOzet | None = None
+            try:
+                bildir("Kredi taksit takvimi çekiliyor…")
+                taksitler = taksitleri_derle(fetch_kredi_taksitleri(client, bit, ay_ileri=18))
+                if taksitler:
+                    kredi = kredi_ozet(taksitler, bugun_ay=bit[:7], en_fazla=8)
+            except MikroAPIError:
+                kredi = None
+            return {"na": na, "firma": firma_getir(cfg, client), "kredi": kredi}
 
         return is_fn
 
@@ -69,7 +80,8 @@ class NakitAkisTab(RaporTab):
         na: NakitAkis = sonuc["na"]
         self._na = na
         self._firma = sonuc["firma"]
-        self._icerik_koy(build_nakit_akis_widget(na, firma=self._firma))
+        self._icerik_koy(build_nakit_akis_widget(
+            na, firma=self._firma, kredi=sonuc.get("kredi")))
         parts = [
             f"Giriş {tl(na.toplam_giris)}",
             f"Çıkış {tl(na.toplam_cikis)}",
