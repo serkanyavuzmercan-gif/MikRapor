@@ -287,36 +287,38 @@ def _yaklasan_taksit_panel(oz: KrediOzet) -> QFrame:
     g.setContentsMargins(0, 0, 0, 0)
     g.setHorizontalSpacing(14)
     g.setVerticalSpacing(7)
-    g.setColumnStretch(1, 1)
-    for c, b, sag in ((0, "Vade", False), (1, "Banka", False), (2, "Tutar", True)):
+    g.setColumnStretch(2, 1)
+    for c, b, sag in ((0, "Vade", False), (1, "Banka Kodu", False),
+                      (2, "Banka", False), (3, "Tutar", True)):
         g.addWidget(_satir_label(b, renk=MUTED, boyut=11, bold=True, sag=sag), 0, c)
     r = 1
     for t in oz.taksitler:
         g.addWidget(_satir_label(_vade_goster(t.vade), bold=True), r, 0)
-        g.addWidget(_satir_label(t.banka or "—", renk=SUBINK), r, 1)
-        g.addWidget(_satir_label(tl(t.tutar), sag=True, renk=NEG), r, 2)
+        g.addWidget(_satir_label(t.banka or "—", renk=FAINT, boyut=11), r, 1)
+        g.addWidget(_satir_label(t.banka_ad or "—", renk=SUBINK), r, 2)
+        g.addWidget(_satir_label(tl(t.tutar), sag=True, renk=NEG), r, 3)
         r += 1
     if oz.adet < 1:
         g.addWidget(_satir_label("Ödenmemiş kredi taksiti bulunamadı.", renk=FAINT, boyut=11),
-                    r, 0, 1, 3)
+                    r, 0, 1, 4)
         r += 1
     else:
-        g.addWidget(_cizgi(), r, 0, 1, 3)
+        g.addWidget(_cizgi(), r, 0, 1, 4)
         r += 1
-        g.addWidget(_satir_label(f"Toplam ({oz.adet} taksit)", bold=True), r, 0, 1, 2)
-        g.addWidget(_satir_label(tl(oz.toplam), sag=True, bold=True, renk=NEG), r, 2)
+        g.addWidget(_satir_label(f"Toplam ({oz.adet} taksit)", bold=True), r, 0, 1, 3)
+        g.addWidget(_satir_label(tl(oz.toplam), sag=True, bold=True, renk=NEG), r, 3)
         r += 1
         if oz.toplam_faiz > 0.005:
             g.addWidget(_satir_label(
                 f"içinde faiz {tl(oz.toplam_faiz)} · anapara {tl(oz.toplam_anapara)}",
-                renk=FAINT, boyut=11), r, 0, 1, 3)
+                renk=FAINT, boyut=11), r, 0, 1, 4)
             r += 1
         if oz.gecikmis_tutar > 0.005:
             uy = _satir_label(
                 f"⚠ {oz.gecikmis_adet} taksit ({tl(oz.gecikmis_tutar)}) vadesi geçmiş, "
                 "hâlâ ödenmemiş görünüyor.", renk="#8a5a00", boyut=11)
             uy.setWordWrap(True)
-            g.addWidget(uy, r, 0, 1, 3)
+            g.addWidget(uy, r, 0, 1, 4)
     return _card("YAKLAŞAN KREDİ TAKSİTLERİ", inner)
 
 

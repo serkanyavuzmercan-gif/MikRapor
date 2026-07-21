@@ -20,7 +20,8 @@ class KrediTaksit:
     tutar: float       # toplam taksit (anapara + faiz + vergiler) — nakit çıkışı
     anapara: float = 0.0
     faiz: float = 0.0
-    banka: str = ""
+    banka: str = ""       # banka hesap kodu (krsoz_sozbankakodu)
+    banka_ad: str = ""    # BANKALAR.ban_ismi
 
 
 @dataclass
@@ -51,6 +52,7 @@ def taksitleri_derle(rows: list[dict] | None) -> list[KrediTaksit]:
             anapara=_f(r.get("anapara", r.get("ANAPARA"))),
             faiz=_f(r.get("faiz", r.get("FAIZ"))),
             banka=str(r.get("banka", r.get("BANKA")) or "").strip(),
+            banka_ad=str(r.get("banka_ad", r.get("BANKA_AD")) or "").strip(),
         ))
     out.sort(key=lambda t: t.vade)
     return out
