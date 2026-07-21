@@ -15,8 +15,31 @@ Model (aylık, n = 1..ufuk):
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 
 from domain.ortak import csv_sayi
+
+
+def ogrenme_penceresi_bas(bas: str, bit: str, *, ay: int = 12) -> str:
+    """
+    Varsayım öğrenme penceresinin başlangıç tarihi (YYYY-MM-DD).
+
+    Seçili dönem kısa/yeni olabilir (ör. çeyreğin başı) → marj/ciro tek çeyreğe göre
+    yanıltıcı çıkar (stoktan yenilen ayda %49, normalde %25 gibi). Bu yüzden varsayımlar
+    seçili başlangıç ile "bit'ten `ay` ay geri"nin ERKENİNDEN öğrenilir: kullanıcı daha
+    geniş dönem seçtiyse korunur, dar seçtiyse son `ay` aya (varsayılan 12) genişletilir.
+    """
+    try:
+        y, m, d = int(bit[:4]), int(bit[5:7]), int(bit[8:10])
+    except (ValueError, IndexError):
+        return bas
+    yil_geri, ay_idx = divmod((y * 12 + (m - 1)) - ay, 12)
+    try:
+        geri = date(yil_geri, ay_idx + 1, d)
+    except ValueError:
+        geri = date(yil_geri, ay_idx + 1, 28)  # 31/29 gün taşması
+    g = geri.isoformat()
+    return min(bas, g) if bas else g
 
 
 def _ay_ekle(yyyymm: str, k: int) -> str:

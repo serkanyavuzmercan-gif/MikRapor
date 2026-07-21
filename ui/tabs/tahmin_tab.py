@@ -27,7 +27,14 @@ from domain.gercek_durum import build_gercek_durum
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import build_nakit_akis, nakit_bakiye, nakit_gl_ozetten
 from domain.runway import RunwayTakvim, runway_takvim_kur
-from domain.tahmin import Tahmin, TahminVarsayim, build_tahmin, oner_varsayim, tahmin_csv
+from domain.tahmin import (
+    Tahmin,
+    TahminVarsayim,
+    build_tahmin,
+    ogrenme_penceresi_bas,
+    oner_varsayim,
+    tahmin_csv,
+)
 from domain.tahsilat_alacak import build_tahsilat_alacak
 from infra.config import MikroConfig
 from infra.mikro_api import MikroAPIError, MikroClient
@@ -61,7 +68,8 @@ class TahminTab(RaporTab):
     EMOJI = "🔮"
     BASLIK = "Tahmin"
     ACIKLAMA = (
-        "Üstteki tarih aralığı <b>geçmişten öğrenme dönemi</b>dir (satış, kâr, nakit, gider).<br>"
+        "«Geçmişten Doldur» kâr oranı ve aylık ciroyu <b>son 12 ayın ortalamasından</b> önerir "
+        "(tek çeyrek yanıltmasın diye).<br>"
         "Kaç ay ileriye bakılacağı sol paneldeki <b>Kaç ay ileri</b> ile ayarlanır; «Hesapla» ile tahmin üretilir.<br>"
         "<span style='color:#9aa0a8;'>Önce «Geçmişten Doldur», sonra rakamları değiştir.</span>")
     GETIR_ETIKET = "Geçmişten Doldur"
@@ -175,10 +183,15 @@ class TahminTab(RaporTab):
 
         def is_fn(bildir) -> dict[str, Any]:
             client = MikroClient(cfg)
-            bildir("Stok hareketleri çekiliyor…")
-            stok_rows = fetch_stok_ozet(client, bas, bit)
-            stok_aylik = fetch_stok_aylik(client, bas, bit)
-            gd = build_gercek_durum(stok_rows=stok_rows, stok_aylik=stok_aylik, bas=bas, bit=bit)
+            # Varsayımlar (kâr oranı, aylık ciro, büyüme) SON 12 AYIN ortalamasından
+            # öğrenilir — tek çeyrek seçilse bile temsili olsun (stok dalgalanması
+            # marjı tek çeyrekte %49'a çıkarabiliyor; 12 ayda gerçek ~%25'e oturur).
+            ogr_bas = ogrenme_penceresi_bas(bas, bit)
+            bildir("Geçmiş satış/kâr öğreniliyor (son 12 ay)…")
+            stok_rows = fetch_stok_ozet(client, ogr_bas, bit)
+            stok_aylik = fetch_stok_aylik(client, ogr_bas, bit)
+            gd = build_gercek_durum(
+                stok_rows=stok_rows, stok_aylik=stok_aylik, bas=ogr_bas, bit=bit)
             bildir("Nakit bakiyesi ve hareketleri çekiliyor…")
             kapanis_rows = fetch_cari_bakiye(client, bit)
             # Başlangıç nakit GL'den (Bilanço "Nakit ve Benzerleri" ile birebir).
@@ -238,7 +251,9 @@ class TahminTab(RaporTab):
         self._sp_marj.setValue(v.marj_yuzde)
         self._sp_gider.setValue(v.sabit_gider)
         self._senaryo.ac()
-        self._durum("Geçmişten dolduruldu — rakamları düzenleyip «Hesapla»ya basabilirsin.", "iyi")
+        self._durum(
+            "Geçmişten dolduruldu (son 12 ayın ortalaması) — rakamları düzenleyip "
+            "«Hesapla»ya basabilirsin.", "iyi")
         self._on_projekte()
 
     def _on_projekte(self) -> None:
