@@ -7,9 +7,27 @@ from domain.tahmin import (
     _ay_ekle,
     aylik_buyume_oner,
     build_tahmin,
+    ogrenme_penceresi_bas,
     oner_varsayim,
     tahmin_csv,
 )
+
+
+class TestOgrenmePenceresi(unittest.TestCase):
+    def test_dar_donem_12_aya_genisler(self):
+        # Q3 seçilse bile öğrenme 'bit'ten 12 ay geriye uzar.
+        self.assertEqual(ogrenme_penceresi_bas("2026-07-01", "2026-09-30"), "2025-09-30")
+
+    def test_genis_donem_korunur(self):
+        # Kullanıcı 12 aydan daha geniş seçtiyse onun başlangıcı korunur (erken olan).
+        self.assertEqual(ogrenme_penceresi_bas("2024-01-01", "2026-09-30"), "2024-01-01")
+
+    def test_subat_29_tasmasi(self):
+        # 12 ay geride 29 Şubat yoksa 28'e iner (geçerli tarih).
+        self.assertEqual(ogrenme_penceresi_bas("2024-02-29", "2024-02-29"), "2023-02-28")
+
+    def test_bozuk_tarih_bas_dondurur(self):
+        self.assertEqual(ogrenme_penceresi_bas("2026-07-01", "abc"), "2026-07-01")
 
 
 class TestTahmin(unittest.TestCase):
