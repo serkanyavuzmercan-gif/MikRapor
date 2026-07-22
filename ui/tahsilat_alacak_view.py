@@ -1,5 +1,5 @@
 """
-Tahsilat & Alacak — yerel Qt görünümü.
+Alacak & Borç — yerel Qt görünümü.
 
 Cari hareketlerden (resmi GL'ye dokunmadan) alacak/borç yaşlandırması, ileriye dönük net vade
 takvimi ve dönem tahsilat/ödeme performansını gösterir. Görünüm yardımcıları Nakit & Kârlılık
@@ -195,7 +195,7 @@ def build_tahsilat_alacak_widget(ta: TahsilatAlacak, firma: str = "") -> QWidget
         "tarih": "hareket tarihi (vade bilgisi yok)",
     }.get(ta.vade_kaynagi, "vade tarihi")
     head = QLabel(
-        f"<span style='color:{MUTED}; font-size:11px;'>TAHSİLAT &amp; ALACAK &nbsp;·&nbsp; "
+        f"<span style='color:{MUTED}; font-size:11px;'>ALACAK &amp; BORÇ &nbsp;·&nbsp; "
         f"{ta.bit} itibarıyla{firma_str}</span><br>"
         f"<span style='color:{FAINT}; font-size:11px;'>Cari hareketlerden — açık alacak/borç "
         f"{kaynak}na göre yaşlandırılır; dönem ({ta.bas} → {ta.bit}) tahsilat/ödeme performansı "

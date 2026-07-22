@@ -1,4 +1,4 @@
-"""Tahsilat & Alacak — PDF dışa aktarım.
+"""Alacak & Borç — PDF dışa aktarım.
 
 Üstte klasik liste (özet + yaşlandırma satırları); altında alacak/borç bar grafikleri.
 """
@@ -91,10 +91,10 @@ def _yaslandirma_grafik(baslik: str, aging: dict) -> Drawing:
 
 def export_tahsilat_alacak_pdf(ta: TahsilatAlacak, path: str | Path, firma: str = "") -> Path:
     out = Path(path)
-    doc = pdf_doc(out, title="Tahsilat & Alacak", firma=firma)
+    doc = pdf_doc(out, title="Alacak & Borç", firma=firma)
     elems: list = []
     letterhead(
-        elems, firma=firma, baslik="TAHSİLAT & ALACAK",
+        elems, firma=firma, baslik="ALACAK & BORÇ",
         bas=ta.bas, bit=ta.bit,
     )
 

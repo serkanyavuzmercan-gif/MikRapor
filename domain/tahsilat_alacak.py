@@ -1,5 +1,5 @@
 """
-Tahsilat & Alacak motoru — Mikro cari hareketlerinden, resmi GL'ye dokunmadan.
+Alacak & Borç motoru — Mikro cari hareketlerinden, resmi GL'ye dokunmadan.
 
 Tamamen CARI_HESAP_HAREKETLERI ham verisine dayanır (Nakit & Kârlılık ile aynı kaynak ailesi):
 müşteri alacakları ve satıcı borçları, fiili vade tarihine göre yaşlandırılır; dönem tahsilat/
@@ -212,7 +212,7 @@ def build_tahsilat_alacak(
     bit: str = "",
     top_n: int = 8,
 ) -> TahsilatAlacak:
-    """fetch_acik_kalemler satırlarından Tahsilat & Alacak modelini kurar."""
+    """fetch_acik_kalemler satırlarından Alacak & Borç modelini kurar."""
     vade_gun_map = vade_gun_map or {}
     ta = TahsilatAlacak(bas=bas, bit=bit)
     asof = _tarih(bit) or date.today()
@@ -322,7 +322,7 @@ def _gun(v: float | None) -> str:
 
 
 def tahsilat_alacak_csv(ta: TahsilatAlacak) -> str:
-    """Tahsilat & Alacak özetini CSV'ye çevirir (; ayraç, Türkçe ondalık — TR Excel uyumlu)."""
+    """Alacak & Borç özetini CSV'ye çevirir (; ayraç, Türkçe ondalık — TR Excel uyumlu)."""
     s = csv_sayi
 
     out = ["Bölüm;Kalem;Tutar (TL)"]
