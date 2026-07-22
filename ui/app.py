@@ -52,7 +52,7 @@ _SEKME_ETIKETLERI = (
     "Bilanço",
     "Gelir Tablosu",
     "Nakit && Kârlılık",
-    "Tahsilat && Alacak",
+    "Alacak && Borç",
     "Nakit Akış",
     "Tahmin && Projeksiyon",
     "Trend && Oranlar",

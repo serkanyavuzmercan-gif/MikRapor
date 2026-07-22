@@ -1,4 +1,4 @@
-"""Tahsilat & Alacak sekmesi — cari hareketten yaşlandırma, vade takvimi, performans."""
+"""Alacak & Borç sekmesi — cari hareketten yaşlandırma, vade takvimi, performans."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ class TahsilatAlacakTab(RaporTab):
     """Cari hareketten alacak/borç yaşlandırma, vade takvimi ve tahsilat performansı sekmesi."""
 
     EMOJI = "📒"
-    BASLIK = "Tahsilat & Alacak"
+    BASLIK = "Alacak & Borç"
     ACIKLAMA = (
         "Cari hareketlerden — açık alacak ve borçların vadeye göre yaşlandırması,<br>"
         "dönem tahsilat/ödeme performansı (DSO/DPO) ve ileriye dönük net vade<br>"
