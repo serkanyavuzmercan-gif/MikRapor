@@ -68,7 +68,7 @@ class TahminTab(RaporTab):
     """Geçmiş trendden otomatik önerip kullanıcının düzenlediği ileriye dönük projeksiyon."""
 
     EMOJI = "🔮"
-    BASLIK = "Tahmin"
+    BASLIK = "Tahmin & Projeksiyon"
     ACIKLAMA = (
         "«Geçmişten Doldur» kâr oranı ve aylık ciroyu <b>son 12 ayın ortalamasından</b> önerir "
         "(tek çeyrek yanıltmasın diye).<br>"

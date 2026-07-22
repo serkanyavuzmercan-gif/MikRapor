@@ -14,11 +14,11 @@ from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, dipnot_ekle, letterhead, pdf_
 
 def export_tahmin_pdf(t: Tahmin, path: str | Path, firma: str = "") -> Path:
     out = Path(path)
-    doc = pdf_doc(out, title="Tahmin", firma=firma)
+    doc = pdf_doc(out, title="Tahmin & Projeksiyon", firma=firma)
     elems: list = []
     v = t.varsayim
     letterhead(
-        elems, firma=firma, baslik="TAHMİN / PROJEKSİYON",
+        elems, firma=firma, baslik="TAHMİN & PROJEKSİYON",
         donem=f"{v.baslangic_ay} · {v.ufuk_ay} ay Dönemi · Tutarlar: TL",
     )
 

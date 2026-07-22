@@ -291,7 +291,7 @@ def build_bilanco_widget(b: Bilanco, firma: str = "") -> QWidget:
     firma_str = f"  ·  <b>{firma}</b>" if firma else ""
     head = QLabel(
         f"<span style='color:{MUTED}; font-size:12px; letter-spacing:0.3px;'>"
-        f"ANINDA BİLANÇO  ·  {b.asof} tarihi itibarıyla{firma_str}</span><br>"
+        f"BİLANÇO  ·  {b.asof} tarihi itibarıyla{firma_str}</span><br>"
         f"<span style='color:{FAINT}; font-size:11px;'>Bugünkü <b>varlık–borç durumu</b> "
         f"(nakit · alacak · borç · kredi · stok · özkaynak). «Dönem Net Kârı» ise ancak "
         f"maliyet kapanışından sonra kesindir — açık yılda tahminidir.</span>"

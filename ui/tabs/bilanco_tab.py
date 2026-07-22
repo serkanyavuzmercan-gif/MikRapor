@@ -1,4 +1,4 @@
-"""Anında Bilanço sekmesi — tarih itibarıyla mizan → bilanço."""
+"""Bilanço sekmesi — tarih itibarıyla mizan → bilanço."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ class BilancoTab(RaporTab):
     """Tarih itibarıyla bilanço üreten bağımsız rapor sekmesi."""
 
     EMOJI = "📊"
-    BASLIK = "Anında Bilanço"
+    BASLIK = "Bilanço"
     ACIKLAMA = "Mikro Genel Muhasebe verilerinizden TDHP formatında bilanço oluşturun."
     IPUCU = ""
     GETIR_ETIKET = "Bilanço Getir"
