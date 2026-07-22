@@ -90,13 +90,13 @@ def _performans_panel(ta: TahsilatAlacak) -> QFrame:
 
     t = _agac(2, [(1, 130)])
     _tsatir(t, [_c("Dönem Tahsilatı (müşteriden)"), _c(tl(ta.donem_tahsilat), renk=POZ, sag=True)])
-    _tsatir(t, [_c("Dönem Kredili Satış"), _c(tl(ta.donem_satis), sag=True)])
+    _tsatir(t, [_c("Dönem Kredili Satış (KDV dahil)"), _c(tl(ta.donem_satis), sag=True)])
     _tsatir(t, [_c("Tahsilat Oranı", kalin=True),
                 _c(pct(ta.tahsilat_orani), renk=_renk((ta.tahsilat_orani or 0) - 100),
                    kalin=True, sag=True)])
     _tsatir(t, [_c("Ort. Tahsilat Süresi (DSO)", kalin=True), _c(gun(ta.dso), kalin=True, sag=True)])
     _tsatir(t, [_c("Dönem Ödemesi (satıcıya)"), _c(tl(ta.donem_odeme), renk=NEG, sag=True)])
-    _tsatir(t, [_c("Dönem Alış"), _c(tl(ta.donem_alis), sag=True)])
+    _tsatir(t, [_c("Dönem Alış (KDV dahil)"), _c(tl(ta.donem_alis), sag=True)])
     _tsatir(t, [_c("Ort. Ödeme Süresi (DPO)", kalin=True), _c(gun(ta.dpo), kalin=True, sag=True)])
     _fit_height(t)
 
@@ -107,6 +107,9 @@ def _performans_panel(ta: TahsilatAlacak) -> QFrame:
             f"Nakit döngüsü: tahsilat {ta.dso:.0f}g, ödeme {ta.dpo:.0f}g — "
             + ("satıcı bizi finanse ediyor." if fark >= 0 else "biz satıcıyı finanse ediyoruz."),
             FAINT))
+    notlar.append((
+        "Cari kaynaklı tutarlar KDV dahildir; Gelir/Nakit tabındaki net satıştan (KDV hariç) "
+        "farklı çıkar. Oranlar (DSO, tahsilat) KDV'den etkilenmez.", FAINT))
     return _card("TAHSİLAT & ÖDEME PERFORMANSI  (dönem)", _ic(t, notlar))
 
 
