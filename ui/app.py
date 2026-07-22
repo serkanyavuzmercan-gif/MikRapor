@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 
 from PyQt6.QtCore import QEvent, QSize, Qt, QTimer
-from PyQt6.QtGui import QCloseEvent
+from PyQt6.QtGui import QCloseEvent, QFont, QFontMetrics
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
@@ -64,7 +64,9 @@ class HeaderTabBar(QTabBar):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setExpanding(True)
+        # İçeriğe göre genişlik (eşit-genişlik DEĞİL): eşitte "Bilanço" boşa yer harcar,
+        # "Tahmin & Projeksiyon" gibi uzun etiket dar payına sığmayıp kırpılır.
+        self.setExpanding(False)
         self.setDrawBase(False)
         self.setUsesScrollButtons(False)
         self.setElideMode(Qt.TextElideMode.ElideNone)
@@ -106,13 +108,17 @@ class HeaderTabBar(QTabBar):
         p.drawLine(x, r.top() + inset, x, r.bottom() - inset)
         p.end()
 
-    def tabSizeHint(self, index: int) -> QSize:
+    def tabSizeHint(self, index: int) -> QSize:  # noqa: N802 — Qt API
+        # Genişlik etiket metninden hesaplanır (eşit-genişlik DEĞİL): eşitte "Bilanço"
+        # boşa yer harcar, "Tahmin & Projeksiyon" gibi uzun etiket dar payına sığmayıp
+        # kırpılırdı. Stilli QTabBar tüm sekmelere aynı hint'i verdiği için elle ölçeriz;
+        # seçili sekme kalın (800) olduğundan ölçümü kalın fontla yapıp dolgu payı bırakırız.
         base = super().tabSizeHint(index)
-        n = self.count()
-        if n <= 0:
-            return base
-        w = max(1, self.width() // n) if self.width() > 0 else base.width()
-        base.setWidth(w)
+        f = QFont(self.font())
+        f.setWeight(QFont.Weight.ExtraBold)
+        metin = self.tabText(index).replace("&&", "&")
+        w = QFontMetrics(f).horizontalAdvance(metin) + 30  # 12px×2 dolgu + kenar payı
+        base.setWidth(max(base.width(), w))
         return base
 
     def event(self, event: QEvent) -> bool:  # noqa: N802 — Qt API
@@ -274,7 +280,9 @@ class MikRaporWindow(QMainWindow):
         nav_lay = QHBoxLayout(nav)
         nav_lay.setContentsMargins(3, 3, 3, 3)
         nav_lay.setSpacing(0)
-        nav_lay.addWidget(self._tab_bar, stretch=1)
+        nav_lay.addStretch(1)
+        nav_lay.addWidget(self._tab_bar)
+        nav_lay.addStretch(1)
         header.addWidget(nav, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         btn_ayar = QPushButton(" Ayarlar")
