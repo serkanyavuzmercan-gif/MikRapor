@@ -12,7 +12,6 @@ from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import (
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
@@ -24,114 +23,86 @@ from domain.kredi import KrediOzet
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis
 from domain.runway import runway_nakit_akistan
-from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _kpi_card
-from ui.gercek_durum_view import NEG, POZ, _card, _cizgi, _renk, _satir_label
+from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _fit_height, _kpi_card
+from ui.gercek_durum_view import (
+    NEG,
+    POZ,
+    _agac,
+    _c,
+    _card,
+    _ic,
+    _renk,
+    _tsatir,
+)
 from ui.styles import PRIMARY_SOFT, SUBINK
 from ui.tahsilat_alacak_view import _oran_bar
 
 
 def _ozet_panel(na: NakitAkis) -> QFrame:
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    g = QGridLayout(inner)
-    g.setContentsMargins(0, 0, 0, 0)
-    g.setHorizontalSpacing(12)
-    g.setVerticalSpacing(8)
-    g.setColumnStretch(0, 1)
+    t = _agac(2, [(1, 140)])
+    _tsatir(t, [_c("Açılış Nakit", kalin=True), _c(tl(na.acilis_nakit), kalin=True, sag=True)])
+    _tsatir(t, [_c("Toplam Giriş (+)"), _c(tl(na.toplam_giris), renk=POZ, sag=True)])
+    _tsatir(t, [_c("Toplam Çıkış (−)"), _c(tl(-na.toplam_cikis), renk=NEG, sag=True)])
+    _tsatir(t, [_c("Net Nakit Akışı", kalin=True),
+                _c(tl(na.net_akis), renk=_renk(na.net_akis), kalin=True, sag=True)])
+    _tsatir(t, [_c("Kapanış Nakit", kalin=True),
+                _c(tl(na.kapanis_nakit), renk=_renk(na.kapanis_nakit), kalin=True, sag=True)])
+    _fit_height(t)
 
-    def satir(r, ad, deger, *, bold=False, renk="#374151"):
-        g.addWidget(_satir_label(ad, bold=bold), r, 0)
-        g.addWidget(_satir_label(deger, bold=bold, renk=renk, sag=True), r, 1)
-
-    satir(0, "Açılış Nakit", tl(na.acilis_nakit), bold=True)
-    satir(1, "Toplam Giriş (+)", tl(na.toplam_giris), renk=POZ)
-    satir(2, "Toplam Çıkış (−)", tl(-na.toplam_cikis), renk=NEG)
-    satir(3, "Net Nakit Akışı", tl(na.net_akis), bold=True, renk=_renk(na.net_akis))
-    g.addWidget(_cizgi(), 4, 0, 1, 2)
-    satir(5, "Kapanış Nakit", tl(na.kapanis_nakit), bold=True, renk=_renk(na.kapanis_nakit))
+    notlar: list[tuple[str, str]] = []
     if abs(na.mutabakat_farki) > max(1000.0, na.kapanis_nakit * 0.01):
         kredi_ek = (
             f" Bunun ~{tl(na.kredi_odeme_gl)}'si muhasebedeki kredi ödemesidir."
             if na.kredi_kaynak_gl and na.kredi_odeme_gl > 0.005 else ""
         )
-        not_lbl = _satir_label(
+        notlar.append((
             f"Mutabakat: açılış + net akış = {tl(na.kapanis_hesaplanan)}; gerçek kapanışla "
             f"{tl(na.mutabakat_farki)} fark (kur farkı / iç transfer / kapsam dışı hareket)."
-            f"{kredi_ek}",
-            renk="#b45309", boyut=10)
-        not_lbl.setWordWrap(True)
-        g.addWidget(not_lbl, 6, 0, 1, 2)
-    return _card("NAKİT AKIŞ ÖZETİ", inner)
+            f"{kredi_ek}", "#b45309"))
+    return _card("NAKİT AKIŞ ÖZETİ", _ic(t, notlar))
 
 
 def _kategori_panel(baslik: str, kategori: dict, toplam: float, renk: str,
                     diger_kirilim: list | None = None, diger_etiket: str = "Diğer") -> QFrame:
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    g = QGridLayout(inner)
-    g.setContentsMargins(0, 0, 0, 0)
-    g.setHorizontalSpacing(12)
-    g.setVerticalSpacing(9)
-    g.setColumnStretch(1, 1)
-
+    t = _agac(3, [(0, 160), (2, 130)], esnek=1)
     if not kategori:
-        g.addWidget(_satir_label("Hareket yok.", renk=FAINT), 0, 0)
-        return _card(baslik, inner)
+        _tsatir(t, [_c("Hareket yok.", renk=FAINT), _c(""), _c("")])
+        _fit_height(t)
+        return _card(baslik, _ic(t))
 
     enb = max(kategori.values(), default=0.0) or 1.0
-    r = 0
     for ad, tutar in kategori.items():
-        g.addWidget(_satir_label(ad, renk="#374151"), r, 0)
-        g.addWidget(_oran_bar(tutar / enb, renk), r, 1)
-        g.addWidget(_satir_label(tl(tutar), sag=True, bold=True, renk=renk), r, 2)
-        r += 1
+        it = _tsatir(t, [_c(ad), _c(""), _c(tl(tutar), renk=renk, kalin=True, sag=True)])
+        t.setItemWidget(it, 1, _oran_bar(tutar / enb, renk))
         # "Diğer" satırının altına karşı-taraf kodu kırılımını döker (saklı kalmasın)
         if ad == diger_etiket and diger_kirilim:
-            for prefix, t in diger_kirilim:
-                g.addWidget(_satir_label(f"    ◦ {prefix or '?'} hesabı", renk=FAINT, boyut=11), r, 0)
-                g.addWidget(_satir_label(tl(t), renk=FAINT, boyut=11, sag=True), r, 2)
-                r += 1
-    g.addWidget(_cizgi(), r, 0, 1, 3)
-    r += 1
-    g.addWidget(_satir_label("Toplam", bold=True), r, 0)
-    g.addWidget(_satir_label(tl(toplam), sag=True, bold=True), r, 2)
-    return _card(baslik, inner)
+            for prefix, kt in diger_kirilim:
+                _tsatir(t, [_c(f"      ◦ {prefix or '?'} hesabı", renk=FAINT), _c(""),
+                            _c(tl(kt), renk=FAINT, sag=True)])
+    _tsatir(t, [_c("Toplam", kalin=True), _c(""), _c(tl(toplam), kalin=True, sag=True)])
+    _fit_height(t)
+    return _card(baslik, _ic(t))
 
 
 def _kredi_panel(na: NakitAkis) -> QFrame:
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    g = QGridLayout(inner)
-    g.setContentsMargins(0, 0, 0, 0)
-    g.setHorizontalSpacing(12)
-    g.setVerticalSpacing(8)
-    g.setColumnStretch(0, 1)
-
-    def satir(r, ad, deger, *, bold=False, renk="#374151"):
-        g.addWidget(_satir_label(ad, bold=bold), r, 0)
-        g.addWidget(_satir_label(deger, bold=bold, renk=renk, sag=True), r, 1)
-
     net = na.kredi_net_gosterim
-    satir(0, "Kredi Kullanımı (giriş)", tl(na.kredi_kullanim_gosterim), renk=POZ)
-    satir(1, "Kredi Ödemesi (çıkış)", tl(-na.kredi_odeme_gosterim), renk=NEG)
-    satir(2, "Net Kredi", tl(net), bold=True, renk=_renk(net))
+    t = _agac(2, [(1, 140)])
+    _tsatir(t, [_c("Kredi Kullanımı (giriş)"), _c(tl(na.kredi_kullanim_gosterim), renk=POZ, sag=True)])
+    _tsatir(t, [_c("Kredi Ödemesi (çıkış)"), _c(tl(-na.kredi_odeme_gosterim), renk=NEG, sag=True)])
+    _tsatir(t, [_c("Net Kredi", kalin=True), _c(tl(net), renk=_renk(net), kalin=True, sag=True)])
+    _fit_height(t)
+
     aciklama = (
         "Dönemde net borçlanma (kullanım > ödeme)." if net > 0.005 else
         "Dönemde net kredi geri ödemesi (borç azalıyor)." if net < -0.005 else
         "Dönemde kredi hareketi dengede / yok."
     )
-    not_lbl = _satir_label(aciklama, renk=FAINT, boyut=11)
-    not_lbl.setWordWrap(True)
-    g.addWidget(not_lbl, 3, 0, 1, 2)
+    notlar: list[tuple[str, str]] = [(aciklama, FAINT)]
     if na.kredi_kaynak_gl:
-        uyari = _satir_label(
+        notlar.append((
             "Bu rakamlar muhasebe kayıtlarından (300/303) alındı; üstteki Toplam "
-            "Çıkış'a dâhil değildir.",
-            renk=FAINT, boyut=11,
-        )
-        uyari.setWordWrap(True)
-        g.addWidget(uyari, 4, 0, 1, 2)
-    return _card("KREDİ ÖZETİ", inner)
+            "Çıkış'a dâhil değildir.", FAINT))
+    return _card("KREDİ ÖZETİ", _ic(t, notlar))
 
 
 class _AylikChart(QWidget):
@@ -279,45 +250,28 @@ def _vade_goster(vade: str) -> str:
 
 def _yaklasan_taksit_panel(oz: KrediOzet) -> QFrame:
     """Ödenmemiş kredi taksitleri — sıradaki vade/banka/tutar + toplam."""
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    g = QGridLayout(inner)
-    g.setContentsMargins(0, 0, 0, 0)
-    g.setHorizontalSpacing(14)
-    g.setVerticalSpacing(7)
-    g.setColumnStretch(2, 1)
-    for c, b, sag in ((0, "Vade", False), (1, "Banka Kodu", False),
-                      (2, "Banka", False), (3, "Tutar", True)):
-        g.addWidget(_satir_label(b, renk=MUTED, boyut=11, bold=True, sag=sag), 0, c)
-    r = 1
-    for t in oz.taksitler:
-        g.addWidget(_satir_label(_vade_goster(t.vade), bold=True), r, 0)
-        g.addWidget(_satir_label(t.banka or "—", renk=FAINT, boyut=11), r, 1)
-        g.addWidget(_satir_label(t.banka_ad or "—", renk=SUBINK), r, 2)
-        g.addWidget(_satir_label(tl(t.tutar), sag=True, renk=NEG), r, 3)
-        r += 1
+    t = _agac(4, [(0, 145), (1, 105), (3, 120)], esnek=2)
+    _tsatir(t, [_c("Vade", renk=MUTED, kalin=True), _c("Banka Kodu", renk=MUTED, kalin=True),
+                _c("Banka", renk=MUTED, kalin=True), _c("Tutar", renk=MUTED, kalin=True, sag=True)])
+    for tk in oz.taksitler:
+        _tsatir(t, [_c(_vade_goster(tk.vade), kalin=True), _c(tk.banka or "—", renk=FAINT),
+                    _c(tk.banka_ad or "—", renk=SUBINK), _c(tl(tk.tutar), renk=NEG, sag=True)])
+
+    notlar: list[tuple[str, str]] = []
     if oz.adet < 1:
-        g.addWidget(_satir_label("Ödenmemiş kredi taksiti bulunamadı.", renk=FAINT, boyut=11),
-                    r, 0, 1, 4)
-        r += 1
+        _tsatir(t, [_c("Ödenmemiş kredi taksiti bulunamadı.", renk=FAINT), _c(""), _c(""), _c("")])
     else:
-        g.addWidget(_cizgi(), r, 0, 1, 4)
-        r += 1
-        g.addWidget(_satir_label(f"Toplam ({oz.adet} taksit)", bold=True), r, 0, 1, 3)
-        g.addWidget(_satir_label(tl(oz.toplam), sag=True, bold=True, renk=NEG), r, 3)
-        r += 1
+        _tsatir(t, [_c(f"Toplam ({oz.adet} taksit)", kalin=True), _c(""), _c(""),
+                    _c(tl(oz.toplam), renk=NEG, kalin=True, sag=True)])
         if oz.toplam_faiz > 0.005:
-            g.addWidget(_satir_label(
-                f"içinde faiz {tl(oz.toplam_faiz)} · anapara {tl(oz.toplam_anapara)}",
-                renk=FAINT, boyut=11), r, 0, 1, 4)
-            r += 1
+            notlar.append((
+                f"içinde faiz {tl(oz.toplam_faiz)} · anapara {tl(oz.toplam_anapara)}", FAINT))
         if oz.gecikmis_tutar > 0.005:
-            uy = _satir_label(
+            notlar.append((
                 f"⚠ {oz.gecikmis_adet} taksit ({tl(oz.gecikmis_tutar)}) vadesi geçmiş, "
-                "hâlâ ödenmemiş görünüyor.", renk="#8a5a00", boyut=11)
-            uy.setWordWrap(True)
-            g.addWidget(uy, r, 0, 1, 4)
-    return _card("YAKLAŞAN KREDİ TAKSİTLERİ", inner)
+                "hâlâ ödenmemiş görünüyor.", "#8a5a00"))
+    _fit_height(t)
+    return _card("YAKLAŞAN KREDİ TAKSİTLERİ", _ic(t, notlar))
 
 
 def build_nakit_akis_widget(
