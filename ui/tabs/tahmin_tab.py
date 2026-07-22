@@ -208,6 +208,26 @@ class TahminTab(RaporTab):
             donem_delta = fetch_nakit_delta(client, bas, bit)
             na = build_nakit_akis(hareket_rows, bakiye_kapanis_rows=kapanis_rows,
                                   donem_delta=donem_delta, bas=bas, bit=bit)
+            # Aylık gider DOĞRULANMIŞ GL gelir tablosundan (63 faaliyet, 66 finansman) —
+            # cari nakit-kategorisi çek/EFT/GL-direkt ödemeleri kaçırıp eksik kaldığından
+            # (Nakit Akış'ta düzeltilen kök) sabit gider önerisi VE runway ikisi de buradan
+            # beslenir. GL okunamazsa ancak o zaman cari toplam çıkışa düşülür.
+            ay_sayisi = max(1, len(na.aylik))
+            gt = None
+            try:
+                bildir("Faaliyet gideri (gelir tablosu) çekiliyor…")
+                gt = build_gelir_tablosu(fetch_gelir_tablosu(client, bas, bit), bas=bas, bit=bit)
+            except MikroAPIError:
+                gt = None
+            if gt is not None:
+                sabit_gider = -gt.faaliyet_gideri / ay_sayisi          # 63, işaretli negatif → pozitif
+                gider_proxy = -(gt.faaliyet_gideri + gt.finansman_gideri) / ay_sayisi
+            else:
+                sabit_gider = (na.toplam_cikis
+                               - na.cikis_kategori.get("Satıcı ödemesi", 0.0)
+                               - na.kredi_odeme) / ay_sayisi
+                gider_proxy = -sabit_gider
+
             # Vade-takvimli runway (gerçek açık kalemlerden) — başarısız olsa da tahmin üretilir.
             runway: RunwayTakvim | None = None
             try:
@@ -215,12 +235,6 @@ class TahminTab(RaporTab):
                 vade_gun_map = fetch_cari_vade_gun(client)
                 acik_rows = fetch_acik_kalemler(client, bit, bas, bit)
                 ta = build_tahsilat_alacak(acik_rows, vade_gun_map=vade_gun_map, bas=bas, bit=bit)
-                # Gider + kredi bozuk nakit-kategorisinden DEĞİL, doğrulanmış GL'den:
-                #   gider ≈ gelir tablosu 63 (faaliyet) + 66 (finansman) / ay
-                #   kredi ≈ 300/303 anapara ödemesi / ay
-                gt = build_gelir_tablosu(fetch_gelir_tablosu(client, bas, bit), bas=bas, bit=bit)
-                ay = max(1, len(na.aylik))
-                gider_proxy = -(gt.faaliyet_gideri + gt.finansman_gideri) / ay
                 # Kredi ayağı: gerçek taksit takvimi (ödenmemiş taksitler) — düz ortalamadan
                 # çok daha doğru. Okunamazsa GL 300/303 ortalamasına düşülür.
                 try:
@@ -234,7 +248,7 @@ class TahminTab(RaporTab):
                     kredi_proxy = None
                 else:
                     kredi_takvimi = None
-                    kredi_proxy = fetch_kredi_anapara(client, bas, bit) / ay
+                    kredi_proxy = fetch_kredi_anapara(client, bas, bit) / ay_sayisi
                 runway = runway_takvim_kur(
                     na=na, ta=ta, baslangic_ay=bit[:7], ufuk_ay=6,
                     baslangic_nakit=baslangic_nakit,
@@ -244,10 +258,6 @@ class TahminTab(RaporTab):
                 runway = None
             bildir("Varsayımlar öneriliyor…")
             satis_serisi = [a.satis for a in gd.trend]
-            ay_sayisi = max(1, len(na.aylik))
-            sabit_gider = (na.toplam_cikis
-                           - na.cikis_kategori.get("Satıcı ödemesi", 0.0)
-                           - na.kredi_odeme) / ay_sayisi
             v = oner_varsayim(
                 satis_serisi=satis_serisi, brut_marj_yuzde=gd.gercek_brut_marj,
                 baslangic_nakit=baslangic_nakit, aylik_sabit_gider=sabit_gider,
