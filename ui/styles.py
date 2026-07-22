@@ -196,29 +196,29 @@ QTabBar#headerTabBar {{
 }}
 QTabBar#headerTabBar::tab {{
     background-color: transparent;
-    color: {MUTED};
-    padding: 6px 4px;
-    margin: 0 1px;
+    color: {INK_SOFT};
+    padding: 9px 12px;
+    margin: 0 2px;
     border: 1px solid transparent;
-    border-radius: 7px;
+    border-radius: 8px;
     font-weight: 600;
-    font-size: 11px;
+    font-size: 13px;
 }}
 QTabBar#headerTabBar::tab:hover {{
-    background-color: {SURFACE};
-    color: {INK_SOFT};
+    background-color: {NAVY_SOFT};
+    color: {NAVY};
     border: 1px solid {BORDER_STRONG};
 }}
 QTabBar#headerTabBar::tab:selected {{
-    background-color: {SURFACE};
-    color: {ACCENT};
-    border: 1px solid {ACCENT_MUTED};
-    font-weight: 700;
+    background-color: {NAVY};
+    color: #ffffff;
+    border: 1px solid {NAVY};
+    font-weight: 800;
 }}
 QTabBar#headerTabBar::tab:selected:hover {{
-    background-color: {ACCENT_SOFT};
-    color: {ACCENT};
-    border: 1px solid {ACCENT_MUTED};
+    background-color: {NAVY};
+    color: #ffffff;
+    border: 1px solid {NAVY};
 }}
 QTabBar::tab {{
     background-color: transparent;
