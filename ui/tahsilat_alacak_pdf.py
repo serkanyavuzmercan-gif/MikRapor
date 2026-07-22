@@ -21,7 +21,8 @@ from ui.pdf_ortak import (
     GRAY,
     LINE,
     dipnot_ekle,
-    letterhead,
+    letterhead_sade,
+    pdf_ciz,
     pdf_doc,
     sty_kpi,
     sty_row,
@@ -93,10 +94,7 @@ def export_tahsilat_alacak_pdf(ta: TahsilatAlacak, path: str | Path, firma: str 
     out = Path(path)
     doc = pdf_doc(out, title="Alacak & Borç", firma=firma)
     elems: list = []
-    letterhead(
-        elems, firma=firma, baslik="ALACAK & BORÇ",
-        bas=ta.bas, bit=ta.bit,
-    )
+    letterhead_sade(elems, firma=firma, bas=ta.bas, bit=ta.bit)
 
     # —— Klasik özet listesi ——
     ozet = [
@@ -145,5 +143,5 @@ def export_tahsilat_alacak_pdf(ta: TahsilatAlacak, path: str | Path, firma: str 
         kaynak="Mikro cari hareketleri · Yaşlandırma: vade tarihine göre FIFO açık kalem",
     )
 
-    doc.build(elems)
+    pdf_ciz(doc, elems, baslik="ALACAK & BORÇ")
     return out
