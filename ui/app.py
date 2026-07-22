@@ -46,15 +46,16 @@ from ui.worker import RaporWorker
 
 INSTANCE_KEY = "MercanSoftware.MikRapor.SingleInstance"
 
-# Kısa etiket + tam ad (tooltip) — header'da 7 sekme sığsın
+# Sekme adları = PDF/başlık adları (tek isim, her yerde aynı).
+# QTabBar '&'i mnemonic sayar; literal '&' için '&&' yazılır.
 _SEKME_ETIKETLERI = (
-    ("Bilanço", "Anında Bilanço"),
-    ("Gelir", "Gelir Tablosu"),
-    ("Nakit Kâr", "Nakit & Kârlılık"),
-    ("Tahsilat", "Tahsilat & Alacak"),
-    ("Nakit Akış", "Nakit Akış Analizi"),
-    ("Tahmin", "Tahmin & Projeksiyon"),
-    ("Trend", "Trend & Oranlar"),
+    "Bilanço",
+    "Gelir Tablosu",
+    "Nakit && Kârlılık",
+    "Tahsilat && Alacak",
+    "Nakit Akış",
+    "Tahmin && Projeksiyon",
+    "Trend && Oranlar",
 )
 
 
@@ -77,7 +78,7 @@ class HeaderTabBar(QTabBar):
         self._delay.setInterval(220)
         self._delay.timeout.connect(self._reveal_tip)
 
-    # "Gelir" (index 1) ile "Nakit Kâr" (index 2) arasına grup ayracı:
+    # "Gelir Tablosu" (index 1) ile "Nakit & Kârlılık" (index 2) arasına grup ayracı:
     # resmî (GL) tablar | canlı (fatura/stok) tablar.
     _AYRAC_SONRASI = 1
 
@@ -260,11 +261,10 @@ class MikRaporWindow(QMainWindow):
             TahminTab,
             TrendTab,
         )
-        for cls, (etiket, tam) in zip(sekme_siniflari, _SEKME_ETIKETLERI, strict=True):
+        for cls, etiket in zip(sekme_siniflari, _SEKME_ETIKETLERI, strict=True):
             w = cls(self._donem)
-            idx = self._stack.addWidget(w)
+            self._stack.addWidget(w)
             self._tab_bar.addTab(etiket)
-            self._tab_bar.setTabToolTip(idx, tam)
 
         self._tab_bar.currentChanged.connect(self._on_tab_degisti)
 
