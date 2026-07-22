@@ -11,7 +11,6 @@ from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import (
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
@@ -22,7 +21,8 @@ from PyQt6.QtWidgets import (
 from domain.mizan_bilanco import tl
 from domain.terimler import sade_oran
 from domain.trend import TrendRapor
-from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG
+from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _fit_height
+from ui.gercek_durum_view import _DARK, _agac, _c, _ic, _tsatir
 from ui.nav_tip import bagla_nav_tip
 from ui.styles import BAD as NEG
 from ui.styles import BORDER, PANEL_BG
@@ -48,18 +48,6 @@ def _card(baslik: str, inner: QWidget) -> QFrame:
     lay.addWidget(lbl)
     lay.addWidget(inner)
     return card
-
-
-def _satir_label(text: str, *, renk: str = "#374151", bold: bool = False,
-                 boyut: int = 12, sag: bool = False) -> QLabel:
-    lbl = QLabel(text)
-    w = "800" if bold else "400"
-    lbl.setStyleSheet(
-        f"color: {renk}; font-size: {boyut}px; font-weight: {w}; background: transparent;"
-    )
-    if sag:
-        lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-    return lbl
 
 
 class _TrendChart(QWidget):
@@ -121,50 +109,33 @@ class _TrendChart(QWidget):
 
 
 def _oranlar_panel(tr: TrendRapor) -> QFrame:
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    g = QGridLayout(inner)
-    g.setContentsMargins(0, 0, 0, 0)
-    g.setHorizontalSpacing(16)
-    g.setVerticalSpacing(10)
-    g.setColumnStretch(2, 1)
-
-    for r, o in enumerate(tr.oranlar):
-        g.addWidget(_satir_label(o.ad, bold=True), r, 0)
-        deger = o.metin()
-        renk = "#374151"
+    t = _agac(3, [(0, 190), (1, 95)], esnek=2)
+    if not tr.oranlar:
+        _tsatir(t, [_c("Bilanço verisi yok — oran hesaplanamadı.", renk=FAINT), _c(""), _c("")])
+        _fit_height(t)
+        return _card("FİNANSAL ORANLAR  (bilanço)", _ic(t))
+    for o in tr.oranlar:
+        renk = _DARK
         if o.deger is not None and o.kod in ("cari", "asit", "nakit_oran"):
             renk = POZ if o.deger >= 1.0 else NEG
         elif o.deger is not None and o.kod == "borc_oz":
             renk = NEG if o.deger > 2.0 else POZ
-        g.addWidget(_satir_label(deger, bold=True, renk=renk, sag=True), r, 1)
-        acik = _satir_label(o.aciklama, renk=FAINT, boyut=11)
-        acik.setWordWrap(True)
-        g.addWidget(acik, r, 2)
-    if not tr.oranlar:
-        g.addWidget(_satir_label("Bilanço verisi yok — oran hesaplanamadı.", renk=FAINT), 0, 0, 1, 3)
-    return _card("FİNANSAL ORANLAR  (bilanço)", inner)
+        _tsatir(t, [_c(o.ad, kalin=True), _c(o.metin(), renk=renk, kalin=True, sag=True),
+                    _c(o.aciklama, renk=FAINT)])
+    _fit_height(t)
+    return _card("FİNANSAL ORANLAR  (bilanço)", _ic(t))
 
 
 def _bilanco_ozet(tr: TrendRapor) -> QFrame:
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    g = QGridLayout(inner)
-    g.setContentsMargins(0, 0, 0, 0)
-    g.setHorizontalSpacing(12)
-    g.setVerticalSpacing(7)
-
-    def satir(r: int, ad: str, deger: str, *, bold: bool = False) -> None:
-        g.addWidget(_satir_label(ad, bold=bold), r, 0)
-        g.addWidget(_satir_label(deger, bold=bold, sag=True), r, 1)
-
-    satir(0, "Dönen varlıklar", tl(tr.donen))
-    satir(1, "KVYK", tl(tr.kvyk))
-    satir(2, "Özkaynak", tl(tr.ozkaynak), bold=True)
-    satir(3, "Nakit", tl(tr.nakit))
-    satir(4, "Alacak", tl(tr.alacak))
-    satir(5, "Stok", tl(tr.stok))
-    return _card("BİLANÇO ÖZETİ", inner)
+    t = _agac(2, [(1, 130)])
+    _tsatir(t, [_c("Dönen varlıklar"), _c(tl(tr.donen), sag=True)])
+    _tsatir(t, [_c("KVYK"), _c(tl(tr.kvyk), sag=True)])
+    _tsatir(t, [_c("Özkaynak", kalin=True), _c(tl(tr.ozkaynak), kalin=True, sag=True)])
+    _tsatir(t, [_c("Nakit"), _c(tl(tr.nakit), sag=True)])
+    _tsatir(t, [_c("Alacak"), _c(tl(tr.alacak), sag=True)])
+    _tsatir(t, [_c("Stok"), _c(tl(tr.stok), sag=True)])
+    _fit_height(t)
+    return _card("BİLANÇO ÖZETİ", _ic(t))
 
 
 def _trend_panel(tr: TrendRapor) -> QFrame:
