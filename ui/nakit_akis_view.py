@@ -87,21 +87,25 @@ def _kategori_panel(baslik: str, kategori: dict, toplam: float, renk: str,
 def _kredi_panel(na: NakitAkis) -> QFrame:
     net = na.kredi_net_gosterim
     t = _agac(2, [(1, 140)])
-    _tsatir(t, [_c("Kredi Kullanımı (giriş)"), _c(tl(na.kredi_kullanim_gosterim), renk=POZ, sag=True)])
-    _tsatir(t, [_c("Kredi Ödemesi (çıkış)"), _c(tl(-na.kredi_odeme_gosterim), renk=NEG, sag=True)])
-    _tsatir(t, [_c("Net Kredi", kalin=True), _c(tl(net), renk=_renk(net), kalin=True, sag=True)])
+    _tsatir(t, [_c("Kredi Kullanımı (brüt)"), _c(tl(na.kredi_kullanim_gosterim), renk=POZ, sag=True)])
+    _tsatir(t, [_c("Kredi Ödemesi (brüt)"), _c(tl(-na.kredi_odeme_gosterim), renk=NEG, sag=True)])
+    _tsatir(t, [_c("Net Kredi (gerçek değişim)", kalin=True),
+                _c(tl(net), renk=_renk(net), kalin=True, sag=True)])
     _fit_height(t)
 
     aciklama = (
-        "Dönemde net borçlanma (kullanım > ödeme)." if net > 0.005 else
-        "Dönemde net kredi geri ödemesi (borç azalıyor)." if net < -0.005 else
+        "Dönemde net borçlanma (borç arttı)." if net > 0.005 else
+        "Dönemde net kredi geri ödemesi (borç azaldı)." if net < -0.005 else
         "Dönemde kredi hareketi dengede / yok."
     )
     notlar: list[tuple[str, str]] = [(aciklama, FAINT)]
+    notlar.append((
+        "Kullanım/ödeme BRÜTtür: rotatif kredi yenilemeleri, faiz ve kur farkı bu iki satırı "
+        "şişirir (aynı limit birçok kez dönebilir). Dönemin gerçek borç değişimi «Net Kredi»dir.",
+        FAINT))
     if na.kredi_kaynak_gl:
         notlar.append((
-            "Bu rakamlar muhasebe kayıtlarından (300/303) alındı; üstteki Toplam "
-            "Çıkış'a dâhil değildir.", FAINT))
+            "Kaynak: muhasebe (300/303); üstteki Toplam Çıkış'a dâhil değildir.", FAINT))
     return _card("KREDİ ÖZETİ", _ic(t, notlar))
 
 
@@ -197,7 +201,25 @@ def _runway_banner(na: NakitAkis) -> QWidget | None:
     alt = (
         f"Aylık ortalama net nakit {hiz}  ·  mevcut nakit {tl(r.baslangic_nakit)}"
     )
-    if r.tukenme_ay is not None:
+
+    # ── Güvenilirlik: net akış gerçeği yansıtmıyorsa iyimser yorumu BASTIR ──
+    # (a) Banka bakiye değişiminin büyük kısmı kategorize edilemediyse akış eksiktir.
+    # (b) Nakit artışı operasyondan değil, dönemde çekilen krediden geliyorsa "güç" sahtedir.
+    brut = na.toplam_giris + na.toplam_cikis
+    kredi_net = na.kredi_net_gosterim  # gerçek net borçlanma (brüt kullanım/ödeme değil)
+    guvenilmez = abs(na.mutabakat_farki) > max(50000.0, 0.30 * brut)
+    kredi_bagimli = na.net_akis > -0.005 and kredi_net > max(0.005, na.net_akis)
+
+    if guvenilmez or kredi_bagimli:
+        renk, bg, kenar = "#b45309", "#fdf3e0", "#f0d090"
+        baslik = "Nakit yorumu güvenilmez — artış sağlıklı görünse de aldatıcı olabilir"
+        parcalar = []
+        if kredi_net > 0.005:
+            parcalar.append(f"dönemde net {tl(kredi_net)} borçlanma olmuş (kapanış nakit bundan şişkin)")
+        if guvenilmez:
+            parcalar.append(f"{tl(abs(na.mutabakat_farki))} hareket sınıflandırılamadı (net akış eksik)")
+        oneri = "→ " + "; ".join(parcalar).capitalize() + ". Borçlanmayı ve eksik gideri çıkarınca gerçek nakit üretimi çok daha düşük."
+    elif r.tukenme_ay is not None:
         renk, bg, kenar = NEG, "#fdecec", "#f3b4b4"
         gun = f"~{r.tukenme_gun} gün sonra " if r.tukenme_gun else ""
         baslik = f"Nakit {gun}({_ay_str(r.tukenme_ay)}) eksiye düşüyor"
