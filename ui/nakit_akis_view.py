@@ -2,19 +2,17 @@
 Nakit Akış — yerel Qt görünümü.
 
 Banka + kasa fiili hareketlerinden nakit akış tablosu: açılış → girişler → çıkışlar → kapanış,
-kategori kırılımları (tahsilat, satıcı ödemesi, kredi, vergi…), kredi özeti ve aylık trend.
-Kart/satır yardımcıları diğer sekmelerle paylaşılır.
+kategori kırılımları (tahsilat, satıcı ödemesi, kredi, vergi…), kredi özeti ve yaklaşan taksitler.
+Kart/satır yardımcıları diğer sekmelerle paylaşılır. (Aylık trend: Trend & Oranlar sekmesinde.)
 """
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QRectF, Qt
-from PyQt6.QtGui import QColor, QFont, QPainter, QPen
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -51,14 +49,16 @@ def _ozet_panel(na: NakitAkis) -> QFrame:
 
     notlar: list[tuple[str, str]] = []
     if abs(na.mutabakat_farki) > max(1000.0, na.kapanis_nakit * 0.01):
+        kredi_net = na.kredi_net_gosterim
         kredi_ek = (
-            f" Bunun ~{tl(na.kredi_odeme_gl)}'si muhasebedeki kredi ödemesidir."
-            if na.kredi_kaynak_gl and na.kredi_odeme_gl > 0.005 else ""
+            f" Bunun net ~{tl(kredi_net)}'si dönemde çekilen kredidir (bkz. KREDİ ÖZETİ);"
+            if kredi_net > 0.005 else ""
         )
         notlar.append((
-            f"Mutabakat: açılış + net akış = {tl(na.kapanis_hesaplanan)}; gerçek kapanışla "
-            f"{tl(na.mutabakat_farki)} fark (kur farkı / iç transfer / kapsam dışı hareket)."
-            f"{kredi_ek}", "#b45309"))
+            f"Mutabakat: açılış + net akış = {tl(na.kapanis_hesaplanan)}; gerçek banka "
+            f"kapanışıyla {tl(na.mutabakat_farki)} fark.{kredi_ek} kalanı sınıflandırılamayan "
+            "hareket (kur farkı / iç transfer / karşı tarafı eşleşmeyen tahsilat-ödeme) — "
+            "akış eksik olabilir.", "#b45309"))
     return _card("NAKİT AKIŞ ÖZETİ", _ic(t, notlar))
 
 
@@ -87,92 +87,26 @@ def _kategori_panel(baslik: str, kategori: dict, toplam: float, renk: str,
 def _kredi_panel(na: NakitAkis) -> QFrame:
     net = na.kredi_net_gosterim
     t = _agac(2, [(1, 140)])
-    _tsatir(t, [_c("Kredi Kullanımı (giriş)"), _c(tl(na.kredi_kullanim_gosterim), renk=POZ, sag=True)])
-    _tsatir(t, [_c("Kredi Ödemesi (çıkış)"), _c(tl(-na.kredi_odeme_gosterim), renk=NEG, sag=True)])
-    _tsatir(t, [_c("Net Kredi", kalin=True), _c(tl(net), renk=_renk(net), kalin=True, sag=True)])
+    _tsatir(t, [_c("Kredi Kullanımı (brüt)"), _c(tl(na.kredi_kullanim_gosterim), renk=POZ, sag=True)])
+    _tsatir(t, [_c("Kredi Ödemesi (brüt)"), _c(tl(-na.kredi_odeme_gosterim), renk=NEG, sag=True)])
+    _tsatir(t, [_c("Net Kredi (gerçek değişim)", kalin=True),
+                _c(tl(net), renk=_renk(net), kalin=True, sag=True)])
     _fit_height(t)
 
     aciklama = (
-        "Dönemde net borçlanma (kullanım > ödeme)." if net > 0.005 else
-        "Dönemde net kredi geri ödemesi (borç azalıyor)." if net < -0.005 else
+        "Dönemde net borçlanma (borç arttı)." if net > 0.005 else
+        "Dönemde net kredi geri ödemesi (borç azaldı)." if net < -0.005 else
         "Dönemde kredi hareketi dengede / yok."
     )
     notlar: list[tuple[str, str]] = [(aciklama, FAINT)]
+    notlar.append((
+        "Kullanım/ödeme BRÜTtür: rotatif kredi yenilemeleri, faiz ve kur farkı bu iki satırı "
+        "şişirir (aynı limit birçok kez dönebilir). Dönemin gerçek borç değişimi «Net Kredi»dir.",
+        FAINT))
     if na.kredi_kaynak_gl:
         notlar.append((
-            "Bu rakamlar muhasebe kayıtlarından (300/303) alındı; üstteki Toplam "
-            "Çıkış'a dâhil değildir.", FAINT))
+            "Kaynak: muhasebe (300/303); üstteki Toplam Çıkış'a dâhil değildir.", FAINT))
     return _card("KREDİ ÖZETİ", _ic(t, notlar))
-
-
-class _AylikChart(QWidget):
-    """Aylık giriş/çıkış/net çubuk grafiği (QPainter, ek bağımlılık yok)."""
-
-    def __init__(self, na: NakitAkis, parent=None) -> None:
-        super().__init__(parent)
-        self._aylar = na.aylik
-        self.setMinimumHeight(200)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.setStyleSheet("background: transparent;")
-
-    def paintEvent(self, _ev) -> None:  # noqa: N802
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w, h = self.width(), self.height()
-        sol, sag, ust, alt = 8, 8, 14, 26
-        cw, ch = w - sol - sag, h - ust - alt
-        if not self._aylar or cw <= 0 or ch <= 0:
-            p.setPen(QPen(QColor(FAINT)))
-            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "Trend için veri yok")
-            p.end()
-            return
-        seriler = [(a.giris, a.cikis, a.net) for a in self._aylar]
-        min_v = min((min(g, c, n) for g, c, n in seriler), default=0.0)
-        max_v = max((max(g, c, n) for g, c, n in seriler), default=0.0)
-        min_v, max_v = min(min_v, 0.0), max(max_v, 0.0)
-        span = (max_v - min_v) or 1.0
-        n = len(self._aylar)
-        grup_w = cw / n
-        bar_w = min(16.0, grup_w / 4.2)
-        renkler = (QColor("#15803d"), QColor("#b91c1c"), QColor(ACCENT))  # giriş/çıkış/net
-
-        def y_of(v):
-            return ust + ch * ((max_v - v) / span)
-
-        p.setPen(QPen(QColor("#cbd5e1"), 1, Qt.PenStyle.DashLine))
-        zy = y_of(0.0)
-        p.drawLine(int(sol), int(zy), int(sol + cw), int(zy))
-        p.setFont(QFont("Segoe UI", 7))
-        for i, a in enumerate(self._aylar):
-            cx = sol + grup_w * i + grup_w / 2
-            for j, v in enumerate((a.giris, a.cikis, a.net)):
-                bx = cx + (j - 1) * (bar_w + 2) - bar_w / 2
-                vy = y_of(v)
-                top = min(vy, zy)
-                p.fillRect(QRectF(bx, top, bar_w, max(1.0, abs(vy - zy))), renkler[j])
-            p.setPen(QPen(QColor(MUTED)))
-            ay_kisa = a.ay[2:] if len(a.ay) >= 7 else a.ay
-            p.drawText(QRectF(sol + grup_w * i, h - alt + 4, grup_w, alt - 6),
-                       Qt.AlignmentFlag.AlignCenter, ay_kisa)
-        p.end()
-
-
-def _trend_panel(na: NakitAkis) -> QFrame:
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    v = QVBoxLayout(inner)
-    v.setContentsMargins(0, 0, 0, 0)
-    v.setSpacing(6)
-    lej = QLabel(
-        f"<span style='color:#15803d;'>■</span> Giriş &nbsp;&nbsp;"
-        f"<span style='color:#b91c1c;'>■</span> Çıkış &nbsp;&nbsp;"
-        f"<span style='color:{ACCENT};'>■</span> Net"
-    )
-    lej.setStyleSheet("font-size: 11px; background: transparent;")
-    lej.setTextFormat(Qt.TextFormat.RichText)
-    v.addWidget(lej)
-    v.addWidget(_AylikChart(na))
-    return _card("AYLIK NAKİT AKIŞ TRENDİ", inner)
 
 
 _AY_KISA = ("Oca", "Şub", "Mar", "Nis", "May", "Haz",
@@ -197,7 +131,25 @@ def _runway_banner(na: NakitAkis) -> QWidget | None:
     alt = (
         f"Aylık ortalama net nakit {hiz}  ·  mevcut nakit {tl(r.baslangic_nakit)}"
     )
-    if r.tukenme_ay is not None:
+
+    # ── Güvenilirlik: net akış gerçeği yansıtmıyorsa iyimser yorumu BASTIR ──
+    # (a) Banka bakiye değişiminin büyük kısmı kategorize edilemediyse akış eksiktir.
+    # (b) Nakit artışı operasyondan değil, dönemde çekilen krediden geliyorsa "güç" sahtedir.
+    brut = na.toplam_giris + na.toplam_cikis
+    kredi_net = na.kredi_net_gosterim  # gerçek net borçlanma (brüt kullanım/ödeme değil)
+    guvenilmez = abs(na.mutabakat_farki) > max(50000.0, 0.30 * brut)
+    kredi_bagimli = na.net_akis > -0.005 and kredi_net > max(0.005, na.net_akis)
+
+    if guvenilmez or kredi_bagimli:
+        renk, bg, kenar = "#b45309", "#fdf3e0", "#f0d090"
+        baslik = "Nakit yorumu güvenilmez — artış sağlıklı görünse de aldatıcı olabilir"
+        parcalar = []
+        if kredi_net > 0.005:
+            parcalar.append(f"dönemde net {tl(kredi_net)} borçlanma olmuş (kapanış nakit bundan şişkin)")
+        if guvenilmez:
+            parcalar.append(f"{tl(abs(na.mutabakat_farki))} hareket sınıflandırılamadı (net akış eksik)")
+        oneri = "→ " + "; ".join(parcalar).capitalize() + ". Borçlanmayı ve eksik gideri çıkarınca gerçek nakit üretimi çok daha düşük."
+    elif r.tukenme_ay is not None:
         renk, bg, kenar = NEG, "#fdecec", "#f3b4b4"
         gun = f"~{r.tukenme_gun} gün sonra " if r.tukenme_gun else ""
         baslik = f"Nakit {gun}({_ay_str(r.tukenme_ay)}) eksiye düşüyor"
@@ -343,6 +295,5 @@ def build_nakit_akis_widget(
     if kredi is not None and kredi.adet > 0:
         root.addWidget(_yaklasan_taksit_panel(kredi))
 
-    root.addWidget(_trend_panel(na))
     root.addStretch(1)
     return content
