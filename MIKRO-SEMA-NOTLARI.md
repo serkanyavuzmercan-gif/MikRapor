@@ -104,6 +104,16 @@ kaydı). Tahmini `MUHASEBE_HAREKETLERI` tablosu **bu Mikro'da YOK**. Canlı doğ
 MikRapor muavin'i 7xx (730/740/750/760/770) gider hesaplarını toplar; ham olarak ayın tüm GL
 satırları çekilir (Excel muavin dökümüyle aynı), filtrelemeyi analizör yapar.
 
+> **🚨 DEVİR FİŞLERİ TUZAK (canlıda görüldü):** Yıl başı **açılış fişi** (1 Ocak) tüm bilanço
+> bakiyelerini TEK yevmiye fişinde kurar (yıl sonu kapanış fişi 31 Aralık'ta kapatır). Nakit
+> akışı gibi DÖNEM-akışı sorgularında bu fişler elenmezse açılış bakiyesi dönem hareketi sanılır:
+> canlıda 102 borç devrinin karşısı 502 (Sermaye Düzeltmesi), 103 alacak devrinin karşısı 580
+> (Geçmiş Yıl Zararları) çıkıp milyonluk hayalet giriş/çıkış üretti; 'Açılış Nakit 0' + açılış
+> nakdi kadar mutabakat farkı verdi. Ayırt etme: devir fişleri özkaynak (5xx) satırı içerir,
+> normal tahsilat/ödeme fişi içermez → `mikro_fetch._gl_devir_haric()` (tarih 1 Oca/31 Ara +
+> fişte `fis_hesap_kod LIKE '5%'` satırı) ile elenir. `fis_tur` değer haritası doğrulanmadığı
+> için fiş tipine güvenilmez.
+
 ## Genel kurallar (ss/lib/mikro-api.ts ile aynı)
 
 - Auth: günlük `MD5(YYYY-MM-DD [+ ' ' + SIFRE_GUN])`, UTC tarih.

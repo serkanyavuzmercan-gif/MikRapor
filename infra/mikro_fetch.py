@@ -593,43 +593,68 @@ def _fetch_nakit_akis_sql(
 _NAKIT_GL_ONEK = "('100', '101', '102', '108')"  # kasa + çek + banka; 103 verilen çek kontra
 
 
+def _gl_devir_haric(alias: str = "c") -> str:
+    """
+    Yıl başı AÇILIŞ / yıl sonu KAPANIŞ (devir) fişlerini eleyen SQL parçası.
+
+    Açılış fişi (1 Ocak) tüm bilanço bakiyelerini tek yevmiyede kurar, kapanış fişi
+    (31 Aralık) kapatır — ikisi de gerçek nakit AKIŞI değildir ve normal tahsilat/ödeme
+    fişinden farklı olarak özkaynak (5xx) satırı içerir. Elenmezse açılış bakiyesi dönem
+    akışı sanılır: 502/580 karşılıklı milyonluk hayalet giriş-çıkışlar, 'Açılış Nakit 0'
+    ve açılış nakdi kadar mutabakat farkı (canlıda birebir görüldü).
+    """
+    a = alias
+    return (
+        f"AND NOT (((MONTH({a}.fis_tarih) = 1 AND DAY({a}.fis_tarih) = 1) "
+        f"OR (MONTH({a}.fis_tarih) = 12 AND DAY({a}.fis_tarih) = 31)) "
+        "AND EXISTS (SELECT 1 FROM MUHASEBE_FISLERI d WITH (NOLOCK) "
+        f"WHERE d.fis_iptal = 0 AND d.fis_tarih = {a}.fis_tarih "
+        f"AND d.fis_yevmiye_no = {a}.fis_yevmiye_no AND d.fis_hesap_kod LIKE '5%')) "
+    )
+
+
 def fetch_nakit_akis_gl(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
     """
     Nakit Akış'ı MUHASEBEDEN kurar: nakit hesap (100/101/102/108) yevmiye satırları;
-    karşı taraf = aynı yevmiye fişindeki en büyük TERS işaretli hesap (öneki).
+    tutar, aynı yevmiye fişindeki TERS işaretli nakit-dışı hesaplara ORANSAL dağıtılır.
 
     Cari tablosu (CARI_HESAP_HAREKETLERI) yalnız cari modülünden geçen banka/kasa
     hareketlerini görür; çek ödemesi, EFT, kredi kullanımı gibi doğrudan muhasebeye
     işlenen hareketleri kaçırır → 'satıcı ödemesi 13K' gibi külli eksik rakamlar.
     GL her şeyin son durağı olduğundan akış burada TAM ve kapanış bakiyesiyle
-    (aynı kaynak) mutabık çıkar. Karşı tarafı da nakit olan satırlar (iç transfer,
-    çek tahsili 101→102) elenir. Çıktı şekli cari sürümle aynı: ay/tip/prefix/tutar
-    (tip: 0=giriş, 1=çıkış).
+    (aynı kaynak) mutabık çıkar.
+
+    ORANSAL dağıtım (TOP 1 'en büyük karşı hesap' değil): toplu ödeme fişinde tek banka
+    çıkışının karşısında satıcı + KDV + muhtasar satırları olur; en büyük kalem hepsini
+    yutar ve vergi satıcı ödemesinin içinde erirdi. Karşı tarafı tamamen nakit olan
+    satırlar (iç transfer, çek tahsili 101→102) CROSS APPLY boş dönerek elenir; açılış/
+    kapanış devir fişleri _gl_devir_haric ile elenir. Çıktı şekli cari sürümle aynı:
+    ay/tip/prefix/tutar (tip: 0=giriş, 1=çıkış).
     """
     bas, bit = _aralik(bas, bit)
     bit_son = _bit_son(bit)
     sql = (
         "SELECT CONVERT(char(7), c.fis_tarih, 23) AS ay, "
         "CASE WHEN c.fis_meblag0 > 0 THEN 0 ELSE 1 END AS tip, "
-        "ISNULL(karsi.prefix, '') AS prefix, SUM(ABS(c.fis_meblag0)) AS tutar "
+        "karsi.prefix AS prefix, SUM(ABS(c.fis_meblag0) * karsi.pay) AS tutar "
         "FROM MUHASEBE_FISLERI c WITH (NOLOCK) "
-        "OUTER APPLY ("
-        "SELECT TOP 1 LEFT(LTRIM(k.fis_hesap_kod), 3) AS prefix "
+        "CROSS APPLY ("
+        "SELECT LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) AS prefix, "
+        "ABS(k.fis_meblag0) / SUM(ABS(k.fis_meblag0)) OVER () AS pay "
         "FROM MUHASEBE_FISLERI k WITH (NOLOCK) "
         "WHERE k.fis_iptal = 0 AND k.fis_tarih = c.fis_tarih "
         "AND k.fis_yevmiye_no = c.fis_yevmiye_no "
         "AND SIGN(k.fis_meblag0) = -SIGN(c.fis_meblag0) "
-        f"ORDER BY CASE WHEN LEFT(LTRIM(k.fis_hesap_kod), 3) IN {_NAKIT_GL_ONEK} "
-        "THEN 1 ELSE 0 END, ABS(k.fis_meblag0) DESC"
+        f"AND LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) NOT IN {_NAKIT_GL_ONEK}"
         ") karsi "
-        "WHERE c.fis_iptal = 0 "
+        "WHERE c.fis_iptal = 0 AND c.fis_meblag0 <> 0 "
         f"AND LEFT(LTRIM(c.fis_hesap_kod), 3) IN {_NAKIT_GL_ONEK} "
         f"AND c.fis_tarih >= '{bas}' AND c.fis_tarih < '{bit_son}' "
         "AND c.fis_yevmiye_no IS NOT NULL AND c.fis_yevmiye_no <> 0 "
-        f"AND ISNULL(karsi.prefix, '') NOT IN {_NAKIT_GL_ONEK} "
+        f"{_gl_devir_haric('c')}"
         "GROUP BY CONVERT(char(7), c.fis_tarih, 23), "
-        "CASE WHEN c.fis_meblag0 > 0 THEN 0 ELSE 1 END, ISNULL(karsi.prefix, '') "
-        "HAVING SUM(ABS(c.fis_meblag0)) >= 0.005"
+        "CASE WHEN c.fis_meblag0 > 0 THEN 0 ELSE 1 END, karsi.prefix "
+        "HAVING SUM(ABS(c.fis_meblag0) * karsi.pay) >= 0.005"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 
@@ -649,12 +674,18 @@ def fetch_nakit_bakiye_gl(client: MikroClient, asof: str) -> float:
 
 
 def fetch_nakit_delta_gl(client: MikroClient, bas: str, bit: str) -> float:
-    """Dönem içi GL nakit hesap net hareketi (açılış = kapanış − delta için)."""
+    """
+    Dönem içi GL nakit hesap net hareketi (açılış = kapanış − delta için).
+
+    Devir fişleri akışla AYNI kuralla elenir — böylece açılış fişindeki nakit devri
+    delta'dan çıkar ve açılış = kapanış − delta gerçek yıl başı bakiyesini verir.
+    """
     bas, bit = _aralik(bas, bit)
     sql = (
-        "SELECT SUM(fis_meblag0) AS delta FROM MUHASEBE_FISLERI WITH (NOLOCK) "
-        f"WHERE fis_iptal = 0 AND LEFT(LTRIM(fis_hesap_kod), 3) IN {_NAKIT_GL_ONEK} "
-        f"AND fis_tarih >= '{bas}' AND fis_tarih < '{_bit_son(bit)}'"
+        "SELECT SUM(c.fis_meblag0) AS delta FROM MUHASEBE_FISLERI c WITH (NOLOCK) "
+        f"WHERE c.fis_iptal = 0 AND LEFT(LTRIM(c.fis_hesap_kod), 3) IN {_NAKIT_GL_ONEK} "
+        f"AND c.fis_tarih >= '{bas}' AND c.fis_tarih < '{_bit_son(bit)}' "
+        f"{_gl_devir_haric('c')}"
     )
     rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
     if rows:
