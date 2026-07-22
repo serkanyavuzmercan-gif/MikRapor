@@ -22,15 +22,18 @@ from domain.ortak import to_int as _i
 
 # Karşı taraf kod öneki (3 hane) → kategori. 'KRD' = kredi hesabı sentinel'i (fetch'ten gelir).
 _PREFIX_KATEGORI = {
-    "120": "musteri", "121": "musteri",
+    "120": "musteri", "121": "musteri", "340": "musteri",
     "320": "satici", "321": "satici", "329": "satici",
+    "103": "satici",  # verilen çekler — çekle satıcı ödemesinin nakit ayağı (GL)
+    "159": "satici",  # verilen sipariş avansları
     "300": "kredi", "303": "kredi", "304": "kredi", "305": "kredi", "308": "kredi",
     "309": "kredi", "400": "kredi", "403": "kredi", "KRD": "kredi",
     "360": "vergi", "368": "vergi", "391": "vergi", "393": "vergi", "360.": "vergi",
     "361": "sgk",
     "335": "personel",
-    "331": "ortak",
+    "331": "ortak", "131": "ortak",
     "770": "gider", "760": "gider", "740": "gider", "730": "gider", "750": "gider",
+    "780": "gider",  # finansman giderleri (faiz) — banka kesintisi
 }
 
 GIRIS_SIRA = ("musteri", "kredi", "ortak", "satici", "vergi", "sgk", "personel", "gider", "diger")
@@ -85,6 +88,7 @@ class NakitAkis:
     kredi_kullanim_gl: float = 0.0
     aylik: list = field(default_factory=list)
     hareket_sayisi: int = 0
+    kaynak: str = "cari"   # "gl" = muhasebe yevmiyesinden (tam kapsam) | "cari" = cari hareketten
 
     @property
     def net_akis(self) -> float:

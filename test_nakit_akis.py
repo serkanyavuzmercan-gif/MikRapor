@@ -142,6 +142,25 @@ class TestKrediGLYedek(unittest.TestCase):
         csv = nakit_akis_csv(na)
         self.assertIn("muhasebe kayıtları (300/303)", csv)
 
+    def test_gl_kaynakli_akis(self):
+        """GL (yevmiye) satırları: çek ödemesi (103) satıcıya, 131 ortağa, mutabakat kapanır."""
+        rows = [
+            _h("2026-01", 0, "120", 1_000_000),   # tahsilat
+            _h("2026-01", 0, "300", 400_000),     # kredi kullanımı (GL karşı hesap)
+            _h("2026-01", 1, "103", 700_000),     # çekle satıcı ödemesi → satici
+            _h("2026-01", 1, "131", 50_000),      # ortaklardan alacaklar → ortak
+            _h("2026-01", 1, "780", 30_000),      # finansman gideri → gider
+        ]
+        net = 1_400_000 - 780_000
+        na = build_nakit_akis(rows, kapanis_nakit=net, donem_delta=net,
+                              bas="2026-01-01", bit="2026-01-31")
+        na.kaynak = "gl"
+        self.assertAlmostEqual(na.cikis_kategori.get("Satıcı ödemesi", 0), 700_000, places=2)
+        self.assertAlmostEqual(na.cikis_kategori.get("Ortaklar", 0), 50_000, places=2)
+        self.assertAlmostEqual(na.kredi_kullanim, 400_000, places=2)
+        self.assertAlmostEqual(na.acilis_nakit, 0.0, places=2)     # kapanış − delta
+        self.assertAlmostEqual(na.mutabakat_farki, 0.0, places=2)  # aynı kaynak → kapanır
+
 
 if __name__ == "__main__":
     unittest.main()

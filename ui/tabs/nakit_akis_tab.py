@@ -16,8 +16,11 @@ from infra.mikro_fetch import (
     fetch_cari_bakiye,
     fetch_kredi_gl,
     fetch_kredi_taksitleri,
+    fetch_nakit_akis_gl,
     fetch_nakit_akis_hareket,
+    fetch_nakit_bakiye_gl,
     fetch_nakit_delta,
+    fetch_nakit_delta_gl,
 )
 from ui.bilesenler import varsayilan_kayit_yolu
 from ui.nakit_akis_pdf import export_nakit_akis_pdf
@@ -45,15 +48,34 @@ class NakitAkisTab(RaporTab):
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
         def is_fn(bildir) -> dict[str, Any]:
             client = MikroClient(cfg)
-            bildir("Banka/kasa hareketleri çekiliyor…")
-            hareket_rows = fetch_nakit_akis_hareket(client, bas, bit)
-            bildir("Kapanış bakiyeleri çekiliyor…")
-            kapanis_rows = fetch_cari_bakiye(client, bit)
-            donem_delta = fetch_nakit_delta(client, bas, bit)
-            bildir("Nakit akış kuruluyor…")
-            na = build_nakit_akis(
-                hareket_rows, bakiye_kapanis_rows=kapanis_rows,
-                donem_delta=donem_delta, bas=bas, bit=bit)
+            # ÖNCE MUHASEBE (GL): cari tablosu yalnız cari modülünden geçen banka/kasa
+            # hareketini görür; çek ödemesi / EFT / kredi gibi doğrudan muhasebeye
+            # işlenenleri kaçırır (satıcı ödemesi 13K gibi külli eksik rakamlar).
+            # GL'de akış + kapanış aynı kaynaktan → mutabakat kapanır.
+            na = None
+            try:
+                bildir("Nakit hareketleri muhasebeden çekiliyor…")
+                gl_rows = fetch_nakit_akis_gl(client, bas, bit)
+                if gl_rows:
+                    kapanis = fetch_nakit_bakiye_gl(client, bit)
+                    delta = fetch_nakit_delta_gl(client, bas, bit)
+                    bildir("Nakit akış kuruluyor…")
+                    na = build_nakit_akis(
+                        gl_rows, kapanis_nakit=kapanis,
+                        donem_delta=delta, bas=bas, bit=bit)
+                    na.kaynak = "gl"
+            except MikroAPIError:
+                na = None
+            if na is None:
+                bildir("Banka/kasa hareketleri çekiliyor…")
+                hareket_rows = fetch_nakit_akis_hareket(client, bas, bit)
+                bildir("Kapanış bakiyeleri çekiliyor…")
+                kapanis_rows = fetch_cari_bakiye(client, bit)
+                donem_delta = fetch_nakit_delta(client, bas, bit)
+                bildir("Nakit akış kuruluyor…")
+                na = build_nakit_akis(
+                    hareket_rows, bakiye_kapanis_rows=kapanis_rows,
+                    donem_delta=donem_delta, bas=bas, bit=bit)
             # Banka hareketlerinde kredi hiç görünmüyorsa muhasebeden (300/303) yedek al —
             # kredi taksitleri birçok kurulumda cari harekete değil doğrudan GL'ye işlenir.
             if na.kredi_odeme < 0.005 and na.kredi_kullanim < 0.005:
