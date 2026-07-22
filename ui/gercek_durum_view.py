@@ -70,8 +70,8 @@ def _satir_label(text: str, *, renk: str = "#374151", bold: bool = False,
     return lbl
 
 
-def _agac(kolon: int, sabit: list[tuple[int, int]]) -> QTreeWidget:
-    """Hover + zebra'lı, seçimsiz mini tablo. col0 esner; `sabit` kolonlar sabit genişlik."""
+def _agac(kolon: int, sabit: list[tuple[int, int]], *, esnek: int = 0) -> QTreeWidget:
+    """Hover + zebra'lı, seçimsiz mini tablo. `esnek` kolon esner; `sabit` kolonlar sabit."""
     t = QTreeWidget()
     t.setColumnCount(kolon)
     t.setHeaderHidden(True)
@@ -89,7 +89,7 @@ def _agac(kolon: int, sabit: list[tuple[int, int]]) -> QTreeWidget:
     t.viewport().setAttribute(Qt.WidgetAttribute.WA_Hover, True)
     t.setStyleSheet(_TREE_QSS)
     hdr = t.header()
-    hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+    hdr.setSectionResizeMode(esnek, QHeaderView.ResizeMode.Stretch)
     for c, w in sabit:
         hdr.setSectionResizeMode(c, QHeaderView.ResizeMode.Fixed)
         t.setColumnWidth(c, w)

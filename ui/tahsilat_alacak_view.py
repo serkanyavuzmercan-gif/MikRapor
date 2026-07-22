@@ -11,7 +11,6 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QVBoxLayout,
@@ -20,8 +19,18 @@ from PyQt6.QtWidgets import (
 
 from domain.mizan_bilanco import tl
 from domain.tahsilat_alacak import AGING_KOVALAR, VADE_KOVALAR, TahsilatAlacak
-from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _kpi_card
-from ui.gercek_durum_view import NEG, POZ, _card, _cizgi, _renk, _satir_label
+from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _fit_height, _kpi_card
+from ui.gercek_durum_view import (
+    _DARK,
+    NEG,
+    POZ,
+    _agac,
+    _c,
+    _card,
+    _ic,
+    _renk,
+    _tsatir,
+)
 from ui.styles import PRIMARY_SOFT
 
 # Yaşlandırma kovası → renk (vadesi gelmemiş yeşil → 90+ kırmızı)
@@ -53,130 +62,89 @@ def _oran_bar(oran: float, renk: str) -> QWidget:
 
 
 def _yaslandirma_panel(baslik: str, aging: dict, toplam: float, gecikmis: float) -> QFrame:
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    g = QGridLayout(inner)
-    g.setContentsMargins(0, 0, 0, 0)
-    g.setHorizontalSpacing(12)
-    g.setVerticalSpacing(9)
-    g.setColumnStretch(1, 1)
-
+    # col0 etiket + col1 çubuk (esner) + col2 tutar; hover + zebra ağaçtan gelir.
+    t = _agac(3, [(0, 138), (2, 130)], esnek=1)
     enb = max((aging.get(k, 0.0) for k in AGING_KOVALAR), default=0.0) or 1.0
-    r = 0
     for k in AGING_KOVALAR:
         v = aging.get(k, 0.0)
         renk = _AGING_RENK[k]
-        g.addWidget(_satir_label(k, renk="#374151"), r, 0)
-        g.addWidget(_oran_bar(v / enb, renk), r, 1)
-        g.addWidget(_satir_label(tl(v), sag=True, bold=v > 0.005,
-                                 renk=renk if v > 0.005 else FAINT), r, 2)
-        r += 1
-    g.addWidget(_cizgi(), r, 0, 1, 3)
-    r += 1
-    g.addWidget(_satir_label("Toplam", bold=True), r, 0)
-    g.addWidget(_satir_label(tl(toplam), sag=True, bold=True), r, 2)
-    r += 1
+        it = _tsatir(t, [_c(k), _c(""),
+                         _c(tl(v), renk=renk if v > 0.005 else FAINT, kalin=v > 0.005, sag=True)])
+        t.setItemWidget(it, 1, _oran_bar(v / enb, renk))
+    _tsatir(t, [_c("Toplam", kalin=True), _c(""), _c(tl(toplam), kalin=True, sag=True)])
+    _fit_height(t)
+
+    notlar: list[tuple[str, str]] = []
     if gecikmis > 0.005:
         oran = gecikmis / toplam * 100 if toplam > 0.005 else 0.0
-        g.addWidget(_satir_label(
-            f"Gecikmiş: {tl(gecikmis)}  (%{oran:.0f})", renk=NEG, boyut=11), r, 0, 1, 3)
-    return _card(baslik, inner)
+        notlar.append((f"Gecikmiş: {tl(gecikmis)}  (%{oran:.0f})", NEG))
+    return _card(baslik, _ic(t, notlar))
 
 
 def _performans_panel(ta: TahsilatAlacak) -> QFrame:
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    g = QGridLayout(inner)
-    g.setContentsMargins(0, 0, 0, 0)
-    g.setHorizontalSpacing(12)
-    g.setVerticalSpacing(8)
-    g.setColumnStretch(0, 1)
-
-    def satir(r: int, ad: str, deger: str, *, bold: bool = False, renk: str = "#374151") -> None:
-        g.addWidget(_satir_label(ad, bold=bold), r, 0)
-        g.addWidget(_satir_label(deger, bold=bold, renk=renk, sag=True), r, 1)
-
     def gun(v):
         return "—" if v is None else f"{v:.0f} gün"
 
     def pct(v):
         return "—" if v is None else ("%" + f"{v:.0f}")
 
-    satir(0, "Dönem Tahsilatı (müşteriden)", tl(ta.donem_tahsilat), renk=POZ)
-    satir(1, "Dönem Kredili Satış", tl(ta.donem_satis))
-    satir(2, "Tahsilat Oranı", pct(ta.tahsilat_orani), bold=True,
-          renk=_renk((ta.tahsilat_orani or 0) - 100))
-    satir(3, "Ort. Tahsilat Süresi (DSO)", gun(ta.dso), bold=True)
-    g.addWidget(_cizgi(), 4, 0, 1, 2)
-    satir(5, "Dönem Ödemesi (satıcıya)", tl(ta.donem_odeme), renk=NEG)
-    satir(6, "Dönem Alış", tl(ta.donem_alis))
-    satir(7, "Ort. Ödeme Süresi (DPO)", gun(ta.dpo), bold=True)
+    t = _agac(2, [(1, 130)])
+    _tsatir(t, [_c("Dönem Tahsilatı (müşteriden)"), _c(tl(ta.donem_tahsilat), renk=POZ, sag=True)])
+    _tsatir(t, [_c("Dönem Kredili Satış"), _c(tl(ta.donem_satis), sag=True)])
+    _tsatir(t, [_c("Tahsilat Oranı", kalin=True),
+                _c(pct(ta.tahsilat_orani), renk=_renk((ta.tahsilat_orani or 0) - 100),
+                   kalin=True, sag=True)])
+    _tsatir(t, [_c("Ort. Tahsilat Süresi (DSO)", kalin=True), _c(gun(ta.dso), kalin=True, sag=True)])
+    _tsatir(t, [_c("Dönem Ödemesi (satıcıya)"), _c(tl(ta.donem_odeme), renk=NEG, sag=True)])
+    _tsatir(t, [_c("Dönem Alış"), _c(tl(ta.donem_alis), sag=True)])
+    _tsatir(t, [_c("Ort. Ödeme Süresi (DPO)", kalin=True), _c(gun(ta.dpo), kalin=True, sag=True)])
+    _fit_height(t)
+
+    notlar: list[tuple[str, str]] = []
     if ta.dso is not None and ta.dpo is not None:
         fark = ta.dpo - ta.dso
-        g.addWidget(_satir_label(
+        notlar.append((
             f"Nakit döngüsü: tahsilat {ta.dso:.0f}g, ödeme {ta.dpo:.0f}g — "
             + ("satıcı bizi finanse ediyor." if fark >= 0 else "biz satıcıyı finanse ediyoruz."),
-            renk=FAINT, boyut=11), 8, 0, 1, 2)
-    return _card("TAHSİLAT & ÖDEME PERFORMANSI  (dönem)", inner)
+            FAINT))
+    return _card("TAHSİLAT & ÖDEME PERFORMANSI  (dönem)", _ic(t, notlar))
 
 
 def _vade_takvimi_panel(ta: TahsilatAlacak) -> QFrame:
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    g = QGridLayout(inner)
-    g.setContentsMargins(0, 0, 0, 0)
-    g.setHorizontalSpacing(12)
-    g.setVerticalSpacing(8)
-    g.setColumnStretch(0, 1)
-
-    for c, b in ((1, "Girecek"), (2, "Çıkacak"), (3, "Net")):
-        g.addWidget(_satir_label(b, renk=MUTED, boyut=11, bold=True, sag=True), 0, c)
-
+    t = _agac(4, [(1, 116), (2, 116), (3, 120)])
+    _tsatir(t, [_c(""), _c("Girecek", renk=MUTED, kalin=True, sag=True),
+                _c("Çıkacak", renk=MUTED, kalin=True, sag=True),
+                _c("Net", renk=MUTED, kalin=True, sag=True)])
     nv = ta.net_vade()
-    r = 1
     for k in VADE_KOVALAR:
         a = ta.alacak_vade.get(k, 0.0)
         b = ta.borc_vade.get(k, 0.0)
         n = nv.get(k, 0.0)
         bold = k == VADE_KOVALAR[0]  # Gecikmiş vurgulu
-        g.addWidget(_satir_label(k, bold=bold,
-                                 renk=NEG if bold else "#374151"), r, 0)
-        g.addWidget(_satir_label(tl(a) if a > 0.005 else "—", sag=True,
-                                 renk=POZ if a > 0.005 else FAINT), r, 1)
-        g.addWidget(_satir_label(tl(b) if b > 0.005 else "—", sag=True,
-                                 renk=NEG if b > 0.005 else FAINT), r, 2)
-        g.addWidget(_satir_label(("+" if n >= 0 else "") + tl(n), sag=True, bold=True,
-                                 renk=_renk(n)), r, 3)
-        r += 1
-    not_lbl = _satir_label(
-        "Açık alacak/borçların vade tarihine göre beklenen nakit hareketi. «Gecikmiş» = vadesi "
-        "geçmiş; normalde çoktan tahsil/ödeme edilmiş olmalı.", renk=FAINT, boyut=11)
-    not_lbl.setWordWrap(True)
-    g.addWidget(not_lbl, r, 0, 1, 4)
-    return _card("NET VADE TAKVİMİ  (ileriye dönük)", inner)
+        _tsatir(t, [_c(k, kalin=bold, renk=NEG if bold else _DARK),
+                    _c(tl(a) if a > 0.005 else "—", renk=POZ if a > 0.005 else FAINT, sag=True),
+                    _c(tl(b) if b > 0.005 else "—", renk=NEG if b > 0.005 else FAINT, sag=True),
+                    _c(("+" if n >= 0 else "") + tl(n), renk=_renk(n), kalin=True, sag=True)])
+    _fit_height(t)
+
+    notlar = [("Açık alacak/borçların vade tarihine göre beklenen nakit hareketi. «Gecikmiş» = "
+               "vadesi geçmiş; normalde çoktan tahsil/ödeme edilmiş olmalı.", FAINT)]
+    return _card("NET VADE TAKVİMİ  (ileriye dönük)", _ic(t, notlar))
 
 
 def _top_panel(baslik: str, kayitlar: list, renk: str) -> QFrame:
-    inner = QWidget()
-    inner.setStyleSheet("background: transparent;")
-    g = QGridLayout(inner)
-    g.setContentsMargins(0, 0, 0, 0)
-    g.setHorizontalSpacing(12)
-    g.setVerticalSpacing(7)
-    g.setColumnStretch(0, 1)
+    t = _agac(3, [(1, 120), (2, 135)])
     if not kayitlar:
-        g.addWidget(_satir_label("Kayıt yok.", renk=FAINT), 0, 0)
-        return _card(baslik, inner)
-    r = 0
+        _tsatir(t, [_c("Kayıt yok.", renk=FAINT), _c(""), _c("")])
+        _fit_height(t)
+        return _card(baslik, _ic(t))
     for c in kayitlar:
         ad = (c.unvan or c.kod)[:38]
-        g.addWidget(_satir_label(ad, renk="#374151"), r, 0)
-        g.addWidget(_satir_label(tl(c.net), sag=True, bold=True, renk=renk), r, 1)
-        if c.gecikmis > 0.005:
-            g.addWidget(_satir_label(f"gecikmiş {tl(c.gecikmis)}", renk=NEG, boyut=10, sag=True),
-                        r, 2)
-        r += 1
-    return _card(baslik, inner)
+        gec = f"gecikmiş {tl(c.gecikmis)}" if c.gecikmis > 0.005 else ""
+        _tsatir(t, [_c(ad), _c(tl(c.net), renk=renk, kalin=True, sag=True),
+                    _c(gec, renk=NEG, sag=True)])
+    _fit_height(t)
+    return _card(baslik, _ic(t))
 
 
 def build_tahsilat_alacak_widget(ta: TahsilatAlacak, firma: str = "") -> QWidget:
