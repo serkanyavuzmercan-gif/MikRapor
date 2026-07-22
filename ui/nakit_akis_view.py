@@ -132,24 +132,18 @@ def _runway_banner(na: NakitAkis) -> QWidget | None:
         f"Aylık ortalama net nakit {hiz}  ·  mevcut nakit {tl(r.baslangic_nakit)}"
     )
 
-    # ── Güvenilirlik: net akış gerçeği yansıtmıyorsa iyimser yorumu BASTIR ──
+    # ── Güvenilirlik: net akış gerçeği yansıtmıyorsa yorum HİÇ gösterilmez ──
     # (a) Banka bakiye değişiminin büyük kısmı kategorize edilemediyse akış eksiktir.
     # (b) Nakit artışı operasyondan değil, dönemde çekilen krediden geliyorsa "güç" sahtedir.
+    # Güvenilmez bir yorum göstermek, programın tamamına güveni zedeler — o yüzden yok.
     brut = na.toplam_giris + na.toplam_cikis
     kredi_net = na.kredi_net_gosterim  # gerçek net borçlanma (brüt kullanım/ödeme değil)
     guvenilmez = abs(na.mutabakat_farki) > max(50000.0, 0.30 * brut)
     kredi_bagimli = na.net_akis > -0.005 and kredi_net > max(0.005, na.net_akis)
-
     if guvenilmez or kredi_bagimli:
-        renk, bg, kenar = "#b45309", "#fdf3e0", "#f0d090"
-        baslik = "Nakit yorumu güvenilmez — artış sağlıklı görünse de aldatıcı olabilir"
-        parcalar = []
-        if kredi_net > 0.005:
-            parcalar.append(f"dönemde net {tl(kredi_net)} borçlanma olmuş (kapanış nakit bundan şişkin)")
-        if guvenilmez:
-            parcalar.append(f"{tl(abs(na.mutabakat_farki))} hareket sınıflandırılamadı (net akış eksik)")
-        oneri = "→ " + "; ".join(parcalar).capitalize() + ". Borçlanmayı ve eksik gideri çıkarınca gerçek nakit üretimi çok daha düşük."
-    elif r.tukenme_ay is not None:
+        return None
+
+    if r.tukenme_ay is not None:
         renk, bg, kenar = NEG, "#fdecec", "#f3b4b4"
         gun = f"~{r.tukenme_gun} gün sonra " if r.tukenme_gun else ""
         baslik = f"Nakit {gun}({_ay_str(r.tukenme_ay)}) eksiye düşüyor"
@@ -238,17 +232,23 @@ def build_nakit_akis_widget(
     root.setSpacing(14)
 
     firma_str = f" &nbsp;·&nbsp; <b>{firma}</b>" if firma else ""
+    kaynak_metin = (
+        "Muhasebe yevmiyesinden — banka/kasa hesaplarına giren-çıkan her hareket, "
+        "karşı hesabına göre kategorize. İç transferler hariç."
+        if na.kaynak == "gl" else
+        "Banka ve kasadan fiilen geçen para — karşı tarafına göre kategorize "
+        "(tahsilat, satıcı ödemesi, kredi, vergi…). İç transferler hariç."
+    )
     head = QLabel(
         f"<span style='color:{MUTED}; font-size:11px;'>NAKİT AKIŞ &nbsp;·&nbsp; "
         f"{na.bas} → {na.bit} dönemi{firma_str}</span><br>"
-        f"<span style='color:{FAINT}; font-size:11px;'>Banka ve kasadan fiilen geçen para — "
-        f"karşı tarafına göre kategorize (tahsilat, satıcı ödemesi, kredi, vergi…). "
-        f"Banka↔banka/kasa iç transferleri hariç.</span>"
+        f"<span style='color:{FAINT}; font-size:11px;'>{kaynak_metin}</span>"
     )
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
     from ui.bilesenler import baslik_ile_gelecek_uyari
-    root.addWidget(baslik_ile_gelecek_uyari(head, na.bit, kaynak="canli"))
+    root.addWidget(baslik_ile_gelecek_uyari(
+        head, na.bit, kaynak="resmi" if na.kaynak == "gl" else "canli"))
 
     if na.hareket_sayisi == 0:
         uyari = QLabel(
