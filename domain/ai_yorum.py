@@ -30,6 +30,10 @@ verilecek. Bu veriye bakarak Türkçe bir yönetim yorumu yaz.
 KURALLAR
 - Sadece verilen veriye dayan. Veride olmayan bir rakamı ASLA uydurma.
 - Bir şeyi veriden çıkaramıyorsan "bu veriyle söylenemez" de; tahmin yürütme.
+- Verinin başındaki «DÖNEM DURUMU» bloğuna MUTLAKA uy. Dönem devam ediyorsa yılı \
+bitmiş gibi anlatma ve resmî kârı olduğu gibi doğru kabul etme.
+- Aynı büyüklük için iki farklı rakam varsa (ör. resmî gelir tablosu kârı ile fiili \
+brüt marj) hangisine neden güvendiğini bir cümleyle söyle.
 - Her iddiayı rakamla destekle. "Nakit sıkışık" değil, "kasada 722.411 TL var, aylık \
 ortalama gideriniz 356.949 TL — yaklaşık 2 aylık" gibi.
 - Terim kullanman gerekiyorsa hemen yanında bir cümleyle Türkçesini yaz.
@@ -66,13 +70,51 @@ class AiVeriPaketi:
     bit: str = ""
     firma: str = ""
     bolumler: list[tuple[str, str]] = field(default_factory=list)
+    # Dönem bağlamı — modelin "yılı kapattı" gibi yanlış çıkarım yapmasını engeller.
+    bugun: str = ""
+    tamamlandi: bool = False       # dönem sonu geçti mi (yıl bitti mi)
+    ay_sayisi: int = 0             # veride fiilen kaç ay var
+
+    @property
+    def donem_notu(self) -> str:
+        """
+        Modele dönemin durumunu AÇIKÇA söyler.
+
+        Bu blok olmadan model, 1 Ocak–31 Aralık aralığını görüp yılın bittiğini sanıyor
+        ("2026'yı 19,5M ile kapattı") ve yıl sonu kapanışı yapılmadığı için şişik görünen
+        resmî kârı gerçek sanıyordu — canlıda ikisi de görüldü.
+        """
+        satirlar = [f"BUGÜNÜN TARİHİ: {self.bugun or '(bilinmiyor)'}"]
+        if self.tamamlandi:
+            satirlar += [
+                f"DÖNEM DURUMU: {self.yil} yılı TAMAMLANDI. Veri tam yılı kapsıyor.",
+            ]
+        else:
+            satirlar += [
+                f"DÖNEM DURUMU: {self.yil} yılı HENÜZ BİTMEDİ — yıl devam ediyor.",
+                f"Aşağıdaki veri {self.bas} – {self.bit} arasını, yani yılın ilk "
+                f"{self.ay_sayisi or '?'} ayını kapsar. Kalan aylara ait hiçbir veri yoktur.",
+                f"Bu yüzden «yılı kapattı», «yıl sonunda», «{self.yil} yılını … ile "
+                f"tamamladı» gibi ifadeler KULLANMA. «Yılın ilk {self.ay_sayisi or '?'} "
+                "ayında» diye yaz.",
+                "Yıllık toplam çıkarımı yapma; yapacaksan «yıllıklandırılmış tahmin» diye "
+                "açıkça etiketle.",
+                "YIL SONU KAPANIŞI HENÜZ YAPILMADI: satışların maliyeti (62x), amortisman "
+                "ve karşılık kayıtları genelde dönem sonunda işlenir. Bu yüzden RESMÎ gelir "
+                "tablosundaki brüt/net kâr GERÇEKTEN OLDUĞUNDAN YÜKSEK görünür. Kârlılık "
+                "yorumunu «NAKİT VE KÂRLILIK» bölümündeki fiili brüt marja dayandır ve bu "
+                "farkı okuyucuya bir cümleyle açıkla.",
+            ]
+        return "\n".join(satirlar)
 
     @property
     def metin(self) -> str:
         """Bölümleri tek belgeye çevirir (modele giden gövde)."""
         parcalar = [
             f"FİRMA: {self.firma or '(belirtilmemiş)'}",
-            f"DÖNEM: {self.bas} – {self.bit}",
+            f"VERİ ARALIĞI: {self.bas} – {self.bit}",
+            "",
+            self.donem_notu,
             "",
         ]
         for baslik, icerik in self.bolumler:
@@ -127,13 +169,18 @@ def build_ai_veri_paketi(
     bit: str,
     firma: str = "",
     bolumler: list[tuple[str, str]] | None = None,
+    bugun: str = "",
+    tamamlandi: bool = False,
+    ay_sayisi: int = 0,
 ) -> AiVeriPaketi:
     """Rapor CSV'lerinden veri paketini kurar; boş/hatalı bölümler elenir."""
     temiz: list[tuple[str, str]] = []
     for baslik, icerik in bolumler or []:
         if icerik and icerik.strip():
             temiz.append((baslik, icerik))
-    return AiVeriPaketi(yil=yil, bas=bas, bit=bit, firma=firma, bolumler=temiz)
+    return AiVeriPaketi(
+        yil=yil, bas=bas, bit=bit, firma=firma, bolumler=temiz,
+        bugun=bugun, tamamlandi=tamamlandi, ay_sayisi=ay_sayisi)
 
 
 def ai_yorum_csv(y: AiYorum) -> str:

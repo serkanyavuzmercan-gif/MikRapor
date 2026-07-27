@@ -9,6 +9,7 @@ ekranda görülen rakamla modele giden rakam aynı kaynaktan gelsin diye.
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -232,8 +233,15 @@ class AiYorumTab(RaporTab):
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
         ai_cfg = self._ayarlar()
         # «Yıllık»: seçili dönemin takvim yılı (diğer sekmelerle tutarlı kalsın).
+        # ANCAK bitiş BUGÜNÜ AŞMAZ: yıl sürerken 31 Aralık'a kadar veri istemek, modele
+        # yılın bittiğini düşündürüyordu («2026'yı 19,5M ile kapattı» — canlıda görüldü).
         yil = int((bit or bas or "")[:4] or 0)
-        y_bas, y_bit = f"{yil}-01-01", f"{yil}-12-31"
+        bugun = date.today()
+        yil_sonu = date(yil, 12, 31)
+        y_son = min(yil_sonu, bugun)
+        y_bas, y_bit = f"{yil}-01-01", y_son.isoformat()
+        tamamlandi = yil_sonu <= bugun
+        ay_sayisi = 12 if tamamlandi else y_son.month
         gd_ayarlar = load_gercek_durum_ayarlar()
 
         def is_fn(bildir) -> dict[str, Any]:
@@ -294,7 +302,8 @@ class AiYorumTab(RaporTab):
                 bas=y_bas, bit=y_bit)))
 
             paket = build_ai_veri_paketi(
-                yil=yil, bas=y_bas, bit=y_bit, firma=firma, bolumler=bolumler)
+                yil=yil, bas=y_bas, bit=y_bit, firma=firma, bolumler=bolumler,
+                bugun=bugun.isoformat(), tamamlandi=tamamlandi, ay_sayisi=ay_sayisi)
             yorum = yorumla(ai_cfg, paket, bildir=bildir)
             return {"yorum": yorum, "firma": firma}
 
