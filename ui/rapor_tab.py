@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import (
 from infra.config import MikroConfig, load_config
 from infra.mikro_api import MikroAPIError, MikroClient
 from infra.mikro_fetch import fetch_firma_adi
-from ui.bilesenler import csv_kaydet, hos_geldin
+from ui.bilesenler import csv_kaydet, hos_geldin, rapor_slug
 from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
 from ui.empty_state import DEFAULT_HERO_ASSET, HERO_SOLUK_OPACITY, build_soluk_arka_plan
@@ -186,6 +186,11 @@ class RaporTab(QWidget):
 
     def _csv_dosya_adi(self) -> str:
         raise NotImplementedError
+
+    @property
+    def _slug(self) -> str:
+        """PDF/CSV dosya adı slug'ı — sekme adından (BASLIK) türetilir; sekme adı = dosya adı."""
+        return rapor_slug(self.BASLIK)
 
     def _csv_icerik(self) -> str | None:
         return None

@@ -98,7 +98,7 @@ class TrendTab(RaporTab):
             return
         path, _ = QFileDialog.getSaveFileName(
             self, "PDF Kaydet",
-            varsayilan_kayit_yolu(f"trend_oranlar_{self._tr.bas}_{self._tr.bit}.pdf"), "PDF (*.pdf)")
+            varsayilan_kayit_yolu(f"{self._slug}_{self._tr.bas}_{self._tr.bit}.pdf"), "PDF (*.pdf)")
         if not path:
             return
         try:
@@ -109,7 +109,7 @@ class TrendTab(RaporTab):
         self._durum(f"PDF kaydedildi: {Path(path).name}", "iyi")
 
     def _csv_dosya_adi(self) -> str:
-        return f"trend_oranlar_{self._tr.bas}_{self._tr.bit}.csv" if self._tr else "trend_oranlar.csv"
+        return f"{self._slug}_{self._tr.bas}_{self._tr.bit}.csv" if self._tr else f"{self._slug}.csv"
 
     def _csv_icerik(self) -> str | None:
         return trend_csv(self._tr) if self._tr else None

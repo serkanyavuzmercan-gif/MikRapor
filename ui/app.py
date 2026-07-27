@@ -46,17 +46,9 @@ from ui.worker import RaporWorker
 
 INSTANCE_KEY = "MercanSoftware.MikRapor.SingleInstance"
 
-# Sekme adları = PDF/başlık adları (tek isim, her yerde aynı).
+# Sekme etiketleri tab sınıflarının BASLIK özniteliğinden gelir (tek kaynak):
+# PDF/CSV dosya adları da aynı addan türetilir (bilesenler.rapor_slug).
 # QTabBar '&'i mnemonic sayar; literal '&' için '&&' yazılır.
-_SEKME_ETIKETLERI = (
-    "Bilanço",
-    "Gelir Tablosu",
-    "Nakit && Kârlılık",
-    "Alacak && Borç",
-    "Nakit Akış",
-    "Tahmin && Projeksiyon",
-    "Trend && Oranlar",
-)
 
 
 class HeaderTabBar(QTabBar):
@@ -267,10 +259,10 @@ class MikRaporWindow(QMainWindow):
             TahminTab,
             TrendTab,
         )
-        for cls, etiket in zip(sekme_siniflari, _SEKME_ETIKETLERI, strict=True):
+        for cls in sekme_siniflari:
             w = cls(self._donem)
             self._stack.addWidget(w)
-            self._tab_bar.addTab(etiket)
+            self._tab_bar.addTab(cls.BASLIK.replace("&", "&&"))
 
         self._tab_bar.currentChanged.connect(self._on_tab_degisti)
 

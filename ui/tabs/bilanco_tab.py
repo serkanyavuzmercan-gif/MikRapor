@@ -67,7 +67,7 @@ class BilancoTab(RaporTab):
             return
         path, _ = QFileDialog.getSaveFileName(
             self, "PDF Kaydet",
-            varsayilan_kayit_yolu(f"bilanco_{self._bilanco.asof}.pdf"), "PDF (*.pdf)")
+            varsayilan_kayit_yolu(f"{self._slug}_{self._bilanco.asof}.pdf"), "PDF (*.pdf)")
         if not path:
             return
         # Chrome’daki tarih aralığı (TEK_TARIH veri için bit’i kullanır; PDF’de ikisi de yazılır)
@@ -81,7 +81,7 @@ class BilancoTab(RaporTab):
         self._durum(f"PDF kaydedildi: {Path(path).name}", "iyi")
 
     def _csv_dosya_adi(self) -> str:
-        return f"bilanco_{self._bilanco.asof}.csv" if self._bilanco else "bilanco.csv"
+        return f"{self._slug}_{self._bilanco.asof}.csv" if self._bilanco else f"{self._slug}.csv"
 
     def _csv_icerik(self) -> str | None:
         return bilanco_csv(self._bilanco) if self._bilanco else None

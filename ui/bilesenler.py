@@ -4,6 +4,7 @@ Ortak küçük UI bileşenleri — durum renkleri, karşılama ekranı, CSV kayd
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from pathlib import Path
 
@@ -255,6 +256,20 @@ def masaustu_dizin() -> Path:
 def varsayilan_kayit_yolu(dosya_adi: str) -> str:
     """PDF/CSV kaydetme diyaloğu için varsayılan tam yol — masaüstü + dosya adı."""
     return str(masaustu_dizin() / dosya_adi)
+
+
+_TR_ASCII = str.maketrans({
+    "ç": "c", "ğ": "g", "ı": "i", "ö": "o", "ş": "s", "ü": "u", "â": "a",
+    "Ç": "C", "Ğ": "G", "İ": "I", "Ö": "O", "Ş": "S", "Ü": "U", "Â": "A",
+})
+
+
+def rapor_slug(baslik: str) -> str:
+    """Sekme/rapor adını dosya adı slug'ına çevirir: 'Alacak & Borç' -> 'alacak_borc'.
+
+    PDF/CSV dosya adları sekme adından (tab BASLIK) türetilir — tek isim, her yerde aynı.
+    """
+    return re.sub(r"[^a-z0-9]+", "_", baslik.translate(_TR_ASCII).lower()).strip("_")
 
 
 def csv_kaydet(parent: QWidget, status: QLabel | None, varsayilan_ad: str, icerik: str) -> str | None:
