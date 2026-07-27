@@ -122,12 +122,12 @@ def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "",
         ]))
         elems.append(tt)
 
-    tablo, sabit_var = mukayese_tablosu(kapanislar or [])
+    tablo = mukayese_tablosu(kapanislar or [])
     if tablo is not None:
         elems.append(Paragraph("YILLAR ARASI MUKAYESE", sty_sec()))
         elems.append(Spacer(1, 4))
         elems.append(tablo)
-        elems.append(mukayese_notu(sabit_var))
+        elems.append(mukayese_notu())
 
     dipnot_ekle(
         elems,

@@ -154,6 +154,7 @@ class YilKapanis:
     finansman_gideri: float = 0.0  # 66, işaretli (gider → negatif)
     satis_usd: float = 0.0         # Mikro'nun kendi kaydından, tarihî kurlarla
     kur_son: float = 0.0           # dönem sonu ima edilen TL/USD; 0 = güvenilir kur yok
+    kur_ort: float = 0.0           # dönem ortalama kuru — AKIŞ kalemleri için
 
     @property
     def dolu(self) -> bool:
@@ -172,8 +173,18 @@ class YilKapanis:
         return self.kur_son > 0 and abs(self.satis_usd) > 0.005
 
     def usd(self, tl: float) -> float:
-        """Dönem sonu bakiyesinin o günkü dolar karşılığı."""
+        """BAKİYE kaleminin dönem sonundaki dolar karşılığı."""
         return tl / self.kur_son if self.kur_son > 0 else 0.0
+
+    def usd_akis(self, tl: float) -> float:
+        """
+        AKIŞ kaleminin (satış, kâr, gider) dolar karşılığı — dönem ORTALAMA kuruyla.
+
+        Yıl boyunca oluşan bir tutarı yıl sonu kuruyla çevirmek yanlış olur: kur yıl
+        içinde yükseldiyse tüm ciroyu en pahalı günün kuruyla bölmüş oluruz.
+        """
+        kur = self.kur_ort or self.kur_son
+        return tl / kur if kur > 0 else 0.0
 
     # Oranlar None dönebilir: payda sıfırsa uydurma 0,00 yazmak yerine hücre BOŞ kalır.
     # "Stok devir hızı 0" ile "hesaplanamıyor" farklı şeylerdir.
@@ -316,17 +327,13 @@ class TabloSatir:
     degisim: str = ""
     iyi: bool | None = None       # değişim lehte mi (renk için); None = nötr
     eksi: list[bool] = field(default_factory=list)   # hangi hücre negatif (kırmızı)
-    sabit: bool = False           # tüm yıllarda aynı değer — veri şüphesi
+    sabit: bool = False           # kıyas değeri yok → tabloya alınmaz
 
 
 @dataclass
 class TabloBolum:
     baslik: str
     satirlar: list[TabloSatir] = field(default_factory=list)
-
-    @property
-    def sabit_satirlar(self) -> list[str]:
-        return [s.etiket for s in self.satirlar if s.sabit]
 
 
 def _kisa(v: float) -> str:
@@ -355,21 +362,28 @@ def _oran_metni(v: float | None, birim: str) -> str:
     return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-# (etiket, alan, birim, artis_iyi) — artis_iyi None ise değişim renklendirilmez.
-_TL_SATIR = (
-    ("Net Satışlar", "net_satis", True), ("Brüt Kâr", "brut_kar", True),
-    ("Faaliyet Kârı", "faaliyet_kari", True), ("Dönem Net Kârı", "net_kar", True),
-    ("Nakit", "nakit", True), ("Ticari Alacak", "alacak", False),
+# TL BÖLÜMÜ YOKTUR. Yüksek enflasyonda nominal TL kıyası hiçbir şey anlatmaz: her
+# kalem her yıl "artmış" görünür. Tablo yalnız DOLAR ve ORAN bölümlerinden oluşur —
+# ikisi de enflasyondan arınmıştır.
+
+# (etiket, alan, artis_iyi) — AKIŞ kalemleri: dönem ortalama kuruyla çevrilir.
+_USD_AKIS = (
+    ("Brüt Kâr", "brut_kar", True),
+    ("Faaliyet Kârı", "faaliyet_kari", True),
+    ("Dönem Net Kârı", "net_kar", True),
+)
+# BAKİYE kalemleri: dönem sonu kuruyla çevrilir.
+_USD_BAKIYE = (
+    ("Ticari Alacak", "alacak", False),
     ("  · vadesi geçmiş", "alacak_gecikmis", False),
     ("Ticari Borç (satıcı)", "borc", False),
-    ("Stok", "stok", False), ("Kısa Vadeli Borç", "kvyk", False),
-    ("Uzun Vadeli Borç", "uvyk", False), ("Banka Kredisi", "banka_kredisi", False),
-    ("Özkaynak", "ozkaynak", True), ("Aktif Toplam", "aktif_toplam", None),
-)
-_USD_SATIR = (
-    ("Ticari Alacak", "alacak", False), ("Ticari Borç (satıcı)", "borc", False),
-    ("Stok", "stok", False), ("Banka Kredisi", "banka_kredisi", False),
-    ("Nakit", "nakit", True), ("Özkaynak", "ozkaynak", True),
+    ("Stok", "stok", False),
+    ("Kısa Vadeli Borç", "kvyk", False),
+    ("Uzun Vadeli Borç", "uvyk", False),
+    ("Banka Kredisi", "banka_kredisi", False),
+    ("Nakit", "nakit", True),
+    ("Özkaynak", "ozkaynak", True),
+    ("Aktif Toplam", "aktif_toplam", None),
 )
 _ORAN_SATIR = (
     ("Brüt Marj", "brut_marj", "%", True), ("Faaliyet Marjı", "faaliyet_marj", "%", True),
@@ -389,19 +403,25 @@ _ORAN_SATIR = (
 
 # Bir kalemin yıllar arası yayılımı en büyük değerinin bu oranından azsa «kıpırdamıyor»
 # sayılır. Birebir eşitlik aramak yetmiyordu: kuruş farkıyla değişen ama fiilen donmuş
-# satırlar işaretsiz kalıp, ekranda aynı görünen satırların bir kısmı ⚠'li bir kısmı
-# ⚠'siz çıkıyordu (canlıda kullanıcı bu tutarsızlığı sordu).
+# satırlar kaçıyordu (canlıda kullanıcı bu tutarsızlığı sordu).
 _KIPIRTI_ESIGI = 0.005   # %0,5
 
 
-def _kipirdamiyor(degerler: list[float]) -> bool:
-    """Tüm yıllarda fiilen aynı mı — trend değil, veri şüphesi işareti."""
-    if len(degerler) < 2:
-        return False
-    buyuk = max(abs(d) for d in degerler)
+def _kiyas_degeri_yok(degerler: list[float | None]) -> bool:
+    """
+    Bu satır yıllar arası bir şey anlatıyor mu?
+
+    Anlatmıyorsa TABLOYA HİÇ GİRMEZ. Uyarı işaretiyle göstermek kalabalık yapıyordu:
+    «hepsi aynı» bir karşılaştırma değildir. Üç durum bilgisizdir — hiçbir yıl için
+    hesaplanamayan, tüm yıllarda sıfır olan ve fiilen hiç kıpırdamayan satırlar.
+    """
+    dolu = [d for d in degerler if d is not None]
+    if len(dolu) < 2 or len(dolu) != len(degerler):
+        return not dolu            # kısmen hesaplanabilen satır bilgi taşır
+    buyuk = max(abs(d) for d in dolu)
     if buyuk < 0.005:
-        return False           # hepsi sıfır: şüpheli değil, sadece boş
-    return (max(degerler) - min(degerler)) <= buyuk * _KIPIRTI_ESIGI
+        return True                # hepsi sıfır
+    return (max(dolu) - min(dolu)) <= buyuk * _KIPIRTI_ESIGI
 
 
 def _degisim(ilk: float | None, son: float | None, birim: str,
@@ -442,34 +462,44 @@ def yillar_tablosu(kapanislar: list[YilKapanis]) -> tuple[list[int], list[TabloB
     yillar = [k.yil for k in s]
 
     def satir(etiket: str, degerler: list[float | None], birim: str,
-              artis_iyi: bool | None) -> TabloSatir:
+              artis_iyi: bool | None,
+              kiyas: list[float | None] | None = None) -> TabloSatir:
+        """
+        `kiyas`: sabitlik hangi seriye bakılarak ölçülsün (verilmezse kendisi).
+
+        Dolar satırlarında bu ŞART: TL'de hiç kıpırdamayan bir kalem, kur değiştiği
+        için dolar bazında oynuyormuş gibi görünür. Aynı boş bilgi, kılık değiştirmiş
+        hâli — kullanıcı canlıda fark etti.
+        """
         metin, iyi = _degisim(degerler[0], degerler[-1], birim, artis_iyi)
-        dolu = [d for d in degerler if d is not None]
         return TabloSatir(
             etiket=etiket,
             hucreler=[_oran_metni(d, birim) for d in degerler],
             degerler=list(degerler),
             degisim=metin, iyi=iyi,
             eksi=[d is not None and d < 0 for d in degerler],
-            sabit=_kipirdamiyor(dolu) and len(dolu) == len(degerler),
+            sabit=_kiyas_degeri_yok(kiyas if kiyas is not None else degerler),
         )
 
-    def bolum(baslik: str, tarif, deger, birim: str) -> TabloBolum:
+    def bolum(baslik: str, tarif, deger, birim: str, *, tl_kiyas: bool = False) -> TabloBolum:
         return TabloBolum(baslik, [
-            satir(etiket, [deger(k, alan) for k in s], birim, artis_iyi)
+            satir(etiket, [deger(k, alan) for k in s], birim, artis_iyi,
+                  kiyas=[getattr(k, alan) for k in s] if tl_kiyas else None)
             for etiket, alan, artis_iyi in tarif
         ])
 
-    bolumler = [bolum("TUTARLAR (TL)", _TL_SATIR, lambda k, a: getattr(k, a), "TL")]
-
+    bolumler: list[TabloBolum] = []
     if all(k.doviz_var for k in s):
-        usd = TabloBolum("DOLAR BAZINDA")
+        usd = TabloBolum("DOLAR BAZINDA (USD)")
         usd.satirlar.append(
             satir("TL/USD kuru (dönem sonu)", [k.kur_son for k in s], "x", None))
         usd.satirlar.append(
             satir("Net Satışlar", [k.satis_usd for k in s], "USD", True))
-        usd.satirlar += bolum("", _USD_SATIR,
-                              lambda k, a: k.usd(getattr(k, a)), "USD").satirlar
+        # tl_kiyas: sabitlik TL tutarından ölçülür — kur oynamasını hareket sanmayalım.
+        usd.satirlar += bolum("", _USD_AKIS, lambda k, a: k.usd_akis(getattr(k, a)),
+                              "USD", tl_kiyas=True).satirlar
+        usd.satirlar += bolum("", _USD_BAKIYE, lambda k, a: k.usd(getattr(k, a)),
+                              "USD", tl_kiyas=True).satirlar
         bolumler.append(usd)
 
     bolumler.append(TabloBolum("ORANLAR VE DEVİR HIZLARI", [
@@ -477,47 +507,36 @@ def yillar_tablosu(kapanislar: list[YilKapanis]) -> tuple[list[int], list[TabloB
               [getattr(k, alan) for k in s], birim, artis_iyi)
         for etiket, alan, birim, artis_iyi in _ORAN_SATIR
     ]))
-    return yillar, bolumler
+
+    # KIPIRDAMAYAN SATIRLAR HİÇ GÖSTERİLMEZ. Tüm yıllarda aynı kalan kalem bir
+    # karşılaştırma değildir; uyarı işaretiyle göstermek tabloyu kalabalıklaştırıp
+    # okuyucuyu meşgul ediyordu. Boşalan bölüm de düşer.
+    ayikli = []
+    for b in bolumler:
+        kalan = [r for r in b.satirlar if not r.sabit]
+        if kalan:
+            ayikli.append(TabloBolum(b.baslik, kalan))
+    return yillar, ayikli
 
 
 def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
-    """Yılları yan yana koyan karşılaştırma tablosu — trendi tek bakışta görünür kılar."""
-    if len(kapanislar) < 2:
+    """
+    Modele giden yıllar arası tablo — ekrandakiyle AYNI satırlardan, ham rakamlarla.
+
+    Ekran kısaltılmış tutar gösterir (41,2 milyon); model tam sayı görür. Satır kümesi
+    tek kaynaktan (yillar_tablosu) geldiği için ikisi ayrışamaz.
+    """
+    yillar, bolumler = yillar_tablosu(kapanislar)
+    if not yillar:
         return ""
-    sirali = sorted(kapanislar, key=lambda k: k.yil)
-
-    def satir(etiket: str, deger) -> str:
-        """Bir kalem satırı; hesaplanamayan hücre BOŞ kalır (uydurma 0,00 yazılmaz)."""
-        return etiket + ";" + ";".join(
-            "" if (d := deger(k)) is None else csv_sayi(d) for k in sirali)
-
-    out = ["Kalem;" + ";".join(str(k.yil) for k in sirali)]
-    out += [satir(e, lambda k, a=a: getattr(k, a)) for e, a in _YIL_KALEMLERI]
-
-    out.append("")
-    out.append("--- ORANLAR VE DEVİR HIZLARI (yıllar arası asıl kıyas) ---")
-    out += [satir(e, lambda k, a=a: getattr(k, a)) for e, a in _ORAN_SATIRLARI]
-
-    # DÖVİZ BLOĞU: nominal TL kıyası yüksek enflasyonda hiçbir şey anlatmaz — 3 yılda
-    # "satış %53 arttı" demek, dolar bazında düşmüşken bile mümkündür. Kur Mikro'nun
-    # kendi kaydından ima edilir; güvenilir kur yoksa blok HİÇ yazılmaz.
-    if all(k.doviz_var for k in sirali):
-        out.append("")
-        out.append("--- DÖVİZ BAZLI (Mikro'nun kendi kur kaydından) ---")
-        out.append(satir("TL/USD kuru (dönem sonu)", lambda k: k.kur_son))
-        out.append(satir("Net Satışlar (USD)", lambda k: k.satis_usd))
-        out += [satir(f"{e} (USD)", lambda k, a=a: k.usd(getattr(k, a)))
-                for e, a in _DOVIZ_KALEMLERI]
-
-    # Kıyası bozan yıllar açıkça işaretlenir; model "satış düştü" diye yanlış okumasın.
-    notlar = []
-    for k in sirali:
-        if not k.tam:
-            notlar.append(f"NOT;{k.yil} yılı TAMAMLANMADI — rakamlar yılın tamamını "
-                          "kapsamaz, önceki yıllarla doğrudan kıyaslanamaz.")
-        if k.maliyet_eksik:
-            notlar.append(f"NOT;{k.yil} yılında satışların maliyeti (62) girilmemiş — "
-                          "brüt ve net kâr olduğundan yüksek görünüyor.")
+    out = ["Kalem;" + ";".join(str(y) for y in yillar)]
+    for bolum in bolumler:
+        if bolum.baslik:
+            out.append("")
+            out.append(f"--- {bolum.baslik} ---")
+        for satir in bolum.satirlar:
+            hucre = ["" if d is None else csv_sayi(d) for d in satir.degerler]
+            out.append(satir.etiket.replace(";", ",") + ";" + ";".join(hucre))
 
     out.append("")
     out.append("KAYNAK;Ticari Alacak / Ticari Borç / vadesi geçmiş = CARİ HESAP "
@@ -525,21 +544,16 @@ def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
                "GL bakiyesi (Nakit Akış sekmesiyle aynı). Stok, özkaynak, aktif ve "
                "kısa/uzun vadeli borç = MİZAN. Mizan ile cari çelişirse cari daha "
                "günceldir; hangisine dayandığını yaz.")
+    out.append("NOT;Yıllar boyunca hiç değişmeyen kalemler tablodan ÇIKARILMIŞTIR "
+               "(karşılaştırma değeri yok). Görmediğin bir kalem hakkında çıkarım yapma.")
 
-    # Bilanço hesapları işlenmiyorsa mizan her yıl aynı çıkar. Model bunu bilmezse
-    # "borç yıllardır sabit, disiplinli" gibi olumlu ama yanlış çıkarım yapar.
-    _, tablo_bolumleri = yillar_tablosu(sirali)
-    sabitler = [e for b in tablo_bolumleri for e in b.sabit_satirlar]
-    if sabitler:
-        notlar.append(
-            "NOT;Şu kalemler TÜM YILLARDA BİREBİR AYNI: " + ", ".join(sabitler[:12])
-            + ". Bu bir trend değil, veri şüphesidir — bilanço hesapları muhasebede "
-              "güncellenmemiş olabilir. Bu satırlardan ve onlardan türeyen oranlardan "
-              "(cari oran, ROA, borç/özkaynak vb.) çıkarım YAPMA; «bu veriyle "
-              "söylenemez» de ve sebebini yaz.")
-    if notlar:
-        out.append("")
-        out.extend(notlar)
+    for k in sorted(kapanislar, key=lambda x: x.yil):
+        if not k.tam:
+            out.append(f"NOT;{k.yil} yılı TAMAMLANMADI — rakamlar yılın tamamını "
+                       "kapsamaz, önceki yıllarla doğrudan kıyaslanamaz.")
+        if k.maliyet_eksik:
+            out.append(f"NOT;{k.yil} yılında satışların maliyeti (62) girilmemiş — "
+                       "brüt ve net kâr olduğundan yüksek görünüyor.")
     return "\r\n".join(out)
 
 

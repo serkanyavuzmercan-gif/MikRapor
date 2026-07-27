@@ -18,15 +18,11 @@ from ui.pdf_ortak import DARK, FONT, FONT_B, GRAY, LINE
 _POZ, _NEG = "#15803d", "#b91c1c"
 
 
-def mukayese_tablosu(kapanislar: list[YilKapanis]) -> tuple[Table | None, bool]:
-    """
-    Ekrandaki deterministik mukayesenin PDF karşılığı — aynı kaynaktan, aynı satırlar.
-
-    (tablo, sabit_satir_var_mi) döner; ikincisi altına uyarı notu koymak için.
-    """
+def mukayese_tablosu(kapanislar: list[YilKapanis]) -> Table | None:
+    """Ekrandaki deterministik mukayesenin PDF karşılığı — aynı kaynaktan, aynı satırlar."""
     yillar, bolumler = yillar_tablosu(kapanislar)
     if not yillar:
-        return None, False
+        return None
 
     data = [[""] + [str(yil) for yil in yillar] + [f"{yillar[0]}→{yillar[-1]}"]]
     cmds = [("FONTNAME", (0, 0), (-1, 0), FONT_B), ("TEXTCOLOR", (0, 0), (-1, 0), GRAY),
@@ -41,8 +37,7 @@ def mukayese_tablosu(kapanislar: list[YilKapanis]) -> tuple[Table | None, bool]:
                      ("TOPPADDING", (0, r), (-1, r), 5)]
             r += 1
         for satir in bolum.satirlar:
-            data.append([satir.etiket + ("  ⚠" if satir.sabit else ""),
-                         *satir.hucreler, satir.degisim])
+            data.append([satir.etiket, *satir.hucreler, satir.degisim])
             renk = GRAY if satir.iyi is None else (_POZ if satir.iyi else _NEG)
             cmds += [("TEXTCOLOR", (-1, r), (-1, r), renk),
                      ("FONTNAME", (-1, r), (-1, r), FONT_B)]
@@ -66,16 +61,14 @@ def mukayese_tablosu(kapanislar: list[YilKapanis]) -> tuple[Table | None, bool]:
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("TEXTCOLOR", (0, 1), (-2, -1), DARK),
     ] + cmds))
-    return t, any(satir.sabit for b in bolumler for satir in b.satirlar)
+    return t
 
 
-def mukayese_notu(sabit_var: bool) -> Paragraph:
-    """Tablo altı açıklama; sabit satır varsa uyarıyla başlar."""
+def mukayese_notu() -> Paragraph:
+    """Tablo altı açıklama."""
     stil = ParagraphStyle("mk_not", fontName=FONT, fontSize=7.4, textColor=GRAY, leading=10)
-    metin = ("Alacak, borç ve nakit ilgili sekmelerin canlı kaynağından gelir; stok, "
-             "özkaynak ve aktif mizandan. Tutarlar TL'dir; büyük rakamlar «bin / milyon "
-             "/ milyar» diye kısaltılmıştır. «—» o yıl için hesaplanamadı.")
-    if sabit_var:
-        metin = ("⚠ işaretli satırlar tüm yıllarda aynı: bu kalemler muhasebede "
-                 "güncellenmemiş olabilir; onlardan türeyen oranlara güvenmeyin. ") + metin
-    return Paragraph(metin, stil)
+    return Paragraph(
+        "Yıllar boyunca hiç değişmeyen kalemler gösterilmez (karşılaştırma değeri yok). "
+        "Alacak, borç ve nakit ilgili sekmelerin canlı kaynağından gelir; stok, özkaynak "
+        "ve aktif mizandan. Tutarlar TL'dir; büyük rakamlar «bin / milyon / milyar» diye "
+        "kısaltılmıştır. «—» o yıl için hesaplanamadı.", stil)
