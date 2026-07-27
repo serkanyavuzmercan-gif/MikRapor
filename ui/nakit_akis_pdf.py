@@ -8,7 +8,14 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
 from domain.mizan_bilanco import tl
-from domain.nakit_akis import CIKIS_ETIKET, CIKIS_SIRA, GIRIS_ETIKET, GIRIS_SIRA, NakitAkis
+from domain.nakit_akis import (
+    CIKIS_ETIKET,
+    CIKIS_SIRA,
+    GIRIS_ETIKET,
+    GIRIS_SIRA,
+    NakitAkis,
+    hesap_kirilim_etiketi,
+)
 from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, dipnot_ekle, letterhead_sade, pdf_ciz, pdf_doc, sty_kpi, sty_row, sty_sec
 
 
@@ -43,7 +50,7 @@ def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "") -> P
         giris.append([Paragraph(etiket, sty_row()), tl(v)])
         if k == "gider":
             for prefix, tutar in na.gider_giris_kirilim:
-                giris.append([Paragraph(f"&nbsp;&nbsp;◦ {prefix} hesabı", sty_row()), tl(tutar)])
+                giris.append([Paragraph(f"&nbsp;&nbsp;◦ {hesap_kirilim_etiketi(prefix)}", sty_row()), tl(tutar)])
     if giris:
         tg = Table(giris, colWidths=[120 * mm, 50 * mm])
         tg.setStyle(TableStyle([("ALIGN", (1, 0), (1, -1), "RIGHT"), ("FONTNAME", (0, 0), (-1, -1), FONT)]))
@@ -58,7 +65,7 @@ def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "") -> P
         cikis.append([Paragraph(etiket, sty_row()), tl(v)])
         if k == "gider":
             for prefix, tutar in na.gider_cikis_kirilim:
-                cikis.append([Paragraph(f"&nbsp;&nbsp;◦ {prefix} hesabı", sty_row()), tl(tutar)])
+                cikis.append([Paragraph(f"&nbsp;&nbsp;◦ {hesap_kirilim_etiketi(prefix)}", sty_row()), tl(tutar)])
     if cikis:
         tc = Table(cikis, colWidths=[120 * mm, 50 * mm])
         tc.setStyle(TableStyle([("ALIGN", (1, 0), (1, -1), "RIGHT"), ("FONTNAME", (0, 0), (-1, -1), FONT)]))

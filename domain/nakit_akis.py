@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from domain.ortak import csv_sayi
 from domain.ortak import to_float as _f
 from domain.ortak import to_int as _i
+from domain.mizan_bilanco import ana_hesap, hesap_adi
 
 # Karşı taraf kod öneki (3 hane) → kategori. 'KRD' = kredi hesabı sentinel'i (fetch'ten gelir).
 _PREFIX_KATEGORI = {
@@ -53,6 +54,15 @@ CIKIS_ETIKET = {
 def _kategori(prefix: str) -> str:
     p = str(prefix or "").strip()
     return _PREFIX_KATEGORI.get(p, _PREFIX_KATEGORI.get(p[:3], "diger"))
+
+
+def hesap_kirilim_etiketi(prefix: str) -> str:
+    """Karşı hesap kırılımını yönetici için kod + TDHP adıyla gösterir."""
+    kod = str(prefix or "").strip()
+    ana = ana_hesap(kod)
+    if ana and ana[:1].isdigit():
+        return f"{kod} — {hesap_adi(ana)}"
+    return f"{kod or '?'} hesabı"
 
 
 @dataclass

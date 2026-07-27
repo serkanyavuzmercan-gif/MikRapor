@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
 
 from domain.kredi import KrediOzet, kredi_takvimi_ay
 from domain.mizan_bilanco import tl
-from domain.nakit_akis import NakitAkis
+from domain.nakit_akis import NakitAkis, hesap_kirilim_etiketi
 from domain.runway import nakit_akisi_mutabik, runway_takvim_kur
 from domain.tahsilat_alacak import TahsilatAlacak
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _fit_height, _kpi_card
@@ -82,7 +82,7 @@ def _kategori_panel(
         t.setItemWidget(it, 1, _oran_bar(tutar / enb, renk))
         # Büyük/heterojen kalemlerin karşı hesap kırılımını satır altında görünür tut.
         for prefix, kt in (kirilimlar or {}).get(ad, []):
-            _tsatir(t, [_c(f"      ◦ {prefix or '?'} hesabı", renk=FAINT), _c(""),
+            _tsatir(t, [_c(f"      ◦ {hesap_kirilim_etiketi(prefix)}", renk=FAINT), _c(""),
                         _c(tl(kt), renk=FAINT, sag=True)])
     _tsatir(t, [_c("Toplam", kalin=True), _c(""), _c(tl(toplam), kalin=True, sag=True)])
     _fit_height(t)

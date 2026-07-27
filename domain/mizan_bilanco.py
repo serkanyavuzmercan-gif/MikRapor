@@ -61,6 +61,13 @@ HESAP_ADLARI: dict[str, str] = {
     "540": "Yasal Yedekler", "541": "Statü Yedekleri", "542": "Olağanüstü Yedekler",
     "548": "Diğer Kâr Yedekleri", "549": "Özel Fonlar", "570": "Geçmiş Yıllar Kârları",
     "580": "Geçmiş Yıllar Zararları (-)", "590": "Dönem Net Kârı", "591": "Dönem Net Zararı (-)",
+    # 6 — Gelir Tablosu
+    "600": "Yurtiçi Satışlar", "642": "Faiz Gelirleri", "679": "Diğer Olağandışı Gelir ve Kârlar",
+    "689": "Diğer Olağandışı Gider ve Zararlar",
+    # 7 — Maliyet ve Gider Hesapları
+    "730": "Genel Üretim Giderleri", "740": "Hizmet Üretim Maliyeti",
+    "750": "Araştırma ve Geliştirme Giderleri", "760": "Pazarlama, Satış ve Dağıtım Giderleri",
+    "770": "Genel Yönetim Giderleri", "780": "Finansman Giderleri",
 }
 
 # Bölüm başlıkları (ilk haneye göre)

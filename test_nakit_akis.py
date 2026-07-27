@@ -2,7 +2,7 @@
 
 import unittest
 
-from domain.nakit_akis import _kategori, build_nakit_akis, nakit_akis_csv
+from domain.nakit_akis import _kategori, build_nakit_akis, hesap_kirilim_etiketi, nakit_akis_csv
 
 
 def _h(ay, tip, prefix, tutar):
@@ -93,6 +93,10 @@ class TestNakitAkis(unittest.TestCase):
         kirilim = dict(na.gider_cikis_kirilim)
         self.assertAlmostEqual(kirilim["770.01"], 30000, places=2)
         self.assertAlmostEqual(kirilim["760.02"], 20000, places=2)
+
+    def test_hesap_kirilim_etiketi_tdph_adini_icerir(self):
+        self.assertEqual(hesap_kirilim_etiketi("780"), "780 — Finansman Giderleri")
+        self.assertEqual(hesap_kirilim_etiketi("770.01"), "770.01 — Genel Yönetim Giderleri")
 
     def test_aylik_trend(self):
         aylar = {a.ay: a for a in self.na.aylik}
