@@ -64,6 +64,8 @@ class HeaderTabBar(QTabBar):
         self.setUsesScrollButtons(False)
         self.setElideMode(Qt.TextElideMode.ElideNone)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self._font_px, self._dolgu = self._OLCEK_ADAYLARI[0]
+        self._uyarlaniyor = False
         self._tip = NavTip()
         self._tip_idx = -1
         self._pending_idx = -1
@@ -101,17 +103,57 @@ class HeaderTabBar(QTabBar):
         p.drawLine(x, r.top() + inset, x, r.bottom() - inset)
         p.end()
 
+    # Dar pencerede denenecek (font px, yatay dolgu px) adayları — genişten dara.
+    # İlk sığan seçilir; hiçbiri sığmazsa en dar olanla devam edilir (asla kırpılmaz).
+    _OLCEK_ADAYLARI = ((13, 12), (13, 9), (12, 9), (12, 7), (11, 7))
+    _MARJ = 4  # QSS 'margin: 0 2px' → sekme başına 4px
+
+    def _olcu_fontu(self, px: int) -> QFontMetrics:
+        f = QFont(self.font())
+        f.setPixelSize(px)
+        f.setWeight(QFont.Weight.ExtraBold)  # seçili sekme kalın; dar olana göre ölçme
+        return QFontMetrics(f)
+
+    def _sekme_genisligi(self, index: int, px: int, dolgu: int) -> int:
+        metin = self.tabText(index).replace("&&", "&")
+        return self._olcu_fontu(px).horizontalAdvance(metin) + 2 * dolgu + self._MARJ
+
+    def _uyarla(self) -> None:
+        """Mevcut genişliğe sığacak en okunaklı (font, dolgu) çiftini seç ve uygula."""
+        if self._uyarlaniyor or self.count() == 0:
+            return
+        mevcut = self.width()
+        secim = self._OLCEK_ADAYLARI[-1]
+        for px, dolgu in self._OLCEK_ADAYLARI:
+            toplam = sum(self._sekme_genisligi(i, px, dolgu) for i in range(self.count()))
+            if mevcut <= 0 or toplam <= mevcut:
+                secim = (px, dolgu)
+                break
+        if secim == (self._font_px, self._dolgu):
+            return
+        self._font_px, self._dolgu = secim
+        self._uyarlaniyor = True
+        try:
+            # Uygulama QSS'iyle birleşir; yalnız bu iki özelliği ezer (renk/kenar korunur).
+            self.setStyleSheet(
+                "QTabBar#headerTabBar::tab { padding: 9px %dpx; font-size: %dpx; }"
+                % (self._dolgu, self._font_px)
+            )
+            self.updateGeometry()
+        finally:
+            self._uyarlaniyor = False
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 — Qt API
+        super().resizeEvent(event)
+        self._uyarla()
+
     def tabSizeHint(self, index: int) -> QSize:  # noqa: N802 — Qt API
         # Genişlik etiket metninden hesaplanır (eşit-genişlik DEĞİL): eşitte "Bilanço"
         # boşa yer harcar, "Tahmin & Projeksiyon" gibi uzun etiket dar payına sığmayıp
-        # kırpılırdı. Stilli QTabBar tüm sekmelere aynı hint'i verdiği için elle ölçeriz;
-        # seçili sekme kalın (800) olduğundan ölçümü kalın fontla yapıp dolgu payı bırakırız.
+        # kırpılırdı. Stilli QTabBar tüm sekmelere aynı hint'i verdiği için elle ölçeriz.
         base = super().tabSizeHint(index)
-        f = QFont(self.font())
-        f.setWeight(QFont.Weight.ExtraBold)
-        metin = self.tabText(index).replace("&&", "&")
-        w = QFontMetrics(f).horizontalAdvance(metin) + 30  # 12px×2 dolgu + kenar payı
-        base.setWidth(max(base.width(), w))
+        base.setWidth(max(base.width(),
+                          self._sekme_genisligi(index, self._font_px, self._dolgu)))
         return base
 
     def event(self, event: QEvent) -> bool:  # noqa: N802 — Qt API
@@ -221,7 +263,7 @@ class MikRaporWindow(QMainWindow):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
-        # 1) Marka bar — logo | sekmeler | ayarlar / bağlantı
+        # 1) Marka bar — logo | ayarlar / bağlantı (sekmeler kendi satırında, altta)
         brand_bar = QFrame()
         brand_bar.setObjectName("brandBar")
         header = QHBoxLayout(brand_bar)
@@ -244,7 +286,10 @@ class MikRaporWindow(QMainWindow):
         titles.addWidget(baslik)
         header.addLayout(titles)
 
-        # 2) Sekmeler — tab bar header'da; içerik ayrı stack (QTabWidget layout savaşmasın)
+        # 2) Sekmeler — kendi tam-genişlik satırında; içerik ayrı stack
+        #    (QTabWidget layout savaşmasın). Marka barının içinde DEĞİL: 8 sekme
+        #    marka + ayarlar + firma rozetiyle aynı satıra sığmıyor (son iki sekme
+        #    tamamen kesiliyordu); kendi satırında pencerenin tam genişliğini alır.
         self._tab_bar = HeaderTabBar()
         self._tab_bar.setObjectName("headerTabBar")
 
@@ -277,7 +322,8 @@ class MikRaporWindow(QMainWindow):
         nav_lay.addStretch(1)
         nav_lay.addWidget(self._tab_bar)
         nav_lay.addStretch(1)
-        header.addWidget(nav, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+        header.addStretch(1)
 
         btn_ayar = QPushButton(" Ayarlar")
         btn_ayar.setObjectName("ghostBtn")
@@ -292,6 +338,7 @@ class MikRaporWindow(QMainWindow):
         header.addWidget(self._conn, alignment=Qt.AlignmentFlag.AlignVCenter)
         self._firma_tip = bagla_nav_tip(self._conn, eyebrow="FİRMA", parent=self)
         layout.addWidget(brand_bar)
+        layout.addWidget(nav)
         self._conn.setText("○  Ayarlanmadı")
         self._conn.setProperty("connected", False)
 

@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 
 from domain.ortak import to_float as _f
 
-
 # Varsayılan senaryo: firma kart ekstresini tam kapatır. Tahmin ekranında kullanıcı değiştirebilir.
 KART_BORCU_VARSAYILAN_ODEME_YUZDE = 100.0
 

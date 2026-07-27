@@ -11,7 +11,20 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
 from domain.mizan_bilanco import tl
 from domain.trend import TrendRapor
-from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, NAVY, dipnot_ekle, letterhead_sade, pdf_ciz, pdf_doc, sty_kpi, sty_row, sty_sec
+from ui.pdf_ortak import (
+    DARK,
+    FONT,
+    FONT_B,
+    LINE,
+    NAVY,
+    dipnot_ekle,
+    letterhead_sade,
+    pdf_ciz,
+    pdf_doc,
+    sty_kpi,
+    sty_row,
+    sty_sec,
+)
 
 
 def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "") -> Path:

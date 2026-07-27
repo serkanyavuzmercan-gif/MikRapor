@@ -21,9 +21,9 @@ from domain.tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak
 from infra.config import MikroConfig
 from infra.mikro_api import MikroAPIError, MikroClient
 from infra.mikro_fetch import (
+    fetch_acik_kalemler,
     fetch_cari_bakiye,
     fetch_cari_vade_gun,
-    fetch_acik_kalemler,
     fetch_kredi_gl,
     fetch_kredi_karti_borclari,
     fetch_kredi_odemeleri_gl,
@@ -39,7 +39,6 @@ from ui.nakit_akis_pdf import export_nakit_akis_pdf
 from ui.nakit_akis_view import build_nakit_akis_widget
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.worker import IsFonksiyonu
-
 
 _RUNWAY_REFERANS_GUN = 90
 
