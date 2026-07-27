@@ -265,6 +265,46 @@ class TestOpenAiUyumluYol(unittest.TestCase):
             sahte.assert_not_called()
 
 
+class TestDonemBaglami(unittest.TestCase):
+    """Yıl ortasında çalıştırılınca model yılı bitmiş sanmamalı (canlıda öyle sanmıştı)."""
+
+    def _yariyil(self):
+        return build_ai_veri_paketi(
+            yil=2026, bas="2026-01-01", bit="2026-07-27", bolumler=[("A", "veri")],
+            bugun="2026-07-27", tamamlandi=False, ay_sayisi=7)
+
+    def test_devam_eden_yil_acikca_soylenir(self) -> None:
+        n = self._yariyil().donem_notu
+        self.assertIn("HENÜZ BİTMEDİ", n)
+        self.assertIn("ilk 7 ayını", n)
+        self.assertIn("2026-07-27", n)          # bugünün tarihi modele verilir
+        self.assertIn("KULLANMA", n)            # «yılı kapattı» yasağı
+
+    def test_kapanis_uyarisi_verilir(self) -> None:
+        """Yıl sonu kapanışı yapılmadan resmî kâr şişik görünür — model uyarılmalı."""
+        n = self._yariyil().donem_notu
+        self.assertIn("KAPANIŞI HENÜZ YAPILMADI", n)
+        self.assertIn("62x", n)
+        self.assertIn("YÜKSEK", n)
+        self.assertIn("NAKİT VE KÂRLILIK", n)   # fiili marja yönlendirme
+
+    def test_biten_yilda_uyari_yok(self) -> None:
+        n = build_ai_veri_paketi(
+            yil=2025, bas="2025-01-01", bit="2025-12-31", bolumler=[("A", "veri")],
+            bugun="2026-07-27", tamamlandi=True, ay_sayisi=12).donem_notu
+        self.assertIn("TAMAMLANDI", n)
+        self.assertNotIn("HENÜZ BİTMEDİ", n)
+        self.assertNotIn("KAPANIŞI HENÜZ YAPILMADI", n)
+
+    def test_baglam_gonderilen_metne_girer(self) -> None:
+        m = self._yariyil().metin
+        self.assertIn("BUGÜNÜN TARİHİ", m)
+        self.assertIn("DÖNEM DURUMU", m)
+
+    def test_prompt_donem_durumuna_uymayi_emreder(self) -> None:
+        self.assertIn("DÖNEM DURUMU", SISTEM_PROMPT)
+
+
 class TestVeriPaketi(unittest.TestCase):
     def test_bos_bolumler_elenir(self) -> None:
         p = build_ai_veri_paketi(
