@@ -299,7 +299,8 @@ class TabloSatir:
     """Tablonun bir satırı — hücreler yıl sırasına göre, boş hücre 'hesaplanamadı'."""
 
     etiket: str
-    hucreler: list[str] = field(default_factory=list)
+    hucreler: list[str] = field(default_factory=list)   # ekrana yazılan kısa biçim
+    degerler: list[float | None] = field(default_factory=list)   # ham — CSV/Excel için
     degisim: str = ""
     iyi: bool | None = None       # değişim lehte mi (renk için); None = nötr
     eksi: list[bool] = field(default_factory=list)   # hangi hücre negatif (kırmızı)
@@ -318,18 +319,19 @@ class TabloBolum:
 
 def _kisa(v: float) -> str:
     """
-    Tabloya sığan tutar — birim AÇIK YAZILIR.
+    Tabloya sığan tutar — birim AÇIK YAZILIR, milyon altı TAM gösterilir.
 
-    Önce «41,2M / 650B» kısaltması kullanılıyordu; Türkçede B «milyar» diye okunuyor ve
-    650 bin ile 650 milyar karışıyordu (canlıda kullanıcı sordu). Artık kelime yazılır.
+    İki ders:
+    • «41,2M / 650B» kısaltması Türkçede yanlış okunuyordu (B → milyar). Kelime yazılır.
+    • «bin» kısaltması fazla yuvarlıyordu: 176.270 ile 176.100 ikisi de «176 bin» çıkıp
+      farklı yılları aynı gösteriyordu (canlıda kullanıcı fark etti). Artık milyonun
+      altı tam yazılır; yuvarlama yalnız gerçekten uzun sayılarda devreye girer.
     """
     m = abs(v)
     if m >= 1_000_000_000:
         return f"{v / 1_000_000_000:.1f} milyar".replace(".", ",")
     if m >= 1_000_000:
         return f"{v / 1_000_000:.1f} milyon".replace(".", ",")
-    if m >= 1_000:
-        return f"{v / 1_000:.0f} bin"
     return f"{v:,.0f}".replace(",", ".")
 
 
@@ -368,6 +370,23 @@ _ORAN_SATIR = (
     ("Banka Kredisi / Aktif", "kredi_aktif", "%", False),
     ("Finansman Gideri / Net Satış", "finansman_yuku", "%", False),
 )
+
+
+# Bir kalemin yıllar arası yayılımı en büyük değerinin bu oranından azsa «kıpırdamıyor»
+# sayılır. Birebir eşitlik aramak yetmiyordu: kuruş farkıyla değişen ama fiilen donmuş
+# satırlar işaretsiz kalıp, ekranda aynı görünen satırların bir kısmı ⚠'li bir kısmı
+# ⚠'siz çıkıyordu (canlıda kullanıcı bu tutarsızlığı sordu).
+_KIPIRTI_ESIGI = 0.005   # %0,5
+
+
+def _kipirdamiyor(degerler: list[float]) -> bool:
+    """Tüm yıllarda fiilen aynı mı — trend değil, veri şüphesi işareti."""
+    if len(degerler) < 2:
+        return False
+    buyuk = max(abs(d) for d in degerler)
+    if buyuk < 0.005:
+        return False           # hepsi sıfır: şüpheli değil, sadece boş
+    return (max(degerler) - min(degerler)) <= buyuk * _KIPIRTI_ESIGI
 
 
 def _degisim(ilk: float | None, son: float | None, birim: str,
@@ -414,12 +433,10 @@ def yillar_tablosu(kapanislar: list[YilKapanis]) -> tuple[list[int], list[TabloB
         return TabloSatir(
             etiket=etiket,
             hucreler=[_oran_metni(d, birim) for d in degerler],
+            degerler=list(degerler),
             degisim=metin, iyi=iyi,
             eksi=[d is not None and d < 0 for d in degerler],
-            # Bilanço hesapları işlenmiyorsa mizan her yıl aynı çıkar; sabit satır
-            # "trend yok" değil "veri şüpheli" demektir, kullanıcıya işaretlenir.
-            sabit=len(dolu) == len(degerler) and len(set(
-                round(d, 2) for d in dolu)) == 1 and any(abs(d) > 0.005 for d in dolu),
+            sabit=_kipirdamiyor(dolu) and len(dolu) == len(degerler),
         )
 
     def bolum(baslik: str, tarif, deger, birim: str) -> TabloBolum:
@@ -729,8 +746,11 @@ def ai_yorum_csv(y: AiYorum) -> str:
             if bolum.baslik:
                 out.append(f"MUKAYESE;{bolum.baslik}")
             for satir in bolum.satirlar:
+                # CSV'ye HAM rakam gider: ekrandaki «176 bin» yuvarlaması Excel'de
+                # hesap yapmayı imkânsız kılar ve yıllar arası farkı gizler.
+                hucre = ["" if d is None else csv_sayi(d) for d in satir.degerler]
                 out.append("MUKAYESE;" + ";".join(
-                    [satir.etiket.replace(";", ","), *satir.hucreler, satir.degisim]))
+                    [satir.etiket.replace(";", ","), *hucre, satir.degisim]))
         out.append("")
 
     for satir in y.metin.splitlines():

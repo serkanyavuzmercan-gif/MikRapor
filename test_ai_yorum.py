@@ -562,16 +562,18 @@ class TestMukayeseTablosu(unittest.TestCase):
         k[0].net_satis, k[2].net_satis = 650_000.0, 2_400_000_000.0
         _, bolumler = yillar_tablosu(k)
         satir = next(s for b in bolumler for s in b.satirlar if s.etiket == "Net Satışlar")
-        self.assertEqual(satir.hucreler[0], "650 bin")
+        self.assertEqual(satir.hucreler[0], "650.000")
         self.assertEqual(satir.hucreler[-1], "2,4 milyar")
         self.assertNotIn("M", "".join(satir.hucreler))
 
-    def test_milyar_esigi(self) -> None:
+    def test_milyon_alti_tam_yazilir(self) -> None:
+        """«176 bin» yuvarlaması farklı yılları aynı gösteriyordu — kullanıcı fark etti."""
         from domain.ai_yorum import _kisa
         self.assertEqual(_kisa(2_400_000_000.0), "2,4 milyar")
         self.assertEqual(_kisa(41_200_000.0), "41,2 milyon")
-        self.assertEqual(_kisa(650_000.0), "650 bin")
         self.assertEqual(_kisa(42.61), "43")
+        self.assertNotEqual(_kisa(176_270.38), _kisa(176_100.0))
+        self.assertEqual(_kisa(176_270.38), "176.270")
 
     def test_negatif_hucreler_isaretlenir(self) -> None:
         """Kırmızıya boyanacak hücreleri görünüm değil domain belirler."""
@@ -593,6 +595,28 @@ class TestMukayeseTablosu(unittest.TestCase):
         self.assertTrue(stok.sabit)
         satis = next(s for b in bolumler for s in b.satirlar if s.etiket == "Net Satışlar")
         self.assertFalse(satis.sabit)     # gerçekten değişen satır işaretlenmemeli
+
+    def test_kurus_farkiyla_kipirdayan_da_sabit_sayilir(self) -> None:
+        """
+        Birebir eşitlik aramak yetmiyordu.
+
+        Canlıda ekranda aynı görünen satırların bir kısmı ⚠'li bir kısmı ⚠'siz çıkıyordu:
+        kuruş farkıyla değişen ama fiilen donmuş kalemler işaretsiz kalıyordu.
+        """
+        k = self._yillar()
+        for y, deger in zip(k, (176_100.0, 176_270.38, 176_290.0), strict=True):
+            y.aktif_toplam = deger
+        _, bolumler = yillar_tablosu(k)
+        aktif = next(s for b in bolumler for s in b.satirlar if s.etiket == "Aktif Toplam")
+        self.assertTrue(aktif.sabit)      # %0,1 oynama = fiilen sabit
+
+    def test_gercekten_hareket_eden_satir_sabit_degil(self) -> None:
+        k = self._yillar()
+        for y, deger in zip(k, (176_100.0, 176_270.38, 181_900.0), strict=True):
+            y.aktif_toplam = deger
+        _, bolumler = yillar_tablosu(k)
+        aktif = next(s for b in bolumler for s in b.satirlar if s.etiket == "Aktif Toplam")
+        self.assertFalse(aktif.sabit)     # %3 oynama = gerçek hareket
 
     def test_sifir_satiri_sabit_sayilmaz(self) -> None:
         """Hepsi sıfır olan kalem «şüpheli» değil, sadece boş."""
@@ -618,7 +642,8 @@ class TestMukayeseTablosu(unittest.TestCase):
         csv = ai_yorum_csv(AiYorum(yil=2025, bas="2025-01-01", bit="2025-12-31",
                                    kapsam_bas="2021-01-01", kapanislar=self._yillar()))
         self.assertIn("MUKAYESE;Kalem;2021;2023;2025;2021→2025", csv)
-        self.assertIn("MUKAYESE;Net Satışlar;20,0 milyon;31,0 milyon;41,2 milyon;%+106", csv)
+        # CSV'ye HAM rakam gider: Excel'de hesap yapılabilsin, yuvarlama fark gizlemesin.
+        self.assertIn("MUKAYESE;Net Satışlar;20000000,00;31000000,00;41200000,00;%+106", csv)
 
     def test_kapanissiz_yorumda_csv_bozulmaz(self) -> None:
         csv = ai_yorum_csv(AiYorum(yil=2025, bas="2025-01-01", bit="2025-12-31"))
