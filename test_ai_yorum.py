@@ -17,6 +17,7 @@ from domain.ai_yorum import (
     build_ai_veri_paketi,
     yil_araligi,
     yillar_arasi_csv,
+    yillar_tablosu,
 )
 from infra.ai_client import MAX_GIRDI_KARAKTER, AiHata, yorumla
 from infra.ai_config import AiConfig
@@ -478,6 +479,96 @@ class TestOranTablosu(unittest.TestCase):
         self.assertIn("ORANLAR VE DEVİR HIZLARI", SISTEM_PROMPT)
         for anahtar in ("STOK", "KREDİ BORÇLULUĞU", "KÂRLILIK"):
             self.assertIn(anahtar, SISTEM_PROMPT)
+
+
+class TestMukayeseTablosu(unittest.TestCase):
+    """Yıllar arası mukayese DETERMİNİSTİK olmalı — modele bırakılırsa satır seçiyor."""
+
+    @staticmethod
+    def _yillar() -> list[YilKapanis]:
+        def mk(yil, satis, usd, kur):
+            return YilKapanis(
+                yil=yil, net_satis=satis, brut_kar=satis * 0.12, net_kar=satis * 0.02,
+                smm=-satis * 0.88, stok=140_000.0, alacak=satis * 0.28, donen=satis * 0.38,
+                kvyk=satis * 0.4, uvyk=satis * 0.05, ozkaynak=satis * 0.15,
+                aktif_toplam=satis * 0.8, banka_kredisi=satis * 0.06,
+                finansman_gideri=-satis * 0.02, satis_usd=usd, kur_son=kur)
+        return [mk(2021, 20_000_000.0, 1_500_430.0, 13.3),
+                mk(2023, 31_000_000.0, 1_184_243.0, 27.0),
+                mk(2025, 41_200_000.0, 1_050_163.0, 42.59)]
+
+    def _bul(self, baslik: str, etiket: str):
+        _, bolumler = yillar_tablosu(self._yillar())
+        bolum = next(b for b in bolumler if b.baslik == baslik)
+        return next(s for s in bolum.satirlar if s.etiket == etiket)
+
+    def test_tum_yillar_sutun_olur(self) -> None:
+        yillar, bolumler = yillar_tablosu(self._yillar())
+        self.assertEqual(yillar, [2021, 2023, 2025])
+        for bolum in bolumler:
+            for satir in bolum.satirlar:
+                self.assertEqual(len(satir.hucreler), 3, satir.etiket)
+
+    def test_uc_bolum_de_kurulur(self) -> None:
+        _, bolumler = yillar_tablosu(self._yillar())
+        self.assertEqual([b.baslik for b in bolumler], [
+            "TUTARLAR (TL)",
+            "DOLAR BAZINDA (Mikro'nun kendi kur kaydından)",
+            "ORANLAR VE DEVİR HIZLARI"])
+
+    def test_dolar_bazinda_satis_dususu_gorunur(self) -> None:
+        """Kullanıcının asıl istediği: TL'de büyürken dolarda küçülme."""
+        tl = self._bul("TUTARLAR (TL)", "Net Satışlar")
+        usd = self._bul("DOLAR BAZINDA (Mikro'nun kendi kur kaydından)", "Net Satışlar")
+        self.assertEqual(tl.hucreler, ["20,0M", "31,0M", "41,2M"])
+        self.assertEqual(tl.degisim, "%+106")
+        self.assertTrue(tl.iyi)
+        self.assertEqual(usd.degisim, "%-30")
+        self.assertFalse(usd.iyi)          # dolarda küçülme kötü, kırmızı
+
+    def test_tutar_yuzde_oran_puan_degisir(self) -> None:
+        """Tutarda yüzde, oranda puan — «cari oran %-33 düştü» yanıltıcı olurdu."""
+        self.assertIn("puan", self._bul("ORANLAR VE DEVİR HIZLARI", "Brüt Marj (%)").degisim)
+        self.assertNotIn("puan", self._bul("TUTARLAR (TL)", "Stok").degisim)
+        self.assertNotIn("%", self._bul("ORANLAR VE DEVİR HIZLARI", "Cari Oran").degisim)
+
+    def test_borc_artisi_kotu_alacak_azalisi_iyi(self) -> None:
+        """Yön anlamı kaleme göre değişir: satış artışı iyi, borç artışı kötü."""
+        self.assertFalse(self._bul("TUTARLAR (TL)", "Kısa Vadeli Borç").iyi)
+        self.assertFalse(self._bul("TUTARLAR (TL)", "Ticari Alacak").iyi)
+        self.assertTrue(self._bul("TUTARLAR (TL)", "Özkaynak").iyi)
+
+    def test_hesaplanamayan_hucre_tire_olur(self) -> None:
+        k = self._yillar()
+        k[2].maliyet_eksik = True
+        k[2].smm = 0.0
+        _, bolumler = yillar_tablosu(k)
+        satir = next(s for b in bolumler for s in b.satirlar
+                     if s.etiket == "Stok Devir Hızı (kez/yıl)")
+        self.assertEqual(satir.hucreler[-1], "—")
+        self.assertEqual(satir.degisim, "—")    # uç hesaplanamıyorsa değişim de yok
+
+    def test_kur_yoksa_dolar_bolumu_hic_gelmez(self) -> None:
+        k = self._yillar()
+        k[1].kur_son = 0.0
+        _, bolumler = yillar_tablosu(k)
+        self.assertNotIn("DOLAR BAZINDA (Mikro'nun kendi kur kaydından)",
+                         [b.baslik for b in bolumler])
+        self.assertIn("TUTARLAR (TL)", [b.baslik for b in bolumler])
+
+    def test_tek_yilda_tablo_yok(self) -> None:
+        self.assertEqual(yillar_tablosu(self._yillar()[:1]), ([], []))
+
+    def test_csv_mukayeseyi_icerir(self) -> None:
+        """Excel'de kendi grafiğini çizebilsin diye CSV'ye de girer."""
+        csv = ai_yorum_csv(AiYorum(yil=2025, bas="2025-01-01", bit="2025-12-31",
+                                   kapsam_bas="2021-01-01", kapanislar=self._yillar()))
+        self.assertIn("MUKAYESE;Kalem;2021;2023;2025;2021→2025", csv)
+        self.assertIn("MUKAYESE;Net Satışlar;20,0M;31,0M;41,2M;%+106", csv)
+
+    def test_kapanissiz_yorumda_csv_bozulmaz(self) -> None:
+        csv = ai_yorum_csv(AiYorum(yil=2025, bas="2025-01-01", bit="2025-12-31"))
+        self.assertNotIn("MUKAYESE", csv)
 
 
 class TestKararBolumu(unittest.TestCase):

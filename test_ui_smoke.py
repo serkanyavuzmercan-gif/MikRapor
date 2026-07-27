@@ -14,7 +14,7 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
-    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtWidgets import QApplication, QTreeWidget
     _PYQT = True
 except ImportError:
     _PYQT = False
@@ -218,6 +218,44 @@ class TestUiSmoke(unittest.TestCase):
         from ui.mikro_settings_dialog import MikroAyarlarDialog
         MikroAyarlarDialog()
         GercekDurumAyarlarDialog()
+
+    def test_mukayese_karti_tum_satirlari_cizer(self) -> None:
+        """Mukayese modele bırakılmaz — kart her koşuda tam çıkmalı."""
+        from domain.ai_yorum import AiYorum, YilKapanis, yillar_tablosu
+        from ui.ai_yorum_view import _mukayese_karti, build_ai_yorum_widget
+
+        def mk(yil, satis, usd, kur):
+            return YilKapanis(
+                yil=yil, net_satis=satis, brut_kar=satis * 0.12, net_kar=satis * 0.02,
+                smm=-satis * 0.88, stok=140_000.0, alacak=satis * 0.28, donen=satis * 0.38,
+                kvyk=satis * 0.4, ozkaynak=satis * 0.15, aktif_toplam=satis * 0.8,
+                banka_kredisi=satis * 0.06, satis_usd=usd, kur_son=kur)
+
+        ks = [mk(2021, 20e6, 1_500_430.0, 13.3), mk(2023, 31e6, 1_184_243.0, 27.0),
+              mk(2025, 41.2e6, 1_050_163.0, 42.59)]
+        y = AiYorum(metin="## Özet\nDeneme.", model="m", yil=2025, bas="2025-01-01",
+                    bit="2025-12-31", kapsam_bas="2021-01-01", kapanislar=ks)
+
+        kart = _mukayese_karti(y)
+        self.assertIsNotNone(kart)
+        agac = kart.findChild(QTreeWidget)
+        _, bolumler = yillar_tablosu(ks)
+        beklenen = 1 + sum(1 + len(b.satirlar) if b.baslik else len(b.satirlar)
+                           for b in bolumler)
+        self.assertEqual(agac.topLevelItemCount(), beklenen)
+        self.assertEqual(agac.columnCount(), 1 + 3 + 1)   # kalem + 3 yıl + değişim
+        self.assertEqual(agac.topLevelItem(0).text(4), "2021→2025")
+
+        w = build_ai_yorum_widget(y)
+        self.assertIsNotNone(w.findChild(QTreeWidget))    # yorumdan önce tablo var
+        w.close()
+
+    def test_mukayese_karti_tek_yilda_cizilmez(self) -> None:
+        from domain.ai_yorum import AiYorum, YilKapanis
+        from ui.ai_yorum_view import _mukayese_karti
+        y = AiYorum(metin="## Özet\nX", yil=2025, kapanislar=[YilKapanis(yil=2025)])
+        self.assertIsNone(_mukayese_karti(y))
+        self.assertIsNone(_mukayese_karti(AiYorum(metin="## Özet\nX", yil=2025)))
 
     def test_yukleniyor_sure_ipucu_ve_sayac(self) -> None:
         """Yapay zekâ dakikalar sürüyor — «birkaç saniye» demek takıldı hissi veriyordu."""

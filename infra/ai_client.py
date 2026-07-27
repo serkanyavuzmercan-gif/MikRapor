@@ -100,7 +100,7 @@ def yorumla(
         metin=metin.strip(), model=cfg.model, yil=paket.yil, bas=paket.bas, bit=paket.bit,
         firma=paket.firma, girdi_token=girdi, cikti_token=cikti,
         veri_ozeti=paket.ozet_satiri(), saglayici=cfg.saglayici_bilgi.ad,
-        kapsam_bas=paket.aralik_bas,
+        kapsam_bas=paket.aralik_bas, kapanislar=list(paket.kapanislar),
     )
 
 
