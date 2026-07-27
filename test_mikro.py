@@ -42,6 +42,76 @@ class TestPasswordHash(unittest.TestCase):
         self.assertEqual(auth["CalismaYili"], 2026)
         self.assertEqual(auth["Sifre"], password_hash("S"))
 
+    def test_yerel_tarih_kullanilir(self) -> None:
+        """
+        UTC kullanılıyordu; Türkiye UTC+3 olduğu için yerel gece yarısından sonra UTC
+        hâlâ önceki günü gösteriyor ve Mikro «Şifre Hatalı!» diyordu. Program her gece
+        00:00–03:00 arası çalışmaz oluyordu (canlıda birebir görüldü).
+        """
+        from datetime import datetime
+        yerel = datetime.now().strftime("%Y-%m-%d")  # noqa: DTZ005
+        self.assertEqual(password_hash("S"), password_hash("S", today=yerel))
+
+    def test_gun_adaylari_yerelle_baslar(self) -> None:
+        from datetime import datetime
+
+        from infra.mikro_api import gun_adaylari
+        adaylar = gun_adaylari()
+        self.assertEqual(adaylar[0], datetime.now().strftime("%Y-%m-%d"))  # noqa: DTZ005
+        self.assertLessEqual(len(adaylar), 2)
+        self.assertEqual(len(adaylar), len(set(adaylar)))   # aynı günü iki kez deneme
+
+
+class TestSifreGunuYedegi(unittest.TestCase):
+    """Yerel tarih reddedilirse UTC ile bir kez daha denenmeli (sunucu saati farklı olabilir)."""
+
+    @staticmethod
+    def _cfg() -> MikroConfig:
+        return MikroConfig(base_url="https://x", api_key="K", firma_kodu="26",
+                           calisma_yili=2026, kullanici_kodu="U", sifre_gun="S")
+
+    def _client(self, transport):
+        from infra.mikro_api import MikroClient
+        return MikroClient(self._cfg(), transport=transport)
+
+    def test_sifre_hatasinda_ikinci_gun_denenir(self) -> None:
+        from unittest.mock import patch
+
+        from infra.mikro_api import build_auth
+        gonderilen: list[str] = []
+
+        def transport(url, body, timeout):
+            gonderilen.append(json.loads(body)["Mikro"]["Sifre"])
+            if len(gonderilen) == 1:
+                return 200, json.dumps({"result": [
+                    {"IsError": True, "ErrorMessage": "Şifre Hatalı!"}]})
+            return 200, json.dumps({"result": [{"IsError": False, "Data": "tamam"}]})
+
+        with patch("infra.mikro_api.gun_adaylari", return_value=["2026-07-28", "2026-07-27"]):
+            sonuc = self._client(transport).request("X", {"Mikro": build_auth(self._cfg())})
+
+        self.assertEqual(sonuc, "tamam")
+        self.assertEqual(len(gonderilen), 2)
+        self.assertEqual(gonderilen[0], password_hash("S", today="2026-07-28"))
+        self.assertEqual(gonderilen[1], password_hash("S", today="2026-07-27"))
+
+    def test_sifre_disi_hatada_tekrar_denenmez(self) -> None:
+        """Yalnız parola reddinde gün değiştirilir; başka hatada boşuna istek atılmaz."""
+        from unittest.mock import patch
+
+        from infra.mikro_api import MikroAPIError, build_auth
+        cagri = []
+
+        def transport(url, body, timeout):
+            cagri.append(1)
+            return 200, json.dumps({"result": [
+                {"IsError": True, "ErrorMessage": "Tablo bulunamadı"}]})
+
+        with patch("infra.mikro_api.gun_adaylari", return_value=["2026-07-28", "2026-07-27"]):
+            with self.assertRaises(MikroAPIError):
+                self._client(transport).request("X", {"Mikro": build_auth(self._cfg())})
+        self.assertEqual(len(cagri), 1)
+
 
 class TestConfigRoundtrip(unittest.TestCase):
     def setUp(self) -> None:
