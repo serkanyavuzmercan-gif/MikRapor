@@ -7,6 +7,7 @@ from typing import Any
 
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
+from domain.ai_yorum import AZAMI_YIL, YilKapanis, yil_araligi, yillar_arasi_csv
 from domain.gercek_durum import build_gercek_durum
 from domain.mizan_bilanco import build_bilanco, tl
 from domain.tahmin import ogrenme_penceresi_bas
@@ -19,6 +20,7 @@ from infra.mikro_fetch import (
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
+from infra.mukayese_fetch import yillari_cek
 from ui.bilesenler import varsayilan_kayit_yolu
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.trend_pdf import export_trend_pdf
@@ -33,16 +35,19 @@ class TrendTab(RaporTab):
     BASLIK = "Trend & Oranlar"
     ACIKLAMA = (
         "Dönem içi aylık satış, alış, brüt kâr ve nakit trendini gösterir;<br>"
-        "bilanço tarihindeki klasik finansal oranları (cari, asit-test, borç/özkaynak)<br>"
-        "yan yana koyar."
+        "klasik finansal oranları (cari, asit-test, borç/özkaynak) yan yana koyar<br>"
+        "ve son 5 yılın TL/dolar bazlı mukayesesini çıkarır."
     )
     GETIR_ETIKET = "Trend / Oranları Getir"
     BASLARKEN = "Stok, nakit ve mizan çekiliyor…"
+    SURE_IPUCU = ("Son 5 yılın mukayesesi de çekiliyor — biraz sürebilir · "
+                  "«İptal» ile durdurabilirsin")
     PDF_DESTEK = True
     HERO_ASSET = "empty-trendler.png"
     HERO_FIT = "contain"
 
     _tr: TrendRapor | None = None
+    _kapanislar: list[YilKapanis] = []
 
     def _ilk_mesaj(self) -> str:
         return "Hazır"
@@ -84,7 +89,19 @@ class TrendTab(RaporTab):
             bilanco = build_bilanco(mizan_rows, asof=bit)
             tr = build_trend(aylik=gd.trend, aylik_gecmis=gecmis,
                              bilanco=bilanco, bas=bas, bit=bit)
-            return {"tr": tr, "firma": firma_getir(cfg, client)}
+
+            # Yıllar arası mukayese: seçim dar olsa da geriye doğru AZAMI_YIL'e
+            # tamamlanır — kıyas her koşuda istenen bir şey (bkz. AiYorumTab).
+            yillar, _ = yil_araligi(bas, bit)
+            odak = yillar[-1] if yillar else int((bit or bas or "")[:4] or 0)
+            if len(yillar) < AZAMI_YIL:
+                yillar = list(range(odak - AZAMI_YIL + 1, odak + 1))
+            kapanislar = yillari_cek(
+                client, yillar, odak_bit=bit,
+                odak_tam=bit >= f"{odak}-12-31", bildir=bildir)
+
+            return {"tr": tr, "firma": firma_getir(cfg, client),
+                    "kapanislar": kapanislar}
 
         return is_fn
 
@@ -92,7 +109,9 @@ class TrendTab(RaporTab):
         tr: TrendRapor = sonuc["tr"]
         self._tr = tr
         self._firma = sonuc["firma"]
-        self._icerik_koy(build_trend_widget(tr, firma=self._firma))
+        self._kapanislar = sonuc.get("kapanislar") or []
+        self._icerik_koy(build_trend_widget(
+            tr, firma=self._firma, kapanislar=self._kapanislar))
         cari = next((o for o in tr.oranlar if o.kod == "cari"), None)
         parts = [
             f"{tr.ay_sayisi} ay",
@@ -118,7 +137,8 @@ class TrendTab(RaporTab):
         if not path:
             return
         try:
-            export_trend_pdf(self._tr, path, firma=self._firma)
+            export_trend_pdf(self._tr, path, firma=self._firma,
+                             kapanislar=self._kapanislar)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "PDF Hatası", str(exc))
             return
@@ -128,4 +148,8 @@ class TrendTab(RaporTab):
         return f"{self._slug}_{self._tr.bas}_{self._tr.bit}.csv" if self._tr else f"{self._slug}.csv"
 
     def _csv_icerik(self) -> str | None:
-        return trend_csv(self._tr) if self._tr else None
+        if not self._tr:
+            return None
+        csv = trend_csv(self._tr)
+        mukayese = yillar_arasi_csv(self._kapanislar)
+        return f"{csv}\r\n\r\nYILLAR ARASI MUKAYESE\r\n{mukayese}" if mukayese else csv
