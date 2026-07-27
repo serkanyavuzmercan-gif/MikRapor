@@ -288,8 +288,14 @@ class TestUiSmoke(unittest.TestCase):
             self.assertIn("YILLAR ARASI MUKAYESE", metinler)
         finally:
             w.close()
-        # Mukayese olmadan da çizilebilmeli (tek yıl / veri yok)
-        self.assertIsNotNone(build_trend_widget(tr, firma="Test A.Ş."))
+        # Tek yıl / veri yok: tablo yerine nasıl açılacağını söyleyen ipucu çıkmalı.
+        w2 = build_trend_widget(tr, firma="Test A.Ş.")
+        try:
+            metinler = " ".join(lbl.text() for lbl in w2.findChildren(QLabel))
+            self.assertNotIn("YILLAR ARASI MUKAYESE", metinler)
+            self.assertIn("birden çok yıla yayın", metinler)
+        finally:
+            w2.close()
 
     def test_yukleniyor_sure_ipucu_ve_sayac(self) -> None:
         """Yapay zekâ dakikalar sürüyor — «birkaç saniye» demek takıldı hissi veriyordu."""

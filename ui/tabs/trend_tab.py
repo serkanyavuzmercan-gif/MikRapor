@@ -7,7 +7,7 @@ from typing import Any
 
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
-from domain.ai_yorum import AZAMI_YIL, YilKapanis, yil_araligi, yillar_arasi_csv
+from domain.ai_yorum import YilKapanis, yil_araligi, yillar_arasi_csv
 from domain.gercek_durum import build_gercek_durum
 from domain.mizan_bilanco import build_bilanco, tl
 from domain.tahmin import ogrenme_penceresi_bas
@@ -35,13 +35,12 @@ class TrendTab(RaporTab):
     BASLIK = "Trend & Oranlar"
     ACIKLAMA = (
         "Dönem içi aylık satış, alış, brüt kâr ve nakit trendini gösterir;<br>"
-        "klasik finansal oranları (cari, asit-test, borç/özkaynak) yan yana koyar<br>"
-        "ve son 5 yılın TL/dolar bazlı mukayesesini çıkarır."
+        "klasik finansal oranları (cari, asit-test, borç/özkaynak) yan yana koyar.<br>"
+        "<span style='color:#9aa0a8;'>Tarih aralığını birden çok yıla yayarsanız "
+        "TL ve dolar bazlı yıl mukayesesi de eklenir.</span>"
     )
     GETIR_ETIKET = "Trend / Oranları Getir"
     BASLARKEN = "Stok, nakit ve mizan çekiliyor…"
-    SURE_IPUCU = ("Son 5 yılın mukayesesi de çekiliyor — biraz sürebilir · "
-                  "«İptal» ile durdurabilirsin")
     PDF_DESTEK = True
     HERO_ASSET = "empty-trendler.png"
     HERO_FIT = "contain"
@@ -90,15 +89,17 @@ class TrendTab(RaporTab):
             tr = build_trend(aylik=gd.trend, aylik_gecmis=gecmis,
                              bilanco=bilanco, bas=bas, bit=bit)
 
-            # Yıllar arası mukayese: seçim dar olsa da geriye doğru AZAMI_YIL'e
-            # tamamlanır — kıyas her koşuda istenen bir şey (bkz. AiYorumTab).
+            # Mukayese YALNIZ seçilen yılları kapsar; geriye doğru tamamlanmaz.
+            # AiYorumTab'da tamamlanıyor çünkü orada bekleme zaten modelin yazmasıyla
+            # geçiyor (dakikalar); burada rapor ~10 saniye sürüyor ve istenmeyen 4 yıl
+            # bunu dört katına çıkarıyordu. Tarih aralığı ne diyorsa o.
             yillar, _ = yil_araligi(bas, bit)
-            odak = yillar[-1] if yillar else int((bit or bas or "")[:4] or 0)
-            if len(yillar) < AZAMI_YIL:
-                yillar = list(range(odak - AZAMI_YIL + 1, odak + 1))
-            kapanislar = yillari_cek(
-                client, yillar, odak_bit=bit,
-                odak_tam=bit >= f"{odak}-12-31", bildir=bildir)
+            kapanislar: list[YilKapanis] = []
+            if len(yillar) > 1:
+                odak = yillar[-1]
+                kapanislar = yillari_cek(
+                    client, yillar, odak_bit=bit,
+                    odak_tam=bit >= f"{odak}-12-31", bildir=bildir)
 
             return {"tr": tr, "firma": firma_getir(cfg, client),
                     "kapanislar": kapanislar}

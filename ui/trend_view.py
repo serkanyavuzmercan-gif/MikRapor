@@ -361,6 +361,15 @@ def build_trend_widget(tr: TrendRapor, firma: str = "",
     mukayese = mukayese_karti(kapanislar or [])
     if mukayese is not None:
         root.addWidget(mukayese)
+    else:
+        # Tek yıl seçildiğinde tablo çıkmıyor; kullanıcı bunun neden olmadığını
+        # ve nasıl açacağını bilmeli — sessiz bir eksik kafa karıştırır.
+        ipucu = QLabel(
+            "Yıllar arası mukayese için tarih aralığını birden çok yıla yayın "
+            "(ör. 01.01.2021 – 31.12.2025). TL ve dolar bazlı kıyas eklenir.")
+        ipucu.setWordWrap(True)
+        ipucu.setStyleSheet(f"color: {MUTED}; font-size: 11px; background: transparent;")
+        root.addWidget(ipucu)
 
     root.addStretch(1)
     return content
