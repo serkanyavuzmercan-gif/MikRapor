@@ -13,6 +13,8 @@ Her kullanıcı uygulamayı **kendi ağında** çalıştırır ve **kendi Mikro 
 - **Nakit Akış** — banka ve kasadan fiilen geçen para, karşı tarafına göre kategorize: müşteri tahsilatı, satıcı ödemesi, kredi kullanım/ödemesi, vergi, SGK, personel/maaş, genel giderler. Açılış → girişler − çıkışlar → kapanış nakit (devirden bağımsız reconcile), kredi özeti, "diğer" kalemin hesap-kodu kırılımı ve aylık trend. Banka↔banka/kasa iç transferleri hariç; kredi hesabına giden para kredi ödemesi sayılır.
 - **Tahmin** — geçmiş trendden otomatik önerilen ama düzenlenebilir varsayımlarla (aylık ciro, büyüme %, brüt marj %, sabit gider) ileriye dönük projeksiyon: tahmini ciro, brüt/net kâr ve kümülatif nakit; nakit eksiye düşerse uyarı. Ufuk 1–36 ay.
 - **Trend ve Oranlar** — aylık fiili satış/alış/nakit trendi + bilanço finansal oranları (cari, asit-test, borç/özkaynak).
+- **Reel Değer** — açık alacak/borçların vade yapısını seçilen iskonto oranıyla bugünkü ekonomik değere çevirir; kredi kartı borcunun kısmi ödenmesi hâlindeki finansman maliyetini ayrı gösterir (muhasebe tutarlarını değiştirmez).
+- **Yapay Zekâ Yorumu** — seçili yılın tüm rapor verisini, kullanıcının girdiği API anahtarına ait dil modeline gönderip sade Türkçe bir yönetim yorumu üretir (özet, iyi gidenler, riskler, bu ay yapılacaklar). **Uygulamanın dışarıya veri gönderdiği tek yeridir** — bkz. «Kapalı devre ve tek istisna».
 
 ## Özellikler
 
@@ -20,6 +22,22 @@ Her kullanıcı uygulamayı **kendi ağında** çalıştırır ve **kendi Mikro 
 - **PDF** (kurumsal letterhead + alt toplamlar) ve **CSV** (Türkçe Excel uyumlu) dışa aktarım
 - Firma ünvanı Mikro'dan otomatik (elle giriş de mümkün)
 - Açık tema, tek-örnek pencere, tarih/dönem seçici
+
+## Kapalı devre ve tek istisna
+
+MikRapor kapalı devre çalışır: veriniz yalnız kendi Mikro sunucunuzla konuşur, hiçbir yere
+gönderilmez, telemetri yoktur.
+
+**Tek istisna «Yapay Zekâ Yorumu» sekmesidir** ve iki koşul birlikte sağlanmadan çalışmaz:
+
+1. Kullanıcı kendi API anahtarını girer (Mikro şifresiyle aynı yolla şifreli saklanır —
+   Windows'ta DPAPI, diğer platformlarda yerel anahtar).
+2. Kullanıcı veri paylaşım onayını açıkça işaretler.
+
+Onay kaldırıldığında anahtar kayıtlı kalsa bile hiçbir çağrı yapılmaz. Gönderim yalnız
+«Yorumla ve Gönder» düğmesine basıldığında olur; ne gönderildiği ekranda ve PDF'te yazar.
+Gönderilen veri seçili yılın **ham** rapor verisidir: cari ünvanları, muhasebe hesap kodları
+ve yaşlandırma kırılımları dâhil.
 
 ## Mimari
 

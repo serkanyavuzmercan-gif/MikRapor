@@ -180,9 +180,10 @@ class ChromeToolbar(QFrame):
     def set_tek_tarih(self, tek: bool) -> None:
         self._tek_tarih = tek
 
-    def set_getir_etiket(self, text: str) -> None:
-        del text
-        self._btn_getir.setText("Raporu Getir")
+    def set_getir_etiket(self, text: str, *, zorla: bool = False) -> None:
+        """Düğme etiketi. Tüm raporlarda tek tip «Raporu Getir»dir; yalnız eylemi
+        farklı olan sekme (ör. veriyi dışarı gönderen yapay zekâ) zorla ile ezebilir."""
+        self._btn_getir.setText(text if (zorla and text.strip()) else "Raporu Getir")
 
     def set_pdf_gorunur(self, gorunur: bool) -> None:
         self._btn_pdf.setVisible(gorunur)
