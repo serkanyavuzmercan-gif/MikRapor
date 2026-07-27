@@ -214,7 +214,7 @@ class TestHataMesajlari(unittest.TestCase):
         self.assertEqual(tr_kucuk("IŞIK"), "ışık")
         # Her başlık kendi rengini almalı; hepsi aynı (varsayılan) olmamalı.
         renkler = {_bolum_rengi(b) for b in (
-            "Özet", "İyi Giden 3 Şey", "Dikkat Edilmesi Gereken 3 Şey", "Bu Ay Yapılacak 3 İş")}
+            "Özet", "İyi Giden 3 Şey", "Dikkat Edilmesi Gereken 3 Şey", "Karar Gerektiren 3 Konu")}
         self.assertEqual(len(renkler), 4)
 
     def test_zaman_asimi_ve_baglanti(self) -> None:
@@ -413,6 +413,85 @@ class TestYillarArasi(unittest.TestCase):
         self.assertIn("YILLAR ARASI KARŞILAŞTIRMA", SISTEM_PROMPT)
 
 
+class TestOranTablosu(unittest.TestCase):
+    """Yıllar arası asıl tahlil oranlarda: stok, kredi borçluluğu, kârlılık."""
+
+    @staticmethod
+    def _yil(yil: int, **ek) -> YilKapanis:
+        temel = dict(
+            net_satis=10_000_000.0, brut_kar=2_000_000.0, faaliyet_kari=1_000_000.0,
+            net_kar=500_000.0, smm=-8_000_000.0, stok=2_000_000.0, alacak=2_500_000.0,
+            donen=7_000_000.0, kvyk=5_000_000.0, uvyk=1_000_000.0, ozkaynak=4_000_000.0,
+            aktif_toplam=12_500_000.0, banka_kredisi=2_500_000.0,
+            finansman_gideri=-300_000.0)
+        temel.update(ek)
+        return YilKapanis(yil=yil, **temel)
+
+    def _csv(self, **ek) -> str:
+        return yillar_arasi_csv([self._yil(2024), self._yil(2025, **ek)])
+
+    def test_stok_oranlari(self) -> None:
+        """Kullanıcının en önemli dediği kalem: stok gerçekten dönüyor mu."""
+        csv = self._csv()
+        self.assertIn("Stok Devir Hızı (kez/yıl);4,00;4,00", csv)
+        self.assertIn("Stok Bekleme Süresi (gün);91,25;91,25", csv)
+        self.assertIn("Stok / Net Satış (%);20,00;20,00", csv)
+
+    def test_kredi_borclulugu(self) -> None:
+        csv = self._csv()
+        self.assertIn("Banka Kredisi (dönem sonu);2500000,00;2500000,00", csv)
+        self.assertIn("Banka Kredisi / Aktif (%);20,00;20,00", csv)
+        self.assertIn("Finansman Gideri / Net Satış (%);3,00;3,00", csv)
+        self.assertIn("Borç / Özkaynak (x);1,50;1,50", csv)
+
+    def test_karlilik_oranlari(self) -> None:
+        csv = self._csv()
+        self.assertIn("Faaliyet Marjı (%);10,00;10,00", csv)
+        self.assertIn("Özkaynak Kârlılığı — ROE (%);12,50;12,50", csv)
+        self.assertIn("Aktif Kârlılığı — ROA (%);4,00;4,00", csv)
+
+    def test_likidite_ve_tahsilat(self) -> None:
+        csv = self._csv()
+        self.assertIn("Cari Oran (x);1,40;1,40", csv)
+        self.assertIn("Asit-Test (x);1,00;1,00", csv)
+        self.assertIn("Alacak Tahsil Süresi — DSO (gün);91,25;91,25", csv)
+
+    def test_maliyet_yoksa_stok_devri_uydurulmaz(self) -> None:
+        """SMM girilmemişse devir hızı hesaplanamaz — 0,00 yazmak yanlış olur."""
+        csv = self._csv(smm=0.0, maliyet_eksik=True)
+        self.assertIn("Stok Devir Hızı (kez/yıl);4,00;\r\n", csv + "\r\n")
+        self.assertIn("Stok / Net Satış (%);20,00;20,00", csv)   # bu yine hesaplanır
+
+    def test_negatif_ozkaynakta_oran_bos_kalir(self) -> None:
+        """Özkaynak eksiyken ROE/borç-özkaynak matematiksel olarak anlamsız."""
+        k = self._yil(2025, ozkaynak=-8_484.0)
+        self.assertIsNone(k.roe)
+        self.assertIsNone(k.borc_ozkaynak)
+        self.assertIsNotNone(k.roa)      # bu hâlâ anlamlı
+
+    def test_satis_yoksa_marj_bos(self) -> None:
+        k = YilKapanis(yil=2025, net_satis=0.0, brut_kar=100.0)
+        self.assertIsNone(k.brut_marj)
+        self.assertIsNone(k.dso)
+
+    def test_prompt_stok_kredi_karlilik_ister(self) -> None:
+        self.assertIn("ORANLAR VE DEVİR HIZLARI", SISTEM_PROMPT)
+        for anahtar in ("STOK", "KREDİ BORÇLULUĞU", "KÂRLILIK"):
+            self.assertIn(anahtar, SISTEM_PROMPT)
+
+
+class TestKararBolumu(unittest.TestCase):
+    """«Bu Ay Yapılacak 3 İş» yemek tarifi gibiydi — bu bir rapor."""
+
+    def test_yapilacaklar_basligi_kaldirildi(self) -> None:
+        self.assertNotIn("Bu Ay Yapılacak", SISTEM_PROMPT)
+        self.assertIn("## Karar Gerektiren 3 Konu", SISTEM_PROMPT)
+
+    def test_emir_ve_zaman_bicme_yasak(self) -> None:
+        self.assertIn("yapılacaklar listesi DEĞİLDİR", SISTEM_PROMPT)
+        self.assertIn("zaman biçme", SISTEM_PROMPT)
+
+
 class TestDovizBazli(unittest.TestCase):
     """Yüksek enflasyonda düz TL kıyası yanıltır — dolar karşılığı verilmeli."""
 
@@ -495,17 +574,17 @@ class TestVeriBayatligi(unittest.TestCase):
         self.assertIn("2025-12-31", n)          # verinin sonu
         self.assertIn("7 ay", n)
 
-    def test_bugune_gore_is_listesi_istenir(self) -> None:
+    def test_yanlis_zaman_kipi_yasaklanir(self) -> None:
         n = self._bayat().donem_notu
-        self.assertIn("BUGÜNE (2026-07-27) göre yaz", n)
-        self.assertIn("«şu an»", n)             # yanlış zaman kipi yasağı
+        self.assertIn("«şu an»", n)
+        self.assertIn("2025-12-31 itibarıyla", n)
 
     def test_bosluk_kayit_eksikligi_sanilmaz(self) -> None:
         """Model «kayıtlarınız eksik, acilen işleyin» diyordu — 2026 başka DB'de."""
         n = self._bayat().donem_notu
         self.assertIn("KAYIT EKSİKLİĞİ DEĞİLDİR", n)
         self.assertIn("2025 ÇALIŞMA YILI veritabanından", n)
-        self.assertIn("çalışma yılının değiştirilmesi", n)
+        self.assertIn("Veride Göremediklerim", n)   # öneri değil, eksik notu
 
     def test_calisma_yili_bilinmiyorsa_da_uyari_calisir(self) -> None:
         n = build_ai_veri_paketi(
@@ -540,7 +619,7 @@ class TestVeriPaketi(unittest.TestCase):
     def test_sistem_prompt_uydurmayi_yasaklar(self) -> None:
         self.assertIn("uydurma", SISTEM_PROMPT.lower())
         for baslik in ("## Özet", "## İyi Giden 3 Şey", "## Dikkat Edilmesi Gereken 3 Şey",
-                       "## Bu Ay Yapılacak 3 İş", "## Veride Göremediklerim"):
+                       "## Karar Gerektiren 3 Konu", "## Veride Göremediklerim"):
             self.assertIn(baslik, SISTEM_PROMPT)
 
 

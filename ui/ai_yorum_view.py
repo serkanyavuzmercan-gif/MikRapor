@@ -27,7 +27,7 @@ _DARK = "#1f2937"
 _BOLUM_RENK = (
     ("dikkat", NEG),
     ("risk", NEG),
-    ("yapılacak", "#b45309"),
+    ("karar", "#b45309"),
     ("iyi giden", POZ),
     ("özet", "#0f766e"),
 )
