@@ -75,11 +75,17 @@ class TestAiConfig(unittest.TestCase):
 class TestSaglayicilar(unittest.TestCase):
     def test_beklenen_saglayicilar_var(self) -> None:
         kodlar = {s.kod for s in SAGLAYICILAR}
-        for beklenen in ("anthropic", "openai", "google", "deepseek", "groq", "xai", "ozel"):
+        for beklenen in ("anthropic", "openai", "google", "deepseek", "xai", "ozel"):
             self.assertIn(beklenen, kodlar)
 
+    def test_groq_listede_yok(self) -> None:
+        """Groq sürekli hata verdiği için çıkarıldı; «Özel» ile elle girilebilir."""
+        self.assertNotIn("groq", {s.kod for s in SAGLAYICILAR})
+
     def test_bilinmeyen_kod_varsayilana_duser(self) -> None:
+        """Kayıtlı ayarı «groq» kalmış kullanıcı da buraya düşer — çökmeden."""
         self.assertEqual(saglayici_bul("yok-boyle").kod, "anthropic")
+        self.assertEqual(saglayici_bul("groq").kod, "anthropic")
 
     def test_anahtarsiz_model_listesi_agi_kullanmaz(self) -> None:
         with patch("infra.ai_saglayici._istek") as sahte:
@@ -218,7 +224,7 @@ class TestHataMesajlari(unittest.TestCase):
 
 
 class TestOpenAiUyumluYol(unittest.TestCase):
-    """Groq/Gemini/DeepSeek/xAI tek şemadan geçer — istek gövdesi doğru kurulmalı."""
+    """Gemini/DeepSeek/xAI tek şemadan geçer — istek gövdesi doğru kurulmalı."""
 
     def _sahte_yanit(self, yakalanan):
         class _Yanit(io.BytesIO):
@@ -237,12 +243,12 @@ class TestOpenAiUyumluYol(unittest.TestCase):
 
     def test_istek_dogru_kurulur(self) -> None:
         yakalanan: dict = {}
-        cfg = AiConfig(saglayici="groq", api_key="gsk_test", onay=True)
+        cfg = AiConfig(saglayici="deepseek", api_key="sk_test", onay=True)
         with patch("urllib.request.urlopen", self._sahte_yanit(yakalanan)), \
                 patch("infra.ai_client.guncel_model_sec", return_value="bir-model"):
             y = yorumla(cfg, _paket())
-        self.assertEqual(yakalanan["url"], "https://api.groq.com/openai/v1/chat/completions")
-        self.assertEqual(yakalanan["auth"], "Bearer gsk_test")
+        self.assertEqual(yakalanan["url"], "https://api.deepseek.com/chat/completions")
+        self.assertEqual(yakalanan["auth"], "Bearer sk_test")
         self.assertEqual(yakalanan["body"]["model"], "bir-model")
         self.assertEqual([m["role"] for m in yakalanan["body"]["messages"]], ["system", "user"])
         self.assertIn("AKTİF;Nakit;1.000", yakalanan["body"]["messages"][1]["content"])
