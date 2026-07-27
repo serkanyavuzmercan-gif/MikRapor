@@ -627,6 +627,40 @@ class TestMukayeseTablosu(unittest.TestCase):
         uv = next(s for b in bolumler for s in b.satirlar if s.etiket == "Uzun Vadeli Borç")
         self.assertFalse(uv.sabit)
 
+    def test_cari_kaynakli_satirlar(self) -> None:
+        """
+        Alacak/borç mizandan DEĞİL cari hareketlerden gelmeli.
+
+        Canlıda mizanın 120 bakiyesi beş yıl boyunca sabitti (-4.839 TL), oysa
+        Alacak & Borç sekmesi milyonlarca TL ve her yıl farklı gösteriyordu.
+        """
+        k = self._yillar()
+        for y, (alacak, borc, gec) in zip(k, [
+                (5_600_000.0, 3_100_000.0, 2_000_000.0),
+                (8_700_000.0, 4_200_000.0, 4_900_000.0),
+                (11_358_890.0, 4_666_118.0, 7_602_854.0)], strict=True):
+            y.alacak, y.borc, y.alacak_gecikmis = alacak, borc, gec
+        _, bolumler = yillar_tablosu(k)
+        tl = next(b for b in bolumler if b.baslik == "TUTARLAR (TL)")
+        satirlar = {s.etiket: s for s in tl.satirlar}   # USD bölümünde aynı adlar var
+
+        self.assertEqual(satirlar["Ticari Alacak"].hucreler[-1], "11,4 milyon")
+        self.assertEqual(satirlar["Ticari Borç (satıcı)"].hucreler[-1], "4,7 milyon")
+        self.assertEqual(satirlar["  · vadesi geçmiş"].hucreler[-1], "7,6 milyon")
+        self.assertFalse(satirlar["Ticari Alacak"].sabit)   # artık kıpırdıyor
+
+    def test_gecikme_orani(self) -> None:
+        k = YilKapanis(yil=2025, alacak=11_358_890.0, alacak_gecikmis=7_602_854.0)
+        self.assertAlmostEqual(k.gecikme_orani, 66.93, places=1)
+        self.assertIsNone(YilKapanis(yil=2025).gecikme_orani)   # alacak yoksa oran yok
+
+    def test_kaynak_notu_modele_gider(self) -> None:
+        """Mizan ile cari çelişince model hangisine güveneceğini bilmeli."""
+        csv = yillar_arasi_csv(self._yillar())
+        self.assertIn("KAYNAK;", csv)
+        self.assertIn("CARİ HESAP HAREKETLERİ", csv)
+        self.assertIn("cari daha güncel", csv)
+
     def test_tek_yilda_tablo_yok(self) -> None:
         self.assertEqual(yillar_tablosu(self._yillar()[:1]), ([], []))
 

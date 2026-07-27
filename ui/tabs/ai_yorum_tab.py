@@ -45,7 +45,11 @@ from domain.gelir_tablosu import GelirTablosu, build_gelir_tablosu, gelir_tablos
 from domain.gercek_durum import build_gercek_durum, gercek_durum_csv
 from domain.mizan_bilanco import Bilanco, bilanco_csv, build_bilanco
 from domain.nakit_akis import build_nakit_akis, nakit_akis_csv
-from domain.tahsilat_alacak import build_tahsilat_alacak, tahsilat_alacak_csv
+from domain.tahsilat_alacak import (
+    TahsilatAlacak,
+    build_tahsilat_alacak,
+    tahsilat_alacak_csv,
+)
 from domain.trend import build_finansal_oranlar, build_trend, trend_csv
 from infra.ai_client import yorumla
 from infra.ai_config import (
@@ -82,20 +86,53 @@ _TUM_CARILER = 100_000
 
 
 def _kapanis_kur(yil: int, *, tam: bool, b: Bilanco, gt: GelirTablosu,
-                 doviz: dict[str, float] | None = None) -> YilKapanis:
-    """Bir yılın bilanço + gelir tablosundan karşılaştırma satırını çıkarır."""
+                 doviz: dict[str, float] | None = None,
+                 ta: TahsilatAlacak | None = None,
+                 nakit_gl: float | None = None) -> YilKapanis:
+    """
+    Bir yılın karşılaştırma satırını çıkarır.
+
+    ALACAK/BORÇ/NAKİT MİZANDAN ALINMAZ: ilgili sekmelerin kullandığı canlı kaynaklardan
+    gelir (cari hareketler, GL nakit hesapları). Mizanın 120/320 bakiyeleri bu şirkette
+    işlenmediği için beş yıl boyunca sabit çıkıyor, oysa Alacak & Borç sekmesi her yıl
+    farklı gösteriyordu — kullanıcı bu çelişkiyi bildirdi. Canlı kaynak yoksa mizana
+    düşülür (hiç göstermemektense).
+    """
     _, ozet = build_finansal_oranlar(b)
     d = doviz or {}
     return YilKapanis(
         yil=yil, tam=tam,
         net_satis=gt.net_satislar, brut_kar=gt.brut_kar,
         faaliyet_kari=gt.faaliyet_kari, net_kar=gt.net_kar,
-        nakit=ozet["nakit"], alacak=ozet["alacak"], stok=ozet["stok"],
+        nakit=ozet["nakit"] if nakit_gl is None else nakit_gl,
+        alacak=ozet["alacak"] if ta is None else ta.alacak_toplam,
+        borc=0.0 if ta is None else ta.borc_toplam,
+        alacak_gecikmis=0.0 if ta is None else ta.alacak_gecikmis,
+        stok=ozet["stok"],
         kvyk=ozet["kvyk"], uvyk=ozet["uvyk"], donen=ozet["donen"],
         ozkaynak=ozet["ozkaynak"], aktif_toplam=ozet["aktif_toplam"],
         banka_kredisi=_banka_kredisi(b), smm=gt.smm, maliyet_eksik=gt.maliyet_eksik,
         faaliyet_gideri=gt.faaliyet_gideri, finansman_gideri=gt.finansman_gideri,
         satis_usd=d.get("satis_usd", 0.0), kur_son=d.get("kur_son", 0.0))
+
+
+def _cari_dene(client: MikroClient, bas: str, bit: str,
+               vade_gun: dict) -> TahsilatAlacak | None:
+    """Alacak & Borç sekmesiyle AYNI yoldan yılın cari bakiyeleri; okunamazsa None."""
+    try:
+        return build_tahsilat_alacak(
+            fetch_acik_kalemler(client, bit, bas, bit),
+            vade_gun_map=vade_gun, bas=bas, bit=bit, top_n=1)
+    except (MikroAPIError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _nakit_dene(client: MikroClient, bit: str) -> float | None:
+    """Nakit Akış sekmesiyle AYNI yoldan dönem sonu nakit; okunamazsa None."""
+    try:
+        return fetch_nakit_bakiye_gl(client, bit)
+    except (MikroAPIError, ValueError, KeyError, TypeError):
+        return None
 
 
 # 300 Banka Kredileri (KV), 303 UV kredilerin anapara taksitleri, 400 Banka Kredileri (UV).
@@ -350,28 +387,6 @@ class AiYorumTab(RaporTab):
                                      bas=y_bas, bit=y_bit)
             ekle("GELİR TABLOSU", lambda: gelir_tablosu_csv(gt))
 
-            # Geçmiş yıllar: ham kırılım DEĞİL, yalnız kapanış satırları. Üç sorgu/yıl.
-            kapanislar: list[YilKapanis] = [_kapanis_kur(
-                yil, tam=tamamlandi, b=bilanco, gt=gt,
-                doviz=_doviz_dene(client, y_bas, y_bit))]
-            for sira, g in enumerate(gecmis, 1):
-                bildir(f"{g} yılı mukayese için çekiliyor… ({sira}/{len(gecmis)})")
-                g_bas, g_bit = f"{g}-01-01", f"{g}-12-31"
-                try:
-                    gecmis_yil = _kapanis_kur(
-                        g, tam=True,
-                        b=build_bilanco(fetch_mizan(client, g_bit), asof=g_bit),
-                        gt=build_gelir_tablosu(
-                            fetch_gelir_tablosu(client, g_bas, g_bit),
-                            bas=g_bas, bit=g_bit),
-                        doviz=_doviz_dene(client, g_bas, g_bit))
-                except (MikroAPIError, ValueError, KeyError, TypeError):
-                    continue   # o yıl veritabanında yoksa sessizce atla
-                if gecmis_yil.dolu:   # boş yıl sıfır satırı olarak tabloya girmesin
-                    kapanislar.append(gecmis_yil)
-            if len(kapanislar) > 1:
-                ekle("YILLAR ARASI KARŞILAŞTIRMA", lambda: yillar_arasi_csv(kapanislar))
-
             bildir("Satış, alış ve nakit hareketleri çekiliyor…")
             stok = fetch_stok_ozet(client, y_bas, y_bit)
             stok_aylik = fetch_stok_aylik(client, y_bas, y_bit)
@@ -384,10 +399,12 @@ class AiYorumTab(RaporTab):
 
             bildir("Alacak ve borç kalemleri çekiliyor…")
             ta = None
+            vade_gun: dict = {}
             try:
+                vade_gun = fetch_cari_vade_gun(client)   # geçmiş yıllarda da kullanılır
                 ta = build_tahsilat_alacak(
                     fetch_acik_kalemler(client, y_bit, y_bas, y_bit),
-                    vade_gun_map=fetch_cari_vade_gun(client),
+                    vade_gun_map=vade_gun,
                     bas=y_bas, bit=y_bit, top_n=_TUM_CARILER)
             except MikroAPIError:
                 ta = None
@@ -400,6 +417,32 @@ class AiYorumTab(RaporTab):
                 kapanis_nakit=fetch_nakit_bakiye_gl(client, y_bit),
                 donem_delta=fetch_nakit_delta_gl(client, y_bas, y_bit),
                 bas=y_bas, bit=y_bit)))
+
+            # MUKAYESE EN SON KURULUR: alacak/borç ve nakit, ilgili sekmelerin canlı
+            # kaynaklarından gelmeli; mizan bakiyeleri bu şirkette işlenmiyor.
+            kapanislar: list[YilKapanis] = [_kapanis_kur(
+                yil, tam=tamamlandi, b=bilanco, gt=gt,
+                doviz=_doviz_dene(client, y_bas, y_bit),
+                ta=ta, nakit_gl=_nakit_dene(client, y_bit))]
+            for sira, g in enumerate(gecmis, 1):
+                bildir(f"{g} yılı mukayese için çekiliyor… ({sira}/{len(gecmis)})")
+                g_bas, g_bit = f"{g}-01-01", f"{g}-12-31"
+                try:
+                    gecmis_yil = _kapanis_kur(
+                        g, tam=True,
+                        b=build_bilanco(fetch_mizan(client, g_bit), asof=g_bit),
+                        gt=build_gelir_tablosu(
+                            fetch_gelir_tablosu(client, g_bas, g_bit),
+                            bas=g_bas, bit=g_bit),
+                        doviz=_doviz_dene(client, g_bas, g_bit),
+                        ta=_cari_dene(client, g_bas, g_bit, vade_gun),
+                        nakit_gl=_nakit_dene(client, g_bit))
+                except (MikroAPIError, ValueError, KeyError, TypeError):
+                    continue   # o yıl veritabanında yoksa sessizce atla
+                if gecmis_yil.dolu:   # boş yıl sıfır satırı olarak tabloya girmesin
+                    kapanislar.append(gecmis_yil)
+            if len(kapanislar) > 1:
+                ekle("YILLAR ARASI KARŞILAŞTIRMA", lambda: yillar_arasi_csv(kapanislar))
 
             bildir("Trend ve oranlar hazırlanıyor…")
             ekle("TREND VE FİNANSAL ORANLAR", lambda: trend_csv(build_trend(

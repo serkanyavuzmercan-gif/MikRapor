@@ -175,7 +175,9 @@ def _mukayese_karti(y: AiYorum) -> QFrame | None:
     t.setFixedWidth(genislik)
     t.setFixedHeight(30 * t.topLevelItemCount() + 6)
 
-    notlar = [("Tutarlar TL'dir; büyük rakamlar «bin / milyon / milyar» diye kısaltılmıştır. "
+    notlar = [("Alacak, borç ve nakit ilgili sekmelerin canlı kaynağından gelir "
+               "(cari hareketler / GL nakit hesapları); stok, özkaynak ve aktif mizandan.", ""),
+              ("Tutarlar TL'dir; büyük rakamlar «bin / milyon / milyar» diye kısaltılmıştır. "
                "Dolar karşılıkları Mikro'nun kendi kur kaydından hesaplanır.", ""),
               ("«—» o yıl için hesaplanamadı: payda sıfır, maliyet girilmemiş ya da "
                "özkaynak negatif.", "")]
