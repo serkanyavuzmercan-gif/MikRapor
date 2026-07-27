@@ -1,6 +1,12 @@
 """
-Kaynak logodan icon.ico ve logo.png üretir.
+Kaynak logodan icon.ico, logo.png ve logo-mark.png üretir.
 Kullanım: python assets/generate_icons.py [kaynak_png]
+
+Üç çıktı, TEK kaynaktan — pencere ile görev çubuğundaki logo farklı olmasın:
+  • icon.ico      — pencere/görev çubuğu ikonu (gri plakalı kutu; küçük boyutta okunur)
+  • logo.png      — aynı görsel, 512px
+  • logo-mark.png — plakası SÖKÜLMÜŞ hâli; beyaz başlık çubuğunda ve PDF antetinde
+                    gri kutu gibi durmasın diye. Çizim ve renkler birebir aynıdır.
 """
 
 from __future__ import annotations
@@ -15,6 +21,7 @@ ASSETS = Path(__file__).resolve().parent
 DEFAULT_SOURCE = ASSETS / "logo_source.png"
 OUTPUT_PNG = ASSETS / "logo.png"
 OUTPUT_ICO = ASSETS / "icon.ico"
+OUTPUT_MARK = ASSETS / "logo-mark.png"
 CANVAS_SIZE = 512
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
 
@@ -39,6 +46,22 @@ def _crop_to_content(img: Image.Image, padding: int = 8) -> Image.Image:
     right = min(int(xs.max()) + padding + 1, img.width)
     bottom = min(int(ys.max()) + padding + 1, img.height)
     return img.crop((left, top, right, bottom))
+
+
+def _remove_plate(img: Image.Image) -> Image.Image:
+    """
+    Logonun arkasındaki gri yuvarlak plakayı söker.
+
+    Plaka açık ve DOYGUNLUKSUZ (gri); marka çizimi ise mor-maviye doygun. İkisini
+    ayıran ölçüt budur — düz parlaklık eşiği çizimin açık mavilerini de yerdi.
+    """
+    rgba = img.convert("RGBA")
+    arr = np.array(rgba)
+    rgb = arr[:, :, :3].astype(np.int16)
+    doygunluk = rgb.max(axis=2) - rgb.min(axis=2)
+    plaka = (doygunluk < 40) & (rgb.min(axis=2) > 150)
+    arr[plaka, 3] = 0
+    return Image.fromarray(arr, mode="RGBA")
 
 
 def _fit_square(img: Image.Image, size: int) -> Image.Image:
@@ -70,7 +93,13 @@ def build_logo_assets(source: Path) -> None:
         format="ICO",
         sizes=[(s, s) for s in ICO_SIZES],
     )
-    print(f"OK: {OUTPUT_PNG.name} ({CANVAS_SIZE}px), {OUTPUT_ICO.name} ({len(ICO_SIZES)} boyut)")
+
+    # Plakasız marka: aynı çizim, beyaz zemine oturacak hâli.
+    mark = _crop_to_content(_remove_plate(cleaned), padding=0)
+    _fit_square(mark, CANVAS_SIZE).save(OUTPUT_MARK, format="PNG", optimize=True)
+
+    print(f"OK: {OUTPUT_PNG.name} ({CANVAS_SIZE}px), {OUTPUT_ICO.name} "
+          f"({len(ICO_SIZES)} boyut), {OUTPUT_MARK.name} (plakasız)")
 
 
 if __name__ == "__main__":
