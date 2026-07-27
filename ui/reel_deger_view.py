@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from domain.mizan_bilanco import tl
 from domain.reel_deger import DegerOzet, ReelDegerAnalizi
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _fit_height, _kpi_card
-from ui.gercek_durum_view import NEG, POZ, _agac, _c, _card, _ic, _renk, _tsatir
+from ui.gercek_durum_view import NEG, POZ, _agac, _c, _card, _ic, _tsatir
 from ui.styles import PRIMARY_SOFT
 
 

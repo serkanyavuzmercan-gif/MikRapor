@@ -16,7 +16,19 @@ from domain.nakit_akis import (
     NakitAkis,
     hesap_kirilim_etiketi,
 )
-from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, dipnot_ekle, letterhead_sade, pdf_ciz, pdf_doc, sty_kpi, sty_row, sty_sec
+from ui.pdf_ortak import (
+    DARK,
+    FONT,
+    FONT_B,
+    LINE,
+    dipnot_ekle,
+    letterhead_sade,
+    pdf_ciz,
+    pdf_doc,
+    sty_kpi,
+    sty_row,
+    sty_sec,
+)
 
 
 def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "") -> Path:

@@ -16,10 +16,10 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from domain.mizan_bilanco import ana_hesap, hesap_adi
 from domain.ortak import csv_sayi
 from domain.ortak import to_float as _f
 from domain.ortak import to_int as _i
-from domain.mizan_bilanco import ana_hesap, hesap_adi
 
 # Karşı taraf kod öneki (3 hane) → kategori. 'KRD' = kredi hesabı sentinel'i (fetch'ten gelir).
 _PREFIX_KATEGORI = {

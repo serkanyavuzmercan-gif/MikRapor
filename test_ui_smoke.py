@@ -157,6 +157,35 @@ class TestUiSmoke(unittest.TestCase):
         finally:
             w.close()
 
+    def test_tum_sekmeler_gorunur(self) -> None:
+        """Her sekme etiketi tam sığmalı — hiçbiri kırpılmamalı/taşmamalı.
+
+        Regresyon: 8. sekme eklenince «Reel Değer» ve «Trend & Oranlar» marka barına
+        sığmayıp tamamen görünmez olmuştu (kullanıcı o iki rapora erişemiyordu).
+        Yeni sekme eklenirse bu test dar pencerede de uyarır.
+        """
+        from ui.app import MikRaporWindow
+        for genislik in (960, 1220, 1920):  # minimum · varsayılan · tam ekran
+            w = MikRaporWindow()
+            try:
+                w.resize(genislik, 840)
+                w.show()
+                for _ in range(3):
+                    self.app.processEvents()
+                tb = w._tab_bar
+                for i in range(tb.count()):
+                    etiket = tb.tabText(i).replace("&&", "&")
+                    r = tb.tabRect(i)
+                    gerekli = tb._olcu_fontu(tb._font_px).horizontalAdvance(etiket)
+                    self.assertGreaterEqual(
+                        r.width(), gerekli,
+                        f"{genislik}px pencerede «{etiket}» sekmesi kırpılıyor")
+                    self.assertLessEqual(
+                        r.right(), tb.width() + 1,
+                        f"{genislik}px pencerede «{etiket}» sekmesi taşıyor (görünmez)")
+            finally:
+                w.close()
+
     def test_ayar_diyaloglari(self) -> None:
         from ui.gercek_durum_settings_dialog import GercekDurumAyarlarDialog
         from ui.mikro_settings_dialog import MikroAyarlarDialog
