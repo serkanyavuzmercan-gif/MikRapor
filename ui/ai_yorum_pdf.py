@@ -46,11 +46,15 @@ def _kacir(metin: str) -> str:
     return "".join(p if i % 2 == 0 else f"<b>{p}</b>" for i, p in enumerate(parcalar))
 
 
-def _mukayese_tablosu(y: AiYorum):
-    """Ekrandaki deterministik mukayesenin PDF karşılığı — aynı kaynaktan, aynı satırlar."""
+def _mukayese_tablosu(y: AiYorum) -> tuple[Table | None, bool]:
+    """
+    Ekrandaki deterministik mukayesenin PDF karşılığı — aynı kaynaktan, aynı satırlar.
+
+    (tablo, sabit_satir_var_mi) döner; ikincisi altına uyarı notu koymak için.
+    """
     yillar, bolumler = yillar_tablosu(y.kapanislar)
     if not yillar:
-        return None
+        return None, False
 
     data = [[""] + [str(yil) for yil in yillar] + [f"{yillar[0]}→{yillar[-1]}"]]
     cmds = [("FONTNAME", (0, 0), (-1, 0), FONT_B), ("TEXTCOLOR", (0, 0), (-1, 0), GRAY),
@@ -65,13 +69,21 @@ def _mukayese_tablosu(y: AiYorum):
                      ("TOPPADDING", (0, r), (-1, r), 5)]
             r += 1
         for satir in bolum.satirlar:
-            data.append([satir.etiket, *satir.hucreler, satir.degisim])
+            data.append([satir.etiket + ("  ⚠" if satir.sabit else ""),
+                         *satir.hucreler, satir.degisim])
             renk = GRAY if satir.iyi is None else (_POZ if satir.iyi else _NEG)
             cmds += [("TEXTCOLOR", (-1, r), (-1, r), renk),
                      ("FONTNAME", (-1, r), (-1, r), FONT_B)]
+            # Negatif hücreler kırmızı — ekranla aynı okuma.
+            for i, negatif in enumerate(satir.eksi):
+                if negatif:
+                    cmds.append(("TEXTCOLOR", (i + 1, r), (i + 1, r), _NEG))
             r += 1
 
-    genislik = [58 * mm] + [(104 * mm) / (len(yillar) + 1)] * (len(yillar) + 1)
+    # Sayfa eni (A4 − kenar boşlukları) sütunlara paylaştırılır; «41,2 milyon» sığmalı.
+    kullanilabilir = 174 * mm
+    etiket_en = 48 * mm
+    genislik = [etiket_en] + [(kullanilabilir - etiket_en) / (len(yillar) + 1)] * (len(yillar) + 1)
     t = Table(data, colWidths=genislik, repeatRows=1)
     t.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), FONT),
@@ -82,7 +94,7 @@ def _mukayese_tablosu(y: AiYorum):
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("TEXTCOLOR", (0, 1), (-2, -1), DARK),
     ] + cmds))
-    return t
+    return t, any(satir.sabit for b in bolumler for satir in b.satirlar)
 
 
 def export_ai_yorum_pdf(y: AiYorum, path: str | Path, firma: str = "") -> Path:
@@ -90,16 +102,6 @@ def export_ai_yorum_pdf(y: AiYorum, path: str | Path, firma: str = "") -> Path:
     doc = pdf_doc(out, title="Yapay Zekâ Yorumu", firma=firma or y.firma)
     elems: list = []
     letterhead_sade(elems, firma=firma or y.firma, bas=y.aralik_bas, bit=y.bit)
-
-    tablo = _mukayese_tablosu(y)
-    if tablo is not None:
-        elems.append(Paragraph("YILLAR ARASI MUKAYESE", sty_sec()))
-        elems.append(Spacer(1, 3))
-        elems.append(tablo)
-        elems.append(Paragraph(
-            "Tutarlar kısaltılmıştır (M = milyon, B = bin). «—» o yıl için hesaplanamadı.",
-            ParagraphStyle("ai_not", fontName=FONT, fontSize=7.4, textColor=GRAY, leading=10)))
-        elems.append(Spacer(1, 8))
 
     par, madde = _paragraf_stili(), _madde_stili()
     for baslik, satirlar in bolumlere_ayir(y.metin):
@@ -111,6 +113,23 @@ def export_ai_yorum_pdf(y: AiYorum, path: str | Path, firma: str = "") -> Path:
                 elems.append(Paragraph(_kacir(s[2:].strip()), madde, bulletText="•"))
             else:
                 elems.append(Paragraph(_kacir(s), par))
+        elems.append(Spacer(1, 8))
+
+    # Mukayese EN ALTTA: önce okunacak yorum, sonra dayanağı olan rakamlar.
+    tablo, sabit_var = _mukayese_tablosu(y)
+    if tablo is not None:
+        elems.append(Paragraph("YILLAR ARASI MUKAYESE", sty_sec()))
+        elems.append(Spacer(1, 3))
+        elems.append(tablo)
+        not_stili = ParagraphStyle(
+            "ai_not", fontName=FONT, fontSize=7.4, textColor=GRAY, leading=10)
+        if sabit_var:
+            elems.append(Paragraph(
+                "⚠ işaretli satırlar tüm yıllarda aynı: bu kalemler muhasebede "
+                "güncellenmemiş olabilir; onlardan türeyen oranlara güvenmeyin.", not_stili))
+        elems.append(Paragraph(
+            "Tutarlar TL'dir; büyük rakamlar «bin / milyon / milyar» diye kısaltılmıştır. "
+            "«—» o yıl için hesaplanamadı.", not_stili))
         elems.append(Spacer(1, 8))
 
     elems.append(Paragraph(

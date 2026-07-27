@@ -301,7 +301,9 @@ class TabloSatir:
     etiket: str
     hucreler: list[str] = field(default_factory=list)
     degisim: str = ""
-    iyi: bool | None = None    # değişim lehte mi (renk için); None = nötr
+    iyi: bool | None = None       # değişim lehte mi (renk için); None = nötr
+    eksi: list[bool] = field(default_factory=list)   # hangi hücre negatif (kırmızı)
+    sabit: bool = False           # tüm yıllarda aynı değer — veri şüphesi
 
 
 @dataclass
@@ -309,14 +311,25 @@ class TabloBolum:
     baslik: str
     satirlar: list[TabloSatir] = field(default_factory=list)
 
+    @property
+    def sabit_satirlar(self) -> list[str]:
+        return [s.etiket for s in self.satirlar if s.sabit]
+
 
 def _kisa(v: float) -> str:
-    """Tabloya sığan kısa tutar: 41,2M · 357B · 1.234. 6 yıl yan yana ancak böyle sığar."""
+    """
+    Tabloya sığan tutar — birim AÇIK YAZILIR.
+
+    Önce «41,2M / 650B» kısaltması kullanılıyordu; Türkçede B «milyar» diye okunuyor ve
+    650 bin ile 650 milyar karışıyordu (canlıda kullanıcı sordu). Artık kelime yazılır.
+    """
     m = abs(v)
+    if m >= 1_000_000_000:
+        return f"{v / 1_000_000_000:.1f} milyar".replace(".", ",")
     if m >= 1_000_000:
-        return f"{v / 1_000_000:.1f}M".replace(".", ",")
+        return f"{v / 1_000_000:.1f} milyon".replace(".", ",")
     if m >= 1_000:
-        return f"{v / 1_000:.0f}B"
+        return f"{v / 1_000:.0f} bin"
     return f"{v:,.0f}".replace(",", ".")
 
 
@@ -394,37 +407,42 @@ def yillar_tablosu(kapanislar: list[YilKapanis]) -> tuple[list[int], list[TabloB
     s = sorted(kapanislar, key=lambda k: k.yil)
     yillar = [k.yil for k in s]
 
-    def bolum(baslik: str, tarif, deger, birim: str) -> TabloBolum:
-        satirlar = []
-        for etiket, alan, artis_iyi in tarif:
-            degerler = [deger(k, alan) for k in s]
-            metin, iyi = _degisim(degerler[0], degerler[-1], birim, artis_iyi)
-            satirlar.append(TabloSatir(
-                etiket, [_oran_metni(d, birim) for d in degerler], metin, iyi))
-        return TabloBolum(baslik, satirlar)
+    def satir(etiket: str, degerler: list[float | None], birim: str,
+              artis_iyi: bool | None) -> TabloSatir:
+        metin, iyi = _degisim(degerler[0], degerler[-1], birim, artis_iyi)
+        dolu = [d for d in degerler if d is not None]
+        return TabloSatir(
+            etiket=etiket,
+            hucreler=[_oran_metni(d, birim) for d in degerler],
+            degisim=metin, iyi=iyi,
+            eksi=[d is not None and d < 0 for d in degerler],
+            # Bilanço hesapları işlenmiyorsa mizan her yıl aynı çıkar; sabit satır
+            # "trend yok" değil "veri şüpheli" demektir, kullanıcıya işaretlenir.
+            sabit=len(dolu) == len(degerler) and len(set(
+                round(d, 2) for d in dolu)) == 1 and any(abs(d) > 0.005 for d in dolu),
+        )
 
-    bolumler = [bolum("TUTARLAR (TL)", _TL_SATIR,
-                      lambda k, a: getattr(k, a), "TL")]
+    def bolum(baslik: str, tarif, deger, birim: str) -> TabloBolum:
+        return TabloBolum(baslik, [
+            satir(etiket, [deger(k, alan) for k in s], birim, artis_iyi)
+            for etiket, alan, artis_iyi in tarif
+        ])
+
+    bolumler = [bolum("TUTARLAR (TL)", _TL_SATIR, lambda k, a: getattr(k, a), "TL")]
 
     if all(k.doviz_var for k in s):
-        usd = TabloBolum("DOLAR BAZINDA (Mikro'nun kendi kur kaydından)")
-        kurlar = [k.kur_son for k in s]
-        usd.satirlar.append(TabloSatir(
-            "TL/USD kuru (dönem sonu)", [_oran_metni(k, "x") for k in kurlar],
-            *_degisim(kurlar[0], kurlar[-1], "x", None)))
-        satislar = [k.satis_usd for k in s]
-        usd.satirlar.append(TabloSatir(
-            "Net Satışlar", [_oran_metni(v, "USD") for v in satislar],
-            *_degisim(satislar[0], satislar[-1], "USD", True)))
+        usd = TabloBolum("DOLAR BAZINDA")
+        usd.satirlar.append(
+            satir("TL/USD kuru (dönem sonu)", [k.kur_son for k in s], "x", None))
+        usd.satirlar.append(
+            satir("Net Satışlar", [k.satis_usd for k in s], "USD", True))
         usd.satirlar += bolum("", _USD_SATIR,
                               lambda k, a: k.usd(getattr(k, a)), "USD").satirlar
         bolumler.append(usd)
 
     bolumler.append(TabloBolum("ORANLAR VE DEVİR HIZLARI", [
-        TabloSatir(etiket + (f" ({birim})" if birim not in ("%", "x") else
-                             ("" if birim == "x" else " (%)")),
-                   [_oran_metni(getattr(k, alan), birim) for k in s],
-                   *_degisim(getattr(s[0], alan), getattr(s[-1], alan), birim, artis_iyi))
+        satir(etiket + (" (%)" if birim == "%" else "" if birim == "x" else f" ({birim})"),
+              [getattr(k, alan) for k in s], birim, artis_iyi)
         for etiket, alan, birim, artis_iyi in _ORAN_SATIR
     ]))
     return yillar, bolumler
@@ -468,6 +486,18 @@ def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
         if k.maliyet_eksik:
             notlar.append(f"NOT;{k.yil} yılında satışların maliyeti (62) girilmemiş — "
                           "brüt ve net kâr olduğundan yüksek görünüyor.")
+
+    # Bilanço hesapları işlenmiyorsa mizan her yıl aynı çıkar. Model bunu bilmezse
+    # "borç yıllardır sabit, disiplinli" gibi olumlu ama yanlış çıkarım yapar.
+    _, tablo_bolumleri = yillar_tablosu(sirali)
+    sabitler = [e for b in tablo_bolumleri for e in b.sabit_satirlar]
+    if sabitler:
+        notlar.append(
+            "NOT;Şu kalemler TÜM YILLARDA BİREBİR AYNI: " + ", ".join(sabitler[:12])
+            + ". Bu bir trend değil, veri şüphesidir — bilanço hesapları muhasebede "
+              "güncellenmemiş olabilir. Bu satırlardan ve onlardan türeyen oranlardan "
+              "(cari oran, ROA, borç/özkaynak vb.) çıkarım YAPMA; «bu veriyle "
+              "söylenemez» de ve sebebini yaz.")
     if notlar:
         out.append("")
         out.extend(notlar)

@@ -513,14 +513,14 @@ class TestMukayeseTablosu(unittest.TestCase):
         _, bolumler = yillar_tablosu(self._yillar())
         self.assertEqual([b.baslik for b in bolumler], [
             "TUTARLAR (TL)",
-            "DOLAR BAZINDA (Mikro'nun kendi kur kaydından)",
+            "DOLAR BAZINDA",
             "ORANLAR VE DEVİR HIZLARI"])
 
     def test_dolar_bazinda_satis_dususu_gorunur(self) -> None:
         """Kullanıcının asıl istediği: TL'de büyürken dolarda küçülme."""
         tl = self._bul("TUTARLAR (TL)", "Net Satışlar")
-        usd = self._bul("DOLAR BAZINDA (Mikro'nun kendi kur kaydından)", "Net Satışlar")
-        self.assertEqual(tl.hucreler, ["20,0M", "31,0M", "41,2M"])
+        usd = self._bul("DOLAR BAZINDA", "Net Satışlar")
+        self.assertEqual(tl.hucreler, ["20,0 milyon", "31,0 milyon", "41,2 milyon"])
         self.assertEqual(tl.degisim, "%+106")
         self.assertTrue(tl.iyi)
         self.assertEqual(usd.degisim, "%-30")
@@ -552,9 +552,56 @@ class TestMukayeseTablosu(unittest.TestCase):
         k = self._yillar()
         k[1].kur_son = 0.0
         _, bolumler = yillar_tablosu(k)
-        self.assertNotIn("DOLAR BAZINDA (Mikro'nun kendi kur kaydından)",
+        self.assertNotIn("DOLAR BAZINDA",
                          [b.baslik for b in bolumler])
         self.assertIn("TUTARLAR (TL)", [b.baslik for b in bolumler])
+
+    def test_birim_acik_yazilir(self) -> None:
+        """«B» Türkçede milyar diye okunuyordu; 650 bin ile 650 milyar karışıyordu."""
+        k = self._yillar()
+        k[0].net_satis, k[2].net_satis = 650_000.0, 2_400_000_000.0
+        _, bolumler = yillar_tablosu(k)
+        satir = next(s for b in bolumler for s in b.satirlar if s.etiket == "Net Satışlar")
+        self.assertEqual(satir.hucreler[0], "650 bin")
+        self.assertEqual(satir.hucreler[-1], "2,4 milyar")
+        self.assertNotIn("M", "".join(satir.hucreler))
+
+    def test_milyar_esigi(self) -> None:
+        from domain.ai_yorum import _kisa
+        self.assertEqual(_kisa(2_400_000_000.0), "2,4 milyar")
+        self.assertEqual(_kisa(41_200_000.0), "41,2 milyon")
+        self.assertEqual(_kisa(650_000.0), "650 bin")
+        self.assertEqual(_kisa(42.61), "43")
+
+    def test_negatif_hucreler_isaretlenir(self) -> None:
+        """Kırmızıya boyanacak hücreleri görünüm değil domain belirler."""
+        satir = self._bul("TUTARLAR (TL)", "Özkaynak")
+        self.assertEqual(satir.eksi, [False, False, False])
+        k = self._yillar()
+        k[2].ozkaynak = -8_484.0
+        _, bolumler = yillar_tablosu(k)
+        ozk = next(s for b in bolumler for s in b.satirlar if s.etiket == "Özkaynak")
+        self.assertEqual(ozk.eksi[-1], True)
+
+    def test_yillar_boyu_sabit_satir_isaretlenir(self) -> None:
+        """Bilanço hesapları işlenmiyorsa mizan her yıl aynı çıkar — bu veri şüphesidir."""
+        k = self._yillar()
+        for y in k:
+            y.stok = 139_999.18          # canlıda beş yıl boyunca kuruşu kuruşuna aynıydı
+        _, bolumler = yillar_tablosu(k)
+        stok = next(s for b in bolumler for s in b.satirlar if s.etiket == "Stok")
+        self.assertTrue(stok.sabit)
+        satis = next(s for b in bolumler for s in b.satirlar if s.etiket == "Net Satışlar")
+        self.assertFalse(satis.sabit)     # gerçekten değişen satır işaretlenmemeli
+
+    def test_sifir_satiri_sabit_sayilmaz(self) -> None:
+        """Hepsi sıfır olan kalem «şüpheli» değil, sadece boş."""
+        k = self._yillar()
+        for y in k:
+            y.uvyk = 0.0
+        _, bolumler = yillar_tablosu(k)
+        uv = next(s for b in bolumler for s in b.satirlar if s.etiket == "Uzun Vadeli Borç")
+        self.assertFalse(uv.sabit)
 
     def test_tek_yilda_tablo_yok(self) -> None:
         self.assertEqual(yillar_tablosu(self._yillar()[:1]), ([], []))
@@ -571,7 +618,7 @@ class TestMukayeseTablosu(unittest.TestCase):
         csv = ai_yorum_csv(AiYorum(yil=2025, bas="2025-01-01", bit="2025-12-31",
                                    kapsam_bas="2021-01-01", kapanislar=self._yillar()))
         self.assertIn("MUKAYESE;Kalem;2021;2023;2025;2021→2025", csv)
-        self.assertIn("MUKAYESE;Net Satışlar;20,0M;31,0M;41,2M;%+106", csv)
+        self.assertIn("MUKAYESE;Net Satışlar;20,0 milyon;31,0 milyon;41,2 milyon;%+106", csv)
 
     def test_kapanissiz_yorumda_csv_bozulmaz(self) -> None:
         csv = ai_yorum_csv(AiYorum(yil=2025, bas="2025-01-01", bit="2025-12-31"))
