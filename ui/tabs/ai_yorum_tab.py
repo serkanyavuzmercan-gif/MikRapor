@@ -35,6 +35,7 @@ from domain.ai_yorum import (
     AiYorum,
     YilKapanis,
     ai_yorum_csv,
+    ay_farki,
     build_ai_veri_paketi,
     yil_araligi,
     yillar_arasi_csv,
@@ -59,6 +60,7 @@ from infra.mikro_api import MikroAPIError, MikroClient
 from infra.mikro_fetch import (
     fetch_acik_kalemler,
     fetch_cari_vade_gun,
+    fetch_doviz_ozet,
     fetch_gelir_tablosu,
     fetch_mizan,
     fetch_nakit_akis_gl,
@@ -78,16 +80,27 @@ from ui.worker import IsFonksiyonu
 _TUM_CARILER = 100_000
 
 
-def _kapanis_kur(yil: int, *, tam: bool, b: Bilanco, gt: GelirTablosu) -> YilKapanis:
+def _kapanis_kur(yil: int, *, tam: bool, b: Bilanco, gt: GelirTablosu,
+                 doviz: dict[str, float] | None = None) -> YilKapanis:
     """Bir yılın bilanço + gelir tablosundan karşılaştırma satırını çıkarır."""
     _, ozet = build_finansal_oranlar(b)
+    d = doviz or {}
     return YilKapanis(
         yil=yil, tam=tam,
         net_satis=gt.net_satislar, brut_kar=gt.brut_kar,
         faaliyet_kari=gt.faaliyet_kari, net_kar=gt.net_kar,
         nakit=ozet["nakit"], alacak=ozet["alacak"], stok=ozet["stok"],
         kvyk=ozet["kvyk"], ozkaynak=ozet["ozkaynak"],
-        aktif_toplam=ozet["aktif_toplam"], maliyet_eksik=gt.maliyet_eksik)
+        aktif_toplam=ozet["aktif_toplam"], maliyet_eksik=gt.maliyet_eksik,
+        satis_usd=d.get("satis_usd", 0.0), kur_son=d.get("kur_son", 0.0))
+
+
+def _doviz_dene(client: MikroClient, bas: str, bit: str) -> dict[str, float]:
+    """Döviz özeti okunamazsa yıl komple düşmesin — döviz bloğu sessizce yazılmaz."""
+    try:
+        return fetch_doviz_ozet(client, bas, bit)
+    except (MikroAPIError, ValueError, KeyError, TypeError):
+        return {}
 
 
 class AiYorumTab(RaporTab):
@@ -286,6 +299,8 @@ class AiYorumTab(RaporTab):
         y_bas, y_bit = f"{yil}-01-01", y_son.isoformat()
         tamamlandi = yil_sonu <= bugun
         ay_sayisi = 12 if tamamlandi else y_son.month
+        # Geçmiş bir yıl seçilmişse veri bugüne göre eskidir — model bugüne çekilmeli.
+        gecikme_ay = ay_farki(y_bit, bugun.isoformat())
         gecmis = [y for y in yillar if y != yil]
         gd_ayarlar = load_gercek_durum_ayarlar()
 
@@ -316,7 +331,9 @@ class AiYorumTab(RaporTab):
             # Geçmiş yıllar: ham kırılım DEĞİL, yalnız kapanış satırları. İki sorgu/yıl.
             kapanislar: list[YilKapanis] = []
             if gecmis:
-                kapanislar.append(_kapanis_kur(yil, tam=tamamlandi, b=bilanco, gt=gt))
+                kapanislar.append(_kapanis_kur(
+                    yil, tam=tamamlandi, b=bilanco, gt=gt,
+                    doviz=_doviz_dene(client, y_bas, y_bit)))
                 for sira, g in enumerate(gecmis, 1):
                     bildir(f"{g} yılı özeti çekiliyor… ({sira}/{len(gecmis)})")
                     g_bas, g_bit = f"{g}-01-01", f"{g}-12-31"
@@ -326,7 +343,8 @@ class AiYorumTab(RaporTab):
                             b=build_bilanco(fetch_mizan(client, g_bit), asof=g_bit),
                             gt=build_gelir_tablosu(
                                 fetch_gelir_tablosu(client, g_bas, g_bit),
-                                bas=g_bas, bit=g_bit)))
+                                bas=g_bas, bit=g_bit),
+                            doviz=_doviz_dene(client, g_bas, g_bit)))
                     except (MikroAPIError, ValueError, KeyError, TypeError):
                         continue   # o yıl veritabanında yoksa sessizce atla
                 ekle("YILLAR ARASI KARŞILAŞTIRMA", lambda: yillar_arasi_csv(kapanislar))
@@ -367,7 +385,7 @@ class AiYorumTab(RaporTab):
             paket = build_ai_veri_paketi(
                 yil=yil, bas=y_bas, bit=y_bit, firma=firma, bolumler=bolumler,
                 bugun=bugun.isoformat(), tamamlandi=tamamlandi, ay_sayisi=ay_sayisi,
-                yillar=[k.yil for k in kapanislar])
+                gecikme_ay=gecikme_ay, yillar=[k.yil for k in kapanislar])
             yorum = yorumla(ai_cfg, paket, bildir=bildir)
             return {"yorum": yorum, "firma": firma}
 
