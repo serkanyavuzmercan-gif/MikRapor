@@ -56,10 +56,11 @@ def _card(baslik: str, inner: QWidget) -> QFrame:
 _AY_KISA = ("Oca", "Şub", "Mar", "Nis", "May", "Haz",
             "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara")
 
-# Satış ve brüt kâr aynı renk ailesinden (kâr, satışın içinden çıkar); nakit ayrı
-# renkte ve ÇİZGİ — farklı bir büyüklük olduğu görsel olarak anlaşılsın.
+# Çubuklar SATIŞ ve ALIŞ: aradaki fark zaten brüt kârdır, gözle okunur. Brüt kârı
+# ayrı çubuk yapmak hem yer kaplıyor hem de satışın içinden çıktığı için mükerrer
+# görünüyordu. Nakit ayrı renkte ve ÇİZGİ — farklı bir büyüklük olduğu anlaşılsın.
 _C_SATIS = "#0f766e"
-_C_BRUT = "#5eead4"
+_C_ALIS = "#5eead4"
 _C_NAKIT = "#d97706"
 
 
@@ -94,7 +95,7 @@ def _guzel_adim(aralik: float, hedef_bolme: int = 4) -> float:
 
 
 class _TrendChart(QWidget):
-    """Aylık Satış / Brüt Kâr (çubuk) + Net Nakit (çizgi) — ölçekli eksen, hover değer."""
+    """Aylık Satış / Alış (çubuk) + Net Nakit (çizgi) — ölçekli eksen, hover değer."""
 
     def __init__(self, aylar: list, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -145,7 +146,7 @@ class _TrendChart(QWidget):
             p.end()
             return
 
-        degerler = [v for a in self._aylar for v in (a.satis, a.brut, a.nakit_net)]
+        degerler = [v for a in self._aylar for v in (a.satis, a.alis, a.nakit_net)]
         adim = _guzel_adim(max(degerler + [0.0]) - min(degerler + [0.0]))
         max_v = math.ceil(max(degerler + [0.0]) / adim) * adim
         min_v = math.floor(min(degerler + [0.0]) / adim) * adim
@@ -179,10 +180,10 @@ class _TrendChart(QWidget):
             p.fillRect(QRectF(sol + grup_w * self._vurgu, ust, grup_w, ch),
                        QColor("#0f766e14"))
 
-        # ---- çubuklar: satış + brüt kâr
+        # ---- çubuklar: satış + alış (aradaki boşluk = brüt kâr)
         for i, a in enumerate(self._aylar):
             cx = sol + grup_w * i + grup_w / 2
-            for j, (v, renk) in enumerate(((a.satis, _C_SATIS), (a.brut, _C_BRUT))):
+            for j, (v, renk) in enumerate(((a.satis, _C_SATIS), (a.alis, _C_ALIS))):
                 bx = cx + (j - 1) * (bar_w + 2) + 1
                 vy = y_of(v)
                 p.fillRect(QRectF(bx, min(vy, zy), bar_w, max(1.0, abs(vy - zy))),
@@ -217,6 +218,7 @@ class _TrendChart(QWidget):
     def _kutu_ciz(self, p: QPainter, a, sol: float, ust: float,
                   cw: float, grup_w: float) -> None:
         satirlar = ((("Satış"), tl(a.satis), _C_SATIS),
+                    ("Alış", tl(a.alis), "#0d9488"),
                     ("Brüt kâr", tl(a.brut), "#0d9488"),
                     ("Net nakit", tl(a.nakit_net), _C_NAKIT))
         p.setFont(QFont("Segoe UI", 7))
@@ -281,9 +283,10 @@ def _trend_panel(tr: TrendRapor) -> QFrame:
     v.setSpacing(6)
     lej = QLabel(
         f"<span style='color:{_C_SATIS};'>■</span> Satış &nbsp;&nbsp;"
-        f"<span style='color:{_C_BRUT};'>■</span> Brüt Kâr &nbsp;&nbsp;"
+        f"<span style='color:{_C_ALIS};'>■</span> Alış &nbsp;&nbsp;"
         f"<span style='color:{_C_NAKIT};'>▬</span> Net Nakit (kasaya giren − çıkan)"
-        f"<span style='color:{FAINT};'> &nbsp;·&nbsp; ay üstüne gelince rakamlar çıkar</span>"
+        f"<span style='color:{FAINT};'> &nbsp;·&nbsp; iki çubuk arasındaki fark brüt kârdır "
+        "&nbsp;·&nbsp; ay üstüne gelince rakamlar çıkar</span>"
     )
     lej.setStyleSheet("font-size: 11px; background: transparent;")
     lej.setTextFormat(Qt.TextFormat.RichText)
