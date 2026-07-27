@@ -73,6 +73,9 @@ class GelirTablosu:
     hesap_sayisi: int = 0
     faaliyet_gideri: float = 0.0   # 63 (pazarlama+genel yönetim+ArGe), işaretli (negatif)
     finansman_gideri: float = 0.0  # 66 (kredi faizi vb.), işaretli (negatif)
+    # ana hesap (3 hane) -> gelir tablosu tutarı (−bakiye): gelir +, gider −.
+    # Pasta dağılımları buradan türetilir; şelale satırlarını metinden ayrıştırmak yerine.
+    hesap_tutar: dict[str, float] = field(default_factory=dict)
 
     @property
     def maliyet_eksik(self) -> bool:
@@ -179,7 +182,67 @@ def build_gelir_tablosu(rows: list[dict], bas: str = "", bit: str = "") -> Gelir
     gt.net_kar = net_kar
     gt.faaliyet_gideri = grup_toplam("63")   # işaretli (gider → negatif)
     gt.finansman_gideri = grup_toplam("66")
+    gt.hesap_tutar = dict(tutar)
     return gt
+
+
+# --- Pasta dağılımları (para nereden geliyor / nereye gidiyor) ---------------
+#
+# Şelale "ne kadar kaldı"yı anlatır; dağılım "hangi kalem ne kadar yer tutuyor"u.
+# Gelir = 60/64/67, Gider = 61/62/63/65/66/68/691 alındığında GELİR − GİDER = Dönem
+# Net Kârı birebir tutar (satış iadeleri de bir sızıntıdır, gider tarafında durur).
+
+@dataclass
+class Dilim:
+    """Pastanın bir dilimi — tutar her zaman pozitif büyüklüktür."""
+    etiket: str
+    tutar: float
+    pay: float          # toplam içindeki % payı
+
+
+_DILIM_ESIGI = 1.0      # %1'in altı dilim olarak görünmüyor → "Diğer" altında toplanır
+_AZAMI_DILIM = 8        # daha fazlası hem pastada hem listede okunmuyor
+
+_GELIR_GRUPLARI = ("60", "64", "67")
+_GIDER_GRUPLARI = ("61", "62", "63", "65", "66", "68", "69")
+
+
+def _dagilim(gt: GelirTablosu, gruplar: tuple[str, ...], isaret: float) -> list[Dilim]:
+    """`gruplar` öneklerindeki hesapları büyükten küçüğe dilimler."""
+    kalemler: list[tuple[str, float]] = []
+    for kod, t in gt.hesap_tutar.items():
+        if kod[:2] not in gruplar:
+            continue
+        if kod[:3] in ("690", "692"):      # kapanış aynası — şelalede de yok
+            continue
+        v = t * isaret
+        if v >= 0.005:                     # ters işaretli kalem (ör. eksi kambiyo kârı) atlanır
+            kalemler.append((_hesap_adi(kod).removesuffix(" (-)"), v))
+    toplam = sum(v for _, v in kalemler)
+    if toplam < 0.005:
+        return []
+
+    kalemler.sort(key=lambda x: -x[1])
+    buyuk = [(a, v) for a, v in kalemler if v / toplam * 100 >= _DILIM_ESIGI][:_AZAMI_DILIM]
+    kucuk = kalemler[len(buyuk):]
+    dilimler = [Dilim(a, v, v / toplam * 100) for a, v in buyuk]
+    if len(kucuk) == 1:                    # tek kalemi "Diğer" diye gizlemek saçma
+        a, v = kucuk[0]
+        dilimler.append(Dilim(a, v, v / toplam * 100))
+    elif kucuk:
+        v = sum(x for _, x in kucuk)
+        dilimler.append(Dilim(f"Diğer ({len(kucuk)} kalem)", v, v / toplam * 100))
+    return dilimler
+
+
+def gelir_dagilimi(gt: GelirTablosu) -> list[Dilim]:
+    """Para NEREDEN geliyor: brüt satışlar (60) + diğer olağan (64) + olağandışı (67)."""
+    return _dagilim(gt, _GELIR_GRUPLARI, 1.0)
+
+
+def gider_dagilimi(gt: GelirTablosu) -> list[Dilim]:
+    """Para NEREYE gidiyor: indirim (61), maliyet (62), gider (63/65/66/68), vergi (691)."""
+    return _dagilim(gt, _GIDER_GRUPLARI, -1.0)
 
 
 def gelir_tablosu_csv(gt: GelirTablosu) -> str:

@@ -10,7 +10,12 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
-from domain.gelir_tablosu import GelirTablosu, yuzde
+from domain.gelir_tablosu import (
+    GelirTablosu,
+    gelir_dagilimi,
+    gider_dagilimi,
+    yuzde,
+)
 from domain.mizan_bilanco import tl
 from ui.bilanco_view import (
     FAINT,
@@ -24,6 +29,7 @@ from ui.bilanco_view import (
     _section,
     _tree,
 )
+from ui.pasta import GELIR_RENKLERI, GIDER_RENKLERI, pasta_karti
 from ui.styles import ACCENT, PRIMARY_SOFT
 
 _SOLUK = "#94a3b8"  # maliyet kapanışı yokken şişik kâr satırları
@@ -130,7 +136,41 @@ def build_gelir_tablosu_widget(gt: GelirTablosu, firma: str = "") -> QWidget:
     panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
     satir = QHBoxLayout()
     satir.setContentsMargins(0, 0, 0, 0)
+    satir.setSpacing(20)
     satir.addWidget(panel, 0)
-    satir.addStretch(1)
+    sag = _dagilim_sutunu(gt)
+    if sag is not None:
+        satir.addWidget(sag, 1, Qt.AlignmentFlag.AlignTop)
+    satir.addStretch(0)
     root.addLayout(satir, 1)
     return content
+
+
+def _dagilim_sutunu(gt: GelirTablosu) -> QWidget | None:
+    """Şelalenin sağındaki boşluğa pasta dağılımları — para nereden / nereye."""
+    kartlar = [pasta_karti(
+        "GELİR DAĞILIMI  ·  para nereden geliyor", gelir_dagilimi(gt), GELIR_RENKLERI,
+        dipnot="Brüt satışlar ile diğer olağan/olağandışı gelirler.")]
+    # Maliyet kapanışı yoksa gider pastası yanıltır (en büyük kalem eksik olduğu için
+    # genel yönetim gideri "en büyük gider" gibi görünür) — hiç gösterme.
+    if not gt.maliyet_eksik:
+        kartlar.append(pasta_karti(
+            "GİDER DAĞILIMI  ·  para nereye gidiyor", gider_dagilimi(gt), GIDER_RENKLERI,
+            dipnot="Satış indirimleri, satışların maliyeti, faaliyet/finansman giderleri "
+                   "ve vergi. Gelir − gider = Dönem Net Kârı."))
+    kartlar = [k for k in kartlar if k is not None]
+    if not kartlar:
+        return None
+
+    w = QWidget()
+    w.setStyleSheet("background: transparent;")
+    # Geniş ekranda kart sonuna kadar esnerse ad ile tutar arası yine dev boşluk olur;
+    # şelale paneliyle benzer genişlikte tutup kalanı boşluğa bırakıyoruz.
+    w.setMaximumWidth(780)
+    v = QVBoxLayout(w)
+    v.setContentsMargins(0, 0, 0, 0)
+    v.setSpacing(14)
+    for k in kartlar:
+        v.addWidget(k)
+    v.addStretch(1)
+    return w
