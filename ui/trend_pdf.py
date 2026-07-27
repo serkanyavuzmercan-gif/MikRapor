@@ -11,6 +11,7 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
 from domain.mizan_bilanco import tl
 from domain.trend import TrendRapor
+from ui.mukayese_pdf import mukayese_notu, mukayese_tablosu
 from ui.pdf_ortak import (
     DARK,
     FONT,
@@ -27,7 +28,8 @@ from ui.pdf_ortak import (
 )
 
 
-def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "") -> Path:
+def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "",
+                     kapanislar: list | None = None) -> Path:
     out = Path(path)
     doc = pdf_doc(out, title="Trend & Oranlar", firma=firma)
     elems: list = []
@@ -119,6 +121,13 @@ def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "") -> Path:
             ("LINEBELOW", (0, 1), (-1, -1), 0.25, LINE),
         ]))
         elems.append(tt)
+
+    tablo, sabit_var = mukayese_tablosu(kapanislar or [])
+    if tablo is not None:
+        elems.append(Paragraph("YILLAR ARASI MUKAYESE", sty_sec()))
+        elems.append(Spacer(1, 4))
+        elems.append(tablo)
+        elems.append(mukayese_notu(sabit_var))
 
     dipnot_ekle(
         elems,

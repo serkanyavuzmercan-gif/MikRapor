@@ -238,8 +238,8 @@ class TestUiSmoke(unittest.TestCase):
 
     def test_mukayese_karti_tum_satirlari_cizer(self) -> None:
         """Mukayese modele bırakılmaz — kart her koşuda tam çıkmalı."""
-        from domain.ai_yorum import AiYorum, YilKapanis, yillar_tablosu
-        from ui.ai_yorum_view import _mukayese_karti, build_ai_yorum_widget
+        from domain.ai_yorum import YilKapanis, yillar_tablosu
+        from ui.mukayese_view import mukayese_karti
 
         def mk(yil, satis, usd, kur):
             return YilKapanis(
@@ -250,10 +250,7 @@ class TestUiSmoke(unittest.TestCase):
 
         ks = [mk(2021, 20e6, 1_500_430.0, 13.3), mk(2023, 31e6, 1_184_243.0, 27.0),
               mk(2025, 41.2e6, 1_050_163.0, 42.59)]
-        y = AiYorum(metin="## Özet\nDeneme.", model="m", yil=2025, bas="2025-01-01",
-                    bit="2025-12-31", kapsam_bas="2021-01-01", kapanislar=ks)
-
-        kart = _mukayese_karti(y)
+        kart = mukayese_karti(ks)
         self.assertIsNotNone(kart)
         agac = kart.findChild(QTreeWidget)
         _, bolumler = yillar_tablosu(ks)
@@ -263,16 +260,36 @@ class TestUiSmoke(unittest.TestCase):
         self.assertEqual(agac.columnCount(), 1 + 3 + 1)   # kalem + 3 yıl + değişim
         self.assertEqual(agac.topLevelItem(0).text(4), "2021→2025")
 
-        w = build_ai_yorum_widget(y)
-        self.assertIsNotNone(w.findChild(QTreeWidget))    # yorumdan önce tablo var
-        w.close()
-
     def test_mukayese_karti_tek_yilda_cizilmez(self) -> None:
-        from domain.ai_yorum import AiYorum, YilKapanis
-        from ui.ai_yorum_view import _mukayese_karti
-        y = AiYorum(metin="## Özet\nX", yil=2025, kapanislar=[YilKapanis(yil=2025)])
-        self.assertIsNone(_mukayese_karti(y))
-        self.assertIsNone(_mukayese_karti(AiYorum(metin="## Özet\nX", yil=2025)))
+        from domain.ai_yorum import YilKapanis
+        from ui.mukayese_view import mukayese_karti
+        self.assertIsNone(mukayese_karti([YilKapanis(yil=2025)]))
+        self.assertIsNone(mukayese_karti([]))
+
+    def test_mukayese_trend_sekmesinde(self) -> None:
+        """Tablo API anahtarı gerektirmemeli — Trend & Oranlar'da gösterilir."""
+        from domain.ai_yorum import YilKapanis
+        from domain.gercek_durum import AyTrend
+        from domain.mizan_bilanco import build_bilanco
+        from domain.trend import build_trend
+        from ui.trend_view import build_trend_widget
+        b = build_bilanco([{"hesap_kodu": "102", "borc": 10000.0, "alacak": 0.0}],
+                          asof="2025-12-31")
+        tr = build_trend(
+            aylik=[AyTrend(ay="2025-01", satis=10000, alis=6000,
+                           nakit_giren=8000, nakit_cikan=5000)],
+            bilanco=b, bas="2025-01-01", bit="2025-12-31")
+        ks = [YilKapanis(yil=y, net_satis=1e6 * y, aktif_toplam=5e5, alacak=2e5)
+              for y in (2024, 2025)]
+        w = build_trend_widget(tr, firma="Test A.Ş.", kapanislar=ks)
+        try:
+            self.assertIsNotNone(w.findChild(QTreeWidget, ))
+            metinler = " ".join(lbl.text() for lbl in w.findChildren(QLabel))
+            self.assertIn("YILLAR ARASI MUKAYESE", metinler)
+        finally:
+            w.close()
+        # Mukayese olmadan da çizilebilmeli (tek yıl / veri yok)
+        self.assertIsNotNone(build_trend_widget(tr, firma="Test A.Ş."))
 
     def test_yukleniyor_sure_ipucu_ve_sayac(self) -> None:
         """Yapay zekâ dakikalar sürüyor — «birkaç saniye» demek takıldı hissi veriyordu."""

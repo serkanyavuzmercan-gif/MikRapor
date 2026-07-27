@@ -25,6 +25,7 @@ from domain.terimler import sade_oran
 from domain.trend import TrendRapor
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _fit_height
 from ui.gercek_durum_view import _DARK, _agac, _c, _ic, _tsatir
+from ui.mukayese_view import mukayese_karti
 from ui.nav_tip import bagla_nav_tip
 from ui.styles import BAD as NEG
 from ui.styles import BORDER, PANEL_BG
@@ -294,7 +295,8 @@ def _trend_panel(tr: TrendRapor) -> QFrame:
     return _card(baslik, inner)
 
 
-def build_trend_widget(tr: TrendRapor, firma: str = "") -> QWidget:
+def build_trend_widget(tr: TrendRapor, firma: str = "",
+                       kapanislar: list | None = None) -> QWidget:
     content = QWidget()
     content.setObjectName("trContent")
     content.setStyleSheet("QWidget#trContent { background: %s; }" % PAGE_BG)
@@ -353,5 +355,12 @@ def build_trend_widget(tr: TrendRapor, firma: str = "") -> QWidget:
     row.addWidget(_bilanco_ozet(tr), 1)
     root.addLayout(row)
     root.addWidget(_trend_panel(tr))
+
+    # Yıllar arası mukayese en altta — API anahtarı gerektirmez, yorum sekmesinden
+    # buraya taşındı (aynı veri iki sekmede tekrarlanmasın).
+    mukayese = mukayese_karti(kapanislar or [])
+    if mukayese is not None:
+        root.addWidget(mukayese)
+
     root.addStretch(1)
     return content
