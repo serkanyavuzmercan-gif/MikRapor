@@ -1,10 +1,14 @@
 """
-Yapay Zekâ Yorumu sekmesi — seçili yılın tüm raporlarını modele yorumlatır.
+Yapay Zekâ Yorumu sekmesi — seçili dönemin tüm raporlarını modele yorumlatır.
 
 MikRapor'un dışarıya veri gönderen TEK yeri burasıdır. Üst şeritte API anahtarı ve
 açık onay kutusu vardır; ikisi birlikte sağlanmadan «Yorumla» çalışmaz ve hiçbir ağ
 çağrısı yapılmaz. Gönderilen veri, diğer sekmelerin CSV üreticilerinden kurulur —
 ekranda görülen rakamla modele giden rakam aynı kaynaktan gelsin diye.
+
+Tarih aralığı birden çok yıl kapsıyorsa (Mikro'nun tek veritabanında birkaç yıl
+durabiliyor) EN YENİ yıl ham detayıyla, önceki yıllar birkaç satırlık kapanış
+özetiyle gider. Sınır AZAMI_YIL; aşılırsa kullanıcıya sorulup en yeni yıllara kırpılır.
 """
 
 from __future__ import annotations
@@ -26,13 +30,21 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from domain.ai_yorum import AiYorum, ai_yorum_csv, build_ai_veri_paketi
-from domain.gelir_tablosu import build_gelir_tablosu, gelir_tablosu_csv
+from domain.ai_yorum import (
+    AZAMI_YIL,
+    AiYorum,
+    YilKapanis,
+    ai_yorum_csv,
+    build_ai_veri_paketi,
+    yil_araligi,
+    yillar_arasi_csv,
+)
+from domain.gelir_tablosu import GelirTablosu, build_gelir_tablosu, gelir_tablosu_csv
 from domain.gercek_durum import build_gercek_durum, gercek_durum_csv
-from domain.mizan_bilanco import bilanco_csv, build_bilanco
+from domain.mizan_bilanco import Bilanco, bilanco_csv, build_bilanco
 from domain.nakit_akis import build_nakit_akis, nakit_akis_csv
 from domain.tahsilat_alacak import build_tahsilat_alacak, tahsilat_alacak_csv
-from domain.trend import build_trend, trend_csv
+from domain.trend import build_finansal_oranlar, build_trend, trend_csv
 from infra.ai_client import yorumla
 from infra.ai_config import (
     ONAY_METNI,
@@ -58,12 +70,24 @@ from infra.mikro_fetch import (
 )
 from ui.ai_yorum_pdf import export_ai_yorum_pdf
 from ui.ai_yorum_view import build_ai_yorum_widget
-from ui.bilesenler import varsayilan_kayit_yolu
+from ui.bilesenler import soru_evet_hayir, varsayilan_kayit_yolu
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.worker import IsFonksiyonu
 
 # Cari listeleri kırpılmasın: kullanıcı ham paylaşımı onayladı, ünvanlar dâhil hepsi gider.
 _TUM_CARILER = 100_000
+
+
+def _kapanis_kur(yil: int, *, tam: bool, b: Bilanco, gt: GelirTablosu) -> YilKapanis:
+    """Bir yılın bilanço + gelir tablosundan karşılaştırma satırını çıkarır."""
+    _, ozet = build_finansal_oranlar(b)
+    return YilKapanis(
+        yil=yil, tam=tam,
+        net_satis=gt.net_satislar, brut_kar=gt.brut_kar,
+        faaliyet_kari=gt.faaliyet_kari, net_kar=gt.net_kar,
+        nakit=ozet["nakit"], alacak=ozet["alacak"], stok=ozet["stok"],
+        kvyk=ozet["kvyk"], ozkaynak=ozet["ozkaynak"],
+        aktif_toplam=ozet["aktif_toplam"], maliyet_eksik=gt.maliyet_eksik)
 
 
 class AiYorumTab(RaporTab):
@@ -72,8 +96,9 @@ class AiYorumTab(RaporTab):
     EMOJI = "🤖"
     BASLIK = "Yapay Zekâ Yorumu"
     ACIKLAMA = (
-        "Seçili yılın <b>tüm rapor verisini</b> girdiğiniz API anahtarına ait yapay zekâ<br>"
-        "modeline gönderir ve sade Türkçe bir yönetim yorumu üretir.<br>"
+        "Seçili dönemin <b>tüm rapor verisini</b> girdiğiniz API anahtarına ait yapay zekâ<br>"
+        f"modeline gönderir ve sade Türkçe bir yönetim yorumu üretir. {AZAMI_YIL} yıla kadar<br>"
+        "aralık seçerseniz yıllar arası gidişatı da yorumlar.<br>"
         "<span style='color:#9aa0a8;'>MikRapor'un dışarıya veri gönderdiği tek yer burasıdır; "
         "onay kutusu işaretlenmeden hiçbir veri çıkmaz.</span>")
     GETIR_ETIKET = "Yorumla ve Gönder"
@@ -228,20 +253,40 @@ class AiYorumTab(RaporTab):
                   "onayını işaretleyin. Onay verilmeden hiçbir veri dışarı gönderilmez.")
             self._durum(ai_cfg.eksik(), "uyari")
             return
+        if not self._aralik_onayi():
+            return
         super()._on_getir()
+
+    def _aralik_onayi(self) -> bool:
+        """Aralık AZAMI_YIL'i aşıyorsa kullanıcıya sorar; kırpma _is_hazirla'da aynen olur."""
+        yillar, dusen = yil_araligi(
+            self._donem.bas_tarih().toString("yyyy-MM-dd"),
+            self._donem.bit_tarih().toString("yyyy-MM-dd"))
+        if not dusen or not yillar:
+            return True
+        return soru_evet_hayir(
+            self, "Aralık Çok Geniş",
+            f"Seçtiğiniz aralık {len(yillar) + dusen} yılı kapsıyor. Bu kadar veri yapay "
+            f"zekânın yorumlama kapasitesini aşar ve yorumu yüzeyselleştirir.\n\n"
+            f"En fazla {AZAMI_YIL} yıl yorumlanabilir. Son {AZAMI_YIL} yıl "
+            f"({yillar[0]}–{yillar[-1]}) ile devam edilsin mi?\n\n"
+            "Daha kısa bir aralık seçmek için «Hayır» deyin.")
 
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
         ai_cfg = self._ayarlar()
-        # «Yıllık»: seçili dönemin takvim yılı (diğer sekmelerle tutarlı kalsın).
-        # ANCAK bitiş BUGÜNÜ AŞMAZ: yıl sürerken 31 Aralık'a kadar veri istemek, modele
-        # yılın bittiğini düşündürüyordu («2026'yı 19,5M ile kapattı» — canlıda görüldü).
-        yil = int((bit or bas or "")[:4] or 0)
+        # Aralığın kapsadığı yıllar; en yeni yıl «odak» olur ve ham detayı o taşır.
+        yillar, _ = yil_araligi(bas, bit)
+        yil = yillar[-1] if yillar else int((bit or bas or "")[:4] or 0)
+        yillar = yillar or [yil]
+        # Odak yılın bitişi BUGÜNÜ AŞMAZ: yıl sürerken 31 Aralık'a kadar veri istemek,
+        # modele yılın bittiğini düşündürüyordu («2026'yı 19,5M ile kapattı» — canlıda görüldü).
         bugun = date.today()
         yil_sonu = date(yil, 12, 31)
         y_son = min(yil_sonu, bugun)
         y_bas, y_bit = f"{yil}-01-01", y_son.isoformat()
         tamamlandi = yil_sonu <= bugun
         ay_sayisi = 12 if tamamlandi else y_son.month
+        gecmis = [y for y in yillar if y != yil]
         gd_ayarlar = load_gercek_durum_ayarlar()
 
         def is_fn(bildir) -> dict[str, Any]:
@@ -260,12 +305,31 @@ class AiYorumTab(RaporTab):
 
             bildir("Bilanço çekiliyor…")
             mizan = fetch_mizan(client, y_bit)
-            ekle("BİLANÇO", lambda: bilanco_csv(build_bilanco(mizan, asof=y_bit)))
+            bilanco = build_bilanco(mizan, asof=y_bit)
+            ekle("BİLANÇO", lambda: bilanco_csv(bilanco))
 
             bildir("Gelir tablosu çekiliyor…")
-            ekle("GELİR TABLOSU", lambda: gelir_tablosu_csv(
-                build_gelir_tablosu(fetch_gelir_tablosu(client, y_bas, y_bit),
-                                    bas=y_bas, bit=y_bit)))
+            gt = build_gelir_tablosu(fetch_gelir_tablosu(client, y_bas, y_bit),
+                                     bas=y_bas, bit=y_bit)
+            ekle("GELİR TABLOSU", lambda: gelir_tablosu_csv(gt))
+
+            # Geçmiş yıllar: ham kırılım DEĞİL, yalnız kapanış satırları. İki sorgu/yıl.
+            kapanislar: list[YilKapanis] = []
+            if gecmis:
+                kapanislar.append(_kapanis_kur(yil, tam=tamamlandi, b=bilanco, gt=gt))
+                for sira, g in enumerate(gecmis, 1):
+                    bildir(f"{g} yılı özeti çekiliyor… ({sira}/{len(gecmis)})")
+                    g_bas, g_bit = f"{g}-01-01", f"{g}-12-31"
+                    try:
+                        kapanislar.append(_kapanis_kur(
+                            g, tam=True,
+                            b=build_bilanco(fetch_mizan(client, g_bit), asof=g_bit),
+                            gt=build_gelir_tablosu(
+                                fetch_gelir_tablosu(client, g_bas, g_bit),
+                                bas=g_bas, bit=g_bit)))
+                    except (MikroAPIError, ValueError, KeyError, TypeError):
+                        continue   # o yıl veritabanında yoksa sessizce atla
+                ekle("YILLAR ARASI KARŞILAŞTIRMA", lambda: yillar_arasi_csv(kapanislar))
 
             bildir("Satış, alış ve nakit hareketleri çekiliyor…")
             stok = fetch_stok_ozet(client, y_bas, y_bit)
@@ -298,12 +362,12 @@ class AiYorumTab(RaporTab):
 
             bildir("Trend ve oranlar hazırlanıyor…")
             ekle("TREND VE FİNANSAL ORANLAR", lambda: trend_csv(build_trend(
-                aylik=gd.trend, bilanco=build_bilanco(mizan, asof=y_bit),
-                bas=y_bas, bit=y_bit)))
+                aylik=gd.trend, bilanco=bilanco, bas=y_bas, bit=y_bit)))
 
             paket = build_ai_veri_paketi(
                 yil=yil, bas=y_bas, bit=y_bit, firma=firma, bolumler=bolumler,
-                bugun=bugun.isoformat(), tamamlandi=tamamlandi, ay_sayisi=ay_sayisi)
+                bugun=bugun.isoformat(), tamamlandi=tamamlandi, ay_sayisi=ay_sayisi,
+                yillar=[k.yil for k in kapanislar])
             yorum = yorumla(ai_cfg, paket, bildir=bildir)
             return {"yorum": yorum, "firma": firma}
 
@@ -328,8 +392,10 @@ class AiYorumTab(RaporTab):
         kayit = self._ayarlar()
         kayit.model = y.model          # bir dahaki sefere yedek olarak dursun
         save_ai_config(kayit)
+        ilk_yil = (y.aralik_bas or "")[:4]
+        kapsam = f"{ilk_yil}–{y.yil}" if ilk_yil and ilk_yil != str(y.yil) else str(y.yil)
         self._durum(
-            f"{y.yil} yılı yorumlandı · {y.saglayici} · {y.model} · "
+            f"{kapsam} yorumlandı · {y.saglayici} · {y.model} · "
             f"{y.toplam_token:,} token".replace(",", "."), "iyi")
 
     # ------------------------------------------------------------------ dışa aktar

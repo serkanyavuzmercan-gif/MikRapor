@@ -36,7 +36,7 @@ def export_ai_yorum_pdf(y: AiYorum, path: str | Path, firma: str = "") -> Path:
     out = Path(path)
     doc = pdf_doc(out, title="Yapay Zekâ Yorumu", firma=firma or y.firma)
     elems: list = []
-    letterhead_sade(elems, firma=firma or y.firma, bas=y.bas, bit=y.bit)
+    letterhead_sade(elems, firma=firma or y.firma, bas=y.aralik_bas, bit=y.bit)
 
     par, madde = _paragraf_stili(), _madde_stili()
     for baslik, satirlar in bolumlere_ayir(y.metin):

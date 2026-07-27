@@ -11,8 +11,11 @@ from unittest.mock import patch
 from domain.ai_yorum import (
     SISTEM_PROMPT,
     AiYorum,
+    YilKapanis,
     ai_yorum_csv,
     build_ai_veri_paketi,
+    yil_araligi,
+    yillar_arasi_csv,
 )
 from infra.ai_client import MAX_GIRDI_KARAKTER, AiHata, yorumla
 from infra.ai_config import AiConfig
@@ -303,6 +306,103 @@ class TestDonemBaglami(unittest.TestCase):
 
     def test_prompt_donem_durumuna_uymayi_emreder(self) -> None:
         self.assertIn("DÖNEM DURUMU", SISTEM_PROMPT)
+
+
+class TestYilAraligi(unittest.TestCase):
+    """Aralık kaç yıl kapsıyor ve sınırı aşınca ne düşüyor."""
+
+    def test_tek_yil(self) -> None:
+        self.assertEqual(yil_araligi("2026-01-01", "2026-07-27"), ([2026], 0))
+
+    def test_bes_yil_tam_sinirda_kirpilmaz(self) -> None:
+        yillar, dusen = yil_araligi("2021-01-01", "2025-12-31")
+        self.assertEqual(yillar, [2021, 2022, 2023, 2024, 2025])
+        self.assertEqual(dusen, 0)
+
+    def test_sinir_asilinca_en_yeni_yillar_kalir(self) -> None:
+        """Eski yıl değil, YENİ yıl önemlidir — kırpma baştan yapılmalı."""
+        yillar, dusen = yil_araligi("2016-01-01", "2026-07-27")
+        self.assertEqual(yillar, [2022, 2023, 2024, 2025, 2026])
+        self.assertEqual(dusen, 6)
+
+    def test_ters_aralik_duzeltilir(self) -> None:
+        self.assertEqual(yil_araligi("2026-01-01", "2024-01-01")[0], [2024, 2025, 2026])
+
+    def test_bos_tarih_bos_liste(self) -> None:
+        self.assertEqual(yil_araligi("", ""), ([], 0))
+
+
+class TestYillarArasi(unittest.TestCase):
+    """Yıllar arası karşılaştırma tablosu ve çok yıllı kapsam notu."""
+
+    @staticmethod
+    def _kapanislar() -> list[YilKapanis]:
+        return [
+            YilKapanis(yil=2024, net_satis=1_000_000.0, brut_kar=250_000.0,
+                       net_kar=100_000.0, stok=3_000_000.0),
+            YilKapanis(yil=2025, net_satis=2_000_000.0, brut_kar=300_000.0,
+                       net_kar=50_000.0, stok=5_000_000.0),
+        ]
+
+    def test_yillar_sutun_olur(self) -> None:
+        csv = yillar_arasi_csv(self._kapanislar())
+        self.assertTrue(csv.startswith("Kalem;2024;2025"))
+        self.assertIn("Net Satışlar;1000000,00;2000000,00", csv)
+        self.assertIn("Brüt Marj (%);25,00;15,00", csv)
+
+    def test_yillar_sirasiz_verilse_de_kronolojik_dizilir(self) -> None:
+        csv = yillar_arasi_csv(list(reversed(self._kapanislar())))
+        self.assertTrue(csv.startswith("Kalem;2024;2025"))
+
+    def test_tek_yil_tablo_uretmez(self) -> None:
+        """Tek yılda karşılaştırma yok — boş bölüm modele gitmemeli."""
+        self.assertEqual(yillar_arasi_csv(self._kapanislar()[:1]), "")
+
+    def test_kiyasi_bozan_yillar_isaretlenir(self) -> None:
+        k = self._kapanislar()
+        k[1].tam = False
+        k[0].maliyet_eksik = True
+        csv = yillar_arasi_csv(k)
+        self.assertIn("2025 yılı TAMAMLANMADI", csv)
+        self.assertIn("2024 yılında satışların maliyeti", csv)
+
+    def _cok_yilli(self):
+        return build_ai_veri_paketi(
+            yil=2026, bas="2026-01-01", bit="2026-07-27", bolumler=[("A", "veri")],
+            bugun="2026-07-27", tamamlandi=False, ay_sayisi=7,
+            yillar=[2026, 2024, 2025])   # sırasız gelse de düzelmeli
+
+    def test_kapsam_notu_odak_yili_ayirir(self) -> None:
+        """Model geçmiş yıllar için ham kırılım olduğunu sanmamalı."""
+        n = self._cok_yilli().kapsam_notu
+        self.assertIn("2024–2026", n)
+        self.assertIn("YALNIZ 2026 yılına aittir", n)
+        self.assertIn("NOMİNAL TL", n)
+
+    def test_aralik_en_eski_yildan_baslar(self) -> None:
+        p = self._cok_yilli()
+        self.assertEqual(p.aralik_bas, "2024-01-01")
+        self.assertIn("VERİ ARALIĞI: 2024-01-01 – 2026-07-27", p.metin)
+
+    def test_tek_yilda_kapsam_notu_yok(self) -> None:
+        p = build_ai_veri_paketi(
+            yil=2026, bas="2026-01-01", bit="2026-07-27", bolumler=[("A", "veri")],
+            yillar=[2026])
+        self.assertEqual(p.kapsam_notu, "")
+        self.assertEqual(p.aralik_bas, "2026-01-01")
+        self.assertNotIn("ÇOK YILLI", p.metin)
+
+    def test_yorum_kapsami_bas_bitten_genis_olabilir(self) -> None:
+        y = AiYorum(yil=2026, bas="2026-01-01", bit="2026-07-27", kapsam_bas="2024-01-01")
+        self.assertEqual(y.aralik, "2024-01-01 – 2026-07-27")
+        self.assertIn("DÖNEM;2024-01-01 – 2026-07-27", ai_yorum_csv(y))
+
+    def test_kapsam_bos_ise_bas_kullanilir(self) -> None:
+        y = AiYorum(yil=2026, bas="2026-01-01", bit="2026-07-27")
+        self.assertEqual(y.aralik, "2026-01-01 – 2026-07-27")
+
+    def test_prompt_cok_yilli_gidisati_ister(self) -> None:
+        self.assertIn("YILLAR ARASI KARŞILAŞTIRMA", SISTEM_PROMPT)
 
 
 class TestVeriPaketi(unittest.TestCase):
