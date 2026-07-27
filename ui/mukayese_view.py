@@ -48,7 +48,7 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     sabit = [(0, _ETIKET_SUTUN)]
     sabit += [(i + 1, _YIL_SUTUN) for i in range(len(yillar))]
     sabit.append((kolon - 1, _DEGISIM_SUTUN))
-    t = _agac(kolon, sabit, esnek=0)
+    t = _agac(kolon, sabit, esnek=0, hucre_renkli=True)
     t.header().setStretchLastSection(False)
 
     _tsatir(t, [_c("", renk=MUTED)]

@@ -26,7 +26,15 @@ from PyQt6.QtWidgets import (
 
 from domain.gercek_durum import GercekDurum, yuzde
 from domain.mizan_bilanco import tl
-from ui.bilanco_view import _TREE_QSS, ACCENT, FAINT, MUTED, PAGE_BG, _fit_height
+from ui.bilanco_view import (
+    _TREE_QSS,
+    ACCENT,
+    FAINT,
+    MUTED,
+    PAGE_BG,
+    TREE_QSS_RENKLI,
+    _fit_height,
+)
 from ui.styles import BAD as NEG
 from ui.styles import BORDER, PANEL_BG
 from ui.styles import OK as POZ
@@ -70,7 +78,8 @@ def _satir_label(text: str, *, renk: str = "#374151", bold: bool = False,
     return lbl
 
 
-def _agac(kolon: int, sabit: list[tuple[int, int]], *, esnek: int = 0) -> QTreeWidget:
+def _agac(kolon: int, sabit: list[tuple[int, int]], *, esnek: int = 0,
+          hucre_renkli: bool = False) -> QTreeWidget:
     """Hover + zebra'lı, seçimsiz mini tablo. `esnek` kolon esner; `sabit` kolonlar sabit."""
     t = QTreeWidget()
     t.setColumnCount(kolon)
@@ -87,7 +96,8 @@ def _agac(kolon: int, sabit: list[tuple[int, int]], *, esnek: int = 0) -> QTreeW
     t.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
     t.viewport().setMouseTracking(True)
     t.viewport().setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-    t.setStyleSheet(_TREE_QSS)
+    # hucre_renkli: QSS'te item «color» kuralı olmaz, böylece _c(renk=…) çizilir.
+    t.setStyleSheet(TREE_QSS_RENKLI if hucre_renkli else _TREE_QSS)
     hdr = t.header()
     hdr.setSectionResizeMode(esnek, QHeaderView.ResizeMode.Stretch)
     for c, w in sabit:
