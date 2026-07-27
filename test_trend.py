@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import unittest
 
 from domain.gercek_durum import AyTrend
@@ -42,6 +43,45 @@ class TestTrend(unittest.TestCase):
         csv = trend_csv(tr)
         self.assertIn("ORAN;", csv)
         self.assertIn("AYLIK;2026-01 Satış;", csv)
+
+    def test_gecmis_penceresi_kpi_toplamlarini_bozmaz(self) -> None:
+        """Grafik son 12 ayı gösterse de KPI toplamları SEÇİLİ dönemden gelmeli."""
+        donem = [AyTrend(ay="2026-06", satis=10000, alis=6000),
+                 AyTrend(ay="2026-07", satis=12000, alis=7000)]
+        gecmis = [AyTrend(ay=f"2026-{m:02d}", satis=5000, alis=3000) for m in range(1, 6)] + donem
+        tr = build_trend(aylik=donem, aylik_gecmis=gecmis, bas="2026-06-01", bit="2026-07-31")
+        self.assertEqual(tr.toplam_satis, 22000)   # yalnız seçili dönem
+        self.assertEqual(tr.ay_sayisi, 2)
+        self.assertEqual(len(tr.aylik_gecmis), 7)  # grafik daha uzun pencereyi görür
+
+    def test_gecmis_verilmezse_grafik_donemi_gosterir(self) -> None:
+        donem = [AyTrend(ay="2026-07", satis=12000, alis=7000)]
+        tr = build_trend(aylik=donem, bas="2026-07-01", bit="2026-07-31")
+        self.assertEqual(tr.aylik_gecmis, [])
+
+
+class TestTrendGrafikYardimcilari(unittest.TestCase):
+    def test_ay_etiketi_turkce(self) -> None:
+        from ui.trend_view import _ay_etiket
+        self.assertEqual(_ay_etiket("2026-01"), "Oca 26")
+        self.assertEqual(_ay_etiket("2025-12"), "Ara 25")
+        self.assertEqual(_ay_etiket("bozuk"), "bozuk")
+
+    def test_kisa_tutar(self) -> None:
+        from ui.trend_view import _kisa_tutar
+        self.assertEqual(_kisa_tutar(0), "0")
+        self.assertEqual(_kisa_tutar(356_949), "357B")
+        self.assertEqual(_kisa_tutar(5_923_722), "5,9M")
+        self.assertEqual(_kisa_tutar(-2_000_000), "-2,0M")
+
+    def test_guzel_adim_yuvarlak(self) -> None:
+        from ui.trend_view import _guzel_adim
+        for aralik in (1_000.0, 37_512.0, 4_180_000.0, 23_000_000.0):
+            adim = _guzel_adim(aralik)
+            self.assertGreater(adim, 0)
+            # 1/2/2,5/5/10 × 10ⁿ formunda olmalı → mantis kısa listede
+            mantis = adim / (10 ** math.floor(math.log10(adim)))
+            self.assertIn(round(mantis, 3), (1.0, 2.0, 2.5, 5.0, 10.0))
 
 
 if __name__ == "__main__":

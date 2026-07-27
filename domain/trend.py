@@ -40,6 +40,9 @@ class TrendRapor:
     bit: str = ""
     asof: str = ""
     aylik: list[AyTrend] = field(default_factory=list)
+    # Grafik için daha uzun geçmiş (seçili dönem kısa olsa da trend görünsün).
+    # KPI toplamları DAİMA `aylik`ten (seçili dönem) gelir — çelişki olmasın.
+    aylik_gecmis: list[AyTrend] = field(default_factory=list)
     oranlar: list[FinansalOran] = field(default_factory=list)
     # Bilanço özet (oran hesabı kaynakları)
     donen: float = 0.0
@@ -126,13 +129,21 @@ def build_finansal_oranlar(b: Bilanco) -> tuple[list[FinansalOran], dict[str, fl
 def build_trend(
     *,
     aylik: list[AyTrend] | None = None,
+    aylik_gecmis: list[AyTrend] | None = None,
     bilanco: Bilanco | None = None,
     bas: str = "",
     bit: str = "",
 ) -> TrendRapor:
-    """Aylık trend + (varsa) bilanço oranlarından TrendRapor üretir."""
+    """
+    Aylık trend + (varsa) bilanço oranlarından TrendRapor üretir.
+
+    `aylik` seçili dönemdir ve KPI toplamlarının tek kaynağıdır. `aylik_gecmis`
+    yalnız grafiğe daha uzun bir pencere (ör. son 12 ay) vermek içindir; verilmezse
+    grafik de seçili dönemi gösterir.
+    """
     t = TrendRapor(bas=bas, bit=bit, asof=bit or (bilanco.asof if bilanco else ""))
     t.aylik = list(aylik or [])
+    t.aylik_gecmis = list(aylik_gecmis or [])
     if bilanco is not None:
         t.asof = bilanco.asof or t.asof
         oranlar, ozet = build_finansal_oranlar(bilanco)
