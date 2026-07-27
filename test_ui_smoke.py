@@ -75,7 +75,8 @@ class TestUiSmoke(unittest.TestCase):
 
     def test_nakit_akis_view(self) -> None:
         from domain.nakit_akis import build_nakit_akis
-        from ui.nakit_akis_view import build_nakit_akis_widget
+        from domain.tahsilat_alacak import build_tahsilat_alacak
+        from ui.nakit_akis_view import _runway_banner, build_nakit_akis_widget
         na = build_nakit_akis(
             [{"ay": "2026-01", "tip": 0, "prefix": "120", "tutar": 5000.0},
              {"ay": "2026-01", "tip": 1, "prefix": "320", "tutar": 2000.0}],
@@ -83,6 +84,21 @@ class TestUiSmoke(unittest.TestCase):
             donem_delta=3000.0, bas="2026-01-01", bit="2026-06-30",
         )
         self.assertIsNotNone(build_nakit_akis_widget(na, firma="Test A.Ş."))
+
+        runway_na = build_nakit_akis(
+            [
+                {"ay": "2026-04", "tip": 0, "prefix": "120", "tutar": 5000.0},
+                {"ay": "2026-04", "tip": 1, "prefix": "320", "tutar": 2000.0},
+                {"ay": "2026-04", "tip": 1, "prefix": "335", "tutar": 1000.0},
+            ],
+            kapanis_nakit=10000.0, donem_delta=2000.0,
+            bas="2026-04-02", bit="2026-06-30",
+        )
+        runway_ta = build_tahsilat_alacak([], bas="2026-04-02", bit="2026-06-30")
+        self.assertIsNotNone(_runway_banner(
+            na, runway_na=runway_na, runway_ta=runway_ta,
+            runway_referans_bas="2026-04-02",
+        ))
 
     def test_tahmin_view(self) -> None:
         from domain.tahmin import TahminVarsayim, build_tahmin
@@ -124,6 +140,12 @@ class TestUiSmoke(unittest.TestCase):
         from ui.mikro_settings_dialog import MikroAyarlarDialog
         MikroAyarlarDialog()
         GercekDurumAyarlarDialog()
+
+    def test_kaynak_rozeti_tooltip_gostermez(self) -> None:
+        from ui.bilesenler import kaynak_rozeti
+        rozet = kaynak_rozeti("nakit")
+        self.assertIsNotNone(rozet)
+        self.assertEqual(rozet.toolTip(), "")
 
 
 if __name__ == "__main__":

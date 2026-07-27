@@ -106,9 +106,9 @@ def export_tahsilat_alacak_pdf(ta: TahsilatAlacak, path: str | Path, firma: str 
         [Paragraph("Net pozisyon", sty_kpi()), tl(ta.net_pozisyon)],
     ]
     if ta.dso is not None:
-        ozet.append([Paragraph("DSO", sty_row()), f"{ta.dso:.0f} gün"])
+        ozet.append([Paragraph("Ortalama tahsilat süresi", sty_row()), f"{ta.dso:.0f} gün"])
     if ta.dpo is not None:
-        ozet.append([Paragraph("DPO", sty_row()), f"{ta.dpo:.0f} gün"])
+        ozet.append([Paragraph("Ortalama ödeme süresi", sty_row()), f"{ta.dpo:.0f} gün"])
     if ta.tahsilat_orani is not None:
         ozet.append([Paragraph("Tahsilat oranı", sty_row()), f"%{ta.tahsilat_orani:.1f}".replace(".", ",")])
 
@@ -139,7 +139,7 @@ def export_tahsilat_alacak_pdf(ta: TahsilatAlacak, path: str | Path, firma: str 
 
     dipnot_ekle(
         elems,
-        belge="Yönetim amaçlı tahsilat ve alacak özeti",
+        belge="Tahsilat ve alacak özeti",
         kaynak="Mikro cari hareketleri · Yaşlandırma: vade tarihine göre FIFO açık kalem",
     )
 

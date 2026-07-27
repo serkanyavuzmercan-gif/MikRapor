@@ -36,10 +36,14 @@ def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "") -> P
 
     giris = []
     for k in GIRIS_SIRA:
-        v = float(na.giris_kategori.get(k, 0) or 0)
+        etiket = GIRIS_ETIKET.get(k, k)
+        v = float(na.giris_kategori.get(etiket, 0) or 0)
         if abs(v) < 0.005:
             continue
-        giris.append([Paragraph(GIRIS_ETIKET.get(k, k), sty_row()), tl(v)])
+        giris.append([Paragraph(etiket, sty_row()), tl(v)])
+        if k == "gider":
+            for prefix, tutar in na.gider_giris_kirilim:
+                giris.append([Paragraph(f"&nbsp;&nbsp;◦ {prefix} hesabı", sty_row()), tl(tutar)])
     if giris:
         tg = Table(giris, colWidths=[120 * mm, 50 * mm])
         tg.setStyle(TableStyle([("ALIGN", (1, 0), (1, -1), "RIGHT"), ("FONTNAME", (0, 0), (-1, -1), FONT)]))
@@ -47,10 +51,14 @@ def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "") -> P
     elems.extend([Spacer(1, 8), Paragraph("ÇIKIŞLAR", sty_sec()), Spacer(1, 3)])
     cikis = []
     for k in CIKIS_SIRA:
-        v = float(na.cikis_kategori.get(k, 0) or 0)
+        etiket = CIKIS_ETIKET.get(k, k)
+        v = float(na.cikis_kategori.get(etiket, 0) or 0)
         if abs(v) < 0.005:
             continue
-        cikis.append([Paragraph(CIKIS_ETIKET.get(k, k), sty_row()), tl(v)])
+        cikis.append([Paragraph(etiket, sty_row()), tl(v)])
+        if k == "gider":
+            for prefix, tutar in na.gider_cikis_kirilim:
+                cikis.append([Paragraph(f"&nbsp;&nbsp;◦ {prefix} hesabı", sty_row()), tl(tutar)])
     if cikis:
         tc = Table(cikis, colWidths=[120 * mm, 50 * mm])
         tc.setStyle(TableStyle([("ALIGN", (1, 0), (1, -1), "RIGHT"), ("FONTNAME", (0, 0), (-1, -1), FONT)]))
@@ -58,7 +66,7 @@ def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "") -> P
 
     dipnot_ekle(
         elems,
-        belge="Yönetim amaçlı nakit akış özeti",
+        belge="Nakit akış özeti",
         kaynak="Mikro banka / kasa / cari hareketleri",
     )
     pdf_ciz(doc, elems, baslik="NAKİT AKIŞ")

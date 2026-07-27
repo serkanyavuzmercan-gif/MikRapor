@@ -13,10 +13,22 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import date
 
 from domain.tahsilat_alacak import VADE_KOVALAR
 
 GUN_AY = 30.44  # ortalama ay uzunluğu (gün)
+
+
+def nakit_akisi_mutabik(na) -> bool:
+    """Nakit akışı, açılış/kapanış bakiyesiyle yeterince mutabık mı?
+
+    Runway tahmini ancak kategorize akışın, aynı dönemdeki nakit bakiye
+    değişimini açıkladığı durumda gösterilir. 1.000 TL veya kapanış
+    nakdinin %1'i üzerindeki fark, tarihsel hızı güvenilmez yapar.
+    """
+    limit = max(1000.0, abs(float(getattr(na, "kapanis_nakit", 0.0))) * 0.01)
+    return abs(float(getattr(na, "mutabakat_farki", 0.0))) <= limit
 
 # Tahsilat vade kovası (index) → (ay, pay) dağılımı (ay 1-indexli).
 # GECİKMİŞ kalemler tek ayda çözülmez: hepsini 1. aya yığmak girişi de çıkışı da
@@ -225,7 +237,17 @@ def runway_takvim_kur(
     gideri ve GL 300/303 kredi anaparası). Verilmezse nakit-akış kategorisinden türetilir —
     ama o kaynak maaş/gider/krediyi çoğu kurulumda "Diğer/?"e attığından 0 çıkabilir.
     """
-    ay_sayisi = max(1, len(getattr(na, "aylik", None) or [1]))
+    # Sabit 90 günlük referans, takvimde dört aya taşabilir (ör. 28 Nisan–27 Temmuz).
+    # Bu dört parçalı ayı dört tam ay kabul etmek gider hızını yapay biçimde düşürür;
+    # mümkünse gerçek gün sayısını ortalama ay uzunluğuna normalize et.
+    ay_sayisi = max(1.0, len(getattr(na, "aylik", None) or [1]))
+    try:
+        bas = date.fromisoformat(str(getattr(na, "bas", ""))[:10])
+        bit = date.fromisoformat(str(getattr(na, "bit", ""))[:10])
+        if bit >= bas:
+            ay_sayisi = max(1.0, ((bit - bas).days + 1) / GUN_AY)
+    except ValueError:
+        pass
     if aylik_gider is None:
         ck = getattr(na, "cikis_kategori", {}) or {}
         aylik_gider = (

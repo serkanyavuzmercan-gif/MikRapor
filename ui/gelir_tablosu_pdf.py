@@ -83,7 +83,7 @@ def export_gelir_tablosu_pdf(gt: GelirTablosu, path: str | Path, firma: str = ""
 
     dipnot_ekle(
         elems,
-        belge="Yönetim amaçlı ara gelir tablosu",
+        belge="Ara gelir tablosu",
         kaynak="Mikro GL mizan · Hesap planı: TDHP",
     )
 

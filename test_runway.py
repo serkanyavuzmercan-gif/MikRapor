@@ -8,6 +8,7 @@ from domain.nakit_akis import AyNakit, NakitAkis
 from domain.runway import (
     build_runway,
     build_runway_takvim,
+    nakit_akisi_mutabik,
     runway_nakit_akistan,
     runway_takvim_kur,
 )
@@ -15,6 +16,16 @@ from domain.tahsilat_alacak import VADE_KOVALAR
 
 
 class TestRunway(unittest.TestCase):
+    def test_mutabakatli_akis_runway_icin_gosterilebilir(self):
+        na = NakitAkis(kapanis_nakit=100_000.0, donem_delta=-20_000.0,
+                       toplam_giris=30_000.0, toplam_cikis=50_500.0)
+        self.assertTrue(nakit_akisi_mutabik(na))
+
+    def test_buyuk_mutabakat_farki_runwayi_engeller(self):
+        na = NakitAkis(kapanis_nakit=100_000.0, donem_delta=-20_000.0,
+                       toplam_giris=30_000.0, toplam_cikis=55_000.0)
+        self.assertFalse(nakit_akisi_mutabik(na))
+
     def test_eriyen_nakit_tukenme(self):
         # 100k nakit, ayda -20k → 5 ay sonra 0, 6. ay eksiye düşer.
         r = build_runway(baslangic_nakit=100000.0, aylik_net_ort=-20000.0,
@@ -147,6 +158,21 @@ class TestRunwayTakvim(unittest.TestCase):
                               ufuk_ay=2)
         self.assertFalse(r.gider_eksik)           # override ile gider var
         self.assertAlmostEqual(r.aylar[0].cikan, 40000.0, places=2)  # 30k + 10k
+
+    def test_kismi_takvim_aylari_gider_hizini_sisirmez(self):
+        # 90 günlük pencere dört takvim ayına taşsa da gider hızı yaklaşık üç aya bölünmeli.
+        na = NakitAkis(
+            bas="2026-04-29", bit="2026-07-27", kapanis_nakit=100000.0,
+            aylik=[AyNakit("2026-04"), AyNakit("2026-05"), AyNakit("2026-06"), AyNakit("2026-07")],
+            cikis_kategori={"Genel giderler": 90_000.0},
+        )
+
+        class _TA:
+            alacak_vade: dict = {}
+            borc_vade: dict = {}
+
+        r = runway_takvim_kur(na=na, ta=_TA(), ufuk_ay=1)
+        self.assertAlmostEqual(r.aylik_gider, 90_000 / (90 / 30.44), places=2)
 
     def test_nakit_gl_ozetten(self):
         from domain.nakit_akis import nakit_gl_ozetten

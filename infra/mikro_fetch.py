@@ -253,17 +253,19 @@ def fetch_kredi_anapara(client: MikroClient, bas: str, bit: str) -> float:
 
 
 def fetch_kredi_taksitleri(
-    client: MikroClient, *, ay_ileri: int = 24,
+    client: MikroClient, *, ay_ileri: int = 24, asof: str = "",
 ) -> list[dict[str, Any]]:
     """
-    YAKLAŞAN (bugünden ileri) ödenmemiş banka kredisi taksitleri.
+    YAKLAŞAN (asof tarihinden ileri) ödenmemiş banka kredisi taksitleri.
 
     KREDI_SOZLESMESI_TAKSIT_TANIMLARI (298) + KREDI_SOZLESMESI_TANIMLARI (297, banka için).
     Ödenmemiş = krsoztaksit_odemeevraksira = 0. İptal/kapalı sözleşmeler krsoz_iptal /
     krsoztaksit_iptal = 0 ile elenir. Referans BUGÜNdür (GETDATE): vadesi bugünden ÖNCE olan
     (yıllar önceki, ödemesi işaretlenmemiş eski) taksitler "yaklaşan" sayılmaz, dışlanır.
-    Her satır: ay (YYYY-MM), vade, tutar (toplam taksit), anapara, faiz, banka kodu + adı.
+    asof boşsa bugün kullanılır. Her satır: ay (YYYY-MM), vade, tutar (toplam taksit),
+    anapara, faiz, banka kodu + adı.
     """
+    asof_sql = f"CAST('{iso_tarih(asof, alan='asof')}' AS DATE)" if asof else "CAST(GETDATE() AS DATE)"
     sql = (
         "SELECT CONVERT(char(7), t.krsoztaksit_vade, 23) AS ay, "
         "CONVERT(char(10), t.krsoztaksit_vade, 23) AS vade, "
@@ -276,8 +278,8 @@ def fetch_kredi_taksitleri(
         "LEFT JOIN BANKALAR b WITH (NOLOCK) ON b.ban_kod = s.krsoz_sozbankakodu "
         "WHERE ISNULL(t.krsoztaksit_iptal, 0) = 0 AND ISNULL(s.krsoz_iptal, 0) = 0 "
         "AND ISNULL(t.krsoztaksit_odemeevraksira, 0) = 0 "
-        "AND t.krsoztaksit_vade >= CAST(GETDATE() AS DATE) "
-        f"AND t.krsoztaksit_vade < DATEADD(MONTH, {int(ay_ileri)}, CAST(GETDATE() AS DATE)) "
+        f"AND t.krsoztaksit_vade >= {asof_sql} "
+        f"AND t.krsoztaksit_vade < DATEADD(MONTH, {int(ay_ileri)}, {asof_sql}) "
         "ORDER BY t.krsoztaksit_vade"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))

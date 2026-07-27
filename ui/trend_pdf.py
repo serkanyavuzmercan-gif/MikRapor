@@ -109,7 +109,7 @@ def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "") -> Path:
 
     dipnot_ekle(
         elems,
-        belge="Yönetim amaçlı trend ve finansal oran özeti",
+        belge="Trend ve finansal oran özeti",
         kaynak="Mikro GL mizan / cari hareketler · Hesap planı: TDHP",
     )
     pdf_ciz(doc, elems, baslik="TREND & ORANLAR")

@@ -73,7 +73,7 @@ def export_tahmin_pdf(t: Tahmin, path: str | Path, firma: str = "") -> Path:
     elems.append(at)
     dipnot_ekle(
         elems,
-        belge="Yönetim amaçlı tahmin / projeksiyon özeti; gerçekleşme garantisi içermez",
+        belge="Tahmin / projeksiyon özeti",
         kaynak="Kullanıcı varsayımları · MikRapor projeksiyon modeli",
     )
     pdf_ciz(doc, elems, baslik="TAHMİN & PROJEKSİYON")

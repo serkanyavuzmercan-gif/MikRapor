@@ -103,6 +103,9 @@ def pdf_doc(path: Path, *, title: str, firma: str = "") -> SimpleDocTemplate:
     )
 
 
+_SORUMLULUK_REDDI = (
+    "Rapor verileri firma muhasebe kayıtlarına dayanır; doğruluk ve güncellik ilgili kayıtlara bağlıdır."
+)
 _FOOTER_METIN = (
     "MikRapor · Hidroteknik A.Ş. yazılım ekibi tarafından oluşturulmuş, "
     "Mikro ERP tabanlı bir raporlama programıdır."
@@ -120,7 +123,7 @@ _LOGO = _logo_yolu()
 
 
 def _ciz_header_footer(canvas, doc, *, baslik: str = "") -> None:
-    """Her sayfaya kurumsal header (logo + marka) ve footer (logo + metin + sayfa no)."""
+    """Her sayfaya kurumsal başlık ile sabit sorumluluk reddi / sayfa altlığını çizer."""
     canvas.saveState()
     w, h = A4
     lm, rm = doc.leftMargin, doc.rightMargin
@@ -146,21 +149,31 @@ def _ciz_header_footer(canvas, doc, *, baslik: str = "") -> None:
     canvas.line(lm, h - 20 * mm, w - rm, h - 20 * mm)
 
     # ---- FOOTER ----
+    # İnce ayrım çizgisi + ferah üç seviyeli bilgi hiyerarşisi:
+    # sorumluluk reddi, kurumsal tanım, marka / sayfa bilgisi.
     canvas.setStrokeColor(LINE)
-    canvas.setLineWidth(0.5)
-    canvas.line(lm, 15 * mm, w - rm, 15 * mm)
+    canvas.setLineWidth(0.65)
+    canvas.line(lm, 16 * mm, w - rm, 16 * mm)
+    canvas.setStrokeColor(ACCENT)
+    canvas.setLineWidth(0.9)
+    canvas.line(lm, 16 * mm, lm + 18 * mm, 16 * mm)
+
     canvas.setFillColor(GRAY)
-    canvas.setFont(FONT, 7.5)
-    canvas.drawCentredString(w / 2, 10.6 * mm, _FOOTER_METIN)
+    canvas.setFont(FONT, 5.4)
+    canvas.drawCentredString(w / 2, 12.1 * mm, _SORUMLULUK_REDDI)
+    canvas.setFillColor(_MARKA_GRI)
+    canvas.setFont(FONT, 6.3)
+    canvas.drawCentredString(w / 2, 8.5 * mm, _FOOTER_METIN)
+
     if _LOGO:
-        canvas.drawImage(_LOGO, lm, 5.6 * mm, width=4.6 * mm, height=4.6 * mm,
+        canvas.drawImage(_LOGO, lm, 2.4 * mm, width=4.2 * mm, height=4.2 * mm,
                          mask="auto", preserveAspectRatio=True, anchor="sw")
     canvas.setFillColor(_MARKA_GRI)
-    canvas.setFont(FONT_B, 7.5)
-    canvas.drawString(lm + 5.8 * mm, 7 * mm, "MikRapor")
+    canvas.setFont(FONT_B, 7.2)
+    canvas.drawString(lm + 5.3 * mm, 3.8 * mm, "MikRapor")
     canvas.setFillColor(GRAY)
-    canvas.setFont(FONT, 7.5)
-    canvas.drawRightString(w - rm, 7 * mm, f"Sayfa {doc.page}")
+    canvas.setFont(FONT, 7.2)
+    canvas.drawRightString(w - rm, 3.8 * mm, f"Sayfa {doc.page}")
     canvas.restoreState()
 
 
@@ -221,43 +234,27 @@ def kurumsal_dipnot(
     metin: str = "",
 ) -> list:
     """
-    Tüm PDF’lerin altındaki kurumsal dipnot.
+    PDF içeriğindeki belgeye özgü kurumsal dipnot.
 
-    metin verilirse tek paragraf olarak kullanılır; yoksa belge/kaynak/sınır şablonu.
-    Son satır her zaman: Hidroteknik Yazılım — MikRapor (sağ alt).
+    metin verilirse tek paragraf olarak kullanılır; yoksa belge ve kaynak şablonu.
+    Genel sorumluluk reddi, tüm sayfalarda ortak footer içinde çizilir.
     """
     sty = ParagraphStyle(
         "ft", fontName=FONT, fontSize=8, textColor=GRAY, leading=10.5, alignment=0,
     )
-    sty_uretici = ParagraphStyle(
-        "ftb", fontName=FONT_B, fontSize=8.5, textColor=colors.HexColor("#64748b"),
-        leading=11, alignment=2,
-    )
-    uretici = "Hidroteknik Yazılım — MikRapor"
-
     if (metin or "").strip():
-        satirlar = [
-            [Paragraph(metin.strip(), sty)],
-            [Paragraph(uretici, sty_uretici)],
-        ]
+        satirlar = [[Paragraph(metin.strip(), sty)]]
     else:
         nitelik = (
-            f"<b>Belge niteliği:</b> {belge}. "
-            "Kesinleşmiş yasal mali tablo veya e-defter çıktısı değildir. "
+            f"<b>Rapor bilgisi:</b> {belge}. "
             "Mikro ERP genel muhasebe / cari kayıtlarından üretilmiştir."
         )
         if ek:
             nitelik += " " + ek
         kaynak_satir = f"<b>Kaynak / yöntem:</b> {kaynak}"
-        sorumluluk = (
-            "<b>Kullanım sınırı:</b> Bilgilendirme amaçlıdır; yatırım, kredi veya resmî beyan "
-            "yerine geçmez. Doğruluk firma muhasebe kayıtlarına bağlıdır."
-        )
         satirlar = [
             [Paragraph(nitelik, sty)],
             [Paragraph(kaynak_satir, sty)],
-            [Paragraph(sorumluluk, sty)],
-            [Paragraph(uretici, sty_uretici)],
         ]
 
     t = Table(satirlar, colWidths=[174 * mm])
@@ -266,9 +263,7 @@ def kurumsal_dipnot(
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 1.5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
-        ("TOPPADDING", (0, -1), (-1, -1), 4),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (0, -1), (-1, -1), "RIGHT"),
     ]))
     return [t]
 

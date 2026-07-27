@@ -17,10 +17,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.kredi import KrediOzet
+from domain.kredi import KrediOzet, kredi_takvimi_ay
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis
-from domain.runway import runway_nakit_akistan
+from domain.runway import nakit_akisi_mutabik, runway_takvim_kur
+from domain.tahsilat_alacak import TahsilatAlacak
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _fit_height, _kpi_card
 from ui.gercek_durum_view import (
     NEG,
@@ -62,8 +63,13 @@ def _ozet_panel(na: NakitAkis) -> QFrame:
     return _card("NAKİT AKIŞ ÖZETİ", _ic(t, notlar))
 
 
-def _kategori_panel(baslik: str, kategori: dict, toplam: float, renk: str,
-                    diger_kirilim: list | None = None, diger_etiket: str = "Diğer") -> QFrame:
+def _kategori_panel(
+    baslik: str,
+    kategori: dict,
+    toplam: float,
+    renk: str,
+    kirilimlar: dict[str, list] | None = None,
+) -> QFrame:
     t = _agac(3, [(0, 160), (2, 130)], esnek=1)
     if not kategori:
         _tsatir(t, [_c("Hareket yok.", renk=FAINT), _c(""), _c("")])
@@ -74,11 +80,10 @@ def _kategori_panel(baslik: str, kategori: dict, toplam: float, renk: str,
     for ad, tutar in kategori.items():
         it = _tsatir(t, [_c(ad), _c(""), _c(tl(tutar), renk=renk, kalin=True, sag=True)])
         t.setItemWidget(it, 1, _oran_bar(tutar / enb, renk))
-        # "Diğer" satırının altına karşı-taraf kodu kırılımını döker (saklı kalmasın)
-        if ad == diger_etiket and diger_kirilim:
-            for prefix, kt in diger_kirilim:
-                _tsatir(t, [_c(f"      ◦ {prefix or '?'} hesabı", renk=FAINT), _c(""),
-                            _c(tl(kt), renk=FAINT, sag=True)])
+        # Büyük/heterojen kalemlerin karşı hesap kırılımını satır altında görünür tut.
+        for prefix, kt in (kirilimlar or {}).get(ad, []):
+            _tsatir(t, [_c(f"      ◦ {prefix or '?'} hesabı", renk=FAINT), _c(""),
+                        _c(tl(kt), renk=FAINT, sag=True)])
     _tsatir(t, [_c("Toplam", kalin=True), _c(""), _c(tl(toplam), kalin=True, sag=True)])
     _fit_height(t)
     return _card(baslik, _ic(t))
@@ -122,39 +127,65 @@ def _ay_str(yyyymm: str) -> str:
         return yyyymm
 
 
-def _runway_banner(na: NakitAkis) -> QWidget | None:
-    """Nakit runway özeti: 'paran kaç ay yeter / hangi ay eksiye düşer'."""
-    if na.hareket_sayisi == 0:
-        return None
-    r = runway_nakit_akistan(na, ufuk_ay=12)
-    hiz = ("+" if r.aylik_net_ort >= 0 else "−") + tl(abs(r.aylik_net_ort))
-    alt = (
-        f"Aylık ortalama net nakit {hiz}  ·  mevcut nakit {tl(r.baslangic_nakit)}"
-    )
+def _sonraki_ay(yyyymm: str) -> str:
+    try:
+        yil, ay = int(yyyymm[:4]), int(yyyymm[5:7])
+        return f"{yil + (ay == 12):04d}-{1 if ay == 12 else ay + 1:02d}"
+    except (ValueError, IndexError):
+        return yyyymm
 
-    # ── Güvenilirlik: net akış gerçeği yansıtmıyorsa yorum HİÇ gösterilmez ──
-    # (a) Banka bakiye değişiminin büyük kısmı kategorize edilemediyse akış eksiktir.
-    # (b) Nakit artışı operasyondan değil, dönemde çekilen krediden geliyorsa "güç" sahtedir.
-    # Güvenilmez bir yorum göstermek, programın tamamına güveni zedeler — o yüzden yok.
-    brut = na.toplam_giris + na.toplam_cikis
-    kredi_net = na.kredi_net_gosterim  # gerçek net borçlanma (brüt kullanım/ödeme değil)
-    guvenilmez = abs(na.mutabakat_farki) > max(50000.0, 0.30 * brut)
-    kredi_bagimli = na.net_akis > -0.005 and kredi_net > max(0.005, na.net_akis)
-    if guvenilmez or kredi_bagimli:
+
+def _runway_banner(
+    na: NakitAkis,
+    *,
+    runway_na: NakitAkis | None = None,
+    runway_ta: TahsilatAlacak | None = None,
+    runway_referans_bas: str = "",
+    kredi_taksitler: list | None = None,
+) -> QWidget | None:
+    """Mutabık, takvim-tabanlı nakit projeksiyonu.
+
+    Rapor tarih aralığı yalnızca ekrandaki nakit akışı içindir. Projeksiyon sabit son
+    90 günlük hareket hızını, açık kalem vadelerini ve planlanmış kredi taksitlerini kullanır.
+    """
+    if (
+        na.hareket_sayisi == 0
+        or runway_na is None
+        or runway_ta is None
+        or not nakit_akisi_mutabik(na)
+        or not nakit_akisi_mutabik(runway_na)
+    ):
         return None
+
+    ilk_ay = _sonraki_ay((na.bit or "")[:7])
+    kredi_takvimi = kredi_takvimi_ay(kredi_taksitler or [], ilk_ay=ilk_ay)
+    r = runway_takvim_kur(
+        na=runway_na,
+        ta=runway_ta,
+        baslangic_nakit=na.kapanis_nakit,
+        kredi_takvimi=kredi_takvimi,
+        ufuk_ay=6,
+    )
+    if r.gider_eksik:
+        return None
+
+    referans = f"{runway_referans_bas}–{na.bit}" if runway_referans_bas and na.bit else "son 90 gün"
+    alt = (
+        f"Takvim tahmini · referans akış: {referans} · açık alacak/borç vadeleri ve "
+        f"kredi taksitleri dahil · mevcut nakit {tl(r.baslangic_nakit)}"
+    )
 
     if r.tukenme_ay is not None:
         renk, bg, kenar = NEG, "#fdecec", "#f3b4b4"
-        gun = f"~{r.tukenme_gun} gün sonra " if r.tukenme_gun else ""
-        baslik = f"Nakit {gun}({_ay_str(r.tukenme_ay)}) eksiye düşüyor"
-        oneri = "→ Tahsilatı öne çek, öteleyebileceğin ödemeleri ertele."
-    elif r.eriyor:
+        baslik = f"Nakit {_ay_str(r.tukenme_ay)} içinde eksiye düşüyor"
+        oneri = "→ Tahsilat ve ödeme takvimini gözden geçir."
+    elif r.en_dusuk_nakit < r.baslangic_nakit - 0.005:
         renk, bg, kenar = "#b45309", "#fdf3e0", "#f0d090"
-        baslik = f"Nakit eriyor — 12 ay ufkunda tükenmiyor ama trend aşağı ({hiz}/ay)"
-        oneri = "→ Nakit hızını izle; giderleri gözden geçir."
+        baslik = "Nakit azalıyor — 6 aylık takvimde eksiye düşmüyor"
+        oneri = "→ Nakit takvimini izle."
     else:
         renk, bg, kenar = "#15803d", "#e8f6ee", "#bfe3cd"
-        baslik = f"Nakit güçleniyor — mevcut hızla artıyor ({hiz}/ay)"
+        baslik = "Nakit 6 aylık takvimde eksiye düşmüyor"
         oneri = ""
 
     card = QFrame()
@@ -221,7 +252,14 @@ def _yaklasan_taksit_panel(oz: KrediOzet) -> QFrame:
 
 
 def build_nakit_akis_widget(
-    na: NakitAkis, firma: str = "", kredi: KrediOzet | None = None,
+    na: NakitAkis,
+    firma: str = "",
+    kredi: KrediOzet | None = None,
+    *,
+    runway_na: NakitAkis | None = None,
+    runway_ta: TahsilatAlacak | None = None,
+    runway_referans_bas: str = "",
+    kredi_taksitler: list | None = None,
 ) -> QWidget:
     """Bir NakitAkis'ten QScrollArea içine konacak yerel görünüm üretir."""
     content = QWidget()
@@ -247,8 +285,7 @@ def build_nakit_akis_widget(
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
     from ui.bilesenler import baslik_ile_gelecek_uyari
-    root.addWidget(baslik_ile_gelecek_uyari(
-        head, na.bit, kaynak="resmi" if na.kaynak == "gl" else "canli"))
+    root.addWidget(baslik_ile_gelecek_uyari(head, na.bit, kaynak="nakit"))
 
     if na.hareket_sayisi == 0:
         uyari = QLabel(
@@ -273,17 +310,33 @@ def build_nakit_akis_widget(
     kpi.addWidget(_kpi_card("KAPANIŞ NAKİT", tl(na.kapanis_nakit), kp_bg, kp_vr))
     root.addLayout(kpi)
 
-    # Nakit Runway — "paran kaç ay yeter / hangi ay eksiye düşer"
-    banner = _runway_banner(na)
+    # Nakit runway — sabit 90 günlük hız + vade/taksit takvimi; mutabakat yoksa gösterilmez.
+    banner = _runway_banner(
+        na,
+        runway_na=runway_na,
+        runway_ta=runway_ta,
+        runway_referans_bas=runway_referans_bas,
+        kredi_taksitler=kredi_taksitler,
+    )
     if banner is not None:
         root.addWidget(banner)
 
     row1 = QHBoxLayout()
     row1.setSpacing(20)
-    row1.addWidget(_kategori_panel("GİRİŞLER", na.giris_kategori, na.toplam_giris, POZ,
-                                   na.diger_giris_kirilim, "Diğer girişler"), 1)
-    row1.addWidget(_kategori_panel("ÇIKIŞLAR", na.cikis_kategori, na.toplam_cikis, NEG,
-                                   na.diger_cikis_kirilim, "Diğer çıkışlar"), 1)
+    row1.addWidget(_kategori_panel(
+        "GİRİŞLER", na.giris_kategori, na.toplam_giris, POZ,
+        {
+            "Diğer girişler": na.diger_giris_kirilim,
+            "Gider iadesi": na.gider_giris_kirilim,
+        },
+    ), 1)
+    row1.addWidget(_kategori_panel(
+        "ÇIKIŞLAR", na.cikis_kategori, na.toplam_cikis, NEG,
+        {
+            "Diğer çıkışlar": na.diger_cikis_kirilim,
+            "Genel giderler": na.gider_cikis_kirilim,
+        },
+    ), 1)
     root.addLayout(row1)
 
     row2 = QHBoxLayout()

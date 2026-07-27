@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -10,10 +11,13 @@ from PyQt6.QtWidgets import QFileDialog, QMessageBox
 from domain.kredi import KrediOzet, kredi_ozet, taksitleri_derle
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis, build_nakit_akis, nakit_akis_csv
+from domain.tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak
 from infra.config import MikroConfig
 from infra.mikro_api import MikroAPIError, MikroClient
 from infra.mikro_fetch import (
     fetch_cari_bakiye,
+    fetch_cari_vade_gun,
+    fetch_acik_kalemler,
     fetch_kredi_gl,
     fetch_kredi_taksitleri,
     fetch_nakit_akis_gl,
@@ -27,6 +31,17 @@ from ui.nakit_akis_pdf import export_nakit_akis_pdf
 from ui.nakit_akis_view import build_nakit_akis_widget
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.worker import IsFonksiyonu
+
+
+_RUNWAY_REFERANS_GUN = 90
+
+
+def _runway_referans_bas(bit: str) -> str:
+    """Runway için rapor başlangıcından bağımsız, bitişe göre sabit 90 günlük pencere."""
+    try:
+        return (date.fromisoformat(bit) - timedelta(days=_RUNWAY_REFERANS_GUN - 1)).isoformat()
+    except ValueError:
+        return bit
 
 
 class NakitAkisTab(RaporTab):
@@ -76,6 +91,45 @@ class NakitAkisTab(RaporTab):
                 na = build_nakit_akis(
                     hareket_rows, bakiye_kapanis_rows=kapanis_rows,
                     donem_delta=donem_delta, bas=bas, bit=bit)
+
+            # Runway, ekrandaki rapor başlangıcına göre değil; bitiş tarihindeki son 90 günlük
+            # sabit pencereye göre hesaplanır. Böylece kullanıcı aynı "as of" tarihi için
+            # rapor aralığını değiştirince ileriye dönük hız değişmez.
+            runway_bas = _runway_referans_bas(bit)
+            runway_na: NakitAkis | None = None
+            try:
+                if na.kaynak == "gl":
+                    runway_rows = fetch_nakit_akis_gl(client, runway_bas, bit)
+                    if runway_rows:
+                        runway_na = build_nakit_akis(
+                            runway_rows, kapanis_nakit=na.kapanis_nakit,
+                            donem_delta=fetch_nakit_delta_gl(client, runway_bas, bit),
+                            bas=runway_bas, bit=bit,
+                        )
+                        runway_na.kaynak = "gl"
+                else:
+                    runway_rows = fetch_nakit_akis_hareket(client, runway_bas, bit)
+                    if runway_rows:
+                        runway_na = build_nakit_akis(
+                            runway_rows, kapanis_nakit=na.kapanis_nakit,
+                            donem_delta=fetch_nakit_delta(client, runway_bas, bit),
+                            bas=runway_bas, bit=bit,
+                        )
+            except MikroAPIError:
+                runway_na = None
+
+            # Açık cari kalemler, vadesi yaklaşan gerçek tahsilat/ödemeleri runway'e taşır.
+            runway_ta: TahsilatAlacak | None = None
+            try:
+                bildir("Nakit projeksiyonu için açık cari kalemler çekiliyor…")
+                vade_gun_map = fetch_cari_vade_gun(client)
+                acik_rows = fetch_acik_kalemler(client, bit, runway_bas, bit)
+                runway_ta = build_tahsilat_alacak(
+                    acik_rows, vade_gun_map=vade_gun_map, bas=runway_bas, bit=bit,
+                )
+            except MikroAPIError:
+                runway_ta = None
+
             # Banka hareketlerinde kredi hiç görünmüyorsa muhasebeden (300/303) yedek al —
             # kredi taksitleri birçok kurulumda cari harekete değil doğrudan GL'ye işlenir.
             if na.kredi_odeme < 0.005 and na.kredi_kullanim < 0.005:
@@ -88,14 +142,20 @@ class NakitAkisTab(RaporTab):
                     pass
             # Yaklaşan (ödenmemiş) kredi taksitleri — takvimden
             kredi: KrediOzet | None = None
+            taksitler = []
             try:
                 bildir("Kredi taksit takvimi çekiliyor…")
-                taksitler = taksitleri_derle(fetch_kredi_taksitleri(client, ay_ileri=18))
+                taksitler = taksitleri_derle(fetch_kredi_taksitleri(client, ay_ileri=18, asof=bit))
                 if taksitler:
                     kredi = kredi_ozet(taksitler, en_fazla=8)
             except MikroAPIError:
                 kredi = None
-            return {"na": na, "firma": firma_getir(cfg, client), "kredi": kredi}
+                taksitler = []
+            return {
+                "na": na, "firma": firma_getir(cfg, client), "kredi": kredi,
+                "runway_na": runway_na, "runway_ta": runway_ta,
+                "runway_referans_bas": runway_bas, "taksitler": taksitler,
+            }
 
         return is_fn
 
@@ -104,7 +164,11 @@ class NakitAkisTab(RaporTab):
         self._na = na
         self._firma = sonuc["firma"]
         self._icerik_koy(build_nakit_akis_widget(
-            na, firma=self._firma, kredi=sonuc.get("kredi")))
+            na, firma=self._firma, kredi=sonuc.get("kredi"),
+            runway_na=sonuc.get("runway_na"), runway_ta=sonuc.get("runway_ta"),
+            runway_referans_bas=sonuc.get("runway_referans_bas", ""),
+            kredi_taksitler=sonuc.get("taksitler"),
+        ))
         parts = [
             f"Giriş {tl(na.toplam_giris)}",
             f"Çıkış {tl(na.toplam_cikis)}",

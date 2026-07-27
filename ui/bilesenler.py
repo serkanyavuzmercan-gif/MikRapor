@@ -124,17 +124,22 @@ _KAYNAK_ROZET = {
         "Her stok çıkışının maliyeti Mikro'da sürekli tutulur; maliyet "
         "kapanışını beklemez, günün gerçeğini yansıtır.",
     ),
+    "nakit": (
+        "⚡ Canlı veri",
+        "#0f766e", "#e8f5f2", "#bfe0d9",
+        "Banka ve kasa hareketlerinden güncel nakit akışı hesaplanır.\n"
+        "Kategoriler, hareketlerin muhasebe karşı hesaplarından oluşturulur.",
+    ),
 }
 
 
 def kaynak_rozeti(kaynak: str) -> QLabel | None:
-    """'resmi' | 'canli' → küçük kaynak rozeti (pill). Bilinmeyen kaynak → None."""
+    """Bilinen kaynak türünü küçük rozet (pill) olarak döndürür."""
     veri = _KAYNAK_ROZET.get(kaynak)
     if not veri:
         return None
-    metin, renk, bg, kenar, ipucu = veri
+    metin, renk, bg, kenar, _ipucu = veri
     lbl = QLabel(metin)
-    lbl.setToolTip(ipucu)
     lbl.setStyleSheet(
         f"QLabel {{ color: {renk}; background: {bg}; border: 1px solid {kenar}; "
         f"border-radius: 9px; padding: 2px 9px; font-size: 11px; font-weight: 700; }}"

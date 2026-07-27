@@ -85,6 +85,15 @@ class TestNakitAkis(unittest.TestCase):
         self.assertAlmostEqual(kirilim["600.01"], 30000, places=2)
         self.assertAlmostEqual(kirilim["127.01"], 20000, places=2)
 
+    def test_genel_giderler_hesap_kirilimi(self):
+        rows = [_h("2026-01", 1, "770.01", 30000), _h("2026-01", 1, "760.02", 20000)]
+        na = build_nakit_akis(rows, kapanis_nakit=-50000, donem_delta=-50000,
+                              bas="2026-01-01", bit="2026-01-31")
+        self.assertAlmostEqual(na.cikis_kategori["Genel giderler"], 50000, places=2)
+        kirilim = dict(na.gider_cikis_kirilim)
+        self.assertAlmostEqual(kirilim["770.01"], 30000, places=2)
+        self.assertAlmostEqual(kirilim["760.02"], 20000, places=2)
+
     def test_aylik_trend(self):
         aylar = {a.ay: a for a in self.na.aylik}
         self.assertAlmostEqual(aylar["2026-01"].giris, 140000, places=2)  # 100k + 40k

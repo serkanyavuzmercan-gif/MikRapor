@@ -80,6 +80,8 @@ class NakitAkis:
     cikis_kategori: dict = field(default_factory=dict)
     diger_giris_kirilim: list = field(default_factory=list)  # [(prefix, tutar), ...]
     diger_cikis_kirilim: list = field(default_factory=list)
+    gider_giris_kirilim: list = field(default_factory=list)
+    gider_cikis_kirilim: list = field(default_factory=list)
     kredi_kullanim: float = 0.0
     kredi_odeme: float = 0.0
     # Muhasebeden (GL 300/303) tespit edilen kredi — kredi taksitleri banka hareketlerine
@@ -181,6 +183,8 @@ def build_nakit_akis(
     cikis: dict[str, float] = defaultdict(float)
     diger_g: dict[str, float] = defaultdict(float)
     diger_c: dict[str, float] = defaultdict(float)
+    gider_g: dict[str, float] = defaultdict(float)
+    gider_c: dict[str, float] = defaultdict(float)
     aylar: dict[str, AyNakit] = {}
     for r in (hareket_rows or []):
         tip = _i(r.get("tip", r.get("TIP")))
@@ -202,6 +206,8 @@ def build_nakit_akis(
                 na.kredi_kullanim += tutar
             elif kat == "diger":
                 diger_g[prefix or "?"] += tutar
+            elif kat == "gider":
+                gider_g[prefix or "?"] += tutar
         else:
             cikis[kat] += tutar
             na.toplam_cikis += tutar
@@ -210,11 +216,15 @@ def build_nakit_akis(
                 na.kredi_odeme += tutar
             elif kat == "diger":
                 diger_c[prefix or "?"] += tutar
+            elif kat == "gider":
+                gider_c[prefix or "?"] += tutar
 
     na.giris_kategori = {GIRIS_ETIKET[k]: giris[k] for k in GIRIS_SIRA if giris.get(k, 0.0) > 0.005}
     na.cikis_kategori = {CIKIS_ETIKET[k]: cikis[k] for k in CIKIS_SIRA if cikis.get(k, 0.0) > 0.005}
     na.diger_giris_kirilim = sorted(diger_g.items(), key=lambda x: x[1], reverse=True)[:top_diger]
     na.diger_cikis_kirilim = sorted(diger_c.items(), key=lambda x: x[1], reverse=True)[:top_diger]
+    na.gider_giris_kirilim = sorted(gider_g.items(), key=lambda x: x[1], reverse=True)[:top_diger]
+    na.gider_cikis_kirilim = sorted(gider_c.items(), key=lambda x: x[1], reverse=True)[:top_diger]
     na.aylik = [aylar[k] for k in sorted(aylar)]
 
     na.donem_delta = donem_delta if donem_delta is not None else na.net_akis
@@ -237,10 +247,14 @@ def nakit_akis_csv(na: NakitAkis) -> str:
         out.append(f"GİRİŞLER;{etiket};{s(tutar)}")
     for prefix, tutar in na.diger_giris_kirilim:
         out.append(f"GİRİŞLER (diğer kırılım);{prefix};{s(tutar)}")
+    for prefix, tutar in na.gider_giris_kirilim:
+        out.append(f"GİRİŞLER (gider iadesi kırılım);{prefix};{s(tutar)}")
     for etiket, tutar in na.cikis_kategori.items():
         out.append(f"ÇIKIŞLAR;{etiket};{s(tutar)}")
     for prefix, tutar in na.diger_cikis_kirilim:
         out.append(f"ÇIKIŞLAR (diğer kırılım);{prefix};{s(tutar)}")
+    for prefix, tutar in na.gider_cikis_kirilim:
+        out.append(f"ÇIKIŞLAR (genel giderler kırılım);{prefix};{s(tutar)}")
     out.append(f"KREDİ;Kredi Kullanımı;{s(na.kredi_kullanim_gosterim)}")
     out.append(f"KREDİ;Kredi Ödemesi;{s(na.kredi_odeme_gosterim)}")
     out.append(f"KREDİ;Net Kredi;{s(na.kredi_net_gosterim)}")

@@ -131,7 +131,7 @@ def export_bilanco_pdf(
         )
     dipnot_ekle(
         elems,
-        belge="Yönetim amaçlı anlık bilanço",
+        belge="Anlık bilanço",
         kaynak="Mikro GL mizan · Hesap planı: TDHP",
         ek=ek,
     )
