@@ -33,6 +33,9 @@ class TestKredi(unittest.TestCase):
         self.assertAlmostEqual(takvim["2026-07"], 25_000.0, places=2)
         self.assertAlmostEqual(takvim["2026-08"], 18_750.0, places=2)
         self.assertAlmostEqual(takvim["2026-09"], 14_062.5, places=2)
+        varsayilan = kredi_karti_odeme_takvimi(borclar, baslangic_ay="2026-06", ufuk_ay=3)
+        self.assertAlmostEqual(varsayilan["2026-07"], 100_000.0, places=2)
+        self.assertEqual(len(varsayilan), 1)
 
     def test_donem_odemelerini_derle_ve_sirala(self):
         odemeler = kredi_odemelerini_derle([

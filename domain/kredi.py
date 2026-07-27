@@ -13,7 +13,8 @@ from dataclasses import dataclass, field
 from domain.ortak import to_float as _f
 
 
-KART_BORCU_VARSAYILAN_ODEME_YUZDE = 25.0
+# Varsayılan senaryo: firma kart ekstresini tam kapatır. Tahmin ekranında kullanıcı değiştirebilir.
+KART_BORCU_VARSAYILAN_ODEME_YUZDE = 100.0
 
 
 def _ay_ekle(yyyymm: str, k: int) -> str:

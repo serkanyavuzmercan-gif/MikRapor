@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.kredi import KrediOdeme, kredi_takvimi_ay
+from domain.kredi import KART_BORCU_VARSAYILAN_ODEME_YUZDE, KrediOdeme, kredi_takvimi_ay
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis, hesap_kirilim_etiketi
 from domain.runway import nakit_akisi_mutabik, runway_takvim_kur
@@ -182,7 +182,7 @@ def _runway_banner(
     if kart_borcu_takvimi:
         kapsam = (
             "Açık alacak/borç vadeleri, banka kredi taksitleri ve açık kart borcu için "
-            "aylık %25 ödeme varsayımı dikkate alındı."
+            f"aylık %{KART_BORCU_VARSAYILAN_ODEME_YUZDE:.0f} ödeme varsayımı dikkate alındı."
         )
     nakit_bilgi = f"Başlangıç nakdi: {tl(r.baslangic_nakit)}"
 
