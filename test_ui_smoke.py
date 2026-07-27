@@ -44,9 +44,45 @@ class TestUiSmoke(unittest.TestCase):
         from ui.gelir_tablosu_view import build_gelir_tablosu_widget
         gt = build_gelir_tablosu([
             {"hesap_kodu": "600", "borc": 0.0, "alacak": 42000.0},
+            {"hesap_kodu": "601", "borc": 0.0, "alacak": 8000.0},
             {"hesap_kodu": "621", "borc": 30000.0, "alacak": 0.0},
+            {"hesap_kodu": "632", "borc": 6000.0, "alacak": 0.0},
         ], bas="2026-01-01", bit="2026-06-30")
         self.assertIsNotNone(build_gelir_tablosu_widget(gt, firma="Test A.Ş."))
+
+    def test_gelir_tablosu_pastalari(self) -> None:
+        """Sağ sütun: gelir/gider halkaları — çizim de dâhil çökmeden kurulmalı."""
+        from domain.gelir_tablosu import build_gelir_tablosu, gelir_dagilimi
+        from ui.gelir_tablosu_view import _dagilim_sutunu
+        from ui.pasta import GELIR_RENKLERI, Halka
+        gt = build_gelir_tablosu([
+            {"hesap_kodu": "600", "borc": 0.0, "alacak": 42000.0},
+            {"hesap_kodu": "601", "borc": 0.0, "alacak": 8000.0},
+            {"hesap_kodu": "621", "borc": 30000.0, "alacak": 0.0},
+            {"hesap_kodu": "632", "borc": 6000.0, "alacak": 0.0},
+        ], bas="2026-01-01", bit="2026-06-30")
+        self.assertIsNotNone(_dagilim_sutunu(gt))
+        h = Halka(gelir_dagilimi(gt), GELIR_RENKLERI)
+        h.resize(190, 190)
+        h.grab()                                   # paintEvent gerçekten çalışsın
+        self.assertGreaterEqual(h._dilim_indeksi(95.0, 20.0), 0)   # en üst dilim
+        self.assertEqual(h._dilim_indeksi(95.0, 95.0), -1)         # halkanın deliği
+
+    def test_maliyet_kapanissiz_gider_pastasi_gizlenir(self) -> None:
+        """SMM ≈ 0 iken en büyük gider eksik → pasta yanıltır, hiç çizilmez."""
+        from domain.gelir_tablosu import build_gelir_tablosu
+        from ui.gelir_tablosu_view import _dagilim_sutunu
+        gt = build_gelir_tablosu([
+            {"hesap_kodu": "600", "borc": 0.0, "alacak": 100000.0},
+            {"hesap_kodu": "601", "borc": 0.0, "alacak": 40000.0},
+            {"hesap_kodu": "631", "borc": 4000.0, "alacak": 0.0},
+            {"hesap_kodu": "632", "borc": 6000.0, "alacak": 0.0},
+        ], bas="2026-01-01", bit="2026-06-30")
+        self.assertTrue(gt.maliyet_eksik)
+        sutun = _dagilim_sutunu(gt)
+        basliklar = [w.text() for w in sutun.findChildren(QLabel)]
+        self.assertTrue(any("GELİR DAĞILIMI" in b for b in basliklar))
+        self.assertFalse(any("GİDER DAĞILIMI" in b for b in basliklar))
 
     def test_gercek_durum_view(self) -> None:
         from domain.gercek_durum import build_gercek_durum
