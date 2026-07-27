@@ -10,7 +10,7 @@ Model ADI hiçbir yerde hardcode değildir. Hardcode edilen tek şey *tercih sı
 (hangi aile daha yetenekli sayılır) ve o da eşleşme bulunamazsa sürüm numarasına düşer.
 
 İki istek şeması vardır:
-  • "openai"    — OpenAI uyumlu /chat/completions (OpenAI, Google, DeepSeek, Groq, xAI…)
+  • "openai"    — OpenAI uyumlu /chat/completions (OpenAI, Google, DeepSeek, xAI…)
   • "anthropic" — Anthropic Messages API (resmi SDK)
 
 Ağ katmanı stdlib urllib'dir (mikro_api ile aynı ilke: yeni bağımlılık yok).
@@ -94,11 +94,8 @@ SAGLAYICILAR: tuple[Saglayici, ...] = (
         "sk-…", "https://platform.deepseek.com/api_keys",
         tercih=("reasoner", "chat"),
     ),
-    Saglayici(
-        "groq", "Groq — ücretsiz kotalı", "https://api.groq.com/openai/v1", "openai",
-        "gsk_…", "https://console.groq.com/keys",
-        tercih=("llama", "qwen", "kimi", "gemma"),
-    ),
+    # Groq listeden ÇIKARILDI: ücretsiz kota altında sürekli hata veriyordu. Gerekirse
+    # «Özel» sağlayıcıyla https://api.groq.com/openai/v1 adresi elle girilebilir.
     Saglayici(
         "xai", "xAI — Grok", "https://api.x.ai/v1", "openai",
         "xai-…", "https://console.x.ai",

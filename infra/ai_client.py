@@ -8,7 +8,7 @@ kullanıcı anahtarını girmiş, modelini seçmiş VE veri paylaşımını onay
 İki istek şeması desteklenir (bkz. infra/ai_saglayici.py):
   • "anthropic" — resmi Anthropic SDK (akışlı, uyarlanır düşünme)
   • "openai"    — OpenAI uyumlu /chat/completions; OpenAI, Google Gemini, DeepSeek,
-                  Groq, xAI ve aynı sözleşmeyi konuşan her sağlayıcı buradan geçer.
+                  xAI ve aynı sözleşmeyi konuşan her sağlayıcı buradan geçer.
 OpenAI uyumlu tarafta stdlib urllib kullanılır (mikro_api ile aynı ilke: sağlayıcı
 başına yeni bağımlılık eklemeyiz, PyInstaller derlemesi sade kalır).
 """
