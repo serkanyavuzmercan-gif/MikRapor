@@ -653,6 +653,80 @@ def _gl_devir_haric(alias: str = "c") -> str:
     )
 
 
+def _gl_nakit_fis_neti(bas: str, bit_son: str, *, having: str) -> str:
+    """
+    Yevmiye fişi başına NET nakit hareketi veren alt sorgu (FROM (...) c olarak kullanılır).
+
+    Aynı fişteki nakit satırları netleşir: 28 bin banka çıkışı + 18 bin iç transfer girişi
+    olan fişin gerçek dış akışı 10 bindir. İç transfer/çek tahsili (101→102) kendiliğinden
+    sıfırlanır; devir fişleri _gl_devir_haric ile elenir. Kolonlar: fis_tarih,
+    fis_yevmiye_no, net_nakit (+ giriş / − çıkış).
+    """
+    return (
+        "SELECT c0.fis_tarih, c0.fis_yevmiye_no, SUM(c0.fis_meblag0) AS net_nakit "
+        "FROM MUHASEBE_FISLERI c0 WITH (NOLOCK) "
+        "WHERE c0.fis_iptal = 0 AND c0.fis_meblag0 <> 0 "
+        f"AND LEFT(LTRIM(c0.fis_hesap_kod), 3) IN {_NAKIT_GL_ONEK} "
+        f"AND c0.fis_tarih >= '{bas}' AND c0.fis_tarih < '{bit_son}' "
+        "AND c0.fis_yevmiye_no IS NOT NULL AND c0.fis_yevmiye_no <> 0 "
+        f"{_gl_devir_haric('c0')}"
+        "GROUP BY c0.fis_tarih, c0.fis_yevmiye_no "
+        f"HAVING {having}"
+    )
+
+
+def fetch_nakit_ozet_gl(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
+    """
+    Dönem nakit giriş/çıkışı — Nakit Akış ile AYNI GL kaynağı ve kuralları.
+
+    Eski cari sürüm (fetch_nakit_ozet) KREDİ hesaplarını da nakit sayıyor ve iç
+    transferleri elemiyordu; net akış bilançodaki nakitle çelişecek kadar şişiyordu
+    (canlıda +23,1M net akış ↔ 1,03M bilanço nakdi). Çıktı şekli cari sürümle aynı:
+    [{'giren','cikan'}] — build_gercek_durum doğrudan yiyebilir.
+    """
+    bas, bit = _aralik(bas, bit)
+    alt = _gl_nakit_fis_neti(bas, _bit_son(bit), having="ABS(SUM(c0.fis_meblag0)) >= 0.005")
+    sql = (
+        "SELECT SUM(CASE WHEN c.net_nakit > 0 THEN c.net_nakit ELSE 0 END) AS giren, "
+        "SUM(CASE WHEN c.net_nakit < 0 THEN -c.net_nakit ELSE 0 END) AS cikan "
+        f"FROM ({alt}) c"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
+def fetch_nakit_aylik_gl(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
+    """Aylık nakit giriş/çıkış (trend için) — fetch_nakit_ozet_gl ile aynı kural, ay kırılımlı."""
+    bas, bit = _aralik(bas, bit)
+    alt = _gl_nakit_fis_neti(bas, _bit_son(bit), having="ABS(SUM(c0.fis_meblag0)) >= 0.005")
+    sql = (
+        "SELECT CONVERT(char(7), c.fis_tarih, 23) AS ay, "
+        "SUM(CASE WHEN c.net_nakit > 0 THEN c.net_nakit ELSE 0 END) AS giren, "
+        "SUM(CASE WHEN c.net_nakit < 0 THEN -c.net_nakit ELSE 0 END) AS cikan "
+        f"FROM ({alt}) c "
+        "GROUP BY CONVERT(char(7), c.fis_tarih, 23) "
+        "ORDER BY ay"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
+def fetch_nakit_ozet_ve_aylik(
+    client: MikroClient, bas: str, bit: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """
+    Nakit özeti + aylık kırılımı — Nakit Akış'la aynı GL kaynağından (tek doğru).
+
+    Nakit & Kârlılık ve Trend & Oranlar bunu ortak kullanır; böylece üç tabın nakit
+    rakamı birbiriyle çelişmez. GL okunamazsa eski cari kaynağa zarafetle düşülür.
+    """
+    try:
+        aylik = fetch_nakit_aylik_gl(client, bas, bit)
+        if aylik:
+            return fetch_nakit_ozet_gl(client, bas, bit), aylik
+    except MikroAPIError:
+        pass
+    return fetch_nakit_ozet(client, bas, bit), fetch_nakit_aylik(client, bas, bit)
+
+
 def fetch_nakit_akis_gl(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
     """
     Nakit Akış'ı MUHASEBEDEN kurar: nakit hesap (100/101/102/108) yevmiye satırları;
@@ -682,15 +756,7 @@ def fetch_nakit_akis_gl(client: MikroClient, bas: str, bit: str) -> list[dict[st
         "CASE WHEN c.net_nakit > 0 THEN 0 ELSE 1 END AS tip, "
         "karsi.prefix AS prefix, SUM(ABS(c.net_nakit) * karsi.pay) AS tutar "
         "FROM ("
-        "SELECT c0.fis_tarih, c0.fis_yevmiye_no, SUM(c0.fis_meblag0) AS net_nakit "
-        "FROM MUHASEBE_FISLERI c0 WITH (NOLOCK) "
-        "WHERE c0.fis_iptal = 0 AND c0.fis_meblag0 <> 0 "
-        f"AND LEFT(LTRIM(c0.fis_hesap_kod), 3) IN {_NAKIT_GL_ONEK} "
-        f"AND c0.fis_tarih >= '{bas}' AND c0.fis_tarih < '{bit_son}' "
-        "AND c0.fis_yevmiye_no IS NOT NULL AND c0.fis_yevmiye_no <> 0 "
-        f"{_gl_devir_haric('c0')}"
-        "GROUP BY c0.fis_tarih, c0.fis_yevmiye_no "
-        "HAVING ABS(SUM(c0.fis_meblag0)) >= 0.005"
+        + _gl_nakit_fis_neti(bas, bit_son, having="ABS(SUM(c0.fis_meblag0)) >= 0.005") +
         ") c "
         "CROSS APPLY ("
         "SELECT CASE WHEN EXISTS ("
@@ -728,15 +794,7 @@ def fetch_kredi_odemeleri_gl(
         "karsi.hesap AS hesap, karsi.hesap_ad AS hesap_ad, "
         "SUM(ABS(c.net_nakit) * karsi.pay) AS tutar "
         "FROM ("
-        "SELECT c0.fis_tarih, c0.fis_yevmiye_no, SUM(c0.fis_meblag0) AS net_nakit "
-        "FROM MUHASEBE_FISLERI c0 WITH (NOLOCK) "
-        "WHERE c0.fis_iptal = 0 AND c0.fis_meblag0 <> 0 "
-        f"AND LEFT(LTRIM(c0.fis_hesap_kod), 3) IN {_NAKIT_GL_ONEK} "
-        f"AND c0.fis_tarih >= '{bas}' AND c0.fis_tarih < '{_bit_son(bit)}' "
-        "AND c0.fis_yevmiye_no IS NOT NULL AND c0.fis_yevmiye_no <> 0 "
-        f"{_gl_devir_haric('c0')}"
-        "GROUP BY c0.fis_tarih, c0.fis_yevmiye_no "
-        "HAVING SUM(c0.fis_meblag0) < -0.005"
+        + _gl_nakit_fis_neti(bas, _bit_son(bit), having="SUM(c0.fis_meblag0) < -0.005") +
         ") c "
         "CROSS APPLY ("
         "SELECT LTRIM(ISNULL(k.fis_hesap_kod, '')) AS hesap, "

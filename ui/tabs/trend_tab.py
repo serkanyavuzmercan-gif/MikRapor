@@ -9,13 +9,13 @@ from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
 from domain.gercek_durum import build_gercek_durum
 from domain.mizan_bilanco import build_bilanco, tl
+from domain.tahmin import ogrenme_penceresi_bas
 from domain.trend import TrendRapor, build_trend, trend_csv
 from infra.config import MikroConfig, load_gercek_durum_ayarlar
-from infra.mikro_api import MikroClient
+from infra.mikro_api import MikroAPIError, MikroClient
 from infra.mikro_fetch import (
     fetch_mizan,
-    fetch_nakit_aylik,
-    fetch_nakit_ozet,
+    fetch_nakit_ozet_ve_aylik,
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
@@ -56,8 +56,7 @@ class TrendTab(RaporTab):
             stok_rows = fetch_stok_ozet(client, bas, bit)
             stok_aylik = fetch_stok_aylik(client, bas, bit)
             bildir("Banka nakit hareketleri çekiliyor…")
-            nakit_rows = fetch_nakit_ozet(client, bas, bit)
-            nakit_aylik = fetch_nakit_aylik(client, bas, bit)
+            nakit_rows, nakit_aylik = fetch_nakit_ozet_ve_aylik(client, bas, bit)
             bildir("GL mizan çekiliyor…")
             mizan_rows = fetch_mizan(client, bit)
             bildir("Trend kuruluyor…")
@@ -66,8 +65,25 @@ class TrendTab(RaporTab):
                 nakit_rows=nakit_rows, nakit_aylik=nakit_aylik,
                 bas=bas, bit=bit, ayarlar=ayarlar,
             )
+            # Grafik için daha uzun pencere: 3 aylık dönemde 3 çubuk "trend" sayılmaz.
+            # KPI'lar seçili dönemden (gd.trend) gelmeye devam eder — çelişki olmaz.
+            gecmis: list = []
+            g_bas = ogrenme_penceresi_bas(bas, bit)
+            if g_bas < bas:
+                try:
+                    bildir("Uzun dönem trendi çekiliyor (son 12 ay)…")
+                    g_nakit_rows, g_nakit_aylik = fetch_nakit_ozet_ve_aylik(client, g_bas, bit)
+                    gecmis = build_gercek_durum(
+                        stok_rows=fetch_stok_ozet(client, g_bas, bit),
+                        stok_aylik=fetch_stok_aylik(client, g_bas, bit),
+                        nakit_rows=g_nakit_rows, nakit_aylik=g_nakit_aylik,
+                        bas=g_bas, bit=bit, ayarlar=ayarlar,
+                    ).trend
+                except MikroAPIError:
+                    gecmis = []
             bilanco = build_bilanco(mizan_rows, asof=bit)
-            tr = build_trend(aylik=gd.trend, bilanco=bilanco, bas=bas, bit=bit)
+            tr = build_trend(aylik=gd.trend, aylik_gecmis=gecmis,
+                             bilanco=bilanco, bas=bas, bit=bit)
             return {"tr": tr, "firma": firma_getir(cfg, client)}
 
         return is_fn

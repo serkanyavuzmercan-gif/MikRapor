@@ -17,8 +17,7 @@ from infra.mikro_fetch import (
     fetch_cari_bakiye,
     fetch_gelir_tablosu,
     fetch_mizan,
-    fetch_nakit_aylik,
-    fetch_nakit_ozet,
+    fetch_nakit_ozet_ve_aylik,
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
@@ -70,8 +69,7 @@ class GercekDurumTab(RaporTab):
             stok_rows = fetch_stok_ozet(client, bas, bit)
             stok_aylik = fetch_stok_aylik(client, bas, bit)
             bildir("Banka nakit hareketleri çekiliyor…")
-            nakit_rows = fetch_nakit_ozet(client, bas, bit)
-            nakit_aylik = fetch_nakit_aylik(client, bas, bit)
+            nakit_rows, nakit_aylik = fetch_nakit_ozet_ve_aylik(client, bas, bit)
             bildir("Cari bakiyeler çekiliyor…")
             cari_bakiye_rows = fetch_cari_bakiye(client, bit)
             bildir("GL mizan çekiliyor…")
