@@ -69,11 +69,51 @@ class TestYillariCek(unittest.TestCase):
     def test_bos_yil_listesi(self) -> None:
         self.assertEqual(yillari_cek(_CFG, []), [])
 
+    def test_yil_veritabani_yoksa_secili_yila_dusulur(self) -> None:
+        """
+        Yıl bazlı DB olmayan kurulumda tablo DÜŞMEMELİ.
+
+        Canlıda 2024-2025 seçilmesine rağmen mukayese hiç çıkmadı: 2024 kendi çalışma
+        yılıyla sorgulanıp hata alınca yıl atlanmış, geriye tek yıl kalmıştı.
+        """
+        from domain.ai_yorum import YilKapanis
+        from infra.mikro_api import MikroAPIError
+
+        denenen: list[int] = []
+
+        def yil_bazli_yok(client, yil, **kw):
+            denenen.append(client.cfg.calisma_yili)
+            if client.cfg.calisma_yili != 2025:      # yalnız seçili yıl DB'si var
+                raise MikroAPIError("veritabanı yok")
+            return YilKapanis(yil=yil, net_satis=7_000_000.0)
+
+        self.yama.stop()
+        with patch("infra.mukayese_fetch.yil_kapanisi", side_effect=yil_bazli_yok):
+            out = yillari_cek(_CFG, [2024, 2025])
+        self.yama.start()
+
+        self.assertEqual([k.yil for k in out], [2024, 2025])   # tablo kurulabilir
+        self.assertEqual(denenen[:2], [2024, 2025])            # önce kendi yılı, sonra yedek
+
+    def test_yil_bazli_db_varsa_yedege_dusulmez(self) -> None:
+        from domain.ai_yorum import YilKapanis
+        denenen: list[int] = []
+
+        def hepsi_var(client, yil, **kw):
+            denenen.append(client.cfg.calisma_yili)
+            return YilKapanis(yil=yil, net_satis=3_000_000.0)
+
+        self.yama.stop()
+        with patch("infra.mukayese_fetch.yil_kapanisi", side_effect=hepsi_var):
+            yillari_cek(_CFG, [2023, 2024, 2025])
+        self.yama.start()
+        self.assertEqual(denenen, [2023, 2024, 2025])   # yedek hiç denenmedi
+
     def test_veritabani_yoksa_yil_atlanir(self) -> None:
         from infra.mikro_api import MikroAPIError
 
         def bazen_patla(client, yil, **kw):
-            if yil == 2022:
+            if yil == 2022:      # hem kendi yılında hem yedekte patlar
                 raise MikroAPIError("veritabanı yok")
             from domain.ai_yorum import YilKapanis
             return YilKapanis(yil=yil, net_satis=1_000_000.0)
@@ -89,6 +129,7 @@ class TestYillariCek(unittest.TestCase):
         from domain.ai_yorum import YilKapanis
 
         def bos_2022(client, yil, **kw):
+            # 2022 her iki yolda da boş döner → tabloya girmemeli
             return YilKapanis(yil=yil) if yil == 2022 else YilKapanis(
                 yil=yil, net_satis=5_000_000.0)
 

@@ -10,11 +10,15 @@ kaynağından gelir. Mizanın 120/320 bakiyeleri her kurulumda işlenmiyor; canl
 Alıcılar -4.839 TL görünürken cari hesaplarda 11,4 milyon TL alacak vardı ve tablo
 beş yıl boyunca sabit çıkıyordu. Canlı kaynak okunamazsa mizana düşülür.
 
-HER YIL KENDİ ÇALIŞMA YILIYLA SORGULANIR: Mikro auth gövdesinde CalismaYili gider ve
+HER YIL ÖNCE KENDİ ÇALIŞMA YILIYLA DENENİR: Mikro auth gövdesinde CalismaYili gider ve
 sunucu isteği O YILIN veritabanına yönlendirir. Tek bir client ile geçmiş yılları
 sorgulamak, tarih süzgeci doğru olsa bile hep aynı veritabanını okur — canlıda 2021
-ile 2025 bilançosu kuruşu kuruşuna aynı çıkıyordu. O yılın veritabanı yoksa istek
-hata verir ve yıl sessizce atlanır.
+ile 2025 bilançosu kuruşu kuruşuna aynı çıkıyordu.
+
+AMA O YILIN VERİTABANI OLMAYABİLİR (tek veritabanında birkaç yıl tutan kurulumlar).
+O yüzden yıl bazlı deneme başarısız olur ya da boş dönerse SEÇİLİ çalışma yılıyla
+tekrar denenir. İkisi de boşsa yıl atlanır. Yıl bazlı denemeyi tek yol yapmak canlıda
+tabloyu komple düşürmüştü — iki yıl seçilmesine rağmen mukayese çıkmıyordu.
 """
 
 from __future__ import annotations
@@ -132,10 +136,11 @@ def yillari_cek(
     out: list[YilKapanis] = []
     gecmis = [y for y in sorted(yillar) if y != odak]
 
+    yedek = odak_client or MikroClient(cfg)
     for sira, y in enumerate(gecmis, 1):
         if bildir:
             bildir(f"{y} yılı mukayese için çekiliyor… ({sira}/{len(gecmis)})")
-        k = _dene(lambda y=y: _yil_kendi_dbsinden(cfg, y))
+        k = _gecmis_yil(cfg, y, yedek)
         if k is not None and k.dolu:   # boş yıl sıfır satırı olarak tabloya girmesin
             out.append(k)
 
@@ -150,7 +155,16 @@ def yillari_cek(
     return out
 
 
-def _yil_kendi_dbsinden(cfg: MikroConfig, yil: int) -> YilKapanis:
-    """Geçmiş yıl: o yılın çalışma yılı veritabanına bağlanıp kapanışı okur."""
-    c = yil_client(cfg, yil)
-    return yil_kapanisi(c, yil, vade_gun=_dene(lambda: fetch_cari_vade_gun(c), {}) or {})
+def _gecmis_yil(cfg: MikroConfig, yil: int, yedek: MikroClient) -> YilKapanis | None:
+    """
+    Geçmiş yıl: ÖNCE o yılın çalışma yılı veritabanı, olmazsa seçili çalışma yılı.
+
+    Yıl bazlı veritabanı olan kurulumda doğru rakam gelir; tek veritabanında birkaç
+    yıl tutan kurulumda ise yedek yol devreye girer ve tablo düşmez.
+    """
+    for c in (yil_client(cfg, yil), yedek):
+        k = _dene(lambda c=c: yil_kapanisi(
+            c, yil, vade_gun=_dene(lambda c=c: fetch_cari_vade_gun(c), {}) or {}))
+        if k is not None and k.dolu:
+            return k
+    return None
