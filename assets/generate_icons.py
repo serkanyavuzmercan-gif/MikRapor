@@ -51,10 +51,13 @@ def _crop_to_content(img: Image.Image, padding: int = 8) -> Image.Image:
 
 # Kaynak logo mor-mavi; uygulama paleti teal. Programın renkleri korunup LOGO uyarlanır.
 # Ton aralıkları kaynaktaki iki renk ailesini ayırır: «M» harfi mor (~250-300°), yükselen
-# grafik mavi (~185-247°). Hedefler ui/styles.py'den: ACCENT_HOVER ve açık teal.
+# grafik mavi (~185-247°). Hedefler ui/styles.py'den: NAVY + ACCENT_HOVER.
+#
+# Kontrast bilinçli olarak yüksek tutulur: ikon 16 piksele kadar küçülüyor ve açık tonlu
+# bir grafik (ör. hover teal'i #ccfbf1) o boyutta beyaz zeminde kayboluyordu.
 _BOYAMA: tuple[tuple[tuple[int, int], str], ...] = (
-    ((248, 300), "#0d9488"),   # M harfi  → teal (düğme rengi)
-    ((185, 247), "#ccfbf1"),   # grafik   → açık teal (hover tonu)
+    ((248, 300), "#1e3a5f"),   # M harfi  → lacivert (bölüm başlığı rengi)
+    ((185, 247), "#0d9488"),   # grafik   → teal (düğme rengi)
 )
 
 
