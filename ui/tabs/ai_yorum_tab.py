@@ -22,7 +22,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
     QVBoxLayout,
 )
 
@@ -41,7 +40,7 @@ from infra.ai_config import (
     load_ai_config,
     save_ai_config,
 )
-from infra.ai_saglayici import SAGLAYICILAR, ModelListesiHatasi, modelleri_getir
+from infra.ai_saglayici import SAGLAYICILAR
 from infra.config import MikroConfig, load_gercek_durum_ayarlar
 from infra.mikro_api import MikroAPIError, MikroClient
 from infra.mikro_fetch import (
@@ -130,37 +129,15 @@ class AiYorumTab(RaporTab):
         self._ed_url.setMinimumWidth(200)
         self._ed_url.editingFinished.connect(self._ayar_kaydet)
         satir.addWidget(self._ed_url, 1)
-        dis.addLayout(satir)
 
-        # 2. satır: model (düzenlenebilir) + canlı liste düğmesi
-        satir2 = QHBoxLayout()
-        satir2.setSpacing(10)
-        satir2.addWidget(self._etiket("Model"))
-        self._cb_model = QComboBox()
-        self._cb_model.setEditable(True)   # listede yoksa elle yazılabilsin
-        self._cb_model.setMinimumWidth(300)
-        self._cb_model.lineEdit().setPlaceholderText("«Modelleri Getir»e basın ya da adı yazın")
-        self._model_listesi_koy(cfg.model_listesi, cfg.model)
-        self._cb_model.lineEdit().editingFinished.connect(self._ayar_kaydet)
-        self._cb_model.currentIndexChanged.connect(self._ayar_kaydet)
-        satir2.addWidget(self._cb_model, 1)
-
-        self._btn_modeller = QPushButton("Modelleri Getir")
-        self._btn_modeller.setObjectName("ghostBtn")
-        self._btn_modeller.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._btn_modeller.setToolTip(
-            "Sağlayıcının güncel model listesini internetten çeker — yeni çıkan modeller "
-            "program güncellenmeden burada görünür.")
-        self._btn_modeller.clicked.connect(self._on_modelleri_getir)
-        satir2.addWidget(self._btn_modeller)
-
+        # Model KULLANICIDAN İSTENMEZ: «Yorumla»ya basınca sağlayıcının listesinden
+        # en güncel olan otomatik seçilir (bkz. ai_saglayici.guncel_model_sec).
         self._lbl_anahtar_link = QLabel()
         self._lbl_anahtar_link.setOpenExternalLinks(True)
         self._lbl_anahtar_link.setTextFormat(Qt.TextFormat.RichText)
         self._lbl_anahtar_link.setStyleSheet("font-size:11px; background:transparent;")
-        satir2.addWidget(self._lbl_anahtar_link)
-        satir2.addStretch(1)
-        dis.addLayout(satir2)
+        satir.addWidget(self._lbl_anahtar_link)
+        dis.addLayout(satir)
 
         self._chk_onay = QCheckBox(ONAY_METNI)
         self._chk_onay.setObjectName("aiOnay")
@@ -195,21 +172,6 @@ class AiYorumTab(RaporTab):
         lbl.setStyleSheet("color:#5c4326; font-size:11px; font-weight:600; background:transparent;")
         return lbl
 
-    def _model_listesi_koy(self, modeller: list[str], secili: str | None = None) -> None:
-        """
-        Model kutusunu doldurur.
-
-        `secili=None` → kullanıcının yazdığı ad korunur (liste tazelenirken).
-        `secili=""`   → alan TEMİZLENİR (sağlayıcı değişti; eski sağlayıcının model adı
-                        yeni sağlayıcıda 404 verirdi).
-        """
-        yeni = self._cb_model.currentText().strip() if secili is None else secili
-        self._cb_model.blockSignals(True)
-        self._cb_model.clear()
-        self._cb_model.addItems(modeller)
-        self._cb_model.setCurrentText(yeni)
-        self._cb_model.blockSignals(False)
-
     def _saglayici_ui_tazele(self, cfg: AiConfig) -> None:
         """Seçili sağlayıcıya göre ipucu, adres kutusu ve anahtar bağlantısını günceller."""
         s = cfg.saglayici_bilgi
@@ -223,53 +185,27 @@ class AiYorumTab(RaporTab):
             self._lbl_anahtar_link.setVisible(False)
 
     def _on_saglayici_degisti(self) -> None:
-        """Sağlayıcı değişti: o sağlayıcının kayıtlı anahtarını ve modelini geri yükle."""
+        """Sağlayıcı değişti: o sağlayıcının kayıtlı anahtarını geri yükle."""
         kayitli = load_ai_config()
         kod = self._cb_saglayici.currentData() or ""
         self._ed_key.blockSignals(True)
         self._ed_key.setText(kayitli.anahtar_al(kod))
         self._ed_key.blockSignals(False)
-        # Model listesi sağlayıcıya özgüdür: aynı sağlayıcıya dönüldüyse kayıtlısı geri
-        # gelir, farklıysa alan temizlenir (eski ad yeni sağlayıcıda geçersizdir).
-        if kod == kayitli.saglayici:
-            self._model_listesi_koy(kayitli.model_listesi, kayitli.model)
-        else:
-            self._model_listesi_koy([], "")
         cfg = self._ayarlar()
+        # Model sağlayıcıya özgüdür; değişince önbellek düşer, yenisi otomatik seçilir.
+        if kod != kayitli.saglayici:
+            cfg.model = ""
         self._saglayici_ui_tazele(cfg)
         save_ai_config(cfg)
-        self._durum(cfg.eksik() or f"{cfg.saglayici_bilgi.ad} seçildi.",
+        self._durum(cfg.eksik() or f"{cfg.saglayici_bilgi.ad} seçildi — model otomatik seçilecek.",
                     "uyari" if not cfg.hazir else "iyi")
-
-    def _on_modelleri_getir(self) -> None:
-        """Sağlayıcının canlı model listesini çeker — hardcode yok, program güncellenmeden."""
-        cfg = self._ayarlar()
-        self._btn_modeller.setEnabled(False)
-        self._durum(f"{cfg.saglayici_bilgi.ad} model listesi çekiliyor…")
-        try:
-            modeller = modelleri_getir(cfg.saglayici_bilgi, cfg.api_key, cfg.ozel_base_url)
-        except ModelListesiHatasi as exc:
-            QMessageBox.warning(
-                self, "Model Listesi Alınamadı",
-                f"{exc}\n\nModel adını elle de yazabilirsiniz — liste zorunlu değil.")
-            self._durum(str(exc), "uyari")
-            return
-        finally:
-            self._btn_modeller.setEnabled(True)
-        self._model_listesi_koy(modeller, secili=None)
-        cfg = self._ayarlar()
-        cfg.model_listesi = modeller
-        save_ai_config(cfg)
-        self._durum(f"{len(modeller)} model bulundu — listeden seçin.", "iyi")
-
     def _ayarlar(self) -> AiConfig:
         return AiConfig(
             saglayici=self._cb_saglayici.currentData() or "",
             api_key=self._ed_key.text(),
             onay=self._chk_onay.isChecked(),
-            model=self._cb_model.currentText(),
+            model=load_ai_config().model,   # yalnız önbellek; kullanıcı seçmez
             ozel_base_url=self._ed_url.text(),
-            model_listesi=[self._cb_model.itemText(i) for i in range(self._cb_model.count())],
             anahtarlar=dict(load_ai_config().anahtarlar),
         ).normalized()
 
@@ -380,8 +316,11 @@ class AiYorumTab(RaporTab):
         self._y = y
         self._firma = sonuc["firma"]
         self._icerik_koy(build_ai_yorum_widget(y, firma=self._firma))
+        kayit = self._ayarlar()
+        kayit.model = y.model          # bir dahaki sefere yedek olarak dursun
+        save_ai_config(kayit)
         self._durum(
-            f"{y.yil} yılı yorumlandı · {y.model} · "
+            f"{y.yil} yılı yorumlandı · {y.saglayici} · {y.model} · "
             f"{y.toplam_token:,} token".replace(",", "."), "iyi")
 
     # ------------------------------------------------------------------ dışa aktar

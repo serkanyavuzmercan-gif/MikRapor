@@ -14,7 +14,7 @@ Her kullanıcı uygulamayı **kendi ağında** çalıştırır ve **kendi Mikro 
 - **Tahmin** — geçmiş trendden otomatik önerilen ama düzenlenebilir varsayımlarla (aylık ciro, büyüme %, brüt marj %, sabit gider) ileriye dönük projeksiyon: tahmini ciro, brüt/net kâr ve kümülatif nakit; nakit eksiye düşerse uyarı. Ufuk 1–36 ay.
 - **Trend ve Oranlar** — aylık fiili satış/alış/nakit trendi + bilanço finansal oranları (cari, asit-test, borç/özkaynak).
 - **Reel Değer** — açık alacak/borçların vade yapısını seçilen iskonto oranıyla bugünkü ekonomik değere çevirir; kredi kartı borcunun kısmi ödenmesi hâlindeki finansman maliyetini ayrı gösterir (muhasebe tutarlarını değiştirmez).
-- **Yapay Zekâ Yorumu** — seçili yılın tüm rapor verisini, kullanıcının girdiği API anahtarına ait dil modeline gönderip sade Türkçe bir yönetim yorumu üretir (özet, iyi gidenler, riskler, bu ay yapılacaklar). Sağlayıcı seçilebilir: Anthropic, OpenAI, Google Gemini, DeepSeek, Groq, xAI ya da OpenAI uyumlu **özel** bir adres. Model listesi hardcode değildir — «Modelleri Getir» ile sağlayıcıdan canlı çekilir. **Uygulamanın dışarıya veri gönderdiği tek yeridir** — bkz. «Kapalı devre ve tek istisna».
+- **Yapay Zekâ Yorumu** — seçili yılın tüm rapor verisini, kullanıcının girdiği API anahtarına ait dil modeline gönderip sade Türkçe bir yönetim yorumu üretir (özet, iyi gidenler, riskler, bu ay yapılacaklar). Sağlayıcı seçilebilir: Anthropic, OpenAI, Google Gemini, DeepSeek, Groq, xAI ya da OpenAI uyumlu **özel** bir adres. Model seçmeniz gerekmez: «Yorumla»ya bastığınızda sağlayıcının güncel listesi çekilir ve en yeni/yetenekli model otomatik seçilir. Model adı hiçbir yerde sabit yazılı değildir. **Uygulamanın dışarıya veri gönderdiği tek yeridir** — bkz. «Kapalı devre ve tek istisna».
 
 ## Özellikler
 
@@ -33,10 +33,12 @@ gönderilmez, telemetri yoktur.
 1. Kullanıcı sağlayıcıyı seçip kendi API anahtarını girer (Mikro şifresiyle aynı yolla
    şifreli saklanır — Windows'ta DPAPI, diğer platformlarda yerel anahtar). Anahtarlar
    sağlayıcı başına tutulur; sağlayıcı değiştirince yeniden girmek gerekmez.
-2. Bir model seçer — liste «Modelleri Getir» ile sağlayıcının kendi `/models` ucundan
-   canlı çekilir, istenirse ad elle de yazılabilir. Yeni çıkan bir modeli kullanmak için
-   programı güncellemek gerekmez.
-3. Kullanıcı veri paylaşım onayını açıkça işaretler.
+2. Kullanıcı veri paylaşım onayını açıkça işaretler.
+
+Model seçimi kullanıcıdan istenmez: her çağrıda sağlayıcının `/models` ucundan güncel
+liste çekilir, sohbet için uygun olmayanlar (gömme, ses, görsel…) elenir ve en yeni /
+en yetenekli olan otomatik seçilir. Yeni bir model çıktığında programı güncellemek
+gerekmez.
 
 Onay kaldırıldığında anahtar kayıtlı kalsa bile hiçbir çağrı yapılmaz. Gönderim yalnız
 «Yorumla ve Gönder» düğmesine basıldığında olur; ne gönderildiği ekranda ve PDF'te yazar.

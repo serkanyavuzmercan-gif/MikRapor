@@ -51,6 +51,7 @@ class AiConfig:
     saglayici: str = VARSAYILAN_SAGLAYICI
     api_key: str = ""
     onay: bool = False
+    # Son otomatik seçilen model (yalnız önbellek; kullanıcı seçmez/yazmaz).
     model: str = ""
     ozel_base_url: str = ""
     # Sağlayıcıdan çekilmiş son model listesi (çevrimdışı açılışta kutuyu doldurur).
@@ -93,7 +94,8 @@ class AiConfig:
 
     @property
     def hazir(self) -> bool:
-        """Dışarıya çağrı yapılabilir mi — anahtar, model, onay (ve özelde adres) şart."""
+        """Dışarıya çağrı yapılabilir mi — anahtar, onay (ve özelde adres) şart.
+        Model kullanıcıdan istenmez: çağrı anında en güncel olan otomatik seçilir."""
         return not self.eksik()
 
     def eksik(self) -> str:
@@ -102,8 +104,6 @@ class AiConfig:
             return "API anahtarı girilmemiş."
         if self.saglayici_bilgi.ozel_mi and not self.ozel_base_url:
             return "Özel sağlayıcı için adres (base URL) girilmemiş."
-        if not (self.model or "").strip():
-            return "Model seçilmemiş — «Modelleri Getir»e basın ya da adı elle yazın."
         if not self.onay:
             return "Veri paylaşım onayı verilmemiş."
         return ""
