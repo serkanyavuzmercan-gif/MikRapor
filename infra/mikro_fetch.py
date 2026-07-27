@@ -858,6 +858,82 @@ def fetch_nakit_delta_gl(client: MikroClient, bas: str, bit: str) -> float:
     return 0.0
 
 
+def fetch_doviz_ozet(client: MikroClient, bas: str, bit: str) -> dict[str, float]:
+    """
+    Dönemin döviz karşılığı — Mikro'nun KENDİ kaydından, dışarıdan kur çekmeden.
+
+    MUHASEBE_FISLERI.fis_meblag1 = aynı satırın döviz (USD) tutarıdır; Mikro fişi işlerken
+    günün kuruyla doldurur. Böylece "2023'te 1M USD sattık, 2025'te 0,8M USD" karşılaştırması
+    TARİHÎ kurlarla, tek bir yıl sonu kuruna sıkışmadan çıkar — enflasyon/kur etkisini ayıklamanın
+    en dürüst yolu budur.
+
+    Dönen değerler:
+      satis_tl / satis_usd : net satış (60+61), işaret düzeltilmiş (gelir = +)
+      kur_ortalama         : dönem geneli ima edilen kur (Σ|TL| / Σ|USD|)
+      kur_son              : son 45 günün ima edilen kuru — dönem sonu bakiyelerini çevirmek için
+
+    KUR İMA EDİLİR, VARSAYILMAZ: meblag1 boşsa (kurulum döviz takibi yapmıyorsa) ya da ima
+    edilen kur akıl dışıysa 0 döner ve çağıran taraf döviz bölümünü hiç göstermez. Sessizce
+    yanlış bir kur uydurmaktansa "veri yok" demek yeğdir.
+
+    KAPANIŞ VE DEVİR FİŞLERİ ELENİR — fetch_gelir_tablosu ile AYNI kuralla. Kapatılmış bir
+    yılda kapanış fişi 60x'i 690'a aktarıp sıfırlar; elenmezse satış 0 çıkar ve döviz bloğu
+    hiç oluşmazdı (çok yıllı analizde geçmiş yılların hepsi kapalıdır). Devir fişleri de
+    gerçek işlem değildir ve genelde döviz karşılığı taşımaz — ima edilen kuru bozarlar.
+    """
+    bas, bit = _aralik(bas, bit)
+    bit_son = _bit_son(bit)
+    son_bas = (date.fromisoformat(bit) - timedelta(days=45)).isoformat()
+    satis = "(c.fis_hesap_kod LIKE '60%' OR c.fis_hesap_kod LIKE '61%')"
+    kapanis_haric = (
+        "AND c.fis_yevmiye_no NOT IN ("
+        "SELECT fis_yevmiye_no FROM MUHASEBE_FISLERI WITH (NOLOCK) "
+        "WHERE fis_iptal = 0 AND fis_hesap_kod LIKE '690%' "
+        f"AND fis_tarih >= '{bas}' AND fis_tarih < '{bit_son}' "
+        "AND fis_yevmiye_no IS NOT NULL AND fis_yevmiye_no <> 0)"
+    )
+    sql = (
+        "SELECT "
+        f"SUM(CASE WHEN {satis} THEN -c.fis_meblag0 ELSE 0 END) AS satis_tl, "
+        f"SUM(CASE WHEN {satis} THEN -c.fis_meblag1 ELSE 0 END) AS satis_usd, "
+        "SUM(ABS(c.fis_meblag0)) AS tl_top, SUM(ABS(c.fis_meblag1)) AS usd_top, "
+        f"SUM(CASE WHEN c.fis_tarih >= '{son_bas}' THEN ABS(c.fis_meblag0) ELSE 0 END) AS tl_son, "
+        f"SUM(CASE WHEN c.fis_tarih >= '{son_bas}' THEN ABS(c.fis_meblag1) ELSE 0 END) AS usd_son "
+        "FROM MUHASEBE_FISLERI c WITH (NOLOCK) "
+        f"WHERE c.fis_iptal = 0 AND c.fis_tarih >= '{bas}' AND c.fis_tarih < '{bit_son}' "
+        f"{kapanis_haric} {_gl_devir_haric('c')}"
+    )
+    rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+    if not rows:
+        return {}
+    r = rows[0]
+
+    def _al(*adlar: str) -> float:
+        return _f_local(get_row_value(r, *adlar))
+
+    ort = _kur_makul(_al("tl_top", "TL_TOP"), _al("usd_top", "USD_TOP"))
+    son = _kur_makul(_al("tl_son", "TL_SON"), _al("usd_son", "USD_SON"))
+    return {
+        "satis_tl": _al("satis_tl", "SATIS_TL"),
+        "satis_usd": _al("satis_usd", "SATIS_USD"),
+        "kur_ortalama": ort,
+        "kur_son": son or ort,
+    }
+
+
+# İma edilen kurun makul TL/USD bandı. Dışına çıkarsa meblag1 döviz tutmuyor demektir
+# (ya da kısmen dolu) — uydurmak yerine "yok" deriz.
+_KUR_ALT, _KUR_UST = 1.0, 500.0
+
+
+def _kur_makul(tl: float, doviz: float) -> float:
+    """Σ|TL| / Σ|USD| — bandın dışındaysa 0 (yani "güvenilir kur yok")."""
+    if abs(doviz) < 0.005:
+        return 0.0
+    kur = abs(tl) / abs(doviz)
+    return kur if _KUR_ALT <= kur <= _KUR_UST else 0.0
+
+
 def fetch_nakit_delta(client: MikroClient, bas: str, bit: str) -> float:
     """
     Dönem (bas..bit) içi NAKİT hesap (kasa + normal banka, kredi hariç) net hareketi (giren−çıkan).

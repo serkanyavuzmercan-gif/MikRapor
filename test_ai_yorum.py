@@ -13,6 +13,7 @@ from domain.ai_yorum import (
     AiYorum,
     YilKapanis,
     ai_yorum_csv,
+    ay_farki,
     build_ai_veri_paketi,
     yil_araligi,
     yillar_arasi_csv,
@@ -28,6 +29,7 @@ from infra.ai_saglayici import (
     modelleri_getir,
     saglayici_bul,
 )
+from infra.mikro_fetch import _kur_makul
 
 
 def _paket(bolumler=None):
@@ -409,6 +411,96 @@ class TestYillarArasi(unittest.TestCase):
 
     def test_prompt_cok_yilli_gidisati_ister(self) -> None:
         self.assertIn("YILLAR ARASI KARŞILAŞTIRMA", SISTEM_PROMPT)
+
+
+class TestDovizBazli(unittest.TestCase):
+    """Yüksek enflasyonda düz TL kıyası yanıltır — dolar karşılığı verilmeli."""
+
+    @staticmethod
+    def _kapanislar(kur_2023: float = 27.0, kur_2025: float = 42.3) -> list[YilKapanis]:
+        return [
+            YilKapanis(yil=2023, net_satis=27_000_000.0, stok=8_000_000.0,
+                       alacak=6_000_000.0, satis_usd=1_000_000.0, kur_son=kur_2023),
+            YilKapanis(yil=2025, net_satis=41_200_000.0, stok=12_000_000.0,
+                       alacak=11_360_000.0, satis_usd=800_000.0, kur_son=kur_2025),
+        ]
+
+    def test_doviz_blogu_yazilir(self) -> None:
+        csv = yillar_arasi_csv(self._kapanislar())
+        self.assertIn("DÖVİZ BAZLI", csv)
+        self.assertIn("TL/USD kuru (dönem sonu);27,00;42,30", csv)
+        self.assertIn("Net Satışlar (USD);1000000,00;800000,00", csv)
+
+    def test_stok_ve_alacak_dolara_cevrilir(self) -> None:
+        """Kullanıcının işaret ettiği yer: stok/alacakta nominal TL en çok yanıltır."""
+        csv = yillar_arasi_csv(self._kapanislar())
+        self.assertIn("Stok (USD);296296,30;283687,94", csv)      # TL'de arttı, USD'de düştü
+        self.assertIn("Ticari Alacak (USD);222222,22;268557,92", csv)
+
+    def test_kur_yoksa_blok_hic_yazilmaz(self) -> None:
+        """Güvenilir kur olmadan uydurma dolar rakamı vermektense hiç verme."""
+        k = self._kapanislar()
+        k[1].kur_son = 0.0
+        csv = yillar_arasi_csv(k)
+        self.assertNotIn("DÖVİZ BAZLI", csv)
+        self.assertIn("Net Satışlar;", csv)      # TL tablosu yine de durur
+
+    def test_usd_kursuz_sifir_doner(self) -> None:
+        self.assertEqual(YilKapanis(yil=2025).usd(1_000.0), 0.0)
+
+    def test_prompt_enflasyon_ve_doviz_kurallari(self) -> None:
+        self.assertIn("ENFLASYON YÜKSEKTİR", SISTEM_PROMPT)
+        self.assertIn("DÖVİZ BAZLI", SISTEM_PROMPT)
+        self.assertIn("kendi bilgimdeki TÜFE", SISTEM_PROMPT)
+
+
+class TestKurMakul(unittest.TestCase):
+    """İma edilen kur — meblag1 boş/anlamsızsa 0 dönmeli (uydurma kur yok)."""
+
+    def test_makul_kur_hesaplanir(self) -> None:
+        self.assertAlmostEqual(_kur_makul(42_300_000.0, 1_000_000.0), 42.3)
+
+    def test_doviz_bos_ise_sifir(self) -> None:
+        self.assertEqual(_kur_makul(42_300_000.0, 0.0), 0.0)
+
+    def test_band_disi_kur_reddedilir(self) -> None:
+        self.assertEqual(_kur_makul(1_000.0, 1_000_000.0), 0.0)   # 0,001 — çok düşük
+        self.assertEqual(_kur_makul(1_000_000.0, 100.0), 0.0)     # 10.000 — çok yüksek
+
+    def test_isaret_onemsiz(self) -> None:
+        self.assertAlmostEqual(_kur_makul(-42_300_000.0, -1_000_000.0), 42.3)
+
+
+class TestVeriBayatligi(unittest.TestCase):
+    """Geçmiş yıl seçilince model 'bugün' sanıyordu — bugüne çekilmeli."""
+
+    @staticmethod
+    def _bayat(gecikme: int = 7):
+        return build_ai_veri_paketi(
+            yil=2025, bas="2025-01-01", bit="2025-12-31", bolumler=[("A", "veri")],
+            bugun="2026-07-27", tamamlandi=True, ay_sayisi=12, gecikme_ay=gecikme)
+
+    def test_ay_farki(self) -> None:
+        self.assertEqual(ay_farki("2025-12-31", "2026-07-27"), 6)
+        self.assertEqual(ay_farki("2025-12-31", "2026-08-01"), 7)
+        self.assertEqual(ay_farki("2026-07-01", "2026-07-27"), 0)
+        self.assertEqual(ay_farki("2026-12-31", "2026-07-27"), 0)   # gelecek → 0
+        self.assertEqual(ay_farki("bozuk", "2026-07-27"), 0)
+
+    def test_bayat_veri_uyarisi(self) -> None:
+        n = self._bayat().donem_notu
+        self.assertIn("VERİ GÜNCEL DEĞİL", n)
+        self.assertIn("2026-07-27", n)          # bugün
+        self.assertIn("2025-12-31", n)          # verinin sonu
+        self.assertIn("7 ay", n)
+
+    def test_bugune_gore_is_listesi_istenir(self) -> None:
+        n = self._bayat().donem_notu
+        self.assertIn("BUGÜNE (2026-07-27) göre yaz", n)
+        self.assertIn("«şu an»", n)             # yanlış zaman kipi yasağı
+
+    def test_guncel_veride_uyari_yok(self) -> None:
+        self.assertNotIn("VERİ GÜNCEL DEĞİL", self._bayat(gecikme=1).donem_notu)
 
 
 class TestVeriPaketi(unittest.TestCase):

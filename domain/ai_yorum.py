@@ -19,6 +19,7 @@ sınırını aşar hem de modeli detayda boğar. Üst sınır AZAMI_YIL'dir.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 
 from domain.ortak import csv_sayi
 
@@ -43,7 +44,17 @@ KURALLAR
 bitmiş gibi anlatma ve resmî kârı olduğu gibi doğru kabul etme.
 - Birden çok yıl verildiyse («YILLAR ARASI KARŞILAŞTIRMA» bölümü) gidişatı mutlaka \
 işle: satış büyüyor mu, marj daralıyor mu, borç ve stok birikiyor mu. Tek yılın \
-fotoğrafıyla yetinme.
+fotoğrafıyla yetinme; Özet'te en az bir cümle yıllar arası gidişata ayrılsın.
+- TÜRKİYE'DE ENFLASYON YÜKSEKTİR: yılları düz TL ile kıyaslamak YANILTICIDIR. "Satış %53 \
+arttı" cümlesi, dolar bazında düşmüşken bile kurulabilir. Bu yüzden çok yıllı yorumda \
+nominal TL artışını TEK BAŞINA olumlu sayma.
+- «DÖVİZ BAZLI» bloğu varsa yıllar arası kıyası ÖNCE ona dayandır: "TL'de %53 arttı ama \
+dolar bazında 1,0M USD'den 0,8M USD'ye, yani %20 düştü" gibi açıkça yaz. Stok, alacak ve \
+borçta da aynısını yap — bu kalemlerde nominal büyüme çoğu zaman gerçek büyüme değil, \
+sadece fiyat artışıdır.
+- Enflasyon oranı veride YOKTUR. Kendi bilginden bir TÜFE tahmini kullanacaksan kullandığın \
+oranı rakamla yaz ve "kendi bilgimdeki TÜFE — veride yok" diye etiketle; veriden geliyormuş \
+gibi sunma. Döviz bloğu yoksa da en azından nominal artışın enflasyonu içerdiğini söyle.
 - Aynı büyüklük için iki farklı rakam varsa (ör. resmî gelir tablosu kârı ile fiili \
 brüt marj) hangisine neden güvendiğini bir cümleyle söyle.
 - Her iddiayı rakamla destekle. "Nakit sıkışık" değil, "kasada 722.411 TL var, aylık \
@@ -88,6 +99,18 @@ def yil_araligi(bas: str, bit: str, azami: int = AZAMI_YIL) -> tuple[list[int], 
     return hepsi[-azami:], max(0, len(hepsi) - azami)
 
 
+def ay_farki(bit: str, bugun: str) -> int:
+    """Verinin bitişi ile bugün arasındaki tam ay sayısı (gelecek tarihte 0)."""
+    try:
+        son, simdi = date.fromisoformat(bit), date.fromisoformat(bugun)
+    except ValueError:
+        return 0
+    ay = (simdi.year - son.year) * 12 + (simdi.month - son.month)
+    if simdi.day < son.day:
+        ay -= 1
+    return max(0, ay)
+
+
 @dataclass
 class YilKapanis:
     """Bir yılın kapanış fotoğrafı — yıllar arası karşılaştırma için, ham kırılım yok."""
@@ -105,6 +128,16 @@ class YilKapanis:
     ozkaynak: float = 0.0
     aktif_toplam: float = 0.0
     maliyet_eksik: bool = False    # 62 (SMM) girilmemiş → kâr şişik görünür
+    satis_usd: float = 0.0         # Mikro'nun kendi kaydından, tarihî kurlarla
+    kur_son: float = 0.0           # dönem sonu ima edilen TL/USD; 0 = güvenilir kur yok
+
+    @property
+    def doviz_var(self) -> bool:
+        return self.kur_son > 0 and abs(self.satis_usd) > 0.005
+
+    def usd(self, tl: float) -> float:
+        """Dönem sonu bakiyesinin o günkü dolar karşılığı."""
+        return tl / self.kur_son if self.kur_son > 0 else 0.0
 
     def _marj(self, pay: float) -> float:
         return (pay / self.net_satis * 100) if self.net_satis else 0.0
@@ -132,6 +165,16 @@ _YIL_KALEMLERI: tuple[tuple[str, str], ...] = (
     ("Aktif Toplam (dönem sonu)", "aktif_toplam"),
 )
 
+# Dolar karşılığı verilecek bilanço kalemleri — stok, alacak ve borçta nominal TL
+# kıyası en çok burada yanıltır (kullanıcının işaret ettiği yer).
+_DOVIZ_KALEMLERI: tuple[tuple[str, str], ...] = (
+    ("Ticari Alacak", "alacak"),
+    ("Stok", "stok"),
+    ("Kısa Vadeli Borç", "kvyk"),
+    ("Nakit", "nakit"),
+    ("Özkaynak", "ozkaynak"),
+)
+
 
 def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
     """Yılları yan yana koyan karşılaştırma tablosu — trendi tek bakışta görünür kılar."""
@@ -143,6 +186,18 @@ def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
         out.append(etiket + ";" + ";".join(csv_sayi(getattr(k, alan)) for k in sirali))
     out.append("Brüt Marj (%);" + ";".join(csv_sayi(k.brut_marj) for k in sirali))
     out.append("Net Marj (%);" + ";".join(csv_sayi(k.net_marj) for k in sirali))
+
+    # DÖVİZ BLOĞU: nominal TL kıyası yüksek enflasyonda hiçbir şey anlatmaz — 3 yılda
+    # "satış %53 arttı" demek, dolar bazında düşmüşken bile mümkündür. Kur Mikro'nun
+    # kendi kaydından ima edilir; güvenilir kur yoksa blok HİÇ yazılmaz.
+    if all(k.doviz_var for k in sirali):
+        out.append("")
+        out.append("--- DÖVİZ BAZLI (Mikro'nun kendi kur kaydından) ---")
+        out.append("TL/USD kuru (dönem sonu);" + ";".join(csv_sayi(k.kur_son) for k in sirali))
+        out.append("Net Satışlar (USD);" + ";".join(csv_sayi(k.satis_usd) for k in sirali))
+        for etiket, alan in _DOVIZ_KALEMLERI:
+            out.append(f"{etiket} (USD);"
+                       + ";".join(csv_sayi(k.usd(getattr(k, alan))) for k in sirali))
 
     # Kıyası bozan yıllar açıkça işaretlenir; model "satış düştü" diye yanlış okumasın.
     notlar = []
@@ -172,6 +227,7 @@ class AiVeriPaketi:
     bugun: str = ""
     tamamlandi: bool = False       # dönem sonu geçti mi (yıl bitti mi)
     ay_sayisi: int = 0             # veride fiilen kaç ay var
+    gecikme_ay: int = 0            # verinin bitişi ile bugün arasındaki ay farkı
     yillar: list[int] = field(default_factory=list)   # çok yıllı analizde kapsanan yıllar
 
     @property
@@ -204,6 +260,27 @@ class AiVeriPaketi:
         ])
 
     @property
+    def _bayatlik_notu(self) -> list[str]:
+        """
+        Veri bugüne göre eskiyse modeli bugüne çeker.
+
+        Kullanıcı 2023–2025 aralığını 2026 temmuzda yorumlattığında model 2025 Aralık'ta
+        yaşıyormuş gibi «bu ay şunu yapın» yazıyordu — aradan 7 ay geçmişti (canlıda görüldü).
+        """
+        if self.gecikme_ay < 2:
+            return []
+        return [
+            f"DİKKAT — VERİ GÜNCEL DEĞİL: Bugün {self.bugun}, elindeki en yeni kayıt "
+            f"{self.bit} tarihli. Arada yaklaşık {self.gecikme_ay} ay var ve bu aylara ait "
+            "HİÇBİR hareket veride yok.",
+            f"Bu yüzden «şu an», «bugün itibarıyla», «bu ay» deme; «{self.bit} itibarıyla» de. "
+            "Bakiyeler, alacaklar ve nakit bugün çok farklı olabilir.",
+            f"«Bu Ay Yapılacak 3 İş» maddelerini BUGÜNE ({self.bugun}) göre yaz: aradan "
+            f"{self.gecikme_ay} ay geçtiğini hesaba kat ve bu boşluğu kapatmayı ilk işlerden "
+            "biri olarak koy.",
+        ]
+
+    @property
     def donem_notu(self) -> str:
         """
         Modele dönemin durumunu AÇIKÇA söyler.
@@ -217,6 +294,7 @@ class AiVeriPaketi:
             satirlar += [
                 f"DÖNEM DURUMU: {self.yil} yılı TAMAMLANDI. Veri tam yılı kapsıyor.",
             ]
+            satirlar += self._bayatlik_notu
         else:
             satirlar += [
                 f"DÖNEM DURUMU: {self.yil} yılı HENÜZ BİTMEDİ — yıl devam ediyor.",
@@ -310,6 +388,7 @@ def build_ai_veri_paketi(
     bugun: str = "",
     tamamlandi: bool = False,
     ay_sayisi: int = 0,
+    gecikme_ay: int = 0,
     yillar: list[int] | None = None,
 ) -> AiVeriPaketi:
     """Rapor CSV'lerinden veri paketini kurar; boş/hatalı bölümler elenir."""
@@ -320,7 +399,7 @@ def build_ai_veri_paketi(
     return AiVeriPaketi(
         yil=yil, bas=bas, bit=bit, firma=firma, bolumler=temiz,
         bugun=bugun, tamamlandi=tamamlandi, ay_sayisi=ay_sayisi,
-        yillar=sorted(yillar or []))
+        gecikme_ay=gecikme_ay, yillar=sorted(yillar or []))
 
 
 def ai_yorum_csv(y: AiYorum) -> str:
