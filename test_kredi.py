@@ -5,6 +5,8 @@ from __future__ import annotations
 import unittest
 
 from domain.kredi import (
+    kredi_karti_borclarini_derle,
+    kredi_karti_odeme_takvimi,
     kredi_odemelerini_derle,
     kredi_ozet,
     kredi_takvimi_ay,
@@ -18,6 +20,20 @@ def _row(vade, tutar, anapara=0.0, faiz=0.0, banka="VB"):
 
 
 class TestKredi(unittest.TestCase):
+    def test_acik_kart_borcu_odeme_takvimi(self):
+        borclar = kredi_karti_borclarini_derle([
+            {"hesap": "300.02.0002", "hesap_ad": "Vakıfbank Kredi Kartı", "borc": 80_000},
+            {"hesap": "300.02.0001", "hesap_ad": "Akbank Kredi Kartı", "borc": 20_000},
+            {"hesap": "300.02.0003", "borc": 0},
+        ])
+        self.assertEqual(len(borclar), 2)
+        self.assertEqual(borclar[0].hesap, "300.02.0002")
+        takvim = kredi_karti_odeme_takvimi(
+            borclar, baslangic_ay="2026-06", odeme_yuzde=25, ufuk_ay=3)
+        self.assertAlmostEqual(takvim["2026-07"], 25_000.0, places=2)
+        self.assertAlmostEqual(takvim["2026-08"], 18_750.0, places=2)
+        self.assertAlmostEqual(takvim["2026-09"], 14_062.5, places=2)
+
     def test_donem_odemelerini_derle_ve_sirala(self):
         odemeler = kredi_odemelerini_derle([
             {"tarih": "2026-06-15", "hesap": "300.01.0004",

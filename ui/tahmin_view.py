@@ -129,25 +129,31 @@ def _iki_ihtimal_karti(rt: RunwayTakvim | None, t: Tahmin) -> QFrame:
 
 def _kotu_tablo(rt: RunwayTakvim) -> QFrame:
     """En kötü ihtimal: ay-ay girecek − çıkacak → kalan nakit."""
-    t = _agac(5, [(1, 115), (2, 115), (3, 118), (4, 120)])
+    t = _agac(6, [(1, 108), (2, 118), (3, 108), (4, 118), (5, 120)])
     _tsatir(t, [_c(""), _c("Girecek", renk=MUTED, kalin=True, sag=True),
-                _c("Çıkacak", renk=MUTED, kalin=True, sag=True),
+                _c("İşletme / borç", renk=MUTED, kalin=True, sag=True),
+                _c("Kart borcu", renk=MUTED, kalin=True, sag=True),
                 _c("Aylık Fark", renk=MUTED, kalin=True, sag=True),
                 _c("Kalan Nakit", renk=MUTED, kalin=True, sag=True)])
     for a in rt.aylar:
+        diger_cikan = a.cikan - a.kart_borcu_odeme
         _tsatir(t, [_c(_ay_str(a.ay), kalin=True),
                     _c(tl(a.giren) if a.giren > 0.005 else "—",
                        renk=POZ if a.giren > 0.005 else FAINT, sag=True),
-                    _c(tl(a.cikan) if a.cikan > 0.005 else "—",
-                       renk=NEG if a.cikan > 0.005 else FAINT, sag=True),
+                    _c(tl(diger_cikan) if diger_cikan > 0.005 else "—",
+                       renk=NEG if diger_cikan > 0.005 else FAINT, sag=True),
+                    _c(tl(a.kart_borcu_odeme) if a.kart_borcu_odeme > 0.005 else "—",
+                       renk="#b45309" if a.kart_borcu_odeme > 0.005 else FAINT, sag=True),
                     _c(("+" if a.net >= 0 else "") + tl(a.net), renk=_renk(a.net), sag=True),
                     _c(tl(a.nakit), renk=_renk(a.nakit), kalin=True, sag=True)])
     _fit_height(t)
 
     kredi_s = f" + kredi taksidi {tl(rt.aylik_kredi)}" if rt.aylik_kredi > 0.005 else ""
     gider_s = f" + düzenli gider {tl(rt.aylik_gider)}" if rt.aylik_gider > 0.005 else ""
+    kart_s = " + açık kredi kartı borcu ödeme planı" if rt.aylik_kart_borcu > 0.005 else ""
     notlar = [(
-        f"Çıkacak = satıcılara açık borçlar (vadesine göre){gider_s}{kredi_s}. "
+        f"İşletme / borç = satıcılara açık borçlar (vadesine göre){gider_s}{kredi_s}{kart_s}. "
+        "Kart borcu sütunu mevcut açık kart borcu için senaryo ödemesini ayrıca gösterir. "
         "Girecek = müşterilerden açık alacaklar (vadesine göre). Vadesi geçmiş birikim tek "
         "aya yığılmaz, 3 aya yayılır. Bu tablo yeni satış saymaz — bu yüzden «Girecek» "
         "birkaç ay sonra biter; gerçek durum bundan iyi olur (bkz. «normal beklenti»).", FAINT)]
@@ -155,9 +161,10 @@ def _kotu_tablo(rt: RunwayTakvim) -> QFrame:
 
 
 def _tablo_panel(t: Tahmin) -> QFrame:
-    tr = _agac(5, [(1, 115), (2, 115), (3, 118), (4, 120)])
+    tr = _agac(6, [(1, 108), (2, 118), (3, 108), (4, 118), (5, 120)])
     _tsatir(tr, [_c(""), _c("Girecek", renk=MUTED, kalin=True, sag=True),
-                 _c("Çıkacak", renk=MUTED, kalin=True, sag=True),
+                 _c("İşletme çıkışı", renk=MUTED, kalin=True, sag=True),
+                 _c("Kart borcu", renk=MUTED, kalin=True, sag=True),
                  _c("Aylık Fark", renk=MUTED, kalin=True, sag=True),
                  _c("Kalan Nakit", renk=MUTED, kalin=True, sag=True)])
     for a in t.aylar:
@@ -165,13 +172,17 @@ def _tablo_panel(t: Tahmin) -> QFrame:
         _tsatir(tr, [_c(_ay_str(a.ay) if len(a.ay) >= 7 else a.ay),
                      _c(tl(a.ciro), renk=POZ, sag=True),
                      _c(tl(cikis), renk=NEG, sag=True),
-                     _c(("+" if a.net_kar >= 0 else "") + tl(a.net_kar), renk=_renk(a.net_kar), sag=True),
+                     _c(tl(a.kart_borcu_odeme) if a.kart_borcu_odeme > 0.005 else "—",
+                        renk="#b45309" if a.kart_borcu_odeme > 0.005 else FAINT, sag=True),
+                     _c(("+" if a.net_nakit >= 0 else "") + tl(a.net_nakit),
+                        renk=_renk(a.net_nakit), sag=True),
                      _c(tl(a.nakit), renk=_renk(a.nakit), kalin=True, sag=True)])
     _fit_height(tr)
 
     notlar = [(
-        "Çıkacak = satılan malın maliyeti + aylık sabit gider (yeni mal alımı bunun içinde). "
-        "Aylık Fark = Girecek − Çıkacak. Kalan Nakit = önceki ay + aylık fark.", FAINT)]
+        "İşletme çıkışı = satılan malın maliyeti + aylık sabit gider (yeni mal alımı bunun içinde). "
+        "Kart borcu, bugünkü açık kart bakiyesinin ayrı nakit ödemesidir; kârı değil nakdi etkiler. "
+        "Aylık Fark = Girecek − İşletme çıkışı − Kart borcu. Kalan Nakit = önceki ay + aylık fark.", FAINT)]
     return _card("② NORMAL BEKLENTİ  ·  ay ay tahmin (satış devam eder)", _ic(tr, notlar))
 
 
@@ -307,6 +318,11 @@ def build_tahmin_widget(
     kpi.addWidget(_kpi_card(f"TOPLAM CİRO ({len(t.aylar)} AY)", tl(t.toplam_ciro), PRIMARY_SOFT, ACCENT))
     nk_bg, nk_vr = ("#e8f6ee", POZ) if t.toplam_net >= 0 else ("#fdecec", NEG)
     kpi.addWidget(_kpi_card("TOPLAM NET KÂR", tl(t.toplam_net), nk_bg, nk_vr))
+    kart_bg, kart_vr = ("#fff7ed", "#b45309") if v.kart_borcu_acik > 0.005 else ("#f3f4f6", MUTED)
+    kpi.addWidget(_kpi_card(
+        "AÇIK KART BORCU", tl(v.kart_borcu_acik), kart_bg, kart_vr,
+        alt=f"{len(t.aylar)} ayda ödeme: {tl(t.toplam_kart_borcu_odeme)}",
+    ))
     sn_bg, sn_vr = ("#e8f6ee", POZ) if t.son_nakit >= 0 else ("#fdecec", NEG)
     kpi.addWidget(_kpi_card("DÖNEM SONU NAKİT", tl(t.son_nakit), sn_bg, sn_vr))
     ed_bg, ed_vr = ("#fdecec", NEG) if t.en_dusuk_nakit < 0 else ("#fff7ed", "#b45309")

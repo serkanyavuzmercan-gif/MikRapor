@@ -149,6 +149,7 @@ def _runway_banner(
     runway_ta: TahsilatAlacak | None = None,
     runway_referans_bas: str = "",
     kredi_taksitler: list | None = None,
+    kart_borcu_takvimi: dict[str, float] | None = None,
 ) -> QWidget | None:
     """Mutabık, takvim-tabanlı nakit projeksiyonu.
 
@@ -171,15 +172,17 @@ def _runway_banner(
         ta=runway_ta,
         baslangic_nakit=na.kapanis_nakit,
         kredi_takvimi=kredi_takvimi,
+        kart_borcu_takvimi=kart_borcu_takvimi,
         ufuk_ay=6,
     )
     if r.gider_eksik:
         return None
 
     referans = f"{runway_referans_bas}–{na.bit}" if runway_referans_bas and na.bit else "son 90 gün"
+    kart_ek = " · açık kart borcu için aylık %25 ödeme senaryosu dahil" if kart_borcu_takvimi else ""
     alt = (
         f"Takvim tahmini · referans akış: {referans} · açık alacak/borç vadeleri ve "
-        f"kredi taksitleri dahil · mevcut nakit {tl(r.baslangic_nakit)}"
+        f"kredi taksitleri dahil{kart_ek} · mevcut nakit {tl(r.baslangic_nakit)}"
     )
 
     if r.tukenme_ay is not None:
@@ -272,6 +275,7 @@ def build_nakit_akis_widget(
     runway_ta: TahsilatAlacak | None = None,
     runway_referans_bas: str = "",
     kredi_taksitler: list | None = None,
+    kart_borcu_takvimi: dict[str, float] | None = None,
 ) -> QWidget:
     """Bir NakitAkis'ten QScrollArea içine konacak yerel görünüm üretir."""
     content = QWidget()
@@ -329,6 +333,7 @@ def build_nakit_akis_widget(
         runway_ta=runway_ta,
         runway_referans_bas=runway_referans_bas,
         kredi_taksitler=kredi_taksitler,
+        kart_borcu_takvimi=kart_borcu_takvimi,
     )
     if banner is not None:
         root.addWidget(banner)

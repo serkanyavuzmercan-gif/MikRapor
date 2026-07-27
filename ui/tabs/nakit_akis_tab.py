@@ -8,7 +8,13 @@ from typing import Any
 
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
-from domain.kredi import kredi_odemelerini_derle, taksitleri_derle
+from domain.kredi import (
+    KART_BORCU_VARSAYILAN_ODEME_YUZDE,
+    kredi_karti_borclarini_derle,
+    kredi_karti_odeme_takvimi,
+    kredi_odemelerini_derle,
+    taksitleri_derle,
+)
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis, build_nakit_akis, nakit_akis_csv
 from domain.tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak
@@ -19,6 +25,7 @@ from infra.mikro_fetch import (
     fetch_cari_vade_gun,
     fetch_acik_kalemler,
     fetch_kredi_gl,
+    fetch_kredi_karti_borclari,
     fetch_kredi_odemeleri_gl,
     fetch_kredi_taksitleri,
     fetch_nakit_akis_gl,
@@ -146,6 +153,7 @@ class NakitAkisTab(RaporTab):
             # Gelecek sözleşme taksitleri yalnızca ileriye dönük runway hesabına gider.
             kredi_odemeleri = []
             gelecek_taksitler = []
+            kart_borcu_takvimi: dict[str, float] = {}
             try:
                 if na.kaynak == "gl":
                     bildir("Dönem kredi ödemeleri detaylandırılıyor…")
@@ -160,11 +168,23 @@ class NakitAkisTab(RaporTab):
                 )
             except MikroAPIError:
                 gelecek_taksitler = []
+            try:
+                bildir("Açık kredi kartı borçları çekiliyor…")
+                kart_borclari = kredi_karti_borclarini_derle(fetch_kredi_karti_borclari(client, bit))
+                kart_borcu_takvimi = kredi_karti_odeme_takvimi(
+                    kart_borclari,
+                    baslangic_ay=bit[:7],
+                    odeme_yuzde=KART_BORCU_VARSAYILAN_ODEME_YUZDE,
+                    ufuk_ay=6,
+                )
+            except MikroAPIError:
+                kart_borcu_takvimi = {}
             return {
                 "na": na, "firma": firma_getir(cfg, client),
                 "kredi_odemeleri": kredi_odemeleri,
                 "runway_na": runway_na, "runway_ta": runway_ta,
                 "runway_referans_bas": runway_bas, "taksitler": gelecek_taksitler,
+                "kart_borcu_takvimi": kart_borcu_takvimi,
             }
 
         return is_fn
@@ -178,6 +198,7 @@ class NakitAkisTab(RaporTab):
             runway_na=sonuc.get("runway_na"), runway_ta=sonuc.get("runway_ta"),
             runway_referans_bas=sonuc.get("runway_referans_bas", ""),
             kredi_taksitler=sonuc.get("taksitler"),
+            kart_borcu_takvimi=sonuc.get("kart_borcu_takvimi"),
         ))
         parts = [
             f"Giriş {tl(na.toplam_giris)}",

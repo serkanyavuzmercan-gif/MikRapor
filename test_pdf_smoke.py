@@ -116,7 +116,8 @@ class TestPdfSmoke(unittest.TestCase):
         from ui.tahmin_pdf import export_tahmin_pdf
         t = build_tahmin(TahminVarsayim(
             baslangic_ay="2026-06", baslangic_nakit=100000.0, baz_ciro=500000.0,
-            buyume_yuzde=2.0, marj_yuzde=20.0, sabit_gider=50000.0, ufuk_ay=6))
+            buyume_yuzde=2.0, marj_yuzde=20.0, sabit_gider=50000.0,
+            kart_borcu_acik=250000.0, kart_borcu_odeme_yuzde=25.0, ufuk_ay=6))
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "tahmin.pdf"
             export_tahmin_pdf(t, out, firma="Test Ticaret A.Ş.")

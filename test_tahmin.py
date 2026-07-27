@@ -61,6 +61,23 @@ class TestTahmin(unittest.TestCase):
         self.assertLess(t.en_dusuk_nakit, 0)
         self.assertEqual(t.en_dusuk_ay, t.aylar[-1].ay)
 
+    def test_acik_kart_borcu_nakde_etki_eder_kara_degil(self):
+        v = TahminVarsayim(
+            baslangic_ay="2026-06", baslangic_nakit=100_000, baz_ciro=100_000,
+            marj_yuzde=20, sabit_gider=10_000, kart_borcu_acik=100_000,
+            kart_borcu_odeme_yuzde=25, ufuk_ay=3,
+        )
+        t = build_tahmin(v)
+        # İşletme net kârı 10k/aydır; kart borcu nakit çıkışıdır, kâr değildir.
+        self.assertAlmostEqual(t.aylar[0].net_kar, 10_000.0, places=2)
+        self.assertAlmostEqual(t.aylar[0].kart_borcu_odeme, 25_000.0, places=2)
+        self.assertAlmostEqual(t.aylar[0].net_nakit, -15_000.0, places=2)
+        self.assertAlmostEqual(t.aylar[0].nakit, 85_000.0, places=2)
+        self.assertAlmostEqual(t.toplam_kart_borcu_odeme, 57_812.5, places=2)
+        self.assertAlmostEqual(t.kalan_kart_borcu, 42_187.5, places=2)
+        self.assertAlmostEqual(t.toplam_net, 30_000.0, places=2)
+        self.assertAlmostEqual(t.toplam_net_nakit, -27_812.5, places=2)
+
     def test_aylik_buyume_oner(self):
         self.assertAlmostEqual(aylik_buyume_oner([100, 110, 121]), 10.0, places=1)
         self.assertEqual(aylik_buyume_oner([100]), 0.0)
@@ -93,6 +110,7 @@ class TestTahmin(unittest.TestCase):
         csv = tahmin_csv(build_tahmin(v))
         self.assertIn("VARSAYIM", csv)
         self.assertIn("PROJEKSİYON", csv)
+        self.assertIn("Kart Borcu Ödemesi", csv)
         self.assertIn("Dönem Sonu Nakit", csv)
 
 

@@ -41,10 +41,15 @@ def export_tahmin_pdf(t: Tahmin, path: str | Path, firma: str = "") -> Path:
         [Paragraph("Aylık büyüme", sty_row()), f"%{v.buyume_yuzde:.1f}".replace(".", ",")],
         [Paragraph("Brüt marj", sty_row()), f"%{v.marj_yuzde:.1f}".replace(".", ",")],
         [Paragraph("Aylık sabit gider", sty_row()), tl(v.sabit_gider)],
+        [Paragraph("Açık kredi kartı borcu", sty_row()), tl(v.kart_borcu_acik)],
+        [Paragraph("Kart borcu aylık ödeme oranı", sty_row()), f"%{v.kart_borcu_odeme_yuzde:.1f}".replace(".", ",")],
         [Paragraph("ÖZET", sty_sec()), ""],
         [Paragraph("Toplam ciro", sty_kpi()), tl(t.toplam_ciro)],
         [Paragraph("Toplam brüt kâr", sty_row()), tl(t.toplam_brut)],
         [Paragraph("Toplam net kâr", sty_row()), tl(t.toplam_net)],
+        [Paragraph("Kart borcu ödemesi", sty_row()), tl(t.toplam_kart_borcu_odeme)],
+        [Paragraph("Kalan kart borcu", sty_row()), tl(t.kalan_kart_borcu)],
+        [Paragraph("Toplam net nakit etkisi", sty_row()), tl(t.toplam_net_nakit)],
         [Paragraph("Dönem sonu nakit", sty_kpi()), tl(t.son_nakit)],
         [Paragraph("En düşük nakit", sty_row()), f"{tl(t.en_dusuk_nakit)} ({t.en_dusuk_ay})"],
     ]
@@ -58,12 +63,13 @@ def export_tahmin_pdf(t: Tahmin, path: str | Path, firma: str = "") -> Path:
     ]))
     elems.extend([tbl, Spacer(1, 10), Paragraph("AYLIK PROJEKSİYON", sty_sec()), Spacer(1, 4)])
 
-    rows = [[Paragraph(h, sty_sec()) for h in ("Ay", "Ciro", "Brüt", "Net", "Nakit")]]
+    rows = [[Paragraph(h, sty_sec()) for h in ("Ay", "Ciro", "Brüt", "Kart borcu", "Net nakit", "Nakit")]]
     for a in t.aylar:
         rows.append([
-            Paragraph(a.ay, sty_row()), tl(a.ciro), tl(a.brut_kar), tl(a.net_kar), tl(a.nakit),
+            Paragraph(a.ay, sty_row()), tl(a.ciro), tl(a.brut_kar), tl(a.kart_borcu_odeme),
+            tl(a.net_nakit), tl(a.nakit),
         ])
-    at = Table(rows, colWidths=[28 * mm, 35 * mm, 35 * mm, 35 * mm, 37 * mm])
+    at = Table(rows, colWidths=[22 * mm, 27 * mm, 27 * mm, 30 * mm, 32 * mm, 32 * mm])
     at.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), FONT),
         ("FONTSIZE", (0, 0), (-1, -1), 8),
@@ -74,7 +80,7 @@ def export_tahmin_pdf(t: Tahmin, path: str | Path, firma: str = "") -> Path:
     dipnot_ekle(
         elems,
         belge="Tahmin / projeksiyon özeti",
-        kaynak="Kullanıcı varsayımları · MikRapor projeksiyon modeli",
+        kaynak=("Kullanıcı varsayımları · canlı açık kart borcu · MikRapor projeksiyon modeli"),
     )
     pdf_ciz(doc, elems, baslik="TAHMİN & PROJEKSİYON")
     return out

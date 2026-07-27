@@ -120,6 +120,18 @@ class TestRunwayTakvim(unittest.TestCase):
         self.assertAlmostEqual(r.aylar[2].cikan, 0.0, places=2)       # Ara — taksit bitti
         self.assertFalse(r.gider_eksik)  # kredi takvimi var
 
+    def test_acik_kart_borcu_takvimi_nakde_ayri_yansir(self):
+        r = build_runway_takvim(
+            baslangic_nakit=100_000.0, baslangic_ay="2026-06",
+            alacak_vade={}, borc_vade={}, aylik_gider=0.0,
+            kart_borcu_takvimi={"2026-07": 25_000.0, "2026-08": 18_750.0},
+            ufuk_ay=3,
+        )
+        self.assertAlmostEqual(r.aylar[0].kart_borcu_odeme, 25_000.0, places=2)
+        self.assertAlmostEqual(r.aylar[0].cikan, 25_000.0, places=2)
+        self.assertAlmostEqual(r.aylar[1].kart_borcu_odeme, 18_750.0, places=2)
+        self.assertAlmostEqual(r.aylar[1].nakit, 56_250.0, places=2)
+
     def test_gider_eksik_bayragi(self):
         eksik = build_runway_takvim(
             baslangic_nakit=500000.0, baslangic_ay="2026-06",

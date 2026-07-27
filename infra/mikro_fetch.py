@@ -290,6 +290,33 @@ def fetch_kredi_taksitleri(
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+def fetch_kredi_karti_borclari(client: MikroClient, asof: str) -> list[dict[str, Any]]:
+    """Tarih itibarıyla açık kredi kartı borçları (300 alt hesapları, pozitif borç tutarı).
+
+    Kart ekstresi / asgari ödeme bilgisi Mikro'da her kurulumda tutulmadığından burada yalnızca
+    muhasebeleşmiş açık borç okunur. Ödeme takvimi projeksiyon katmanında senaryo oranıyla kurulur.
+    """
+    asof = iso_tarih(asof, alan="asof")
+    sql = (
+        "SELECT f.fis_hesap_kod AS hesap, "
+        "COALESCE(NULLIF(hp.muh_hesap_isim1, ''), NULLIF(hpp.muh_hesap_isim1, ''), '') AS hesap_ad, "
+        "-SUM(f.fis_meblag0) AS borc "
+        "FROM MUHASEBE_FISLERI f WITH (NOLOCK) "
+        "LEFT JOIN MUHASEBE_HESAP_PLANI hp WITH (NOLOCK) "
+        "ON hp.muh_hesap_kod = f.fis_hesap_kod "
+        "LEFT JOIN MUHASEBE_HESAP_PLANI hpp WITH (NOLOCK) "
+        "ON hpp.muh_hesap_kod = LEFT(f.fis_hesap_kod, 6) "
+        f"WHERE f.fis_iptal = 0 AND f.fis_tarih < '{_bit_son(asof)}' "
+        "AND LEFT(LTRIM(f.fis_hesap_kod), 3) = '300' "
+        "AND (UPPER(ISNULL(hp.muh_hesap_isim1, '')) LIKE '%KRED%KART%' "
+        "OR UPPER(ISNULL(hpp.muh_hesap_isim1, '')) LIKE '%KRED%KART%') "
+        "GROUP BY f.fis_hesap_kod, hp.muh_hesap_isim1, hpp.muh_hesap_isim1 "
+        "HAVING SUM(f.fis_meblag0) < -0.005 "
+        "ORDER BY -SUM(f.fis_meblag0) DESC"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
 def fetch_kredi_gl(client: MikroClient, bas: str, bit: str) -> dict[str, float]:
     """
     Dönem içi GL banka kredisi hareketi (iki yön): borç = anapara ÖDEMESİ,

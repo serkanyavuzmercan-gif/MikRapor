@@ -24,7 +24,13 @@ from PyQt6.QtWidgets import (
 
 from domain.gelir_tablosu import build_gelir_tablosu
 from domain.gercek_durum import build_gercek_durum
-from domain.kredi import kredi_takvimi_ay, taksitleri_derle
+from domain.kredi import (
+    KART_BORCU_VARSAYILAN_ODEME_YUZDE,
+    kredi_karti_borclarini_derle,
+    kredi_karti_odeme_takvimi,
+    kredi_takvimi_ay,
+    taksitleri_derle,
+)
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import build_nakit_akis, nakit_bakiye, nakit_gl_ozetten
 from domain.runway import RunwayTakvim, _ay_ekle, runway_takvim_kur
@@ -46,6 +52,7 @@ from infra.mikro_fetch import (
     fetch_cari_vade_gun,
     fetch_gelir_tablosu,
     fetch_kredi_anapara,
+    fetch_kredi_karti_borclari,
     fetch_kredi_taksitleri,
     fetch_nakit_akis_hareket,
     fetch_nakit_delta,
@@ -96,6 +103,10 @@ class TahminTab(RaporTab):
         self._sp_nakit = para_spin()
         self._sp_ciro = para_spin()
         self._sp_gider = para_spin()
+        self._sp_kart_borc = para_spin()
+        self._sp_kart_borc.setReadOnly(True)
+        self._sp_kart_oran = yuzde_spin(0.0, 100.0)
+        self._sp_kart_oran.setValue(KART_BORCU_VARSAYILAN_ODEME_YUZDE)
         self._sp_buyume = yuzde_spin(-50.0, 100.0)
         self._sp_marj = yuzde_spin(0.0, 100.0)
         self._sp_ufuk = QSpinBox()
@@ -104,8 +115,8 @@ class TahminTab(RaporTab):
         self._sp_ufuk.setSuffix(" ay")
 
         for sp in (
-            self._sp_nakit, self._sp_ciro, self._sp_gider,
-            self._sp_buyume, self._sp_marj, self._sp_ufuk,
+            self._sp_nakit, self._sp_ciro, self._sp_gider, self._sp_kart_borc,
+            self._sp_buyume, self._sp_marj, self._sp_kart_oran, self._sp_ufuk,
         ):
             sp.setMinimumWidth(0)
             sp.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -116,6 +127,8 @@ class TahminTab(RaporTab):
             ("Aylık büyüme", self._sp_buyume),
             ("Kâr oranı (brüt marj)", self._sp_marj),
             ("Aylık sabit gider", self._sp_gider),
+            ("Mevcut kart borcu (canlı)", self._sp_kart_borc),
+            ("Kart borcu aylık ödeme", self._sp_kart_oran),
             ("Kaç ay ileri", self._sp_ufuk),
         )
         self._senaryo = _SenaryoSolPanel(alanlar)
@@ -204,6 +217,15 @@ class TahminTab(RaporTab):
             except MikroAPIError:
                 gl_nakit = None
             baslangic_nakit = gl_nakit if gl_nakit is not None else nakit_bakiye(kapanis_rows)
+            # Kart ekstre/asgari ödeme verisi her Mikro kurulumunda bulunmuyor. Bu yüzden
+            # yalnızca canlı açık borcu okuyor, ödeme planını kullanıcı senaryosuna bırakıyoruz.
+            try:
+                bildir("Açık kredi kartı borçları çekiliyor…")
+                kart_borclari = kredi_karti_borclarini_derle(
+                    fetch_kredi_karti_borclari(client, bit))
+            except MikroAPIError:
+                kart_borclari = []
+            kart_borcu_acik = sum(k.borc for k in kart_borclari)
             hareket_rows = fetch_nakit_akis_hareket(client, bas, bit)
             donem_delta = fetch_nakit_delta(client, bas, bit)
             na = build_nakit_akis(hareket_rows, bakiye_kapanis_rows=kapanis_rows,
@@ -230,6 +252,7 @@ class TahminTab(RaporTab):
 
             # Vade-takvimli runway (gerçek açık kalemlerden) — başarısız olsa da tahmin üretilir.
             runway: RunwayTakvim | None = None
+            runway_bilesenleri: dict[str, Any] | None = None
             try:
                 bildir("Açık alacak/borç vadeleri çekiliyor (runway)…")
                 vade_gun_map = fetch_cari_vade_gun(client)
@@ -249,11 +272,18 @@ class TahminTab(RaporTab):
                 else:
                     kredi_takvimi = None
                     kredi_proxy = fetch_kredi_anapara(client, bas, bit) / ay_sayisi
+                runway_bilesenleri = {
+                    "na": na, "ta": ta, "baslangic_ay": bit[:7], "ufuk_ay": 6,
+                    "baslangic_nakit": baslangic_nakit,
+                    "aylik_gider": gider_proxy, "aylik_kredi": kredi_proxy or 0.0,
+                    "kredi_takvimi": kredi_takvimi,
+                }
                 runway = runway_takvim_kur(
-                    na=na, ta=ta, baslangic_ay=bit[:7], ufuk_ay=6,
-                    baslangic_nakit=baslangic_nakit,
-                    aylik_gider=gider_proxy, aylik_kredi=kredi_proxy or 0.0,
-                    kredi_takvimi=kredi_takvimi)
+                    **runway_bilesenleri,
+                    kart_borcu_takvimi=kredi_karti_odeme_takvimi(
+                        kart_borclari, baslangic_ay=bit[:7],
+                        odeme_yuzde=KART_BORCU_VARSAYILAN_ODEME_YUZDE, ufuk_ay=6,
+                    ))
             except MikroAPIError:
                 runway = None
             bildir("Varsayımlar öneriliyor…")
@@ -261,9 +291,13 @@ class TahminTab(RaporTab):
             v = oner_varsayim(
                 satis_serisi=satis_serisi, brut_marj_yuzde=gd.gercek_brut_marj,
                 baslangic_nakit=baslangic_nakit, aylik_sabit_gider=sabit_gider,
-                baslangic_ay=bit[:7], ufuk_ay=ufuk,
+                baslangic_ay=bit[:7], kart_borcu_acik=kart_borcu_acik,
+                kart_borcu_odeme_yuzde=KART_BORCU_VARSAYILAN_ODEME_YUZDE, ufuk_ay=ufuk,
             )
-            return {"varsayim": v, "firma": firma_getir(cfg, client), "runway": runway}
+            return {
+                "varsayim": v, "firma": firma_getir(cfg, client), "runway": runway,
+                "kart_borclari": kart_borclari, "runway_bilesenleri": runway_bilesenleri,
+            }
 
         return is_fn
 
@@ -271,16 +305,32 @@ class TahminTab(RaporTab):
         v: TahminVarsayim = sonuc["varsayim"]
         self._firma = sonuc["firma"]
         self._runway = sonuc.get("runway")
+        self._kart_borclari = sonuc.get("kart_borclari", [])
+        self._runway_bilesenleri = sonuc.get("runway_bilesenleri")
         self._sp_nakit.setValue(v.baslangic_nakit)
         self._sp_ciro.setValue(v.baz_ciro)
         self._sp_buyume.setValue(v.buyume_yuzde)
         self._sp_marj.setValue(v.marj_yuzde)
         self._sp_gider.setValue(v.sabit_gider)
+        self._sp_kart_borc.setValue(v.kart_borcu_acik)
+        self._sp_kart_oran.setValue(v.kart_borcu_odeme_yuzde)
         self._senaryo.ac()
         self._durum(
             "Geçmişten dolduruldu (son 12 ayın ortalaması) — rakamları düzenleyip "
             "«Hesapla»ya basabilirsin.", "iyi")
         self._on_projekte()
+
+    def _runway_yenile(self, baslangic_ay: str) -> RunwayTakvim | None:
+        bilesenler = getattr(self, "_runway_bilesenleri", None)
+        if not bilesenler:
+            return None
+        return runway_takvim_kur(
+            **bilesenler,
+            kart_borcu_takvimi=kredi_karti_odeme_takvimi(
+                getattr(self, "_kart_borclari", []), baslangic_ay=baslangic_ay,
+                odeme_yuzde=self._sp_kart_oran.value(), ufuk_ay=6,
+            ),
+        )
 
     def _on_projekte(self) -> None:
         bit = self._donem.bit_tarih()
@@ -291,9 +341,12 @@ class TahminTab(RaporTab):
             buyume_yuzde=self._sp_buyume.value(),
             marj_yuzde=self._sp_marj.value(),
             sabit_gider=self._sp_gider.value(),
+            kart_borcu_acik=self._sp_kart_borc.value(),
+            kart_borcu_odeme_yuzde=self._sp_kart_oran.value(),
             ufuk_ay=self._sp_ufuk.value(),
         )
         self._t = build_tahmin(v)
+        self._runway = self._runway_yenile(v.baslangic_ay)
         self._icerik_koy(build_tahmin_widget(
             self._t, firma=self._firma, runway=getattr(self, "_runway", None)))
         if self._chrome is not None:

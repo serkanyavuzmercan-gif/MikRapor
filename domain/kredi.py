@@ -13,6 +13,18 @@ from dataclasses import dataclass, field
 from domain.ortak import to_float as _f
 
 
+KART_BORCU_VARSAYILAN_ODEME_YUZDE = 25.0
+
+
+def _ay_ekle(yyyymm: str, k: int) -> str:
+    try:
+        yil, ay = int(yyyymm[:4]), int(yyyymm[5:7])
+    except (ValueError, IndexError):
+        return ""
+    idx = yil * 12 + (ay - 1) + k
+    return f"{idx // 12:04d}-{idx % 12 + 1:02d}"
+
+
 @dataclass
 class KrediTaksit:
     ay: str            # YYYY-MM (vade ayı)
@@ -30,6 +42,13 @@ class KrediOdeme:
     hesap: str
     hesap_ad: str
     tutar: float
+
+
+@dataclass
+class KrediKartiBorcu:
+    hesap: str
+    hesap_ad: str
+    borc: float
 
 
 @dataclass
@@ -81,6 +100,48 @@ def kredi_odemelerini_derle(rows: list[dict] | None) -> list[KrediOdeme]:
         ))
     out.sort(key=lambda o: (o.tarih, o.hesap))
     return out
+
+
+def kredi_karti_borclarini_derle(rows: list[dict] | None) -> list[KrediKartiBorcu]:
+    """Açık kredi kartı borçlarını pozitif TL tutarıyla temizler."""
+    out: list[KrediKartiBorcu] = []
+    for r in (rows or []):
+        borc = _f(r.get("borc", r.get("BORC")))
+        if borc < 0.005:
+            continue
+        out.append(KrediKartiBorcu(
+            hesap=str(r.get("hesap", r.get("HESAP")) or "").strip(),
+            hesap_ad=str(r.get("hesap_ad", r.get("HESAP_AD")) or "").strip(),
+            borc=borc,
+        ))
+    out.sort(key=lambda k: (-k.borc, k.hesap))
+    return out
+
+
+def kredi_karti_odeme_takvimi(
+    borclar: list[KrediKartiBorcu] | None,
+    *,
+    baslangic_ay: str,
+    odeme_yuzde: float = KART_BORCU_VARSAYILAN_ODEME_YUZDE,
+    ufuk_ay: int = 12,
+) -> dict[str, float]:
+    """Mevcut açık kart borcunu, seçilebilir aylık ödeme oranıyla projeksiyona dağıtır.
+
+    Bu yalnızca projeksiyon başlangıcındaki AÇIK borçtur. Gelecekteki kart harcamaları ayrıca
+    eklenmez; tahmin modelinin ciro/gider varsayımları bu yeni harcamaların etkisini zaten
+    aynı ayın nakit sonucuna dahil eder. Oran, ekstre/veri olmadığı için bir senaryodur.
+    """
+    kalan = sum(max(0.0, k.borc) for k in (borclar or []))
+    oran = min(100.0, max(0.0, float(odeme_yuzde))) / 100.0
+    takvim: dict[str, float] = {}
+    for n in range(1, max(0, int(ufuk_ay)) + 1):
+        if kalan < 0.005 or oran <= 0.0:
+            break
+        ay = _ay_ekle(baslangic_ay, n)
+        odeme = min(kalan, kalan * oran)
+        takvim[ay] = odeme
+        kalan -= odeme
+    return takvim
 
 
 def kredi_takvimi_ay(taksitler: list[KrediTaksit], *, ilk_ay: str) -> dict[str, float]:
