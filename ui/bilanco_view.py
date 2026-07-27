@@ -55,7 +55,7 @@ __all__ = [
     "_fit_height",
 ]
 
-_TREE_QSS = f"""
+_TREE_GOVDE = f"""
 QTreeWidget {{
     background: #ffffff;
     alternate-background-color: #f5f8fc;
@@ -66,14 +66,23 @@ QTreeWidget {{
 }}
 QTreeWidget::item {{
     padding: 6px 4px;
-    color: #374151;
     border-bottom: 1px solid #e6eaf1;
 }}
 QTreeWidget::item:hover {{
     background: #ccfbf1;
-    color: #0f172a;
 }}
 """
+
+# QSS'teki «color» kuralı setForeground()'u EZER (Qt davranışı). Hücre bazlı renk
+# isteyen tablolar bu kuralsız sürümü kullanmalı — yoksa kırmızı/yeşil hiç görünmez;
+# renk item'a doğru atanır ama ekrana çizilmez (canlıda görüldü).
+_TREE_QSS = _TREE_GOVDE + """
+QTreeWidget::item { color: #374151; }
+QTreeWidget::item:hover { color: #0f172a; }
+"""
+
+# Renkler item'dan gelsin: her hücreye zaten _c(renk=…) ile açık renk veriliyor.
+TREE_QSS_RENKLI = _TREE_GOVDE
 
 
 def _tree() -> QTreeWidget:

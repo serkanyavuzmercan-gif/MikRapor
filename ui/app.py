@@ -121,11 +121,24 @@ class HeaderTabBar(QTabBar):
         metin = self.tabText(index).replace("&&", "&")
         return self._olcu_fontu(px).horizontalAdvance(metin) + 2 * dolgu + self._MARJ
 
+    def _kullanilabilir_en(self) -> int:
+        """
+        Sekme çubuğunun sığması gereken gerçek genişlik.
+
+        self.width() KULLANILMAZ: çubuğun genişliği kendi sizeHint'inden türüyor, o da
+        seçilen fonta bağlı — döngüsel. Ölçüm dar pencerede bazen büyük fontla yapılıp
+        sekmeler taşıyordu. Kapsayıcı (nav satırı) pencereden ölçeklendiği için sabittir.
+        """
+        ust = self.parentWidget()
+        if ust is not None and ust.width() > 0:
+            return max(0, ust.width() - 2 * self._MARJ)
+        return self.width()
+
     def _uyarla(self) -> None:
         """Mevcut genişliğe sığacak en okunaklı (font, dolgu) çiftini seç ve uygula."""
         if self._uyarlaniyor or self.count() == 0:
             return
-        mevcut = self.width()
+        mevcut = self._kullanilabilir_en()
         secim = self._OLCEK_ADAYLARI[-1]
         for px, dolgu in self._OLCEK_ADAYLARI:
             toplam = sum(self._sekme_genisligi(i, px, dolgu) for i in range(self.count()))
@@ -150,13 +163,22 @@ class HeaderTabBar(QTabBar):
         super().resizeEvent(event)
         self._uyarla()
 
+    def showEvent(self, event) -> None:  # noqa: N802 — Qt API
+        # Gösterim anında kapsayıcı nihai genişliğine ulaşmış olur; ilk ölçüm burada
+        # kesinleşir (yalnız resizeEvent'e güvenmek dar pencerede taşmaya yol açıyordu).
+        super().showEvent(event)
+        self._uyarla()
+
     def tabSizeHint(self, index: int) -> QSize:  # noqa: N802 — Qt API
         # Genişlik etiket metninden hesaplanır (eşit-genişlik DEĞİL): eşitte "Bilanço"
         # boşa yer harcar, "Tahmin & Projeksiyon" gibi uzun etiket dar payına sığmayıp
         # kırpılırdı. Stilli QTabBar tüm sekmelere aynı hint'i verdiği için elle ölçeriz.
+        # Genişlik yalnız KENDİ ölçümümüzden gelir; super()'inkiyle max ALINMAZ. Qt stil
+        # sayfasını gecikmeli uyguladığı için super() bir süre ESKİ (geniş) dolguyu
+        # döndürüyor; max onu tutunca sekmeler çubuğu aşıyordu — dar pencerede son
+        # sekme görünmez oluyordu (testte ara ara yakalanan gerçek regresyon).
         base = super().tabSizeHint(index)
-        base.setWidth(max(base.width(),
-                          self._sekme_genisligi(index, self._font_px, self._dolgu)))
+        base.setWidth(self._sekme_genisligi(index, self._font_px, self._dolgu))
         return base
 
     def event(self, event: QEvent) -> bool:  # noqa: N802 — Qt API

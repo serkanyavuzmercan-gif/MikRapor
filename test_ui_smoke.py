@@ -170,7 +170,10 @@ class TestUiSmoke(unittest.TestCase):
             try:
                 w.resize(genislik, 840)
                 w.show()
-                for _ in range(3):
+                # Sekme çubuğu genişliğe göre yeniden ölçekleniyor; olay kuyruğu
+                # boşalmadan ölçüm alınırsa test ara sıra kırılıyordu (kırılgan).
+                for _ in range(12):
+                    self.app.sendPostedEvents()
                     self.app.processEvents()
                 tb = w._tab_bar
                 for i in range(tb.count()):
@@ -288,8 +291,13 @@ class TestUiSmoke(unittest.TestCase):
             self.assertIn("YILLAR ARASI MUKAYESE", metinler)
         finally:
             w.close()
-        # Mukayese olmadan da çizilebilmeli (tek yıl / veri yok)
-        self.assertIsNotNone(build_trend_widget(tr, firma="Test A.Ş."))
+        # Tek yıl / veri yok: tablo hiç çizilmez.
+        w2 = build_trend_widget(tr, firma="Test A.Ş.")
+        try:
+            metinler = " ".join(lbl.text() for lbl in w2.findChildren(QLabel))
+            self.assertNotIn("YILLAR ARASI MUKAYESE", metinler)
+        finally:
+            w2.close()
 
     def test_yukleniyor_sure_ipucu_ve_sayac(self) -> None:
         """Yapay zekâ dakikalar sürüyor — «birkaç saniye» demek takıldı hissi veriyordu."""
