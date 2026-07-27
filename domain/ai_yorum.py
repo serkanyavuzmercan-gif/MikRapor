@@ -133,8 +133,14 @@ class YilKapanis:
     brut_kar: float = 0.0
     faaliyet_kari: float = 0.0
     net_kar: float = 0.0
-    nakit: float = 0.0
-    alacak: float = 0.0
+    # Alacak/borç/nakit CARİ ve GL HAREKET kaynaklarından gelir — ilgili sekmelerin
+    # gösterdiği canlı rakamlarla aynı. Mizanın 120/320 bakiyeleri kullanılmaz: bu
+    # şirkette bilanço hesapları işlenmediği için beş yıl boyunca sabit çıkıyordu,
+    # oysa Alacak & Borç sekmesi her yıl farklı gösteriyordu (canlıda görüldü).
+    nakit: float = 0.0             # 100/101/102/108 GL bakiyesi (Nakit Akış sekmesi)
+    alacak: float = 0.0            # müşteri açık bakiyesi (Alacak & Borç sekmesi)
+    borc: float = 0.0              # satıcı açık bakiyesi (Alacak & Borç sekmesi)
+    alacak_gecikmis: float = 0.0   # vadesi geçmiş müşteri alacağı
     stok: float = 0.0
     kvyk: float = 0.0              # kısa vadeli yabancı kaynak
     uvyk: float = 0.0              # uzun vadeli yabancı kaynak
@@ -158,7 +164,8 @@ class YilKapanis:
         hata değil BOŞ döner. Sıfır satırı tabloya girerse model "satış sıfırdan 41M'ye
         çıkmış" diye okur — o yüzden böyle yıllar hiç eklenmez.
         """
-        return abs(self.net_satis) > 0.005 or abs(self.aktif_toplam) > 0.005
+        return (abs(self.net_satis) > 0.005 or abs(self.aktif_toplam) > 0.005
+                or abs(self.alacak) > 0.005)
 
     @property
     def doviz_var(self) -> bool:
@@ -219,6 +226,11 @@ class YilKapanis:
     def dso(self) -> float | None:
         """Alacak tahsil süresi (gün) — yıllar içinde uzuyorsa tahsilat bozuluyor."""
         return self._bol(self.alacak * 365.0, self.net_satis)
+
+    @property
+    def gecikme_orani(self) -> float | None:
+        """Alacağın yüzde kaçı vadesini geçmiş — tahsilat kalitesinin doğrudan ölçüsü."""
+        return self._bol(self.alacak_gecikmis, self.alacak, 100.0) if self.alacak > 0 else None
 
     @property
     def cari_oran(self) -> float | None:
@@ -348,13 +360,15 @@ _TL_SATIR = (
     ("Net Satışlar", "net_satis", True), ("Brüt Kâr", "brut_kar", True),
     ("Faaliyet Kârı", "faaliyet_kari", True), ("Dönem Net Kârı", "net_kar", True),
     ("Nakit", "nakit", True), ("Ticari Alacak", "alacak", False),
+    ("  · vadesi geçmiş", "alacak_gecikmis", False),
+    ("Ticari Borç (satıcı)", "borc", False),
     ("Stok", "stok", False), ("Kısa Vadeli Borç", "kvyk", False),
     ("Uzun Vadeli Borç", "uvyk", False), ("Banka Kredisi", "banka_kredisi", False),
     ("Özkaynak", "ozkaynak", True), ("Aktif Toplam", "aktif_toplam", None),
 )
 _USD_SATIR = (
-    ("Ticari Alacak", "alacak", False), ("Stok", "stok", False),
-    ("Kısa Vadeli Borç", "kvyk", False), ("Banka Kredisi", "banka_kredisi", False),
+    ("Ticari Alacak", "alacak", False), ("Ticari Borç (satıcı)", "borc", False),
+    ("Stok", "stok", False), ("Banka Kredisi", "banka_kredisi", False),
     ("Nakit", "nakit", True), ("Özkaynak", "ozkaynak", True),
 )
 _ORAN_SATIR = (
@@ -365,6 +379,7 @@ _ORAN_SATIR = (
     ("Stok Bekleme Süresi", "stok_gun", "gün", False),
     ("Stok / Net Satış", "stok_satis", "%", False),
     ("Alacak Tahsil Süresi (DSO)", "dso", "gün", False),
+    ("Gecikmiş Alacak Oranı", "gecikme_orani", "%", False),
     ("Cari Oran", "cari_oran", "x", True), ("Asit-Test", "asit_test", "x", True),
     ("Borç / Özkaynak", "borc_ozkaynak", "x", False),
     ("Banka Kredisi / Aktif", "kredi_aktif", "%", False),
@@ -503,6 +518,13 @@ def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
         if k.maliyet_eksik:
             notlar.append(f"NOT;{k.yil} yılında satışların maliyeti (62) girilmemiş — "
                           "brüt ve net kâr olduğundan yüksek görünüyor.")
+
+    out.append("")
+    out.append("KAYNAK;Ticari Alacak / Ticari Borç / vadesi geçmiş = CARİ HESAP "
+               "HAREKETLERİ (Alacak & Borç sekmesiyle aynı). Nakit = 100/101/102/108 "
+               "GL bakiyesi (Nakit Akış sekmesiyle aynı). Stok, özkaynak, aktif ve "
+               "kısa/uzun vadeli borç = MİZAN. Mizan ile cari çelişirse cari daha "
+               "günceldir; hangisine dayandığını yaz.")
 
     # Bilanço hesapları işlenmiyorsa mizan her yıl aynı çıkar. Model bunu bilmezse
     # "borç yıllardır sabit, disiplinli" gibi olumlu ama yanlış çıkarım yapar.
