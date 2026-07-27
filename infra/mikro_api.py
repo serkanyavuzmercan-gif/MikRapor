@@ -53,15 +53,37 @@ class MikroIptalError(MikroAPIError):
 
 def password_hash(sifre_gun: str, today: str | None = None) -> str:
     """
-    Günlük rotasyonlu Mikro parolasını üretir (ss getPasswordHash ile birebir).
+    Günlük rotasyonlu Mikro parolasını üretir. Hash girdisi: ``YYYY-MM-DD <şifre>``.
 
-    ss `new Date().toISOString().split('T')[0]` kullanır → UTC tarih. Mikro tarafı bunu
-    beklediği için biz de UTC kullanıyoruz (yerel/UTC farkı gece yarısı sorununu önler).
-    Hash girdisi: ``YYYY-MM-DD <şifre>``.
+    TARİH YERELDİR, UTC DEĞİL. Önce UTC kullanılıyordu; Türkiye UTC+3 olduğu için yerel
+    gece yarısından sonra UTC hâlâ ÖNCEKİ günü gösteriyor ve Mikro «Şifre Hatalı!»
+    diyordu — program her gece 00:00–03:00 arası çalışmaz oluyordu (canlıda görüldü).
+    Mikro sunucusu aynı ağda ve aynı saat diliminde olduğu için doğru olan yerel tarih.
     """
-    gun = today if today is not None else datetime.now(UTC).strftime("%Y-%m-%d")
+    gun = today if today is not None else datetime.now().strftime("%Y-%m-%d")  # noqa: DTZ005
     to_hash = f"{gun} {sifre_gun}" if sifre_gun else gun
     return hashlib.md5(to_hash.encode("utf-8")).hexdigest()
+
+
+def gun_adaylari() -> list[str]:
+    """
+    Parola tarihi için denenecek günler — yerel önce, sonra UTC.
+
+    Sunucunun saat dilimi/saati istemciden farklı olabilir. Yerel tarihle reddedilirse
+    UTC ile bir kez daha denenir; ikisi arasındaki fark en fazla bir gündür.
+    """
+    yerel = datetime.now().strftime("%Y-%m-%d")  # noqa: DTZ005
+    utc = datetime.now(UTC).strftime("%Y-%m-%d")
+    return [yerel] if utc == yerel else [yerel, utc]
+
+
+# Mikro'nun parola reddi bu kelimelerle gelir; başka hatada gün değiştirip denemeyiz.
+_SIFRE_HATA_IZLERI = ("şifre", "sifre", "parola", "password")
+
+
+def _sifre_hatasi_mi(mesaj: str) -> bool:
+    dusuk = mesaj.replace("İ", "i").replace("I", "ı").lower()
+    return any(iz in dusuk for iz in _SIFRE_HATA_IZLERI)
 
 
 def build_auth(cfg: MikroConfig) -> dict[str, Any]:
@@ -235,9 +257,35 @@ class MikroClient:
         if not self.cfg.base_url:
             raise MikroAPIError("Mikro API adresi tanımlı değil. Önce 'Mikro Ayarları'nı doldurun.")
         url = f"{self.cfg.base_url}/{endpoint}"
-        body_str = json.dumps(body, ensure_ascii=False)
         attempts = max_attempts or self.max_attempts
         to = timeout or self.timeout
+
+        # Parola günlük rotasyonlu: yerel tarihle reddedilirse UTC ile bir kez daha
+        # denenir (sunucu saat dilimi farkı). Diğer hatalarda gün değiştirilmez.
+        gunler = gun_adaylari()
+        for i, gun in enumerate(gunler):
+            try:
+                return self._gonder(url, self._gunle(body, gun), attempts, to)
+            except MikroAPIError as exc:
+                if i + 1 >= len(gunler) or not _sifre_hatasi_mi(str(exc)):
+                    raise
+        raise MikroAPIError("Mikro bağlantı hatası")   # pragma: no cover — döngü hep döner
+
+    def _gunle(self, body: dict[str, Any], gun: str) -> dict[str, Any]:
+        """
+        Gövdedeki auth parolasını verilen günle yeniden üretir (gövde kopyalanır).
+
+        Düz parola gövdede yoktur (yalnız hash'i var); kaynak self.cfg'dir.
+        """
+        auth = body.get("Mikro")
+        if not isinstance(auth, dict) or "Sifre" not in auth:
+            return body
+        yeni = dict(body)
+        yeni["Mikro"] = {**auth, "Sifre": password_hash(self.cfg.sifre_gun, gun)}
+        return yeni
+
+    def _gonder(self, url: str, body: dict[str, Any], attempts: int, to: float) -> Any:
+        body_str = json.dumps(body, ensure_ascii=False)
 
         last_err: Exception | None = None
         for attempt in range(attempts):
