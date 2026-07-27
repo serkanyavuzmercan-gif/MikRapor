@@ -219,6 +219,39 @@ class TestUiSmoke(unittest.TestCase):
         MikroAyarlarDialog()
         GercekDurumAyarlarDialog()
 
+    def test_yukleniyor_sure_ipucu_ve_sayac(self) -> None:
+        """Yapay zekâ dakikalar sürüyor — «birkaç saniye» demek takıldı hissi veriyordu."""
+        from ui.tabs.ai_yorum_tab import AiYorumTab
+        from ui.yukleniyor import YukleniyorEkrani
+
+        self.assertIn("dakika", AiYorumTab.SURE_IPUCU)
+
+        y = YukleniyorEkrani(ipucu=AiYorumTab.SURE_IPUCU)
+        try:
+            self.assertIn("dakika", y._ipucu.text())
+            self.assertNotIn("Geçen süre", y._ipucu.text())
+            y.basla()
+            y._sure_tik()
+            self.assertIn("Geçen süre 1 sn", y._ipucu.text())
+            for _ in range(60):
+                y._sure_tik()
+            self.assertIn("Geçen süre 1:01", y._ipucu.text())
+            y.durdur()
+            self.assertFalse(y._sayac.isActive())   # gizli sekmede CPU yakmasın
+            y.basla()
+            self.assertNotIn("Geçen süre", y._ipucu.text())   # yeni koşuda sıfırlanır
+            y.durdur()
+        finally:
+            y.close()
+
+    def test_yukleniyor_varsayilan_ipucu(self) -> None:
+        from ui.yukleniyor import YukleniyorEkrani
+        y = YukleniyorEkrani()
+        try:
+            self.assertIn("Birkaç saniye", y._ipucu.text())
+        finally:
+            y.close()
+
     def test_kaynak_rozeti_tooltip_gostermez(self) -> None:
         from ui.bilesenler import kaynak_rozeti
         rozet = kaynak_rozeti("nakit")

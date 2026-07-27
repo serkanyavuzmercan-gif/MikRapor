@@ -118,6 +118,9 @@ class AiYorumTab(RaporTab):
     GETIR_ETIKET = "Yorumla ve Gönder"
     GETIR_ETIKET_ZORLA = True   # «Raporu Getir» yanıltıcı olur: bu düğme veriyi DIŞARI gönderir
     BASLARKEN = "Yılın raporları hazırlanıyor…"
+    # Yapay zekâ yorumu dakikalar sürer: raporlar çekilir, sonra model tüm dönemi okuyup
+    # yazar. "Birkaç saniye" demek kullanıcıya takıldığını düşündürüyordu.
+    SURE_IPUCU = "Yapay zekâ tüm dönemi okuyup yazıyor — birkaç dakika sürebilir · «İptal» ile durdurabilirsin"
     PDF_DESTEK = True
     HERO_ASSET = "empty-trendler.png"
 

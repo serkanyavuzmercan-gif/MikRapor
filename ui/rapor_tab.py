@@ -63,6 +63,8 @@ class RaporTab(QWidget):
     # True ise düğmede GETIR_ETIKET yazar (tek tip «Raporu Getir» yerine).
     GETIR_ETIKET_ZORLA = False
     BASLARKEN = "Veriler çekiliyor…"
+    # Yükleniyor ekranının süre ipucu; uzun süren sekmeler (yapay zekâ) bunu ezer.
+    SURE_IPUCU = ""
     DONEM_ETIKET = "Dönem:"
     TEK_TARIH = False
     TARIH_GENISLIK = 130
@@ -162,7 +164,8 @@ class RaporTab(QWidget):
         self._stack.addWidget(self._icerik_sayfa)
 
         # 2: yükleniyor ara ekranı (fetch boyunca) — "program dondu" hissini önler
-        self._yukleniyor = YukleniyorEkrani(hero_asset=hero, hero_fit=hero_fit)
+        self._yukleniyor = YukleniyorEkrani(
+            hero_asset=hero, hero_fit=hero_fit, ipucu=self.SURE_IPUCU)
         self._stack.addWidget(self._yukleniyor)
 
         self._stack.setCurrentIndex(0)

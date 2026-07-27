@@ -186,7 +186,8 @@ class TahminTab(RaporTab):
         self._stack.addWidget(self._icerik_sayfa)
 
         # 2: yükleniyor ara ekranı (RaporTab._calistir bunu bekler)
-        self._yukleniyor = YukleniyorEkrani(hero_asset=hero, hero_fit=hero_fit)
+        self._yukleniyor = YukleniyorEkrani(
+            hero_asset=hero, hero_fit=hero_fit, ipucu=self.SURE_IPUCU)
         self._stack.addWidget(self._yukleniyor)
 
         self._stack.setCurrentIndex(0)
