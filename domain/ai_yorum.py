@@ -44,7 +44,9 @@ KURALLAR
 bitmiş gibi anlatma ve resmî kârı olduğu gibi doğru kabul etme.
 - Birden çok yıl verildiyse («YILLAR ARASI KARŞILAŞTIRMA» bölümü) gidişatı mutlaka \
 işle: satış büyüyor mu, marj daralıyor mu, borç ve stok birikiyor mu. Tek yılın \
-fotoğrafıyla yetinme; Özet'te en az bir cümle yıllar arası gidişata ayrılsın.
+fotoğrafıyla yetinme. Çok yıllı veride ŞUNLAR ZORUNLU: Özet'te en az bir cümle, «İyi \
+Giden»de en az bir madde ve «Dikkat Edilmesi»nde en az bir madde yıllar arası gidişata \
+ayrılsın — her birinde yılların rakamları yan yana yazılsın (2023: … / 2024: … / 2025: …).
 - TÜRKİYE'DE ENFLASYON YÜKSEKTİR: yılları düz TL ile kıyaslamak YANILTICIDIR. "Satış %53 \
 arttı" cümlesi, dolar bazında düşmüşken bile kurulabilir. Bu yüzden çok yıllı yorumda \
 nominal TL artışını TEK BAŞINA olumlu sayma.
@@ -128,6 +130,8 @@ class YilKapanis:
     ozkaynak: float = 0.0
     aktif_toplam: float = 0.0
     maliyet_eksik: bool = False    # 62 (SMM) girilmemiş → kâr şişik görünür
+    faaliyet_gideri: float = 0.0   # 63, işaretli (gider → negatif)
+    finansman_gideri: float = 0.0  # 66, işaretli (gider → negatif)
     satis_usd: float = 0.0         # Mikro'nun kendi kaydından, tarihî kurlarla
     kur_son: float = 0.0           # dönem sonu ima edilen TL/USD; 0 = güvenilir kur yok
 
@@ -155,6 +159,10 @@ class YilKapanis:
 _YIL_KALEMLERI: tuple[tuple[str, str], ...] = (
     ("Net Satışlar", "net_satis"),
     ("Brüt Kâr", "brut_kar"),
+    # Giderler trendin kalbi: satış büyürken gider daha hızlı büyüyor mu, faiz yükü
+    # artıyor mu — bunlar olmadan "kâr düştü" cümlesinin sebebi görünmüyordu.
+    ("Faaliyet Gideri (63)", "faaliyet_gideri"),
+    ("Finansman Gideri (66)", "finansman_gideri"),
     ("Faaliyet Kârı", "faaliyet_kari"),
     ("Dönem Net Kârı", "net_kar"),
     ("Nakit (dönem sonu)", "nakit"),
@@ -228,6 +236,7 @@ class AiVeriPaketi:
     tamamlandi: bool = False       # dönem sonu geçti mi (yıl bitti mi)
     ay_sayisi: int = 0             # veride fiilen kaç ay var
     gecikme_ay: int = 0            # verinin bitişi ile bugün arasındaki ay farkı
+    calisma_yili: int = 0          # Mikro'da seçili çalışma yılı (veritabanı yılı)
     yillar: list[int] = field(default_factory=list)   # çok yıllı analizde kapsanan yıllar
 
     @property
@@ -266,18 +275,33 @@ class AiVeriPaketi:
 
         Kullanıcı 2023–2025 aralığını 2026 temmuzda yorumlattığında model 2025 Aralık'ta
         yaşıyormuş gibi «bu ay şunu yapın» yazıyordu — aradan 7 ay geçmişti (canlıda görüldü).
+
+        Boşluğun SEBEBİ de söylenir: Mikro her çalışma yılını ayrı veritabanında tutar, yani
+        sonraki aylar "kaydedilmemiş" değil, başka veritabanındadır. Bu söylenmeyince model
+        "kayıtlarınız eksik, bir hafta içinde sisteme işleyin, kör uçmayın" gibi yanlış
+        tavsiye veriyordu (canlıda görüldü).
         """
         if self.gecikme_ay < 2:
             return []
+        sebep = (
+            f"Bu veri Mikro'nun {self.calisma_yili} ÇALIŞMA YILI veritabanından geldi. "
+            if self.calisma_yili else "Bu veri seçilen dönemin veritabanından geldi. "
+        )
         return [
             f"DİKKAT — VERİ GÜNCEL DEĞİL: Bugün {self.bugun}, elindeki en yeni kayıt "
             f"{self.bit} tarihli. Arada yaklaşık {self.gecikme_ay} ay var ve bu aylara ait "
             "HİÇBİR hareket veride yok.",
-            f"Bu yüzden «şu an», «bugün itibarıyla», «bu ay» deme; «{self.bit} itibarıyla» de. "
-            "Bakiyeler, alacaklar ve nakit bugün çok farklı olabilir.",
-            f"«Bu Ay Yapılacak 3 İş» maddelerini BUGÜNE ({self.bugun}) göre yaz: aradan "
-            f"{self.gecikme_ay} ay geçtiğini hesaba kat ve bu boşluğu kapatmayı ilk işlerden "
-            "biri olarak koy.",
+            "BU BİR KAYIT EKSİKLİĞİ DEĞİLDİR. " + sebep + "Mikro her çalışma yılını ayrı "
+            "veritabanında tutar; sonraki aylara ait hareketler kaydedilmemiş değil, başka "
+            "bir veritabanındadır ve bu pakete girmemiştir.",
+            "Bu yüzden «kayıtlarınızı acilen işleyin», «verileriniz eksik», «kör uçuyorsunuz» "
+            "gibi tavsiyeler YAZMA — yanlış olur. Güncel tablo için MikRapor'da çalışma "
+            "yılının değiştirilmesi gerektiğini bir kez söylemen yeter.",
+            f"«şu an», «bugün itibarıyla», «bu ay» deme; «{self.bit} itibarıyla» de. "
+            "Bakiyeler, alacaklar ve nakit bugün farklı olabilir.",
+            f"«Bu Ay Yapılacak 3 İş» maddelerini BUGÜNE ({self.bugun}) göre yaz ve aradan "
+            f"{self.gecikme_ay} ay geçtiğini hesaba kat; ama maddeleri bu verinin gösterdiği "
+            "GERÇEK sorunlara ayır, veri toplamaya değil.",
         ]
 
     @property
@@ -389,6 +413,7 @@ def build_ai_veri_paketi(
     tamamlandi: bool = False,
     ay_sayisi: int = 0,
     gecikme_ay: int = 0,
+    calisma_yili: int = 0,
     yillar: list[int] | None = None,
 ) -> AiVeriPaketi:
     """Rapor CSV'lerinden veri paketini kurar; boş/hatalı bölümler elenir."""
@@ -399,7 +424,8 @@ def build_ai_veri_paketi(
     return AiVeriPaketi(
         yil=yil, bas=bas, bit=bit, firma=firma, bolumler=temiz,
         bugun=bugun, tamamlandi=tamamlandi, ay_sayisi=ay_sayisi,
-        gecikme_ay=gecikme_ay, yillar=sorted(yillar or []))
+        gecikme_ay=gecikme_ay, calisma_yili=calisma_yili,
+        yillar=sorted(yillar or []))
 
 
 def ai_yorum_csv(y: AiYorum) -> str:

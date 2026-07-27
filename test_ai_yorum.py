@@ -478,7 +478,8 @@ class TestVeriBayatligi(unittest.TestCase):
     def _bayat(gecikme: int = 7):
         return build_ai_veri_paketi(
             yil=2025, bas="2025-01-01", bit="2025-12-31", bolumler=[("A", "veri")],
-            bugun="2026-07-27", tamamlandi=True, ay_sayisi=12, gecikme_ay=gecikme)
+            bugun="2026-07-27", tamamlandi=True, ay_sayisi=12, gecikme_ay=gecikme,
+            calisma_yili=2025)
 
     def test_ay_farki(self) -> None:
         self.assertEqual(ay_farki("2025-12-31", "2026-07-27"), 6)
@@ -498,6 +499,20 @@ class TestVeriBayatligi(unittest.TestCase):
         n = self._bayat().donem_notu
         self.assertIn("BUGÜNE (2026-07-27) göre yaz", n)
         self.assertIn("«şu an»", n)             # yanlış zaman kipi yasağı
+
+    def test_bosluk_kayit_eksikligi_sanilmaz(self) -> None:
+        """Model «kayıtlarınız eksik, acilen işleyin» diyordu — 2026 başka DB'de."""
+        n = self._bayat().donem_notu
+        self.assertIn("KAYIT EKSİKLİĞİ DEĞİLDİR", n)
+        self.assertIn("2025 ÇALIŞMA YILI veritabanından", n)
+        self.assertIn("çalışma yılının değiştirilmesi", n)
+
+    def test_calisma_yili_bilinmiyorsa_da_uyari_calisir(self) -> None:
+        n = build_ai_veri_paketi(
+            yil=2025, bas="2025-01-01", bit="2025-12-31", bolumler=[("A", "veri")],
+            bugun="2026-07-27", tamamlandi=True, ay_sayisi=12, gecikme_ay=6).donem_notu
+        self.assertIn("KAYIT EKSİKLİĞİ DEĞİLDİR", n)
+        self.assertNotIn("0 ÇALIŞMA YILI", n)
 
     def test_guncel_veride_uyari_yok(self) -> None:
         self.assertNotIn("VERİ GÜNCEL DEĞİL", self._bayat(gecikme=1).donem_notu)

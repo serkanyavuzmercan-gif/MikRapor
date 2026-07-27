@@ -92,6 +92,7 @@ def _kapanis_kur(yil: int, *, tam: bool, b: Bilanco, gt: GelirTablosu,
         nakit=ozet["nakit"], alacak=ozet["alacak"], stok=ozet["stok"],
         kvyk=ozet["kvyk"], ozkaynak=ozet["ozkaynak"],
         aktif_toplam=ozet["aktif_toplam"], maliyet_eksik=gt.maliyet_eksik,
+        faaliyet_gideri=gt.faaliyet_gideri, finansman_gideri=gt.finansman_gideri,
         satis_usd=d.get("satis_usd", 0.0), kur_son=d.get("kur_son", 0.0))
 
 
@@ -385,7 +386,8 @@ class AiYorumTab(RaporTab):
             paket = build_ai_veri_paketi(
                 yil=yil, bas=y_bas, bit=y_bit, firma=firma, bolumler=bolumler,
                 bugun=bugun.isoformat(), tamamlandi=tamamlandi, ay_sayisi=ay_sayisi,
-                gecikme_ay=gecikme_ay, yillar=[k.yil for k in kapanislar])
+                gecikme_ay=gecikme_ay, calisma_yili=cfg.calisma_yili,
+                yillar=[k.yil for k in kapanislar])
             yorum = yorumla(ai_cfg, paket, bildir=bildir)
             return {"yorum": yorum, "firma": firma}
 
