@@ -98,7 +98,7 @@ class TrendTab(RaporTab):
             if len(yillar) > 1:
                 odak = yillar[-1]
                 kapanislar = yillari_cek(
-                    client, yillar, odak_bit=bit,
+                    cfg, yillar, odak_client=client, odak_bit=bit,
                     odak_tam=bit >= f"{odak}-12-31", bildir=bildir)
 
             return {"tr": tr, "firma": firma_getir(cfg, client),

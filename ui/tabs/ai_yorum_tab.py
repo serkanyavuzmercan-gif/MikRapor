@@ -349,8 +349,8 @@ class AiYorumTab(RaporTab):
             # Mukayese, Trend & Oranlar sekmesiyle AYNI modülden gelir; iki yerde
             # ayrı çekilirse rakamlar zamanla ayrışır.
             kapanislar = yillari_cek(
-                client, yillar, odak_bit=y_bit, odak_tam=tamamlandi,
-                odak_ta=ta, bildir=bildir)
+                cfg, yillar, odak_client=client, odak_bit=y_bit,
+                odak_tam=tamamlandi, odak_ta=ta, bildir=bildir)
             if len(kapanislar) > 1:
                 ekle("YILLAR ARASI KARŞILAŞTIRMA", lambda: yillar_arasi_csv(kapanislar))
 
