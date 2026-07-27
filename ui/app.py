@@ -39,6 +39,7 @@ from ui.tabs.bilanco_tab import BilancoTab
 from ui.tabs.gelir_tablosu_tab import GelirTablosuTab
 from ui.tabs.gercek_durum_tab import GercekDurumTab
 from ui.tabs.nakit_akis_tab import NakitAkisTab
+from ui.tabs.reel_deger_tab import ReelDegerTab
 from ui.tabs.tahmin_tab import TahminTab
 from ui.tabs.tahsilat_alacak_tab import TahsilatAlacakTab
 from ui.tabs.trend_tab import TrendTab
@@ -257,6 +258,7 @@ class MikRaporWindow(QMainWindow):
             TahsilatAlacakTab,
             NakitAkisTab,
             TahminTab,
+            ReelDegerTab,
             TrendTab,
         )
         for cls in sekme_siniflari:

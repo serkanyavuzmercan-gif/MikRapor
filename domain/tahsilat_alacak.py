@@ -81,6 +81,14 @@ class CariOzet:
 
 
 @dataclass
+class AcikVadeParcasi:
+    """Açık cari bakiyenin vadesine kalan gün ve ekonomik değer analizi için parçası."""
+    sinif: str          # customer | supplier
+    vade_gun: int       # asof'tan itibaren; gecikmişse 0 (bugün tahsil/ödenmesi beklenir)
+    tutar: float
+
+
+@dataclass
 class TahsilatAlacak:
     bas: str = ""
     bit: str = ""
@@ -106,6 +114,7 @@ class TahsilatAlacak:
     # En yüksek bakiyeler
     top_alacak: list = field(default_factory=list)
     top_borc: list = field(default_factory=list)
+    acik_vade_parcalari: list[AcikVadeParcasi] = field(default_factory=list)
 
     # Dönem performansı (bas..bit)
     donem_gun: int = 0
@@ -300,6 +309,11 @@ def build_tahsilat_alacak(
             vade_kov[_gun_vade_kovasi(-gecikme_gun)] += tutar
             if gecikme_gun > 0:
                 gecikmis += tutar
+            # Vadesi geçmiş kalem bugün tahsil/ödenebilir varsayılır; geçmiş dönemin değer
+            # kaybı ayrı bir gecikme/risk analizidir. Burada yalnız ileriye dönük vade etkisi var.
+            ta.acik_vade_parcalari.append(AcikVadeParcasi(
+                sinif=sinif, vade_gun=max(0, -gecikme_gun), tutar=tutar,
+            ))
 
         ozet = CariOzet(kod=kod, unvan=unvan or kod, sinif=sinif, net=net, gecikmis=gecikmis)
         if sinif == "customer":

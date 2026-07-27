@@ -116,6 +116,20 @@ class TestUiSmoke(unittest.TestCase):
             buyume_yuzde=2.0, marj_yuzde=20.0, sabit_gider=50000.0, ufuk_ay=6))
         self.assertIsNotNone(build_tahmin_widget(t, firma="Test A.Ş."))
 
+    def test_reel_deger_view(self) -> None:
+        from domain.reel_deger import ReelDegerVarsayim, build_reel_deger_analizi
+        from domain.tahsilat_alacak import AcikVadeParcasi, TahsilatAlacak
+        from ui.reel_deger_view import build_reel_deger_widget
+        ta = TahsilatAlacak(
+            bas="2026-01-01", bit="2026-07-27",
+            acik_vade_parcalari=[
+                AcikVadeParcasi("customer", 45, 500_000),
+                AcikVadeParcasi("supplier", 60, 300_000),
+            ],
+        )
+        a = build_reel_deger_analizi(ta, ReelDegerVarsayim(kart_borcu_acik=100_000))
+        self.assertIsNotNone(build_reel_deger_widget(a, bas=ta.bas, bit=ta.bit, firma="Test A.Ş."))
+
     def test_trend_view(self) -> None:
         from domain.gercek_durum import AyTrend
         from domain.mizan_bilanco import build_bilanco
@@ -138,8 +152,8 @@ class TestUiSmoke(unittest.TestCase):
         w = MikRaporWindow()
         try:
             # Sekmeler artık HeaderTabBar (_tab_bar) + QStackedWidget (_stack) ile.
-            self.assertEqual(w._stack.count(), 7)   # 7 rapor içeriği
-            self.assertEqual(w._tab_bar.count(), 7)  # 7 sekme başlığı
+            self.assertEqual(w._stack.count(), 8)   # 8 rapor içeriği
+            self.assertEqual(w._tab_bar.count(), 8)  # 8 sekme başlığı
         finally:
             w.close()
 
