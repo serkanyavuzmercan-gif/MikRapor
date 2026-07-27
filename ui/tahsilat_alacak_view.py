@@ -167,7 +167,7 @@ def build_tahsilat_alacak_widget(ta: TahsilatAlacak, firma: str = "") -> QWidget
     }.get(ta.vade_kaynagi, "vade tarihi")
     head = QLabel(
         f"<span style='color:{MUTED}; font-size:11px;'>ALACAK &amp; BORÇ &nbsp;·&nbsp; "
-        f"{ta.bit} itibarıyla{firma_str}</span><br>"
+        f"{ta.bit} itibarıyla{firma_str} &nbsp;·&nbsp; Tutarlar TL cinsindendir</span><br>"
         f"<span style='color:{FAINT}; font-size:11px;'>Cari hareketlerden — açık alacak/borç "
         f"{kaynak}na göre yaşlandırılır; dönem ({ta.bas} → {ta.bit}) tahsilat/ödeme performansı "
         f"ve ileriye dönük net nakit takvimi.</span>"
