@@ -120,6 +120,10 @@ class TahminTab(RaporTab):
         ):
             sp.setMinimumWidth(0)
             sp.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            # Rakam değişince sağ taraf bayatlar; hesaplama anlık olduğu için
+            # "yükleniyor" göstergesi yanıp söner — bunun yerine tazelik durumu
+            # sürekli yazılır (kullanıcı "sağdaki değerler güncel mi?" diye sormasın).
+            sp.valueChanged.connect(self._on_varsayim_degisti)
 
         alanlar = (
             ("Bugünkü nakit", self._sp_nakit),
@@ -332,6 +336,11 @@ class TahminTab(RaporTab):
             ),
         )
 
+    def _on_varsayim_degisti(self) -> None:
+        """Varsayım değişti → sağdaki rapor artık bu rakamları yansıtmıyor."""
+        if self._t is not None:
+            self._senaryo.set_guncel(False)
+
     def _on_projekte(self) -> None:
         bit = self._donem.bit_tarih()
         v = TahminVarsayim(
@@ -349,6 +358,7 @@ class TahminTab(RaporTab):
         self._runway = self._runway_yenile(v.baslangic_ay)
         self._icerik_koy(build_tahmin_widget(
             self._t, firma=self._firma, runway=getattr(self, "_runway", None)))
+        self._senaryo.set_guncel(True)
         if self._chrome is not None:
             self._chrome.set_csv_aktif(True)
             self._chrome.set_pdf_aktif(True)
@@ -461,9 +471,29 @@ class _SenaryoSolPanel(QFrame):
         self.btn_projekte.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_projekte.setMinimumHeight(36)
         gi.addWidget(self.btn_projekte)
+
+        # Sağdaki raporun bu rakamlarla mı üretildiğini söyler. Hesaplama anlık
+        # olduğundan "yükleniyor" göstergesi yanıp söner ve hiçbir şey anlatmaz;
+        # kalıcı tazelik durumu sorunun kendisini ("güncel mi?") cevaplar.
+        self.lbl_tazelik = QLabel()
+        self.lbl_tazelik.setObjectName("tahminTazelik")
+        self.lbl_tazelik.setWordWrap(True)
+        self.lbl_tazelik.setVisible(False)
+        gi.addWidget(self.lbl_tazelik)
         gl.addWidget(govde_ic, 1)
 
         host.addWidget(self._govde)
+
+    def set_guncel(self, guncel: bool) -> None:
+        """Sağdaki rapor bu varsayımları yansıtıyor mu — panelde kalıcı olarak yazar."""
+        if guncel:
+            metin, renk = "✓ Sağdaki rapor güncel", "#15803d"
+        else:
+            metin, renk = "● Rakamlar değişti — «Hesapla»ya bas", "#b45309"
+        self.lbl_tazelik.setText(metin)
+        self.lbl_tazelik.setStyleSheet(
+            f"color: {renk}; font-size: 11px; font-weight: 600; background: transparent;")
+        self.lbl_tazelik.setVisible(True)
 
     def ac(self) -> None:
         if self._acik:
