@@ -109,6 +109,7 @@ class AiYorum:
     girdi_token: int = 0
     cikti_token: int = 0
     veri_ozeti: str = ""
+    saglayici: str = ""
 
     @property
     def bos(self) -> bool:
@@ -139,6 +140,7 @@ def ai_yorum_csv(y: AiYorum) -> str:
     """Yorumu Türkçe Excel uyumlu CSV'ye çevirir (satır satır metin)."""
     out = ["Bölüm;İçerik"]
     out.append(f"DÖNEM;{y.bas} - {y.bit}")
+    out.append(f"SAĞLAYICI;{y.saglayici}")
     out.append(f"MODEL;{y.model}")
     out.append(f"TOKEN;girdi {csv_sayi(y.girdi_token)} / çıktı {csv_sayi(y.cikti_token)}")
     for satir in y.metin.splitlines():
