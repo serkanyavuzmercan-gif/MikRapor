@@ -9,17 +9,25 @@ KAYNAK SEÇİMİ KRİTİK: alacak/borç/nakit MİZANDAN alınmaz, ilgili sekmele
 kaynağından gelir. Mizanın 120/320 bakiyeleri her kurulumda işlenmiyor; canlıda
 Alıcılar -4.839 TL görünürken cari hesaplarda 11,4 milyon TL alacak vardı ve tablo
 beş yıl boyunca sabit çıkıyordu. Canlı kaynak okunamazsa mizana düşülür.
+
+HER YIL KENDİ ÇALIŞMA YILIYLA SORGULANIR: Mikro auth gövdesinde CalismaYili gider ve
+sunucu isteği O YILIN veritabanına yönlendirir. Tek bir client ile geçmiş yılları
+sorgulamak, tarih süzgeci doğru olsa bile hep aynı veritabanını okur — canlıda 2021
+ile 2025 bilançosu kuruşu kuruşuna aynı çıkıyordu. O yılın veritabanı yoksa istek
+hata verir ve yıl sessizce atlanır.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 
 from domain.ai_yorum import YilKapanis
 from domain.gelir_tablosu import GelirTablosu, build_gelir_tablosu
 from domain.mizan_bilanco import Bilanco, build_bilanco
 from domain.tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak
 from domain.trend import build_finansal_oranlar
+from infra.config import MikroConfig
 from infra.mikro_api import MikroAPIError, MikroClient
 from infra.mikro_fetch import (
     fetch_acik_kalemler,
@@ -96,10 +104,16 @@ def yil_kapanisi(client: MikroClient, yil: int, *, bit: str | None = None,
         ta=ta, nakit_gl=_dene(lambda: fetch_nakit_bakiye_gl(client, son)))
 
 
+def yil_client(cfg: MikroConfig, yil: int) -> MikroClient:
+    """O yılın veritabanına bağlanan istemci — CalismaYili yılın kendisi olur."""
+    return MikroClient(replace(cfg.normalized(), calisma_yili=yil))
+
+
 def yillari_cek(
-    client: MikroClient,
+    cfg: MikroConfig,
     yillar: list[int],
     *,
+    odak_client: MikroClient | None = None,
     odak_bit: str = "",
     odak_tam: bool = True,
     odak_ta: TahsilatAlacak | None = None,
@@ -108,28 +122,35 @@ def yillari_cek(
     """
     Verilen yılların kapanışlarını çeker; veritabanında olmayan yıllar sessizce düşer.
 
-    Listenin SONU odak yıldır: bitişi bugünle sınırlı olabilir (devam eden yıl) ve
-    Alacak & Borç verisi zaten çekilmiş olabilir.
+    Her yıl KENDİ çalışma yılıyla sorgulanır (bkz. modül başlığı). Listenin SONU odak
+    yıldır: bitişi bugünle sınırlı olabilir (devam eden yıl), Alacak & Borç verisi zaten
+    çekilmiş olabilir ve çağıran kendi istemcisini verebilir.
     """
     if not yillar:
         return []
     odak = max(yillar)
-    vade_gun = _dene(lambda: fetch_cari_vade_gun(client), {}) or {}
     out: list[YilKapanis] = []
     gecmis = [y for y in sorted(yillar) if y != odak]
 
     for sira, y in enumerate(gecmis, 1):
         if bildir:
             bildir(f"{y} yılı mukayese için çekiliyor… ({sira}/{len(gecmis)})")
-        k = _dene(lambda y=y: yil_kapanisi(client, y, vade_gun=vade_gun))
+        k = _dene(lambda y=y: _yil_kendi_dbsinden(cfg, y))
         if k is not None and k.dolu:   # boş yıl sıfır satırı olarak tabloya girmesin
             out.append(k)
 
     if bildir and gecmis:
         bildir(f"{odak} yılı mukayeseye ekleniyor…")
+    client = odak_client or yil_client(cfg, odak)
     odak_k = _dene(lambda: yil_kapanisi(
         client, odak, bit=odak_bit or None, tam=odak_tam,
-        vade_gun=vade_gun, ta=odak_ta))
+        vade_gun=_dene(lambda: fetch_cari_vade_gun(client), {}) or {}, ta=odak_ta))
     if odak_k is not None:
         out.append(odak_k)
     return out
+
+
+def _yil_kendi_dbsinden(cfg: MikroConfig, yil: int) -> YilKapanis:
+    """Geçmiş yıl: o yılın çalışma yılı veritabanına bağlanıp kapanışı okur."""
+    c = yil_client(cfg, yil)
+    return yil_kapanisi(c, yil, vade_gun=_dene(lambda: fetch_cari_vade_gun(c), {}) or {})
