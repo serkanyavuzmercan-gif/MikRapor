@@ -1,7 +1,7 @@
 """
 GELİR TABLOSU — PDF dışa aktarım (reportlab). Kurumsal mali tablo görünümü.
 
-bilanco_pdf ile aynı letterhead/font düzenini paylaşır; tek sütun şelale gelir tablosu.
+bilanco_pdf ile aynı letterhead/font düzenini (ui.pdf_ortak) paylaşır; tek sütun şelale gelir tablosu.
 """
 
 from __future__ import annotations
@@ -16,8 +16,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 from domain.gelir_tablosu import GelirTablosu, yuzde
 from domain.mizan_bilanco import tl
-from ui.bilanco_pdf import DARK, FONT, FONT_B, GRAY, LINE, NAVY
-from ui.pdf_ortak import dipnot_ekle, letterhead_sade, pdf_ciz
+from ui.pdf_ortak import DARK, FONT, FONT_B, GRAY, LINE, NAVY, dipnot_ekle, letterhead_sade, pdf_ciz
 
 
 def _govde(gt: GelirTablosu) -> Table:

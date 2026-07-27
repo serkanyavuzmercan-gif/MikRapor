@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -14,6 +15,8 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+_log = logging.getLogger(__name__)
+
 FONT = "Helvetica"
 FONT_B = "Helvetica-Bold"
 NAVY = colors.HexColor("#1f3a5f")
@@ -23,20 +26,56 @@ LINE = colors.HexColor("#c9cfd8")
 ACCENT = colors.HexColor("#0f766e")
 
 
-def _register_fonts() -> None:
-    global FONT, FONT_B
+def _kok() -> Path:
+    """Paketli (_MEIPASS) veya geliştirme kökü."""
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parents[1]
+
+
+def _font_adaylari() -> list[tuple[Path, Path]]:
+    """(normal, bold) TTF adayları — öncelik sırasına göre.
+
+    Helvetica gibi yerleşik fontlarda Türkçe glif yoktur; bu yüzden her ortamda
+    (paketli exe dahil) çalışan, uygulamayla birlikte gelen TTF gerekir.
+    """
+    adaylar: list[tuple[Path, Path]] = []
+    fonts = _kok() / "assets" / "fonts"
+    adaylar.append((fonts / "DejaVuSans.ttf", fonts / "DejaVuSans-Bold.ttf"))
     try:
         import matplotlib
 
         base = Path(matplotlib.get_data_path()) / "fonts" / "ttf"
-        if (base / "DejaVuSans.ttf").is_file():
-            pdfmetrics.registerFont(TTFont("DejaVu", str(base / "DejaVuSans.ttf")))
-            FONT = "DejaVu"
-        if (base / "DejaVuSans-Bold.ttf").is_file():
-            pdfmetrics.registerFont(TTFont("DejaVu-Bold", str(base / "DejaVuSans-Bold.ttf")))
-            FONT_B = "DejaVu-Bold"
+        adaylar.append((base / "DejaVuSans.ttf", base / "DejaVuSans-Bold.ttf"))
     except Exception:  # noqa: BLE001
         pass
+    win = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+    adaylar.append((win / "arial.ttf", win / "arialbd.ttf"))
+    return adaylar
+
+
+def _register_fonts() -> None:
+    """Türkçe glifli ilk uygun TTF'i AppSans olarak kaydet.
+
+    Hiçbiri bulunamazsa Helvetica'ya düşülür ve Türkçe karakterler bozuk çıkar —
+    bu yüzden assets/fonts altındaki DejaVu kopyası birincil kaynaktır.
+    """
+    global FONT, FONT_B
+    for normal, bold in _font_adaylari():
+        if not (normal.is_file() and bold.is_file()):
+            continue
+        try:
+            pdfmetrics.registerFont(TTFont("AppSans", str(normal)))
+            pdfmetrics.registerFont(TTFont("AppSans-Bold", str(bold)))
+            pdfmetrics.registerFontFamily(
+                "AppSans", normal="AppSans", bold="AppSans-Bold",
+                italic="AppSans", boldItalic="AppSans-Bold",
+            )
+            FONT, FONT_B = "AppSans", "AppSans-Bold"
+            return
+        except Exception:  # noqa: BLE001
+            continue
+    _log.warning("PDF için Türkçe uyumlu TTF bulunamadı; Helvetica'ya düşüldü.")
 
 
 _register_fonts()
@@ -73,8 +112,7 @@ _MARKA_GRI = colors.HexColor("#475569")
 
 def _logo_yolu() -> str | None:
     """assets/logo-mark.png tam yolu (paketli/geliştirme); yoksa None."""
-    base = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]
-    p = base / "assets" / "logo-mark.png"
+    p = _kok() / "assets" / "logo-mark.png"
     return str(p) if p.is_file() else None
 
 
@@ -134,52 +172,6 @@ def pdf_ciz(doc: SimpleDocTemplate, elems: list, *, baslik: str = "") -> None:
     doc.build(elems, onFirstPage=_sayfa, onLaterPages=_sayfa)
 
 
-def letterhead(
-    elems: list,
-    *,
-    firma: str,
-    baslik: str,
-    donem: str = "",
-    bas: str = "",
-    bit: str = "",
-) -> None:
-    """Firma + çizgi + başlık (solda) / Üretim satırı (sağda) + dönem satırı."""
-    if firma:
-        elems.append(Paragraph(
-            firma,
-            ParagraphStyle("firma", fontName=FONT_B, fontSize=15, textColor=DARK, leading=18),
-        ))
-    elems.append(HRFlowable(width="100%", thickness=1.2, color=NAVY, spaceBefore=3, spaceAfter=8))
-
-    # Dipnottaki ile aynı stil: 8 pt, gri
-    uretim = f"Üretim: MikRapor · {_uretim_zamani()}"
-    baslik_row = Table([[
-        Paragraph(
-            baslik,
-            ParagraphStyle("t", fontName=FONT_B, fontSize=13, textColor=DARK, leading=16),
-        ),
-        Paragraph(
-            uretim,
-            ParagraphStyle("ur", fontName=FONT, fontSize=8, textColor=GRAY, leading=10.5, alignment=2),
-        ),
-    ]], colWidths=[95 * mm, 79 * mm])
-    baslik_row.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-    ]))
-    elems.append(baslik_row)
-
-    donem_yazi = (donem or "").strip() or donem_satiri(bas, bit)
-    if donem_yazi:
-        elems.append(Paragraph(
-            donem_yazi,
-            ParagraphStyle("d", fontName=FONT, fontSize=9, textColor=GRAY, leading=12),
-        ))
-    elems.append(Spacer(1, 8))
-
-
 def letterhead_sade(
     elems: list, *, firma: str, bas: str = "", bit: str = "", donem: str = "",
 ) -> None:
@@ -219,10 +211,6 @@ def sty_sec() -> ParagraphStyle:
 
 def sty_kpi() -> ParagraphStyle:
     return ParagraphStyle("kpi", fontName=FONT_B, fontSize=9, textColor=DARK, leading=12)
-
-
-def _uretim_zamani() -> str:
-    return datetime.now().strftime("%d.%m.%Y %H:%M")
 
 
 def kurumsal_dipnot(

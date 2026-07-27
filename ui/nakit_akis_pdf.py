@@ -9,17 +9,14 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import CIKIS_ETIKET, CIKIS_SIRA, GIRIS_ETIKET, GIRIS_SIRA, NakitAkis
-from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, dipnot_ekle, letterhead, pdf_doc, sty_kpi, sty_row, sty_sec
+from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, dipnot_ekle, letterhead_sade, pdf_ciz, pdf_doc, sty_kpi, sty_row, sty_sec
 
 
 def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "") -> Path:
     out = Path(path)
     doc = pdf_doc(out, title="Nakit Akış", firma=firma)
     elems: list = []
-    letterhead(
-        elems, firma=firma, baslik="NAKİT AKIŞ",
-        bas=na.bas, bit=na.bit,
-    )
+    letterhead_sade(elems, firma=firma, bas=na.bas, bit=na.bit)
 
     ozet = [
         [Paragraph("Açılış nakit", sty_row()), tl(na.acilis_nakit)],
@@ -64,5 +61,5 @@ def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "") -> P
         belge="Yönetim amaçlı nakit akış özeti",
         kaynak="Mikro banka / kasa / cari hareketleri",
     )
-    doc.build(elems)
+    pdf_ciz(doc, elems, baslik="NAKİT AKIŞ")
     return out

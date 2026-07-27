@@ -3,7 +3,7 @@ BİLANÇO — PDF dışa aktarım (reportlab). Kurumsal mali tablo görünümü.
 
 Letterhead (firma adı + çizgi) · BİLANÇO başlığı + dönem/kesim · iki sütun AKTİF | PASİF ·
 bölüm alt toplamları · dipnot: belge niteliği, kaynak, üretici, sorumluluk.
-Türkçe için DejaVu fontu.
+Font ve renkler ui.pdf_ortak üzerinden gelir (Türkçe uyumlu TTF).
 """
 
 from __future__ import annotations
@@ -14,8 +14,6 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     Paragraph,
     SimpleDocTemplate,
@@ -24,15 +22,7 @@ from reportlab.platypus import (
 )
 
 from domain.mizan_bilanco import AKTIF_BOLUM, PASIF_BOLUM, Bilanco, tl
-from ui.pdf_ortak import dipnot_ekle, letterhead_sade, pdf_ciz
-
-FONT = "Helvetica"
-FONT_B = "Helvetica-Bold"
-
-NAVY = colors.HexColor("#1f3a5f")
-DARK = colors.HexColor("#1f2937")
-GRAY = colors.HexColor("#6b7280")
-LINE = colors.HexColor("#c9cfd8")
+from ui.pdf_ortak import DARK, FONT, FONT_B, LINE, NAVY, dipnot_ekle, letterhead_sade, pdf_ciz
 
 _ALT_TOPLAM_ETIKET = {
     "1": "Dönen Varlıklar Toplamı",
@@ -41,32 +31,6 @@ _ALT_TOPLAM_ETIKET = {
     "4": "Uzun Vadeli Yab. Kaynaklar Toplamı",
     "5": "Özkaynaklar Toplamı",
 }
-
-
-def _register_fonts() -> None:
-    global FONT, FONT_B
-    try:
-        import matplotlib
-        base = Path(matplotlib.get_data_path()) / "fonts" / "ttf"
-        if (base / "DejaVuSans.ttf").is_file():
-            pdfmetrics.registerFont(TTFont("DejaVu", str(base / "DejaVuSans.ttf")))
-            FONT = "DejaVu"
-        if (base / "DejaVuSans-Bold.ttf").is_file():
-            pdfmetrics.registerFont(TTFont("DejaVu-Bold", str(base / "DejaVuSans-Bold.ttf")))
-            FONT_B = "DejaVu-Bold"
-    except Exception:  # noqa: BLE001
-        pass
-
-
-_register_fonts()
-
-
-def _tr_tarih(asof: str) -> str:
-    try:
-        y, m, d = asof.split("-")
-        return f"{d}.{m}.{y}"
-    except Exception:  # noqa: BLE001
-        return asof
 
 
 def _side_table(b: Bilanco, taraf: str) -> Table:

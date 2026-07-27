@@ -13,6 +13,9 @@ a = Analysis(
         ('assets\\empty-bilanco.png', 'assets'),
         ('assets\\anasayfalogo.png', 'assets'),
         ('assets\\mikrapor-hero-illustration.png', 'assets'),
+        ('assets\\fonts\\DejaVuSans.ttf', 'assets\\fonts'),
+        ('assets\\fonts\\DejaVuSans-Bold.ttf', 'assets\\fonts'),
+        ('assets\\fonts\\LICENSE_DEJAVU', 'assets\\fonts'),
     ],
     hiddenimports=[
         'matplotlib.backends.backend_qtagg',
