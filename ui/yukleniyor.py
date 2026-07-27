@@ -26,6 +26,10 @@ from ui.styles import ACCENT, BORDER, MUTED, NAVY, SUBINK
 
 _KART_GENISLIK = 420
 
+# Süre beklentisi sekmeye göre değişir: mizan saniyeler sürer, yapay zekâ yorumu dakikalar.
+# Yanlış vaat "takıldı" hissi yaratıyor, o yüzden sekme kendi ipucunu verebilir.
+_VARSAYILAN_IPUCU = "Birkaç saniye sürebilir · «İptal» ile durdurabilirsin"
+
 
 class _Spinner(QWidget):
     """Kendi çizilen dönen gösterge — 12 segment, baş açısı her tik döner."""
@@ -89,11 +93,14 @@ class YukleniyorEkrani(QWidget):
         baslik: str = "Rapor hazırlanıyor…",
         hero_asset: str | None = None,
         hero_fit: str = "cover",
+        ipucu: str = _VARSAYILAN_IPUCU,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("yukleniyorEkrani")
         self._aktif = False
+        self._ipucu_metni = ipucu or _VARSAYILAN_IPUCU
+        self._gecen_sn = 0
 
         kok = QGridLayout(self)
         kok.setContentsMargins(0, 0, 0, 0)
@@ -155,11 +162,18 @@ class YukleniyorEkrani(QWidget):
         )
         kl.addWidget(self._durum)
 
-        ipucu = QLabel("Birkaç saniye sürebilir · «İptal» ile durdurabilirsin")
-        ipucu.setWordWrap(True)
-        ipucu.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        ipucu.setStyleSheet(f"color: {MUTED}; font-size: 11px; background: transparent;")
-        kl.addWidget(ipucu)
+        self._ipucu = QLabel(self._ipucu_metni)
+        self._ipucu.setWordWrap(True)
+        self._ipucu.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self._ipucu.setStyleSheet(f"color: {MUTED}; font-size: 11px; background: transparent;")
+        kl.addWidget(self._ipucu)
+
+        # Geçen süre sayacı: uzun süren işlerde (yapay zekâ yorumu dakikalar sürer, üstelik
+        # akış yapmayan sağlayıcıda durum satırı hiç değişmez) ekranda tek canlılık işareti
+        # dönen göstergeydi; kullanıcı "takıldı mı?" diye bekliyordu.
+        self._sayac = QTimer(self)
+        self._sayac.setInterval(1000)
+        self._sayac.timeout.connect(self._sure_tik)
 
         d.addWidget(kart, alignment=Qt.AlignmentFlag.AlignHCenter)
         d.addStretch(2)
@@ -168,13 +182,23 @@ class YukleniyorEkrani(QWidget):
         if mesaj:
             self._durum.setText(mesaj)
 
+    def _sure_tik(self) -> None:
+        self._gecen_sn += 1
+        dk, sn = divmod(self._gecen_sn, 60)
+        gecen = f"{dk}:{sn:02d}" if dk else f"{sn} sn"
+        self._ipucu.setText(f"{self._ipucu_metni} · Geçen süre {gecen}")
+
     def basla(self) -> None:
         self._aktif = True
+        self._gecen_sn = 0
+        self._ipucu.setText(self._ipucu_metni)
+        self._sayac.start()
         if self.isVisible():
             self._spinner.basla()
 
     def durdur(self) -> None:
         self._aktif = False
+        self._sayac.stop()
         self._spinner.durdur()
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
