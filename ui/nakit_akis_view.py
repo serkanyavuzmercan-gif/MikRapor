@@ -178,21 +178,22 @@ def _runway_banner(
     if r.gider_eksik:
         return None
 
-    referans = f"{runway_referans_bas}–{na.bit}" if runway_referans_bas and na.bit else "son 90 gün"
-    kart_ek = " · açık kart borcu için aylık %25 ödeme senaryosu dahil" if kart_borcu_takvimi else ""
-    alt = (
-        f"Takvim tahmini · referans akış: {referans} · açık alacak/borç vadeleri ve "
-        f"kredi taksitleri dahil{kart_ek} · mevcut nakit {tl(r.baslangic_nakit)}"
-    )
+    kapsam = "Açık alacak/borç vadeleri ve banka kredi taksitleri dikkate alındı."
+    if kart_borcu_takvimi:
+        kapsam = (
+            "Açık alacak/borç vadeleri, banka kredi taksitleri ve açık kart borcu için "
+            "aylık %25 ödeme varsayımı dikkate alındı."
+        )
+    nakit_bilgi = f"Başlangıç nakdi: {tl(r.baslangic_nakit)}"
 
     if r.tukenme_ay is not None:
         renk, bg, kenar = NEG, "#fdecec", "#f3b4b4"
-        baslik = f"Nakit {_ay_str(r.tukenme_ay)} içinde eksiye düşüyor"
-        oneri = "→ Tahsilat ve ödeme takvimini gözden geçir."
+        baslik = f"Nakit {_ay_str(r.tukenme_ay)}'de eksiye düşebilir"
+        oneri = f"Öneri: {_ay_str(r.tukenme_ay)} öncesindeki tahsilatları ve ödeme planını gözden geçir."
     elif r.en_dusuk_nakit < r.baslangic_nakit - 0.005:
         renk, bg, kenar = "#b45309", "#fdf3e0", "#f0d090"
         baslik = "Nakit azalıyor — 6 aylık takvimde eksiye düşmüyor"
-        oneri = "→ Nakit takvimini izle."
+        oneri = "Öneri: Yaklaşan tahsilat ve ödeme tarihlerini düzenli izle."
     else:
         renk, bg, kenar = "#15803d", "#e8f6ee", "#bfe3cd"
         baslik = "Nakit 6 aylık takvimde eksiye düşmüyor"
@@ -207,7 +208,7 @@ def _runway_banner(
     lay = QVBoxLayout(card)
     lay.setContentsMargins(18, 12, 18, 12)
     lay.setSpacing(2)
-    eyebrow = QLabel("NAKİT NE KADAR YETER?")
+    eyebrow = QLabel("6 AYLIK NAKİT ÖNGÖRÜSÜ")
     eyebrow.setStyleSheet(
         f"color: {renk}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; "
         "background: transparent;"
@@ -219,10 +220,20 @@ def _runway_banner(
         f"color: {renk}; font-size: 18px; font-weight: 800; background: transparent;"
     )
     lay.addWidget(bl)
-    sub = QLabel(alt + (f"   {oneri}" if oneri else ""))
+    sub = QLabel(kapsam)
     sub.setWordWrap(True)
     sub.setStyleSheet(f"color: {MUTED}; font-size: 12px; background: transparent;")
     lay.addWidget(sub)
+    detay = QLabel(nakit_bilgi)
+    detay.setStyleSheet(f"color: {MUTED}; font-size: 11.5px; background: transparent;")
+    lay.addWidget(detay)
+    if oneri:
+        aksiyon = QLabel(oneri)
+        aksiyon.setWordWrap(True)
+        aksiyon.setStyleSheet(
+            f"color: {renk}; font-size: 12px; font-weight: 700; background: transparent;"
+        )
+        lay.addWidget(aksiyon)
     return card
 
 
