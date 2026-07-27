@@ -46,7 +46,7 @@ class TestNakitAkis(unittest.TestCase):
         self.assertAlmostEqual(self.na.giris_kategori["Banka kredisi kullanımı"], 40000, places=2)
         self.assertAlmostEqual(self.na.giris_kategori["Diğer girişler"], 5000, places=2)
         self.assertAlmostEqual(self.na.cikis_kategori["Satıcı ödemesi"], 60000, places=2)
-        self.assertAlmostEqual(self.na.cikis_kategori["Banka kredisi ödemesi"], 25000, places=2)
+        self.assertAlmostEqual(self.na.cikis_kategori["Banka kredisi ödemeleri"], 25000, places=2)
         self.assertAlmostEqual(self.na.cikis_kategori["Vergi"], 15000, places=2)
         self.assertAlmostEqual(self.na.cikis_kategori["Personel / Maaş"], 8000, places=2)
 
@@ -86,8 +86,8 @@ class TestNakitAkis(unittest.TestCase):
             rows, kapanis_nakit=-95000, donem_delta=-95000,
             bas="2026-01-01", bit="2026-01-31",
         )
-        self.assertAlmostEqual(na.cikis_kategori["Banka kredisi ödemesi"], 25000, places=2)
-        self.assertAlmostEqual(na.cikis_kategori["Kredi kartı ödemesi"], 70000, places=2)
+        self.assertAlmostEqual(na.cikis_kategori["Banka kredisi ödemeleri"], 25000, places=2)
+        self.assertAlmostEqual(na.cikis_kategori["Kredi kartı ödemeleri"], 70000, places=2)
         self.assertAlmostEqual(na.kredi_odeme, 25000, places=2)
 
     def test_diger_kirilim(self):

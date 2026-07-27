@@ -637,7 +637,11 @@ def fetch_nakit_akis_gl(client: MikroClient, bas: str, bit: str) -> list[dict[st
     GL her şeyin son durağı olduğundan akış burada TAM ve kapanış bakiyesiyle
     (aynı kaynak) mutabık çıkar.
 
-    ORANSAL dağıtım (TOP 1 'en büyük karşı hesap' değil): toplu ödeme fişinde tek banka
+    Önce her yevmiye fişindeki nakit hesaplar NETLEŞTİRİLİR. Aynı fişte 28 bin banka çıkışı
+    ve 18 bin iç transfer girişi varsa gerçek dış akış 10 bindir; iki nakit satırını ayrı ayrı
+    işlemek kart/satıcı ödemesini şişirirdi.
+
+    ORANSAL dağıtım (TOP 1 'en büyük karşı hesap' değil): toplu ödeme fişinde net banka
     çıkışının karşısında satıcı + KDV + muhtasar satırları olur; en büyük kalem hepsini
     yutar ve vergi satıcı ödemesinin içinde erirdi. Karşı tarafı tamamen nakit olan
     satırlar (iç transfer, çek tahsili 101→102) CROSS APPLY boş dönerek elenir; açılış/
@@ -648,9 +652,19 @@ def fetch_nakit_akis_gl(client: MikroClient, bas: str, bit: str) -> list[dict[st
     bit_son = _bit_son(bit)
     sql = (
         "SELECT CONVERT(char(7), c.fis_tarih, 23) AS ay, "
-        "CASE WHEN c.fis_meblag0 > 0 THEN 0 ELSE 1 END AS tip, "
-        "karsi.prefix AS prefix, SUM(ABS(c.fis_meblag0) * karsi.pay) AS tutar "
-        "FROM MUHASEBE_FISLERI c WITH (NOLOCK) "
+        "CASE WHEN c.net_nakit > 0 THEN 0 ELSE 1 END AS tip, "
+        "karsi.prefix AS prefix, SUM(ABS(c.net_nakit) * karsi.pay) AS tutar "
+        "FROM ("
+        "SELECT c0.fis_tarih, c0.fis_yevmiye_no, SUM(c0.fis_meblag0) AS net_nakit "
+        "FROM MUHASEBE_FISLERI c0 WITH (NOLOCK) "
+        "WHERE c0.fis_iptal = 0 AND c0.fis_meblag0 <> 0 "
+        f"AND LEFT(LTRIM(c0.fis_hesap_kod), 3) IN {_NAKIT_GL_ONEK} "
+        f"AND c0.fis_tarih >= '{bas}' AND c0.fis_tarih < '{bit_son}' "
+        "AND c0.fis_yevmiye_no IS NOT NULL AND c0.fis_yevmiye_no <> 0 "
+        f"{_gl_devir_haric('c0')}"
+        "GROUP BY c0.fis_tarih, c0.fis_yevmiye_no "
+        "HAVING ABS(SUM(c0.fis_meblag0)) >= 0.005"
+        ") c "
         "CROSS APPLY ("
         "SELECT CASE WHEN EXISTS ("
         "SELECT 1 FROM MUHASEBE_HESAP_PLANI hp WITH (NOLOCK) "
@@ -661,17 +675,12 @@ def fetch_nakit_akis_gl(client: MikroClient, bas: str, bit: str) -> list[dict[st
         "FROM MUHASEBE_FISLERI k WITH (NOLOCK) "
         "WHERE k.fis_iptal = 0 AND k.fis_tarih = c.fis_tarih "
         "AND k.fis_yevmiye_no = c.fis_yevmiye_no "
-        "AND SIGN(k.fis_meblag0) = -SIGN(c.fis_meblag0) "
+        "AND SIGN(k.fis_meblag0) = -SIGN(c.net_nakit) "
         f"AND LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) NOT IN {_NAKIT_GL_ONEK}"
         ") karsi "
-        "WHERE c.fis_iptal = 0 AND c.fis_meblag0 <> 0 "
-        f"AND LEFT(LTRIM(c.fis_hesap_kod), 3) IN {_NAKIT_GL_ONEK} "
-        f"AND c.fis_tarih >= '{bas}' AND c.fis_tarih < '{bit_son}' "
-        "AND c.fis_yevmiye_no IS NOT NULL AND c.fis_yevmiye_no <> 0 "
-        f"{_gl_devir_haric('c')}"
         "GROUP BY CONVERT(char(7), c.fis_tarih, 23), "
-        "CASE WHEN c.fis_meblag0 > 0 THEN 0 ELSE 1 END, karsi.prefix "
-        "HAVING SUM(ABS(c.fis_meblag0) * karsi.pay) >= 0.005"
+        "CASE WHEN c.net_nakit > 0 THEN 0 ELSE 1 END, karsi.prefix "
+        "HAVING SUM(ABS(c.net_nakit) * karsi.pay) >= 0.005"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 
@@ -683,15 +692,25 @@ def fetch_kredi_odemeleri_gl(
     Seçili dönemde nakit/banka hesabından çıkan banka kredisi ANAPARA ödemeleri.
 
     Nakit Akış kategorileriyle aynı oransal yevmiye dağıtımını kullanır; bu nedenle detay
-    toplamı ekrandaki «Banka kredisi ödemesi» satırıyla aynı anlamı ve tutarı taşır.
+    toplamı ekrandaki «Banka kredisi ödemeleri» satırıyla aynı anlamı ve tutarı taşır.
     Hesap planında «kredi kartı» olarak adlandırılan 300 alt hesapları özellikle dışlanır.
     """
     bas, bit = _aralik(bas, bit)
     sql = (
         "SELECT CONVERT(char(10), c.fis_tarih, 23) AS tarih, "
         "karsi.hesap AS hesap, karsi.hesap_ad AS hesap_ad, "
-        "SUM(ABS(c.fis_meblag0) * karsi.pay) AS tutar "
-        "FROM MUHASEBE_FISLERI c WITH (NOLOCK) "
+        "SUM(ABS(c.net_nakit) * karsi.pay) AS tutar "
+        "FROM ("
+        "SELECT c0.fis_tarih, c0.fis_yevmiye_no, SUM(c0.fis_meblag0) AS net_nakit "
+        "FROM MUHASEBE_FISLERI c0 WITH (NOLOCK) "
+        "WHERE c0.fis_iptal = 0 AND c0.fis_meblag0 <> 0 "
+        f"AND LEFT(LTRIM(c0.fis_hesap_kod), 3) IN {_NAKIT_GL_ONEK} "
+        f"AND c0.fis_tarih >= '{bas}' AND c0.fis_tarih < '{_bit_son(bit)}' "
+        "AND c0.fis_yevmiye_no IS NOT NULL AND c0.fis_yevmiye_no <> 0 "
+        f"{_gl_devir_haric('c0')}"
+        "GROUP BY c0.fis_tarih, c0.fis_yevmiye_no "
+        "HAVING SUM(c0.fis_meblag0) < -0.005"
+        ") c "
         "CROSS APPLY ("
         "SELECT LTRIM(ISNULL(k.fis_hesap_kod, '')) AS hesap, "
         "COALESCE(NULLIF(hp.muh_hesap_isim1, ''), "
@@ -709,17 +728,12 @@ def fetch_kredi_odemeleri_gl(
         "ON hpp.muh_hesap_kod = LEFT(k.fis_hesap_kod, 6) "
         "WHERE k.fis_iptal = 0 AND k.fis_tarih = c.fis_tarih "
         "AND k.fis_yevmiye_no = c.fis_yevmiye_no "
-        "AND SIGN(k.fis_meblag0) = -SIGN(c.fis_meblag0) "
+        "AND SIGN(k.fis_meblag0) = -SIGN(c.net_nakit) "
         f"AND LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) NOT IN {_NAKIT_GL_ONEK}"
         ") karsi "
-        "WHERE c.fis_iptal = 0 AND c.fis_meblag0 < 0 "
-        f"AND LEFT(LTRIM(c.fis_hesap_kod), 3) IN {_NAKIT_GL_ONEK} "
-        f"AND c.fis_tarih >= '{bas}' AND c.fis_tarih < '{_bit_son(bit)}' "
-        "AND c.fis_yevmiye_no IS NOT NULL AND c.fis_yevmiye_no <> 0 "
-        "AND karsi.banka_kredisi = 1 AND karsi.kredi_karti = 0 "
-        f"{_gl_devir_haric('c')}"
+        "WHERE karsi.banka_kredisi = 1 AND karsi.kredi_karti = 0 "
         "GROUP BY CONVERT(char(10), c.fis_tarih, 23), karsi.hesap, karsi.hesap_ad "
-        "HAVING SUM(ABS(c.fis_meblag0) * karsi.pay) >= 0.005 "
+        "HAVING SUM(ABS(c.net_nakit) * karsi.pay) >= 0.005 "
         "ORDER BY CONVERT(char(10), c.fis_tarih, 23), karsi.hesap"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))

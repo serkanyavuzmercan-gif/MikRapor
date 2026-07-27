@@ -53,8 +53,8 @@ GIRIS_ETIKET = {
     "personel": "Personelden", "gider": "Gider iadesi", "diger": "Diğer girişler",
 }
 CIKIS_ETIKET = {
-    "satici": "Satıcı ödemesi", "kredi": "Banka kredisi ödemesi",
-    "kredi_karti": "Kredi kartı ödemesi", "personel": "Personel / Maaş",
+    "satici": "Satıcı ödemesi", "kredi": "Banka kredisi ödemeleri",
+    "kredi_karti": "Kredi kartı ödemeleri", "personel": "Personel / Maaş",
     "sgk": "SGK", "vergi": "Vergi", "ortak": "Ortaklar", "gider": "Genel giderler",
     "musteri": "Müşteriye iade", "diger": "Diğer çıkışlar",
 }
