@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mikrapor"
-version = "0.1.0"
+version = "1.0.0"   # infra/surum.py:SURUM ile aynı olmalı (test_surum.py doğrular)
 description = "Mikro ERP'den anında finansal tablolar üreten masaüstü uygulaması (PyQt6)."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -14,7 +14,7 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
-    from PyQt6.QtWidgets import QApplication, QTreeWidget
+    from PyQt6.QtWidgets import QApplication, QLabel, QTreeWidget
     _PYQT = True
 except ImportError:
     _PYQT = False
@@ -212,6 +212,23 @@ class TestUiSmoke(unittest.TestCase):
             self.assertIn("güncel", lbl.text())
         finally:
             t.close()
+
+    def test_hakkinda_diyalogu(self) -> None:
+        from infra.surum import ILETISIM, SURUM, TELIF
+        from ui.hakkinda_dialog import HakkindaDialog
+        dlg = HakkindaDialog()
+        try:
+            metinler = " ".join(
+                lbl.text() for lbl in dlg.findChildren(QLabel))
+            self.assertIn(SURUM, metinler)
+            self.assertIn(ILETISIM, metinler)
+            self.assertIn(TELIF, metinler)
+            self.assertIn("mailto:", metinler)      # hata bildirimi bağlantısı
+
+            dlg._on_kopyala()                        # pano + geri bildirim
+            self.assertIn("Kopyalandı", dlg._btn_kopyala.text())
+        finally:
+            dlg.close()
 
     def test_ayar_diyaloglari(self) -> None:
         from ui.gercek_durum_settings_dialog import GercekDurumAyarlarDialog

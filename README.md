@@ -107,3 +107,12 @@ Tablolar Mikro'nun **genel (resmî) muhasebesinden** (`MUHASEBE_FISLERI`, TDHP h
 
 - **Kapatılmış dönemler** (önceki ay/yıl) tam olup resmî mali tablolarla uyumludur.
 - **İçinde bulunulan açık dönem** mali müşavirin işlediği kadar günceldir; maliyet kapanışı yapılmadan satışların maliyeti (62) boş kalabilir — uygulama bu durumda kârın şişik görünebileceğini **uyarır**.
+
+## Sürüm ve iletişim
+
+Sürüm bilgisi ve künye uygulamada üst çubuktaki **ⓘ** düğmesinden (Ayarlar'ın yanı) açılır.
+
+- Sürüm: `infra/surum.py` içindeki `SURUM` tek kaynaktır; `pyproject.toml` ile aynı olması `test_surum.py` ile doğrulanır (PyInstaller paketinde `pyproject.toml` bulunmaz).
+- Hata bildirimi ve iletişim: **mikrapor@hidroteknik.com.tr**. Hakkında penceresindeki «Hata bildir» bağlantısı konuyu, sürümü ve işletim sistemi künyesini hazır getirir.
+
+© 2026 Hidroteknik A.Ş. Tüm hakları saklıdır.

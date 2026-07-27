@@ -12,7 +12,14 @@ import html
 import re
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from domain.ai_yorum import AiYorum, yillar_tablosu
 from domain.ortak import tr_buyuk, tr_kucuk
@@ -24,9 +31,11 @@ from ui.styles import OK as POZ
 
 _DARK = "#1f2937"
 
-# Yıl sütunu genişliği — 6 yıl + değişim yan yana sığsın diye tutarlar kısaltılır (41,2M).
-_YIL_SUTUN = 74
-_DEGISIM_SUTUN = 92
+# Sabit sütun genişlikleri: tablo pencereye yayılmaz, blok olarak ortalanır.
+# «41,2 milyon» en uzun hücre; 100px ona göre seçildi.
+_ETIKET_SUTUN = 246
+_YIL_SUTUN = 100
+_DEGISIM_SUTUN = 104
 
 # Başlığa göre kenar rengi — "dikkat" kırmızı, "iyi giden" yeşil; göz taramayı hızlandırır.
 _BOLUM_RENK = (
@@ -124,33 +133,59 @@ def _mukayese_karti(y: AiYorum) -> QFrame | None:
     Yıllar arası mukayese — DETERMİNİSTİK, modelden bağımsız.
 
     Model hangi satırı anacağını kendi seçiyordu; kullanıcı her seferinde tam mukayese
-    istiyor. Bu tablo hep aynı satırları, hep tam gösterir. Model altındaki metinde
+    istiyor. Bu tablo hep aynı satırları, hep tam gösterir. Model üstündeki metinde
     bunu yorumlar; üretmez.
+
+    Tablo pencere genişliğine YAYILMAZ: en çok 5 yıl olduğu için sütunlar sabit
+    genişlikte tutulup blok ortalanır. Yayılınca hücreler arası boşluk açılıyor ve
+    satırı yatay takip etmek zorlaşıyordu.
     """
     yillar, bolumler = yillar_tablosu(y.kapanislar)
     if not yillar:
         return None
 
     kolon = 1 + len(yillar) + 1
-    sabit = [(i + 1, _YIL_SUTUN) for i in range(len(yillar))]
+    sabit = [(0, _ETIKET_SUTUN)]
+    sabit += [(i + 1, _YIL_SUTUN) for i in range(len(yillar))]
     sabit.append((kolon - 1, _DEGISIM_SUTUN))
     t = _agac(kolon, sabit, esnek=0)
+    t.header().setStretchLastSection(False)
 
     _tsatir(t, [_c("", renk=MUTED)]
             + [_c(str(yil), renk=MUTED, kalin=True, sag=True) for yil in yillar]
             + [_c(f"{yillar[0]}→{yillar[-1]}", renk=MUTED, kalin=True, sag=True)])
 
+    sabit_var = False
     for bolum in bolumler:
         if bolum.baslik:
             _tsatir(t, [_c(tr_buyuk(bolum.baslik), renk="#0f766e", kalin=True)]
                     + [_c("")] * (kolon - 1))
         for satir in bolum.satirlar:
+            sabit_var = sabit_var or satir.sabit
             renk = MUTED if satir.iyi is None else (POZ if satir.iyi else NEG)
-            _tsatir(t, [_c(satir.etiket)]
-                    + [_c(h, sag=True) for h in satir.hucreler]
-                    + [_c(satir.degisim, renk=renk, kalin=True, sag=True)])
+            hucreler = [_c(satir.etiket + ("  ⚠" if satir.sabit else ""),
+                           renk=MUTED if satir.sabit else _DARK)]
+            for i, metin in enumerate(satir.hucreler):
+                eksi = i < len(satir.eksi) and satir.eksi[i]
+                hucreler.append(_c(metin, renk=NEG if eksi else _DARK, sag=True))
+            hucreler.append(_c(satir.degisim, renk=renk, kalin=True, sag=True))
+            _tsatir(t, hucreler)
 
-    t.setFixedHeight(sum(30 for _ in range(t.topLevelItemCount())) + 6)
+    genislik = _ETIKET_SUTUN + _YIL_SUTUN * len(yillar) + _DEGISIM_SUTUN + 4
+    t.setFixedWidth(genislik)
+    t.setFixedHeight(30 * t.topLevelItemCount() + 6)
+
+    notlar = [("Tutarlar TL'dir; büyük rakamlar «bin / milyon / milyar» diye kısaltılmıştır. "
+               "Dolar karşılıkları Mikro'nun kendi kur kaydından hesaplanır.", ""),
+              ("«—» o yıl için hesaplanamadı: payda sıfır, maliyet girilmemiş ya da "
+               "özkaynak negatif.", "")]
+    if sabit_var:
+        # Bilanço hesapları işlenmediğinde mizan her yıl aynı çıkar. Sessiz kalırsak
+        # kullanıcı "trend yok" sanır; oysa sorun veride (canlıda birebir görüldü).
+        notlar.insert(0, (
+            "⚠ işaretli satırlar tüm yıllarda AYNI: bu kalemler muhasebede güncellenmemiş "
+            "olabilir. Bu satırlara ve onlardan türeyen oranlara güvenmeyin.", "uyari"))
+
     card = QFrame()
     card.setObjectName("aiCard")
     card.setStyleSheet(
@@ -165,11 +200,12 @@ def _mukayese_karti(y: AiYorum) -> QFrame | None:
         "color: #0f766e; font-size: 13px; font-weight: 800; letter-spacing: 0.3px; "
         "background: transparent; border: none;")
     lay.addWidget(lbl)
-    lay.addWidget(_ic(t, [
-        ("Tutarlar kısaltılmıştır (M = milyon, B = bin).", ""),
-        ("«—» o yıl için hesaplanamadı: payda sıfır, maliyet girilmemiş ya da "
-         "özkaynak negatif.", ""),
-    ]))
+
+    orta = QHBoxLayout()
+    orta.addStretch(1)
+    orta.addWidget(_ic(t, notlar))
+    orta.addStretch(1)
+    lay.addLayout(orta)
     return card
 
 
@@ -194,13 +230,13 @@ def build_ai_yorum_widget(y: AiYorum, firma: str = "") -> QWidget:
     head.setStyleSheet("background: transparent;")
     root.addWidget(head)
 
-    # Deterministik tablo yorumdan ÖNCE gelir: rakam önce, yorum sonra.
+    for baslik, satirlar in bolumlere_ayir(y.metin):
+        root.addWidget(_bolum_karti(baslik, satirlar))
+
+    # Mukayese tablosu EN ALTTA: önce okunacak yorum, sonra dayanağı olan rakamlar.
     mukayese = _mukayese_karti(y)
     if mukayese is not None:
         root.addWidget(mukayese)
-
-    for baslik, satirlar in bolumlere_ayir(y.metin):
-        root.addWidget(_bolum_karti(baslik, satirlar))
 
     dipnot = QLabel(
         "Bu yorum yapay zekâ tarafından üretilmiştir; mali müşavir görüşü yerine geçmez. "
