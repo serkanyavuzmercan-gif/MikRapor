@@ -23,6 +23,12 @@ from collections.abc import Callable
 
 from domain.ai_yorum import SISTEM_PROMPT, AiVeriPaketi, AiYorum
 from infra.ai_config import AiConfig
+from infra.ai_saglayici import (
+    ModelListesiHatasi,
+    ag_hata_mesaji,
+    guncel_model_sec,
+    http_hata_mesaji,
+)
 
 # Yorum uzun olabilir (5 bölüm, madde madde); rahat bir tavan.
 _MAX_TOKEN = 8000
@@ -53,16 +59,35 @@ def _kapi(cfg: AiConfig, paket: AiVeriPaketi) -> AiConfig:
     return cfg
 
 
+def model_coz(cfg: AiConfig, bildir: Callable[[str], None] | None = None) -> str:
+    """
+    Kullanılacak modeli belirler — kullanıcı model SEÇMEZ.
+
+    Sağlayıcının listesinden en güncel/yetenekli olan otomatik seçilir. Liste
+    çekilemezse ve elde önceden seçilmiş bir model varsa ona düşülür; o da yoksa
+    sebebi açıkça söylenir (sessizce yanlış bir ada düşmeyiz).
+    """
+    if bildir:
+        bildir("Güncel model belirleniyor…")
+    try:
+        return guncel_model_sec(cfg.saglayici_bilgi, cfg.api_key, cfg.ozel_base_url)
+    except ModelListesiHatasi as exc:
+        if (cfg.model or "").strip():
+            return cfg.model.strip()   # son başarılı seçim
+        raise AiHata(f"Model listesi alınamadı, model otomatik seçilemedi.\n\n{exc}") from exc
+
+
 def yorumla(
     cfg: AiConfig,
     paket: AiVeriPaketi,
     *,
     bildir: Callable[[str], None] | None = None,
 ) -> AiYorum:
-    """Veri paketini seçili sağlayıcının modeline gönderip yorumu döndürür."""
+    """Veri paketini seçili sağlayıcının EN GÜNCEL modeline gönderip yorumu döndürür."""
     cfg = _kapi(cfg, paket)
+    cfg.model = model_coz(cfg, bildir)
     if bildir:
-        bildir(f"{cfg.saglayici_bilgi.ad} modeline gönderiliyor…")
+        bildir(f"{cfg.saglayici_bilgi.ad} · {cfg.model} modeline gönderiliyor…")
 
     if cfg.saglayici_bilgi.sema == "anthropic":
         metin, girdi, cikti = _anthropic_cagir(cfg, paket, bildir)
@@ -100,17 +125,32 @@ def _anthropic_cagir(cfg: AiConfig, paket: AiVeriPaketi,
                     bildir("Yorum yazılıyor…")
             mesaj = akis.get_final_message()
     except anthropic.AuthenticationError as exc:
-        raise AiHata("API anahtarı geçersiz. Ayarlardan kontrol edin.") from exc
+        raise AiHata("API anahtarı geçersiz. Anahtarı kontrol edip yeniden girin.") from exc
     except anthropic.PermissionDeniedError as exc:
-        raise AiHata("API anahtarının bu modele erişim yetkisi yok.") from exc
+        raise AiHata(
+            "API anahtarı bu işlem için yetkisiz. Anahtarın ilgili modele erişimi "
+            "olduğundan ve faturalandırmanın açık olduğundan emin olun.") from exc
     except anthropic.NotFoundError as exc:
-        raise AiHata(f"Model bulunamadı: {cfg.model}") from exc
+        raise AiHata(f"Model bulunamadı: {cfg.model}. Sağlayıcı bu modeli sunmuyor.") from exc
     except anthropic.RateLimitError as exc:
-        raise AiHata("Servis yoğun (kota/limit). Birazdan tekrar deneyin.") from exc
+        raise AiHata(
+            "Kota doldu ya da çok sık istek gönderildi. Birkaç dakika sonra "
+            "tekrar deneyin.") from exc
+    except anthropic.APITimeoutError as exc:
+        raise AiHata(
+            "Zaman aşımı — sağlayıcı yanıt vermedi. Bağlantınız yavaş olabilir "
+            "ya da servis yoğun. Tekrar deneyin.") from exc
     except anthropic.APIConnectionError as exc:
-        raise AiHata("Servise bağlanılamadı. İnternet bağlantısını kontrol edin.") from exc
+        raise AiHata(
+            "Sağlayıcıya bağlanılamadı. İnternet bağlantınızı kontrol edin.") from exc
     except anthropic.APIStatusError as exc:
-        raise AiHata(f"Servis hata verdi (HTTP {exc.status_code}).") from exc
+        ayrinti = str(getattr(exc, "message", "") or "").strip()
+        kuyruk = f"\n\nSağlayıcının açıklaması: {ayrinti}" if ayrinti else ""
+        if 500 <= exc.status_code < 600:
+            raise AiHata(
+                f"Sağlayıcının sunucusunda geçici hata (HTTP {exc.status_code}). "
+                f"Tekrar deneyin.{kuyruk}") from exc
+        raise AiHata(f"Sağlayıcı isteği reddetti (HTTP {exc.status_code}).{kuyruk}") from exc
 
     # Güvenlik sınıflandırıcısı reddettiyse içerik okumadan önce bak.
     if getattr(mesaj, "stop_reason", "") == "refusal":
@@ -147,11 +187,11 @@ def _openai_cagir(cfg: AiConfig, paket: AiVeriPaketi,
                                     context=ssl.create_default_context()) as yanit:
             veri = json.loads(yanit.read().decode("utf-8", "replace"))
     except urllib.error.HTTPError as exc:
-        raise AiHata(_http_mesaj(exc, cfg.model)) from exc
-    except urllib.error.URLError as exc:
-        raise AiHata(f"Servise bağlanılamadı: {exc.reason}") from exc
-    except (TimeoutError, ValueError) as exc:
-        raise AiHata(f"Yanıt okunamadı: {exc}") from exc
+        raise AiHata(http_hata_mesaji(exc, model=cfg.model)) from exc
+    except (TimeoutError, urllib.error.URLError) as exc:
+        raise AiHata(ag_hata_mesaji(exc)) from exc
+    except ValueError as exc:
+        raise AiHata(f"Sağlayıcının yanıtı okunamadı: {exc}") from exc
 
     secenekler = veri.get("choices") or []
     if not secenekler:
@@ -162,18 +202,3 @@ def _openai_cagir(cfg: AiConfig, paket: AiVeriPaketi,
         metin = "".join(p.get("text", "") for p in metin if isinstance(p, dict))
     k = veri.get("usage") or {}
     return str(metin), int(k.get("prompt_tokens") or 0), int(k.get("completion_tokens") or 0)
-
-
-def _http_mesaj(exc: urllib.error.HTTPError, model: str) -> str:
-    """HTTP hatasını Türkçeleştirir; gövdedeki açıklamayı da ekler (sağlayıcılar farklı yazar)."""
-    try:
-        ayrinti = (json.loads(exc.read().decode("utf-8", "replace")).get("error") or {}).get("message", "")
-    except (ValueError, AttributeError, OSError):
-        ayrinti = ""
-    if exc.code in (401, 403):
-        return "API anahtarı geçersiz veya yetkisiz."
-    if exc.code == 404:
-        return f"Model bulunamadı: {model}. «Modelleri Getir» ile listeyi tazeleyin."
-    if exc.code == 429:
-        return "Servis yoğun veya kota doldu. Birazdan tekrar deneyin."
-    return f"Servis hata verdi (HTTP {exc.code}). {ayrinti}".strip()

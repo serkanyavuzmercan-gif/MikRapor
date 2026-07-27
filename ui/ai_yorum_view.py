@@ -15,7 +15,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from domain.ai_yorum import AiYorum
-from domain.ortak import tr_buyuk
+from domain.ortak import tr_buyuk, tr_kucuk
 from ui.bilanco_view import FAINT, MUTED, PAGE_BG
 from ui.styles import BAD as NEG
 from ui.styles import BORDER, PANEL_BG
@@ -34,7 +34,7 @@ _BOLUM_RENK = (
 
 
 def _bolum_rengi(baslik: str) -> str:
-    dusuk = baslik.lower()
+    dusuk = tr_kucuk(baslik)
     for anahtar, renk in _BOLUM_RENK:
         if anahtar in dusuk:
             return renk

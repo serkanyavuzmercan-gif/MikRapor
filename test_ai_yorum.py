@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 from domain.ai_yorum import (
@@ -15,7 +16,15 @@ from domain.ai_yorum import (
 )
 from infra.ai_client import MAX_GIRDI_KARAKTER, AiHata, yorumla
 from infra.ai_config import AiConfig
-from infra.ai_saglayici import SAGLAYICILAR, ModelListesiHatasi, modelleri_getir, saglayici_bul
+from infra.ai_saglayici import (
+    SAGLAYICILAR,
+    ModelListesiHatasi,
+    ag_hata_mesaji,
+    en_iyi_model,
+    http_hata_mesaji,
+    modelleri_getir,
+    saglayici_bul,
+)
 
 
 def _paket(bolumler=None):
@@ -26,28 +35,20 @@ def _paket(bolumler=None):
 
 
 class TestAiConfig(unittest.TestCase):
-    def test_hazir_icin_hepsi_sart(self) -> None:
-        tam = AiConfig(api_key="sk-ant-x", model="bir-model", onay=True)
-        self.assertTrue(tam.hazir)
+    def test_hazir_icin_anahtar_ve_onay_yeter(self) -> None:
+        """Model kullanıcıdan istenmez — çağrı anında otomatik seçilir."""
+        self.assertTrue(AiConfig(api_key="sk-ant-x", onay=True).hazir)
         self.assertFalse(AiConfig().hazir)
-        self.assertFalse(AiConfig(api_key="sk-ant-x", model="m").hazir)   # onay yok
-        self.assertFalse(AiConfig(model="m", onay=True).hazir)             # anahtar yok
-        self.assertFalse(AiConfig(api_key="sk-ant-x", onay=True).hazir)    # model yok
+        self.assertFalse(AiConfig(api_key="sk-ant-x").hazir)   # onay yok
+        self.assertFalse(AiConfig(onay=True).hazir)             # anahtar yok
 
     def test_eksik_sebebi_anlasilir(self) -> None:
         self.assertIn("anahtar", AiConfig().eksik().lower())
-        self.assertIn("model", AiConfig(api_key="sk-x").eksik().lower())
-        self.assertIn("onay", AiConfig(api_key="sk-x", model="m").eksik().lower())
-        self.assertEqual(AiConfig(api_key="sk-x", model="m", onay=True).eksik(), "")
-
-    def test_model_hardcode_edilmez(self) -> None:
-        """Kullanıcı ne yazarsa o gider — listede olmayan/yarın çıkan model de çalışmalı."""
-        cfg = AiConfig(api_key="k", model="yarin-cikacak-model-9", onay=True).normalized()
-        self.assertEqual(cfg.model, "yarin-cikacak-model-9")
-        self.assertTrue(cfg.hazir)
+        self.assertIn("onay", AiConfig(api_key="sk-x").eksik().lower())
+        self.assertEqual(AiConfig(api_key="sk-x", onay=True).eksik(), "")
 
     def test_onay_geri_alinabilir(self) -> None:
-        cfg = AiConfig(api_key="sk-ant-x", model="m", onay=True)
+        cfg = AiConfig(api_key="sk-ant-x", onay=True)
         self.assertTrue(cfg.hazir)
         cfg.onay = False
         self.assertFalse(cfg.hazir)  # anahtar dursa da çağrı yapılamaz
@@ -61,7 +62,7 @@ class TestAiConfig(unittest.TestCase):
         self.assertEqual(cfg.anahtar_al("google"), "AIza-2")
 
     def test_ozel_saglayici_adres_ister(self) -> None:
-        cfg = AiConfig(saglayici="ozel", api_key="k", model="m", onay=True)
+        cfg = AiConfig(saglayici="ozel", api_key="k", onay=True)
         self.assertIn("adres", cfg.eksik().lower())
         cfg.ozel_base_url = "https://ornek.local/v1"
         self.assertTrue(cfg.normalized().hazir)
@@ -106,14 +107,14 @@ class TestOnaySizAgaCikilmaz(unittest.TestCase):
     def test_onay_yoksa_istemci_hic_kurulmaz(self) -> None:
         with patch("infra.ai_client._anthropic_cagir") as sahte, patch("infra.ai_client._openai_cagir") as sahte2:
             for cfg in (AiConfig(), AiConfig(api_key="sk-ant-x"), AiConfig(onay=True),
-                        AiConfig(api_key="sk-ant-x", onay=True)):  # model yok
+                        AiConfig(saglayici="ozel", api_key="k", onay=True)):  # adres yok
                 with self.assertRaises(AiHata):
                     yorumla(cfg, _paket())
             sahte.assert_not_called()
             sahte2.assert_not_called()
 
     def test_bos_paket_gonderilmez(self) -> None:
-        cfg = AiConfig(api_key="sk-ant-x", model="m", onay=True)
+        cfg = AiConfig(api_key="sk-ant-x", onay=True)
         with patch("infra.ai_client._anthropic_cagir") as sahte, patch("infra.ai_client._openai_cagir") as sahte2:
             with self.assertRaises(AiHata):
                 yorumla(cfg, _paket(bolumler=[]))
@@ -121,7 +122,7 @@ class TestOnaySizAgaCikilmaz(unittest.TestCase):
             sahte2.assert_not_called()
 
     def test_asiri_buyuk_paket_sessizce_kirpilmaz(self) -> None:
-        cfg = AiConfig(api_key="sk-ant-x", model="m", onay=True)
+        cfg = AiConfig(api_key="sk-ant-x", onay=True)
         dev = _paket(bolumler=[("BÜYÜK", "x" * (MAX_GIRDI_KARAKTER + 10))])
         with patch("infra.ai_client._anthropic_cagir") as sahte, patch("infra.ai_client._openai_cagir") as sahte2:
             with self.assertRaises(AiHata) as ctx:
@@ -129,6 +130,88 @@ class TestOnaySizAgaCikilmaz(unittest.TestCase):
             self.assertIn("büyük", str(ctx.exception).lower())
             sahte.assert_not_called()
             sahte2.assert_not_called()
+
+
+class TestOtomatikModelSecimi(unittest.TestCase):
+    """Kullanıcı model yazmaz/seçmez — en günceli otomatik gelir."""
+
+    def test_en_guncel_secilir(self) -> None:
+        for kod, liste, beklenen in (
+            ("anthropic", ["claude-haiku-4-5", "claude-opus-4-8", "claude-opus-5"], "claude-opus-5"),
+            ("google", ["gemini-1.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"], "gemini-2.5-pro"),
+            ("xai", ["grok-2", "grok-4"], "grok-4"),
+        ):
+            self.assertEqual(en_iyi_model(liste, saglayici_bul(kod)), beklenen)
+
+    def test_kararli_surum_preview_i_yener(self) -> None:
+        sec = en_iyi_model(["gemini-2.5-pro-preview", "gemini-2.5-pro"], saglayici_bul("google"))
+        self.assertEqual(sec, "gemini-2.5-pro")
+
+    def test_sohbet_disi_modeller_elenir(self) -> None:
+        """Gömme/ses/görsel modelleri aday olmamalı."""
+        liste = ["text-embedding-3-large", "whisper-large-v3", "dall-e-3", "gpt-5"]
+        self.assertEqual(en_iyi_model(liste, saglayici_bul("openai")), "gpt-5")
+        with patch("infra.ai_saglayici._istek", return_value={"data": [
+                {"id": "text-embedding-3-large"}, {"id": "whisper-1"}, {"id": "gpt-5"}]}):
+            self.assertEqual(modelleri_getir(saglayici_bul("openai"), "k"), ["gpt-5"])
+
+    def test_google_generateContent_desteklemeyeni_atar(self) -> None:
+        yanit = {"models": [
+            {"name": "models/gemini-2.5-pro", "supportedGenerationMethods": ["generateContent"]},
+            {"name": "models/embedding-001", "supportedGenerationMethods": ["embedContent"]},
+        ]}
+        with patch("infra.ai_saglayici._istek", return_value=yanit):
+            self.assertEqual(modelleri_getir(saglayici_bul("google"), "k"), ["gemini-2.5-pro"])
+
+    def test_liste_alinamazsa_onceki_modele_duser(self) -> None:
+        from infra.ai_client import model_coz
+        cfg = AiConfig(api_key="k", model="onceki-model", onay=True)
+        with patch("infra.ai_client.guncel_model_sec", side_effect=ModelListesiHatasi("yok")):
+            self.assertEqual(model_coz(cfg), "onceki-model")
+
+    def test_liste_de_yedek_de_yoksa_acik_hata(self) -> None:
+        from infra.ai_client import model_coz
+        cfg = AiConfig(api_key="k", onay=True)
+        with patch("infra.ai_client.guncel_model_sec", side_effect=ModelListesiHatasi("uç yok")):
+            with self.assertRaises(AiHata) as ctx:
+                model_coz(cfg)
+        self.assertIn("uç yok", str(ctx.exception))
+
+
+class TestHataMesajlari(unittest.TestCase):
+    """«HTTP 400» hiçbir şey anlatmaz; kullanıcı ne yapacağını bilmeli."""
+
+    def _hata(self, kod: int, mesaj: str = ""):
+        govde = json.dumps({"error": {"message": mesaj}}).encode()
+        return urllib.error.HTTPError("https://x/y", kod, "err", {}, io.BytesIO(govde))
+
+    def test_kodlar_turkce_aciklanir(self) -> None:
+        for kod, aranan in ((400, "model adı"), (401, "anahtar"), (403, "yetkisiz"),
+                            (404, "bulunamadı"), (429, "kota"), (503, "geçici")):
+            self.assertIn(aranan, http_hata_mesaji(self._hata(kod)).lower())
+
+    def test_saglayicinin_aciklamasi_eklenir(self) -> None:
+        m = http_hata_mesaji(self._hata(400, "models/GEMINI is not found"), model="GEMINI")
+        self.assertIn("GEMINI", m)
+        self.assertIn("models/GEMINI is not found", m)
+
+    def test_turkce_kucuk_harf_eslesmesi(self) -> None:
+        """'İyi'.lower() birleşik nokta üretir; bölüm rengi bu yüzden yanlış çıkıyordu."""
+        from domain.ortak import tr_kucuk
+        from ui.ai_yorum_view import _bolum_rengi
+        self.assertIn("iyi giden", tr_kucuk("İyi Giden 3 Şey"))
+        self.assertEqual(tr_kucuk("IŞIK"), "ışık")
+        # Her başlık kendi rengini almalı; hepsi aynı (varsayılan) olmamalı.
+        renkler = {_bolum_rengi(b) for b in (
+            "Özet", "İyi Giden 3 Şey", "Dikkat Edilmesi Gereken 3 Şey", "Bu Ay Yapılacak 3 İş")}
+        self.assertEqual(len(renkler), 4)
+
+    def test_zaman_asimi_ve_baglanti(self) -> None:
+        self.assertIn("zaman aşımı", ag_hata_mesaji(TimeoutError()).lower())
+        self.assertIn("adres çözümlenemedi", ag_hata_mesaji(
+            urllib.error.URLError("Name or service not known")).lower())
+        self.assertIn("ssl", ag_hata_mesaji(
+            urllib.error.URLError("certificate verify failed")).lower())
 
 
 class TestOpenAiUyumluYol(unittest.TestCase):
@@ -151,8 +234,9 @@ class TestOpenAiUyumluYol(unittest.TestCase):
 
     def test_istek_dogru_kurulur(self) -> None:
         yakalanan: dict = {}
-        cfg = AiConfig(saglayici="groq", api_key="gsk_test", model="bir-model", onay=True)
-        with patch("urllib.request.urlopen", self._sahte_yanit(yakalanan)):
+        cfg = AiConfig(saglayici="groq", api_key="gsk_test", onay=True)
+        with patch("urllib.request.urlopen", self._sahte_yanit(yakalanan)), \
+                patch("infra.ai_client.guncel_model_sec", return_value="bir-model"):
             y = yorumla(cfg, _paket())
         self.assertEqual(yakalanan["url"], "https://api.groq.com/openai/v1/chat/completions")
         self.assertEqual(yakalanan["auth"], "Bearer gsk_test")
@@ -164,16 +248,18 @@ class TestOpenAiUyumluYol(unittest.TestCase):
 
     def test_ozel_saglayici_kendi_adresine_gider(self) -> None:
         yakalanan: dict = {}
-        cfg = AiConfig(saglayici="ozel", api_key="k", model="m", onay=True,
+        cfg = AiConfig(saglayici="ozel", api_key="k", onay=True,
                        ozel_base_url="https://kendi-sunucum.local/v1")
-        with patch("urllib.request.urlopen", self._sahte_yanit(yakalanan)):
+        with patch("urllib.request.urlopen", self._sahte_yanit(yakalanan)), \
+                patch("infra.ai_client.guncel_model_sec", return_value="m"):
             yorumla(cfg, _paket())
         self.assertEqual(yakalanan["url"], "https://kendi-sunucum.local/v1/chat/completions")
 
     def test_https_disi_adres_reddedilir(self) -> None:
         cfg = AiConfig(saglayici="ozel", api_key="k", model="m", onay=True,
                        ozel_base_url="http://sifresiz.local/v1")
-        with patch("urllib.request.urlopen") as sahte:
+        with patch("urllib.request.urlopen") as sahte, \
+                patch("infra.ai_client.guncel_model_sec", return_value="m"):
             with self.assertRaises(AiHata):
                 yorumla(cfg, _paket())
             sahte.assert_not_called()

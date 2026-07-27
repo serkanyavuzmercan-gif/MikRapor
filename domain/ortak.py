@@ -79,3 +79,15 @@ def tr_buyuk(metin: str) -> str:
     büyütürken bu yardımcı kullanılır.
     """
     return str(metin).replace("i", "İ").replace("ı", "I").upper()
+
+
+def tr_kucuk(metin: str) -> str:
+    """
+    Türkçe küçük harf: 'I' → 'ı', 'İ' → 'i'.
+
+    tr_buyuk'un aynası. Python'ın str.lower()'ı 'İ'yi 'i' + birleşik nokta (U+0307)
+    yapar; "İyi Giden".lower() içinde "iyi giden" ARANMAZ hâle gelir. Başlık eşleme
+    gibi karşılaştırmalarda bu yardımcı kullanılmalı (canlıda bölüm rengi bu yüzden
+    yanlış çıkmıştı).
+    """
+    return str(metin).replace("I", "ı").replace("İ", "i").lower()
