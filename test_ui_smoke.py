@@ -186,6 +186,33 @@ class TestUiSmoke(unittest.TestCase):
             finally:
                 w.close()
 
+    def test_tahmin_tazelik_gostergesi(self) -> None:
+        """Sağdaki raporun güncel mi bayat mı olduğu panelde yazmalı.
+
+        Hesaplama anlık olduğu için «yükleniyor» göstergesi yanıp söner ve
+        kullanıcı rakamların taze olup olmadığını anlayamıyordu.
+        """
+        from ui.donem import DonemDurumu
+        from ui.tabs.tahmin_tab import TahminTab
+        t = TahminTab(DonemDurumu())
+        try:
+            lbl = t._senaryo.lbl_tazelik
+            self.assertFalse(lbl.isVisible())  # henüz hesaplanmadı → sessiz
+            t._sp_ciro.setValue(1000.0)
+            self.assertFalse(lbl.isVisible())  # hesap yokken bayatlık da yok
+
+            t._firma = ""
+            t._on_projekte()
+            self.assertIn("güncel", lbl.text())
+
+            t._sp_marj.setValue(42.0)
+            self.assertIn("değişti", lbl.text())
+
+            t._on_projekte()
+            self.assertIn("güncel", lbl.text())
+        finally:
+            t.close()
+
     def test_ayar_diyaloglari(self) -> None:
         from ui.gercek_durum_settings_dialog import GercekDurumAyarlarDialog
         from ui.mikro_settings_dialog import MikroAyarlarDialog
