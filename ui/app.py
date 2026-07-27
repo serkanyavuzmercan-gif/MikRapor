@@ -35,6 +35,7 @@ from ui.nav_tip import NavTip, bagla_nav_tip
 from ui.rapor_tab import RaporTab
 from ui.resources import app_icon, app_logo_pixmap
 from ui.styles import APP_STYLESHEET
+from ui.tabs.ai_yorum_tab import AiYorumTab
 from ui.tabs.bilanco_tab import BilancoTab
 from ui.tabs.gelir_tablosu_tab import GelirTablosuTab
 from ui.tabs.gercek_durum_tab import GercekDurumTab
@@ -105,7 +106,7 @@ class HeaderTabBar(QTabBar):
 
     # Dar pencerede denenecek (font px, yatay dolgu px) adayları — genişten dara.
     # İlk sığan seçilir; hiçbiri sığmazsa en dar olanla devam edilir (asla kırpılmaz).
-    _OLCEK_ADAYLARI = ((13, 12), (13, 9), (12, 9), (12, 7), (11, 7))
+    _OLCEK_ADAYLARI = ((13, 12), (13, 9), (12, 9), (12, 7), (11, 7), (11, 5), (10, 5))
     _MARJ = 4  # QSS 'margin: 0 2px' → sekme başına 4px
 
     def _olcu_fontu(self, px: int) -> QFontMetrics:
@@ -305,6 +306,7 @@ class MikRaporWindow(QMainWindow):
             TahminTab,
             ReelDegerTab,
             TrendTab,
+            AiYorumTab,   # final: dışarıya veri gönderen tek sekme
         )
         for cls in sekme_siniflari:
             w = cls(self._donem)

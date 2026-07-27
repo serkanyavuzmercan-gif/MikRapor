@@ -152,8 +152,8 @@ class TestUiSmoke(unittest.TestCase):
         w = MikRaporWindow()
         try:
             # Sekmeler artık HeaderTabBar (_tab_bar) + QStackedWidget (_stack) ile.
-            self.assertEqual(w._stack.count(), 8)   # 8 rapor içeriği
-            self.assertEqual(w._tab_bar.count(), 8)  # 8 sekme başlığı
+            self.assertEqual(w._stack.count(), 9)   # 9 rapor içeriği
+            self.assertEqual(w._tab_bar.count(), 9)  # 9 sekme başlığı
         finally:
             w.close()
 

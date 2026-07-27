@@ -60,6 +60,8 @@ class RaporTab(QWidget):
     ACIKLAMA = ""
     IPUCU = ""
     GETIR_ETIKET = "Getir"
+    # True ise düğmede GETIR_ETIKET yazar (tek tip «Raporu Getir» yerine).
+    GETIR_ETIKET_ZORLA = False
     BASLARKEN = "Veriler çekiliyor…"
     DONEM_ETIKET = "Dönem:"
     TEK_TARIH = False
@@ -88,7 +90,7 @@ class RaporTab(QWidget):
         chrome.set_aktif_tab(self)
         self._status = chrome.status_label()
         chrome.set_tek_tarih(self.TEK_TARIH)
-        chrome.set_getir_etiket(self.GETIR_ETIKET)
+        chrome.set_getir_etiket(self.GETIR_ETIKET, zorla=self.GETIR_ETIKET_ZORLA)
         chrome.set_pdf_gorunur(self.PDF_DESTEK)
         chrome.set_ekstra_gorunur(bool(self.EKSTRA_ETIKET), self.EKSTRA_ETIKET or "Hesaplama")
         # Aktif sekmenin durumunu yansıt

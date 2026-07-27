@@ -68,3 +68,14 @@ def muh_sinifi(muh_kod: str) -> str:
     if ana in ("120", "121"):
         return "customer"
     return ""
+
+
+def tr_buyuk(metin: str) -> str:
+    """
+    Türkçe büyük harf: 'i' → 'İ', 'ı' → 'I'.
+
+    Python'ın str.upper()'ı yerel bağımsızdır ve 'i'yi 'I' yapar; Türkçe metinde
+    "Dikkat Edilmesi" → "DIKKAT EDILMESI" gibi yanlış yazım üretir. Başlıkları
+    büyütürken bu yardımcı kullanılır.
+    """
+    return str(metin).replace("i", "İ").replace("ı", "I").upper()
