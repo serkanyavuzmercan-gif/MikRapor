@@ -11,6 +11,7 @@ Kullanım: python assets/generate_icons.py [kaynak_png]
 
 from __future__ import annotations
 
+import colorsys
 import sys
 from pathlib import Path
 
@@ -48,12 +49,53 @@ def _crop_to_content(img: Image.Image, padding: int = 8) -> Image.Image:
     return img.crop((left, top, right, bottom))
 
 
+# Kaynak logo mor-mavi; uygulama paleti teal. Programın renkleri korunup LOGO uyarlanır.
+# Ton aralıkları kaynaktaki iki renk ailesini ayırır: «M» harfi mor (~250-300°), yükselen
+# grafik mavi (~185-247°). Hedefler ui/styles.py'den: ACCENT_HOVER ve açık teal.
+_BOYAMA: tuple[tuple[tuple[int, int], str], ...] = (
+    ((248, 300), "#0d9488"),   # M harfi  → teal (düğme rengi)
+    ((185, 247), "#ccfbf1"),   # grafik   → açık teal (hover tonu)
+)
+
+
+def _recolor(img: Image.Image) -> Image.Image:
+    """
+    Logoyu uygulama paletine boyar; çizimi ve gradyanı bozmadan.
+
+    Ton (H) hedefe sabitlenir; doygunluk ve parlaklık pikselin KENDİ değerinin aile
+    ortalamasına oranıyla ölçeklenir. Böylece gradyan, gölge ve kenar yumuşatması
+    korunur — düz renk basmak logoyu yassı ve tırtıklı gösteriyordu.
+    """
+    rgba = img.convert("RGBA")
+    arr = np.array(rgba).astype(float)
+    rgb, alfa = arr[:, :, :3] / 255.0, arr[:, :, 3]
+    boyut = rgb.shape[:2]
+    hsv = np.array([colorsys.rgb_to_hsv(*p) for p in rgb.reshape(-1, 3)]).reshape(*boyut, 3)
+    h, s, v = hsv[:, :, 0] * 360, hsv[:, :, 1], hsv[:, :, 2]
+    gorunur = alfa > 20
+
+    for (h1, h2), hedef in _BOYAMA:
+        hr, hg, hb = (int(hedef[i:i + 2], 16) / 255 for i in (1, 3, 5))
+        th, ts, tv = colorsys.rgb_to_hsv(hr, hg, hb)
+        maske = gorunur & (h >= h1) & (h <= h2) & (s > 0.18)
+        if not maske.any():
+            continue
+        hsv[:, :, 0][maske] = th
+        hsv[:, :, 1][maske] = np.clip(s[maske] * (ts / max(s[maske].mean(), 1e-6)), 0, 1)
+        hsv[:, :, 2][maske] = np.clip(v[maske] * (tv / max(v[maske].mean(), 1e-6)), 0, 1)
+
+    yeni = np.array([colorsys.hsv_to_rgb(*p) for p in hsv.reshape(-1, 3)]).reshape(*boyut, 3)
+    return Image.fromarray(
+        np.dstack([np.clip(yeni * 255, 0, 255), alfa]).astype(np.uint8), mode="RGBA")
+
+
 def _remove_plate(img: Image.Image) -> Image.Image:
     """
     Logonun arkasındaki gri yuvarlak plakayı söker.
 
-    Plaka açık ve DOYGUNLUKSUZ (gri); marka çizimi ise mor-maviye doygun. İkisini
-    ayıran ölçüt budur — düz parlaklık eşiği çizimin açık mavilerini de yerdi.
+    Plaka açık ve DOYGUNLUKSUZ (gri); marka çizimi ise doygun. İkisini ayıran ölçüt
+    budur — düz parlaklık eşiği çizimin açık tonlarını da yerdi. _recolor'dan SONRA
+    çalışır, o yüzden ölçüt boyamadan bağımsızdır.
     """
     rgba = img.convert("RGBA")
     arr = np.array(rgba)
@@ -84,6 +126,7 @@ def build_logo_assets(source: Path) -> None:
     cleaned = _crop_to_content(cleaned)
     cleaned = ImageEnhance.Sharpness(cleaned).enhance(1.15)
     cleaned = cleaned.filter(ImageFilter.UnsharpMask(radius=1.2, percent=120, threshold=2))
+    cleaned = _recolor(cleaned)
     logo_hd = _fit_square(cleaned, CANVAS_SIZE)
     logo_hd.save(OUTPUT_PNG, format="PNG", optimize=True)
 
