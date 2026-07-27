@@ -74,7 +74,8 @@ def kapanis_kur(yil: int, *, tam: bool, b: Bilanco, gt: GelirTablosu,
         ozkaynak=ozet["ozkaynak"], aktif_toplam=ozet["aktif_toplam"],
         banka_kredisi=_banka_kredisi(b), smm=gt.smm, maliyet_eksik=gt.maliyet_eksik,
         faaliyet_gideri=gt.faaliyet_gideri, finansman_gideri=gt.finansman_gideri,
-        satis_usd=d.get("satis_usd", 0.0), kur_son=d.get("kur_son", 0.0))
+        satis_usd=d.get("satis_usd", 0.0), kur_son=d.get("kur_son", 0.0),
+        kur_ort=d.get("kur_ortalama", 0.0))
 
 
 def _dene(fn, varsayilan=None):

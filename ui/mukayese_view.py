@@ -55,16 +55,13 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
             + [_c(str(yil), renk=MUTED, kalin=True, sag=True) for yil in yillar]
             + [_c(f"{yillar[0]}→{yillar[-1]}", renk=MUTED, kalin=True, sag=True)])
 
-    sabit_var = False
     for bolum in bolumler:
         if bolum.baslik:
-            _tsatir(t, [_c(tr_buyuk(bolum.baslik), renk="#0f766e", kalin=True)]
+            _tsatir(t, [_c(tr_buyuk(bolum.baslik), renk=_BASLIK_RENK, kalin=True)]
                     + [_c("")] * (kolon - 1))
         for satir in bolum.satirlar:
-            sabit_var = sabit_var or satir.sabit
             renk = MUTED if satir.iyi is None else (POZ if satir.iyi else NEG)
-            hucreler = [_c(satir.etiket + ("  ⚠" if satir.sabit else ""),
-                           renk=MUTED if satir.sabit else _DARK)]
+            hucreler = [_c(satir.etiket)]
             for i, metin in enumerate(satir.hucreler):
                 eksi = i < len(satir.eksi) and satir.eksi[i]
                 hucreler.append(_c(metin, renk=NEG if eksi else _DARK, sag=True))
@@ -75,18 +72,14 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     t.setFixedWidth(genislik)
     t.setFixedHeight(30 * t.topLevelItemCount() + 6)
 
-    notlar = [("Alacak, borç ve nakit ilgili sekmelerin canlı kaynağından gelir "
+    notlar = [("Yıllar boyunca hiç değişmeyen kalemler tabloda GÖSTERİLMEZ — "
+               "karşılaştırma değeri taşımazlar.", ""),
+              ("Alacak, borç ve nakit ilgili sekmelerin canlı kaynağından gelir "
                "(cari hareketler / GL nakit hesapları); stok, özkaynak ve aktif mizandan.", ""),
               ("Tutarlar TL'dir; büyük rakamlar «bin / milyon / milyar» diye kısaltılmıştır. "
                "Dolar karşılıkları Mikro'nun kendi kur kaydından hesaplanır.", ""),
               ("«—» o yıl için hesaplanamadı: payda sıfır, maliyet girilmemiş ya da "
                "özkaynak negatif.", "")]
-    if sabit_var:
-        # Bilanço hesapları işlenmediğinde mizan her yıl aynı çıkar. Sessiz kalırsak
-        # kullanıcı "trend yok" sanır; oysa sorun veride (canlıda birebir görüldü).
-        notlar.insert(0, (
-            "⚠ işaretli satırlar tüm yıllarda AYNI: bu kalemler muhasebede güncellenmemiş "
-            "olabilir. Bu satırlara ve onlardan türeyen oranlara güvenmeyin.", "uyari"))
 
     card = QFrame()
     card.setObjectName("aiCard")

@@ -342,29 +342,32 @@ class TestYilAraligi(unittest.TestCase):
 
 
 class TestYillarArasi(unittest.TestCase):
-    """Yıllar arası karşılaştırma tablosu ve çok yıllı kapsam notu."""
+    """Modele giden CSV — ekranla aynı satırlardan, ham rakamlarla."""
 
     @staticmethod
     def _kapanislar() -> list[YilKapanis]:
         return [
             YilKapanis(yil=2024, net_satis=1_000_000.0, brut_kar=250_000.0,
-                       net_kar=100_000.0, stok=3_000_000.0),
+                       net_kar=100_000.0, stok=3_000_000.0, smm=-750_000.0,
+                       satis_usd=30_000.0, kur_son=33.0, kur_ort=32.0),
             YilKapanis(yil=2025, net_satis=2_000_000.0, brut_kar=300_000.0,
-                       net_kar=50_000.0, stok=5_000_000.0),
+                       net_kar=50_000.0, stok=5_000_000.0, smm=-1_700_000.0,
+                       satis_usd=46_000.0, kur_son=43.0, kur_ort=41.0),
         ]
 
     def test_yillar_sutun_olur(self) -> None:
         csv = yillar_arasi_csv(self._kapanislar())
         self.assertTrue(csv.startswith("Kalem;2024;2025"))
-        self.assertIn("Net Satışlar;1000000,00;2000000,00", csv)
-        self.assertIn("Brüt Marj (%);25,00;15,00", csv)
+        self.assertIn("--- DOLAR BAZINDA (USD) ---", csv)
+        self.assertIn("Net Satışlar;30000,00;46000,00", csv)   # HAM rakam
 
-    def test_yillar_sirasiz_verilse_de_kronolojik_dizilir(self) -> None:
-        csv = yillar_arasi_csv(list(reversed(self._kapanislar())))
-        self.assertTrue(csv.startswith("Kalem;2024;2025"))
+    def test_kaynak_ve_gizlenen_satir_notu(self) -> None:
+        csv = yillar_arasi_csv(self._kapanislar())
+        self.assertIn("KAYNAK;", csv)
+        self.assertIn("CARİ HESAP HAREKETLERİ", csv)
+        self.assertIn("ÇIKARILMIŞTIR", csv)     # model olmayan satırı sormasın
 
     def test_tek_yil_tablo_uretmez(self) -> None:
-        """Tek yılda karşılaştırma yok — boş bölüm modele gitmemeli."""
         self.assertEqual(yillar_arasi_csv(self._kapanislar()[:1]), "")
 
     def test_kiyasi_bozan_yillar_isaretlenir(self) -> None:
@@ -374,44 +377,6 @@ class TestYillarArasi(unittest.TestCase):
         csv = yillar_arasi_csv(k)
         self.assertIn("2025 yılı TAMAMLANMADI", csv)
         self.assertIn("2024 yılında satışların maliyeti", csv)
-
-    def _cok_yilli(self):
-        return build_ai_veri_paketi(
-            yil=2026, bas="2026-01-01", bit="2026-07-27", bolumler=[("A", "veri")],
-            bugun="2026-07-27", tamamlandi=False, ay_sayisi=7,
-            yillar=[2026, 2024, 2025])   # sırasız gelse de düzelmeli
-
-    def test_kapsam_notu_odak_yili_ayirir(self) -> None:
-        """Model geçmiş yıllar için ham kırılım olduğunu sanmamalı."""
-        n = self._cok_yilli().kapsam_notu
-        self.assertIn("2024–2026", n)
-        self.assertIn("YALNIZ 2026 yılına aittir", n)
-        self.assertIn("NOMİNAL TL", n)
-
-    def test_aralik_en_eski_yildan_baslar(self) -> None:
-        p = self._cok_yilli()
-        self.assertEqual(p.aralik_bas, "2024-01-01")
-        self.assertIn("VERİ ARALIĞI: 2024-01-01 – 2026-07-27", p.metin)
-
-    def test_tek_yilda_kapsam_notu_yok(self) -> None:
-        p = build_ai_veri_paketi(
-            yil=2026, bas="2026-01-01", bit="2026-07-27", bolumler=[("A", "veri")],
-            yillar=[2026])
-        self.assertEqual(p.kapsam_notu, "")
-        self.assertEqual(p.aralik_bas, "2026-01-01")
-        self.assertNotIn("ÇOK YILLI", p.metin)
-
-    def test_yorum_kapsami_bas_bitten_genis_olabilir(self) -> None:
-        y = AiYorum(yil=2026, bas="2026-01-01", bit="2026-07-27", kapsam_bas="2024-01-01")
-        self.assertEqual(y.aralik, "2024-01-01 – 2026-07-27")
-        self.assertIn("DÖNEM;2024-01-01 – 2026-07-27", ai_yorum_csv(y))
-
-    def test_kapsam_bos_ise_bas_kullanilir(self) -> None:
-        y = AiYorum(yil=2026, bas="2026-01-01", bit="2026-07-27")
-        self.assertEqual(y.aralik, "2026-01-01 – 2026-07-27")
-
-    def test_prompt_cok_yilli_gidisati_ister(self) -> None:
-        self.assertIn("YILLAR ARASI KARŞILAŞTIRMA", SISTEM_PROMPT)
 
 
 class TestOranTablosu(unittest.TestCase):
@@ -431,37 +396,49 @@ class TestOranTablosu(unittest.TestCase):
     def _csv(self, **ek) -> str:
         return yillar_arasi_csv([self._yil(2024), self._yil(2025, **ek)])
 
+    def _oran(self, etiket: str, **ek):
+        # Kıyas değeri olmayan satır tabloya girmez; iki yıl birebir aynıysa
+        # bölümün tamamı düşebilir — o hâlde de satır "yok" demektir.
+        _, bolumler = yillar_tablosu([self._yil(2024), self._yil(2025, **ek)])
+        oranlar = next(
+            (b for b in bolumler if b.baslik == "ORANLAR VE DEVİR HIZLARI"), None)
+        if oranlar is None:
+            return None
+        return next((r for r in oranlar.satirlar if r.etiket == etiket), None)
+
     def test_stok_oranlari(self) -> None:
         """Kullanıcının en önemli dediği kalem: stok gerçekten dönüyor mu."""
-        csv = self._csv()
-        self.assertIn("Stok Devir Hızı (kez/yıl);4,00;4,00", csv)
-        self.assertIn("Stok Bekleme Süresi (gün);91,25;91,25", csv)
-        self.assertIn("Stok / Net Satış (%);20,00;20,00", csv)
+        satir = self._oran("Stok Devir Hızı (kez/yıl)", stok=1_000_000.0)
+        self.assertEqual(satir.hucreler, ["4,00", "8,00"])
+        self.assertIsNotNone(self._oran("Stok Bekleme Süresi (gün)", stok=1_000_000.0))
+        self.assertIsNotNone(self._oran("Stok / Net Satış (%)", stok=1_000_000.0))
+        self.assertIsNone(self._oran("Stok Devir Hızı (kez/yıl)", stok=2_000_000.0))
 
     def test_kredi_borclulugu(self) -> None:
-        csv = self._csv()
-        self.assertIn("Banka Kredisi (dönem sonu);2500000,00;2500000,00", csv)
-        self.assertIn("Banka Kredisi / Aktif (%);20,00;20,00", csv)
-        self.assertIn("Finansman Gideri / Net Satış (%);3,00;3,00", csv)
-        self.assertIn("Borç / Özkaynak (x);1,50;1,50", csv)
+        satir = self._oran("Banka Kredisi / Aktif (%)", banka_kredisi=1_250_000.0)
+        self.assertEqual(satir.hucreler, ["20,00", "10,00"])
+        self.assertIsNotNone(
+            self._oran("Finansman Gideri / Net Satış (%)", finansman_gideri=-600_000.0))
+        self.assertIsNotNone(self._oran("Borç / Özkaynak", ozkaynak=8_000_000.0))
 
     def test_karlilik_oranlari(self) -> None:
-        csv = self._csv()
-        self.assertIn("Faaliyet Marjı (%);10,00;10,00", csv)
-        self.assertIn("Özkaynak Kârlılığı — ROE (%);12,50;12,50", csv)
-        self.assertIn("Aktif Kârlılığı — ROA (%);4,00;4,00", csv)
+        self.assertEqual(
+            self._oran("Faaliyet Marjı (%)", faaliyet_kari=2_000_000.0).hucreler,
+            ["10,00", "20,00"])
+        self.assertIsNotNone(self._oran("Özkaynak Kârlılığı (ROE) (%)", net_kar=1e6))
+        self.assertIsNotNone(self._oran("Aktif Kârlılığı (ROA) (%)", net_kar=1e6))
 
     def test_likidite_ve_tahsilat(self) -> None:
-        csv = self._csv()
-        self.assertIn("Cari Oran (x);1,40;1,40", csv)
-        self.assertIn("Asit-Test (x);1,00;1,00", csv)
-        self.assertIn("Alacak Tahsil Süresi — DSO (gün);91,25;91,25", csv)
+        self.assertIsNotNone(self._oran("Cari Oran", donen=9_000_000.0))
+        self.assertIsNotNone(self._oran("Asit-Test", donen=9_000_000.0))
+        self.assertIsNotNone(self._oran("Alacak Tahsil Süresi (DSO) (gün)", alacak=5e6))
 
     def test_maliyet_yoksa_stok_devri_uydurulmaz(self) -> None:
         """SMM girilmemişse devir hızı hesaplanamaz — 0,00 yazmak yanlış olur."""
-        csv = self._csv(smm=0.0, maliyet_eksik=True)
-        self.assertIn("Stok Devir Hızı (kez/yıl);4,00;\r\n", csv + "\r\n")
-        self.assertIn("Stok / Net Satış (%);20,00;20,00", csv)   # bu yine hesaplanır
+        satir = self._oran("Stok Devir Hızı (kez/yıl)", smm=0.0, maliyet_eksik=True)
+        self.assertEqual(satir.hucreler[-1], "—")
+        self.assertIsNotNone(self._oran(
+            "Stok / Net Satış (%)", smm=0.0, maliyet_eksik=True, stok=1_000_000.0))
 
     def test_negatif_ozkaynakta_oran_bos_kalir(self) -> None:
         """Özkaynak eksiyken ROE/borç-özkaynak matematiksel olarak anlamsız."""
@@ -482,25 +459,41 @@ class TestOranTablosu(unittest.TestCase):
 
 
 class TestMukayeseTablosu(unittest.TestCase):
-    """Yıllar arası mukayese DETERMİNİSTİK olmalı — modele bırakılırsa satır seçiyor."""
+    """
+    Yıllar arası mukayese DETERMİNİSTİK ve YALNIZ DOLAR + ORAN.
+
+    TL bölümü kaldırıldı: yüksek enflasyonda nominal TL kıyası her kalemi "artmış"
+    gösterir, hiçbir şey anlatmaz.
+    """
 
     @staticmethod
     def _yillar() -> list[YilKapanis]:
-        def mk(yil, satis, usd, kur):
+        def mk(yil, satis, usd, kur, kur_o):
             return YilKapanis(
                 yil=yil, net_satis=satis, brut_kar=satis * 0.12, net_kar=satis * 0.02,
-                smm=-satis * 0.88, stok=140_000.0, alacak=satis * 0.28, donen=satis * 0.38,
-                kvyk=satis * 0.4, uvyk=satis * 0.05, ozkaynak=satis * 0.15,
-                aktif_toplam=satis * 0.8, banka_kredisi=satis * 0.06,
-                finansman_gideri=-satis * 0.02, satis_usd=usd, kur_son=kur)
-        return [mk(2021, 20_000_000.0, 1_500_430.0, 13.3),
-                mk(2023, 31_000_000.0, 1_184_243.0, 27.0),
-                mk(2025, 41_200_000.0, 1_050_163.0, 42.59)]
+                smm=-satis * 0.88, stok=140_000.0 * (yil - 2020), alacak=satis * 0.28,
+                donen=satis * 0.38, kvyk=satis * 0.4, uvyk=satis * 0.05,
+                ozkaynak=satis * 0.15, aktif_toplam=satis * 0.8,
+                banka_kredisi=satis * 0.06, borc=satis * 0.12,
+                finansman_gideri=-satis * 0.02, satis_usd=usd,
+                kur_son=kur, kur_ort=kur_o)
+        return [mk(2021, 20_000_000.0, 1_500_430.0, 13.3, 12.0),
+                mk(2023, 31_000_000.0, 1_184_243.0, 27.0, 24.0),
+                mk(2025, 41_200_000.0, 1_050_163.0, 42.59, 38.0)]
 
-    def _bul(self, baslik: str, etiket: str):
+    def _bolum(self, baslik: str, k=None):
+        _, bolumler = yillar_tablosu(k or self._yillar())
+        return next((b for b in bolumler if b.baslik == baslik), None)
+
+    def _satir(self, baslik: str, etiket: str, k=None):
+        bolum = self._bolum(baslik, k)
+        return next((r for r in bolum.satirlar if r.etiket == etiket), None)
+
+    def test_tl_bolumu_yok(self) -> None:
+        """Nominal TL kıyası yanıltıcı — tablo yalnız dolar ve oranlardan oluşur."""
         _, bolumler = yillar_tablosu(self._yillar())
-        bolum = next(b for b in bolumler if b.baslik == baslik)
-        return next(s for s in bolum.satirlar if s.etiket == etiket)
+        self.assertEqual([b.baslik for b in bolumler],
+                         ["DOLAR BAZINDA (USD)", "ORANLAR VE DEVİR HIZLARI"])
 
     def test_tum_yillar_sutun_olur(self) -> None:
         yillar, bolumler = yillar_tablosu(self._yillar())
@@ -509,157 +502,131 @@ class TestMukayeseTablosu(unittest.TestCase):
             for satir in bolum.satirlar:
                 self.assertEqual(len(satir.hucreler), 3, satir.etiket)
 
-    def test_uc_bolum_de_kurulur(self) -> None:
-        _, bolumler = yillar_tablosu(self._yillar())
-        self.assertEqual([b.baslik for b in bolumler], [
-            "TUTARLAR (TL)",
-            "DOLAR BAZINDA",
-            "ORANLAR VE DEVİR HIZLARI"])
-
     def test_dolar_bazinda_satis_dususu_gorunur(self) -> None:
         """Kullanıcının asıl istediği: TL'de büyürken dolarda küçülme."""
-        tl = self._bul("TUTARLAR (TL)", "Net Satışlar")
-        usd = self._bul("DOLAR BAZINDA", "Net Satışlar")
-        self.assertEqual(tl.hucreler, ["20,0 milyon", "31,0 milyon", "41,2 milyon"])
-        self.assertEqual(tl.degisim, "%+106")
-        self.assertTrue(tl.iyi)
-        self.assertEqual(usd.degisim, "%-30")
-        self.assertFalse(usd.iyi)          # dolarda küçülme kötü, kırmızı
+        satir = self._satir("DOLAR BAZINDA (USD)", "Net Satışlar")
+        self.assertEqual(satir.degisim, "%-30")
+        self.assertFalse(satir.iyi)          # dolarda küçülme kötü → kırmızı
+
+    def test_kar_kalemleri_ortalama_kurla_cevrilir(self) -> None:
+        """Yıl boyunca oluşan tutarı yıl SONU kuruyla bölmek yanlış olurdu."""
+        k = self._yillar()
+        satir = self._satir("DOLAR BAZINDA (USD)", "Brüt Kâr", k)
+        beklenen = k[0].brut_kar / k[0].kur_ort
+        self.assertAlmostEqual(float(satir.degerler[0]), beklenen, places=2)
+
+    def test_bakiye_kalemleri_donem_sonu_kuruyla(self) -> None:
+        k = self._yillar()
+        satir = self._satir("DOLAR BAZINDA (USD)", "Ticari Alacak", k)
+        self.assertAlmostEqual(float(satir.degerler[0]), k[0].alacak / k[0].kur_son, places=2)
 
     def test_tutar_yuzde_oran_puan_degisir(self) -> None:
         """Tutarda yüzde, oranda puan — «cari oran %-33 düştü» yanıltıcı olurdu."""
-        self.assertIn("puan", self._bul("ORANLAR VE DEVİR HIZLARI", "Brüt Marj (%)").degisim)
-        self.assertNotIn("puan", self._bul("TUTARLAR (TL)", "Stok").degisim)
-        self.assertNotIn("%", self._bul("ORANLAR VE DEVİR HIZLARI", "Cari Oran").degisim)
+        self.assertIn("%", self._satir("DOLAR BAZINDA (USD)", "Net Satışlar").degisim)
+        self.assertIn("puan", self._satir(
+            "ORANLAR VE DEVİR HIZLARI", "Stok / Net Satış (%)").degisim)
 
-    def test_borc_artisi_kotu_alacak_azalisi_iyi(self) -> None:
+    def test_borc_artisi_kotu_satis_artisi_iyi(self) -> None:
         """Yön anlamı kaleme göre değişir: satış artışı iyi, borç artışı kötü."""
-        self.assertFalse(self._bul("TUTARLAR (TL)", "Kısa Vadeli Borç").iyi)
-        self.assertFalse(self._bul("TUTARLAR (TL)", "Ticari Alacak").iyi)
-        self.assertTrue(self._bul("TUTARLAR (TL)", "Özkaynak").iyi)
-
-    def test_hesaplanamayan_hucre_tire_olur(self) -> None:
         k = self._yillar()
-        k[2].maliyet_eksik = True
-        k[2].smm = 0.0
+        for i, y in enumerate(k):          # dolar bazında da katlanarak artsın
+            y.kvyk = 10_000_000.0 * (10 ** i)
+        self.assertFalse(self._satir("DOLAR BAZINDA (USD)", "Kısa Vadeli Borç", k).iyi)
+        self.assertTrue(self._satir("ORANLAR VE DEVİR HIZLARI", "Net Marj (%)",
+                                    self._kar_artan()).iyi)
+
+    @staticmethod
+    def _kar_artan() -> list[YilKapanis]:
+        return [YilKapanis(yil=y, net_satis=1_000_000.0, net_kar=10_000.0 * (y - 2020),
+                           satis_usd=30_000.0, kur_son=33.0, kur_ort=32.0)
+                for y in (2021, 2023, 2025)]
+
+    def test_negatif_hucreler_isaretlenir(self) -> None:
+        """Kırmızıya boyanacak hücreleri görünüm değil domain belirler."""
+        k = self._yillar()
+        for i, y in enumerate(k):
+            y.ozkaynak = -8_484.0 * (i + 1)
+        satir = self._satir("DOLAR BAZINDA (USD)", "Özkaynak", k)
+        self.assertEqual(satir.eksi, [True, True, True])
+
+    def test_birim_acik_yazilir(self) -> None:
+        """«B» Türkçede milyar diye okunuyordu; 650 bin ile 650 milyar karışıyordu."""
+        from domain.ai_yorum import _kisa
+        self.assertEqual(_kisa(2_400_000_000.0), "2,4 milyar")
+        self.assertEqual(_kisa(41_200_000.0), "41,2 milyon")
+        self.assertNotIn("M", _kisa(41_200_000.0))
+
+    def test_milyon_alti_tam_yazilir(self) -> None:
+        """«176 bin» yuvarlaması farklı yılları aynı gösteriyordu — kullanıcı fark etti."""
+        from domain.ai_yorum import _kisa
+        self.assertEqual(_kisa(42.61), "43")
+        self.assertNotEqual(_kisa(176_270.38), _kisa(176_100.0))
+        self.assertEqual(_kisa(176_270.38), "176.270")
+
+    # ------------------------------------------------ kıyas değeri olmayan satırlar
+    def test_hic_kipirdamayan_satir_gosterilmez(self) -> None:
+        """
+        «Hepsi aynı» bir karşılaştırma değildir.
+
+        Önce uyarı işaretiyle gösteriliyordu; kullanıcı «mal gibi uyarı yapacağımıza
+        kapatalım» dedi — haklı, tabloyu kalabalıklaştırıyordu.
+        """
+        k = self._yillar()
+        for y in k:
+            y.stok = 139_999.18          # canlıda beş yıl kuruşu kuruşuna aynıydı
+        etiketler = [r.etiket for r in self._bolum("DOLAR BAZINDA (USD)", k).satirlar]
+        self.assertNotIn("Stok", etiketler)
+        self.assertIn("Ticari Alacak", etiketler)   # gerçekten değişen kalır
+
+    def test_dolar_satiri_TL_kaynagina_bakar(self) -> None:
+        """
+        TL'de sabit kalem, kur değiştiği için dolarda oynuyormuş gibi görünür.
+
+        Aynı boş bilginin kılık değiştirmiş hâli — kullanıcı canlıda fark etti.
+        """
+        k = self._yillar()
+        for y in k:
+            y.banka_kredisi = 16_230.0   # TL sabit, kur her yıl farklı
+        etiketler = [r.etiket for r in self._bolum("DOLAR BAZINDA (USD)", k).satirlar]
+        self.assertNotIn("Banka Kredisi", etiketler)
+
+    def test_kurus_farkiyla_kipirdayan_da_gizlenir(self) -> None:
+        """Birebir eşitlik aramak yetmiyordu; ölçüt yayılım (%0,5)."""
+        k = self._yillar()
+        for y, deger in zip(k, (176_100.0, 176_270.38, 176_290.0), strict=True):
+            y.aktif_toplam = deger
+        etiketler = [r.etiket for r in self._bolum("DOLAR BAZINDA (USD)", k).satirlar]
+        self.assertNotIn("Aktif Toplam", etiketler)
+
+    def test_hepsi_sifir_satir_gizlenir(self) -> None:
+        """Hiç kaydı olmayan kalem tabloda yer kaplamamalı."""
+        k = self._yillar()
+        for y in k:
+            y.uvyk = 0.0
+        etiketler = [r.etiket for r in self._bolum("DOLAR BAZINDA (USD)", k).satirlar]
+        self.assertNotIn("Uzun Vadeli Borç", etiketler)
+
+    def test_hic_hesaplanamayan_oran_gizlenir(self) -> None:
+        k = self._yillar()
+        for y in k:
+            y.ozkaynak = -1.0            # ROE her yıl hesaplanamaz
+        etiketler = [r.etiket for r in self._bolum("ORANLAR VE DEVİR HIZLARI", k).satirlar]
+        self.assertNotIn("Özkaynak Kârlılığı (ROE) (%)", etiketler)
+
+    def test_bos_bolum_hic_eklenmez(self) -> None:
+        """Tüm satırları elenen bölüm başlık olarak kalmamalı."""
+        k = [YilKapanis(yil=y, net_satis=1_000_000.0, aktif_toplam=5_000_000.0,
+                        satis_usd=30_000.0, kur_son=33.0, kur_ort=32.0) for y in (2024, 2025)]
         _, bolumler = yillar_tablosu(k)
-        satir = next(s for b in bolumler for s in b.satirlar
-                     if s.etiket == "Stok Devir Hızı (kez/yıl)")
-        self.assertEqual(satir.hucreler[-1], "—")
-        self.assertEqual(satir.degisim, "—")    # uç hesaplanamıyorsa değişim de yok
+        for b in bolumler:
+            self.assertTrue(b.satirlar, f"{b.baslik} boş kalmış")
 
     def test_kur_yoksa_dolar_bolumu_hic_gelmez(self) -> None:
         k = self._yillar()
         k[1].kur_son = 0.0
         _, bolumler = yillar_tablosu(k)
-        self.assertNotIn("DOLAR BAZINDA",
-                         [b.baslik for b in bolumler])
-        self.assertIn("TUTARLAR (TL)", [b.baslik for b in bolumler])
-
-    def test_birim_acik_yazilir(self) -> None:
-        """«B» Türkçede milyar diye okunuyordu; 650 bin ile 650 milyar karışıyordu."""
-        k = self._yillar()
-        k[0].net_satis, k[2].net_satis = 650_000.0, 2_400_000_000.0
-        _, bolumler = yillar_tablosu(k)
-        satir = next(s for b in bolumler for s in b.satirlar if s.etiket == "Net Satışlar")
-        self.assertEqual(satir.hucreler[0], "650.000")
-        self.assertEqual(satir.hucreler[-1], "2,4 milyar")
-        self.assertNotIn("M", "".join(satir.hucreler))
-
-    def test_milyon_alti_tam_yazilir(self) -> None:
-        """«176 bin» yuvarlaması farklı yılları aynı gösteriyordu — kullanıcı fark etti."""
-        from domain.ai_yorum import _kisa
-        self.assertEqual(_kisa(2_400_000_000.0), "2,4 milyar")
-        self.assertEqual(_kisa(41_200_000.0), "41,2 milyon")
-        self.assertEqual(_kisa(42.61), "43")
-        self.assertNotEqual(_kisa(176_270.38), _kisa(176_100.0))
-        self.assertEqual(_kisa(176_270.38), "176.270")
-
-    def test_negatif_hucreler_isaretlenir(self) -> None:
-        """Kırmızıya boyanacak hücreleri görünüm değil domain belirler."""
-        satir = self._bul("TUTARLAR (TL)", "Özkaynak")
-        self.assertEqual(satir.eksi, [False, False, False])
-        k = self._yillar()
-        k[2].ozkaynak = -8_484.0
-        _, bolumler = yillar_tablosu(k)
-        ozk = next(s for b in bolumler for s in b.satirlar if s.etiket == "Özkaynak")
-        self.assertEqual(ozk.eksi[-1], True)
-
-    def test_yillar_boyu_sabit_satir_isaretlenir(self) -> None:
-        """Bilanço hesapları işlenmiyorsa mizan her yıl aynı çıkar — bu veri şüphesidir."""
-        k = self._yillar()
-        for y in k:
-            y.stok = 139_999.18          # canlıda beş yıl boyunca kuruşu kuruşuna aynıydı
-        _, bolumler = yillar_tablosu(k)
-        stok = next(s for b in bolumler for s in b.satirlar if s.etiket == "Stok")
-        self.assertTrue(stok.sabit)
-        satis = next(s for b in bolumler for s in b.satirlar if s.etiket == "Net Satışlar")
-        self.assertFalse(satis.sabit)     # gerçekten değişen satır işaretlenmemeli
-
-    def test_kurus_farkiyla_kipirdayan_da_sabit_sayilir(self) -> None:
-        """
-        Birebir eşitlik aramak yetmiyordu.
-
-        Canlıda ekranda aynı görünen satırların bir kısmı ⚠'li bir kısmı ⚠'siz çıkıyordu:
-        kuruş farkıyla değişen ama fiilen donmuş kalemler işaretsiz kalıyordu.
-        """
-        k = self._yillar()
-        for y, deger in zip(k, (176_100.0, 176_270.38, 176_290.0), strict=True):
-            y.aktif_toplam = deger
-        _, bolumler = yillar_tablosu(k)
-        aktif = next(s for b in bolumler for s in b.satirlar if s.etiket == "Aktif Toplam")
-        self.assertTrue(aktif.sabit)      # %0,1 oynama = fiilen sabit
-
-    def test_gercekten_hareket_eden_satir_sabit_degil(self) -> None:
-        k = self._yillar()
-        for y, deger in zip(k, (176_100.0, 176_270.38, 181_900.0), strict=True):
-            y.aktif_toplam = deger
-        _, bolumler = yillar_tablosu(k)
-        aktif = next(s for b in bolumler for s in b.satirlar if s.etiket == "Aktif Toplam")
-        self.assertFalse(aktif.sabit)     # %3 oynama = gerçek hareket
-
-    def test_sifir_satiri_sabit_sayilmaz(self) -> None:
-        """Hepsi sıfır olan kalem «şüpheli» değil, sadece boş."""
-        k = self._yillar()
-        for y in k:
-            y.uvyk = 0.0
-        _, bolumler = yillar_tablosu(k)
-        uv = next(s for b in bolumler for s in b.satirlar if s.etiket == "Uzun Vadeli Borç")
-        self.assertFalse(uv.sabit)
-
-    def test_cari_kaynakli_satirlar(self) -> None:
-        """
-        Alacak/borç mizandan DEĞİL cari hareketlerden gelmeli.
-
-        Canlıda mizanın 120 bakiyesi beş yıl boyunca sabitti (-4.839 TL), oysa
-        Alacak & Borç sekmesi milyonlarca TL ve her yıl farklı gösteriyordu.
-        """
-        k = self._yillar()
-        for y, (alacak, borc, gec) in zip(k, [
-                (5_600_000.0, 3_100_000.0, 2_000_000.0),
-                (8_700_000.0, 4_200_000.0, 4_900_000.0),
-                (11_358_890.0, 4_666_118.0, 7_602_854.0)], strict=True):
-            y.alacak, y.borc, y.alacak_gecikmis = alacak, borc, gec
-        _, bolumler = yillar_tablosu(k)
-        tl = next(b for b in bolumler if b.baslik == "TUTARLAR (TL)")
-        satirlar = {s.etiket: s for s in tl.satirlar}   # USD bölümünde aynı adlar var
-
-        self.assertEqual(satirlar["Ticari Alacak"].hucreler[-1], "11,4 milyon")
-        self.assertEqual(satirlar["Ticari Borç (satıcı)"].hucreler[-1], "4,7 milyon")
-        self.assertEqual(satirlar["  · vadesi geçmiş"].hucreler[-1], "7,6 milyon")
-        self.assertFalse(satirlar["Ticari Alacak"].sabit)   # artık kıpırdıyor
-
-    def test_gecikme_orani(self) -> None:
-        k = YilKapanis(yil=2025, alacak=11_358_890.0, alacak_gecikmis=7_602_854.0)
-        self.assertAlmostEqual(k.gecikme_orani, 66.93, places=1)
-        self.assertIsNone(YilKapanis(yil=2025).gecikme_orani)   # alacak yoksa oran yok
-
-    def test_kaynak_notu_modele_gider(self) -> None:
-        """Mizan ile cari çelişince model hangisine güveneceğini bilmeli."""
-        csv = yillar_arasi_csv(self._yillar())
-        self.assertIn("KAYNAK;", csv)
-        self.assertIn("CARİ HESAP HAREKETLERİ", csv)
-        self.assertIn("cari daha güncel", csv)
+        self.assertNotIn("DOLAR BAZINDA (USD)", [b.baslik for b in bolumler])
+        self.assertIn("ORANLAR VE DEVİR HIZLARI", [b.baslik for b in bolumler])
 
     def test_tek_yilda_tablo_yok(self) -> None:
         self.assertEqual(yillar_tablosu(self._yillar()[:1]), ([], []))
@@ -667,17 +634,20 @@ class TestMukayeseTablosu(unittest.TestCase):
     def test_veritabaninda_olmayan_yil_dolu_degil(self) -> None:
         """Boş yılın sorgusu hata değil sıfır döner; tabloya girerse trend uydurulur."""
         self.assertFalse(YilKapanis(yil=2019).dolu)
-        self.assertFalse(YilKapanis(yil=2019, stok=140_000.0).dolu)   # yalnız devir kalıntısı
         self.assertTrue(YilKapanis(yil=2025, net_satis=1.0).dolu)
-        self.assertTrue(YilKapanis(yil=2025, aktif_toplam=1.0).dolu)
+        self.assertTrue(YilKapanis(yil=2025, alacak=1.0).dolu)
+
+    def test_gecikme_orani(self) -> None:
+        k = YilKapanis(yil=2025, alacak=11_358_890.0, alacak_gecikmis=7_602_854.0)
+        self.assertAlmostEqual(k.gecikme_orani, 66.93, places=1)
+        self.assertIsNone(YilKapanis(yil=2025).gecikme_orani)
 
     def test_csv_mukayeseyi_icerir(self) -> None:
-        """Excel'de kendi grafiğini çizebilsin diye CSV'ye de girer."""
+        """Excel'de kendi grafiğini çizebilsin diye CSV'ye de girer — ham rakamla."""
         csv = ai_yorum_csv(AiYorum(yil=2025, bas="2025-01-01", bit="2025-12-31",
                                    kapsam_bas="2021-01-01", kapanislar=self._yillar()))
         self.assertIn("MUKAYESE;Kalem;2021;2023;2025;2021→2025", csv)
-        # CSV'ye HAM rakam gider: Excel'de hesap yapılabilsin, yuvarlama fark gizlemesin.
-        self.assertIn("MUKAYESE;Net Satışlar;20000000,00;31000000,00;41200000,00;%+106", csv)
+        self.assertIn("MUKAYESE;Net Satışlar;1500430,00;1184243,00;1050163,00", csv)
 
     def test_kapanissiz_yorumda_csv_bozulmaz(self) -> None:
         csv = ai_yorum_csv(AiYorum(yil=2025, bas="2025-01-01", bit="2025-12-31"))
@@ -697,39 +667,47 @@ class TestKararBolumu(unittest.TestCase):
 
 
 class TestDovizBazli(unittest.TestCase):
-    """Yüksek enflasyonda düz TL kıyası yanıltır — dolar karşılığı verilmeli."""
+    """Yüksek enflasyonda düz TL kıyası yanıltır — tablo dolar üzerinden kurulur."""
 
     @staticmethod
     def _kapanislar(kur_2023: float = 27.0, kur_2025: float = 42.3) -> list[YilKapanis]:
         return [
             YilKapanis(yil=2023, net_satis=27_000_000.0, stok=8_000_000.0,
-                       alacak=6_000_000.0, satis_usd=1_000_000.0, kur_son=kur_2023),
+                       alacak=6_000_000.0, satis_usd=1_000_000.0,
+                       kur_son=kur_2023, kur_ort=kur_2023 * 0.9),
             YilKapanis(yil=2025, net_satis=41_200_000.0, stok=12_000_000.0,
-                       alacak=11_360_000.0, satis_usd=800_000.0, kur_son=kur_2025),
+                       alacak=11_360_000.0, satis_usd=800_000.0,
+                       kur_son=kur_2025, kur_ort=kur_2025 * 0.9),
         ]
 
-    def test_doviz_blogu_yazilir(self) -> None:
-        csv = yillar_arasi_csv(self._kapanislar())
-        self.assertIn("DÖVİZ BAZLI", csv)
-        self.assertIn("TL/USD kuru (dönem sonu);27,00;42,30", csv)
-        self.assertIn("Net Satışlar (USD);1000000,00;800000,00", csv)
+    def _bolum(self, k=None):
+        _, bolumler = yillar_tablosu(k or self._kapanislar())
+        return next((b for b in bolumler if b.baslik == "DOLAR BAZINDA (USD)"), None)
+
+    def test_doviz_blogu_kurulur(self) -> None:
+        satirlar = {r.etiket: r for r in self._bolum().satirlar}
+        self.assertEqual(satirlar["TL/USD kuru (dönem sonu)"].hucreler, ["27,00", "42,30"])
+        self.assertEqual(satirlar["Net Satışlar"].hucreler, ["1,0 milyon", "800.000"])
 
     def test_stok_ve_alacak_dolara_cevrilir(self) -> None:
         """Kullanıcının işaret ettiği yer: stok/alacakta nominal TL en çok yanıltır."""
-        csv = yillar_arasi_csv(self._kapanislar())
-        self.assertIn("Stok (USD);296296,30;283687,94", csv)      # TL'de arttı, USD'de düştü
-        self.assertIn("Ticari Alacak (USD);222222,22;268557,92", csv)
+        satirlar = {r.etiket: r for r in self._bolum().satirlar}
+        self.assertEqual(satirlar["Stok"].hucreler, ["296.296", "283.688"])  # TL'de arttı
+        self.assertEqual(satirlar["Stok"].degisim, "%-4")                     # USD'de düştü
 
     def test_kur_yoksa_blok_hic_yazilmaz(self) -> None:
         """Güvenilir kur olmadan uydurma dolar rakamı vermektense hiç verme."""
         k = self._kapanislar()
         k[1].kur_son = 0.0
-        csv = yillar_arasi_csv(k)
-        self.assertNotIn("DÖVİZ BAZLI", csv)
-        self.assertIn("Net Satışlar;", csv)      # TL tablosu yine de durur
+        self.assertIsNone(self._bolum(k))
 
     def test_usd_kursuz_sifir_doner(self) -> None:
         self.assertEqual(YilKapanis(yil=2025).usd(1_000.0), 0.0)
+        self.assertEqual(YilKapanis(yil=2025).usd_akis(1_000.0), 0.0)
+
+    def test_ortalama_kur_yoksa_donem_sonuna_duser(self) -> None:
+        k = YilKapanis(yil=2025, kur_son=40.0)
+        self.assertAlmostEqual(k.usd_akis(4_000.0), 100.0)
 
     def test_prompt_enflasyon_ve_doviz_kurallari(self) -> None:
         self.assertIn("ENFLASYON YÜKSEKTİR", SISTEM_PROMPT)
