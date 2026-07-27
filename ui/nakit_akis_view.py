@@ -70,7 +70,10 @@ def _kategori_panel(
     renk: str,
     kirilimlar: dict[str, list] | None = None,
 ) -> QFrame:
-    t = _agac(3, [(0, 160), (2, 130)], esnek=1)
+    # Hesap kırılımları kod + ad ile gösterilir. İlk sütunu esnek bırakarak
+    # uzun hesap adlarının kesilmeden okunmasını sağlarız; gösterge ve tutar
+    # sütunları ise iki panelde de hizalı kalır.
+    t = _agac(3, [(1, 220), (2, 130)], esnek=0)
     if not kategori:
         _tsatir(t, [_c("Hareket yok.", renk=FAINT), _c(""), _c("")])
         _fit_height(t)
