@@ -90,10 +90,20 @@ def _kapanis_kur(yil: int, *, tam: bool, b: Bilanco, gt: GelirTablosu,
         net_satis=gt.net_satislar, brut_kar=gt.brut_kar,
         faaliyet_kari=gt.faaliyet_kari, net_kar=gt.net_kar,
         nakit=ozet["nakit"], alacak=ozet["alacak"], stok=ozet["stok"],
-        kvyk=ozet["kvyk"], ozkaynak=ozet["ozkaynak"],
-        aktif_toplam=ozet["aktif_toplam"], maliyet_eksik=gt.maliyet_eksik,
+        kvyk=ozet["kvyk"], uvyk=ozet["uvyk"], donen=ozet["donen"],
+        ozkaynak=ozet["ozkaynak"], aktif_toplam=ozet["aktif_toplam"],
+        banka_kredisi=_banka_kredisi(b), smm=gt.smm, maliyet_eksik=gt.maliyet_eksik,
         faaliyet_gideri=gt.faaliyet_gideri, finansman_gideri=gt.finansman_gideri,
         satis_usd=d.get("satis_usd", 0.0), kur_son=d.get("kur_son", 0.0))
+
+
+# 300 Banka Kredileri (KV), 303 UV kredilerin anapara taksitleri, 400 Banka Kredileri (UV).
+_KREDI_ANA = {"300", "303", "400"}
+
+
+def _banka_kredisi(b: Bilanco) -> float:
+    """Kredi borçluluğunun yıllar arası trendi — pasifte kredi hesaplarının toplamı."""
+    return sum(s.tutar for s in b.pasif if s.ana in _KREDI_ANA)
 
 
 def _doviz_dene(client: MikroClient, bas: str, bit: str) -> dict[str, float]:

@@ -54,6 +54,14 @@ nominal TL artışını TEK BAŞINA olumlu sayma.
 dolar bazında 1,0M USD'den 0,8M USD'ye, yani %20 düştü" gibi açıkça yaz. Stok, alacak ve \
 borçta da aynısını yap — bu kalemlerde nominal büyüme çoğu zaman gerçek büyüme değil, \
 sadece fiyat artışıdır.
+- «ORANLAR VE DEVİR HIZLARI» bloğu asıl tahlildir; oranlar enflasyondan etkilenmez. \
+Yorumda ŞU ÜÇÜNÜ mutlaka ele al: (1) STOK — devir hızı, bekleme günü ve stok/satış \
+oranı yıllar içinde ne yönde gidiyor, stok şişiyor mu; (2) KREDİ BORÇLULUĞU — banka \
+kredisi, kredi/aktif ve finansman gideri/satış yükü artıyor mu; (3) KÂRLILIK — brüt, \
+faaliyet ve net marj ile ROE/ROA daralıyor mu. Her birinde yılların rakamlarını yan \
+yana ver.
+- Bir oran hücresi BOŞ ise o yıl için hesaplanamamıştır (payda sıfır ya da veri eksik). \
+Boş hücreye "sıfır" muamelesi yapma; gerekiyorsa neden hesaplanamadığını söyle.
 - Enflasyon oranı veride YOKTUR. Kendi bilginden bir TÜFE tahmini kullanacaksan kullandığın \
 oranı rakamla yaz ve "kendi bilgimdeki TÜFE — veride yok" diye etiketle; veriden geliyormuş \
 gibi sunma. Döviz bloğu yoksa da en azından nominal artışın enflasyonu içerdiğini söyle.
@@ -77,9 +85,11 @@ Madde madde, her maddede rakam olsun.
 ## Dikkat Edilmesi Gereken 3 Şey
 En riskli olandan başla. Her maddede rakam ve neden riskli olduğu olsun.
 
-## Bu Ay Yapılacak 3 İş
-Somut ve uygulanabilir olsun. "Kârlılığı artırın" değil, "X vadesi geçmiş 1,2M \
-alacağın tahsilatına odaklanın" gibi.
+## Karar Gerektiren 3 Konu
+Şirket sahibinin karar vermesi gereken konular. Bu bir yapılacaklar listesi DEĞİLDİR: \
+"şunu yapın" diye emir verme, "bu ay/bu hafta" gibi zaman biçme. Konuyu, rakamı ve \
+karar verilmezse ne olacağını yaz. "X müşterisindeki 4,7M TL alacak toplam alacağın \
+%41'i; tahsil edilemezse … Bu alacağın vadesi ve teminatı gözden geçirilmeli." gibi.
 
 ## Veride Göremediklerim
 Yorumu sınırlayan eksikler. Yoksa "Önemli bir eksik görmedim." yaz.
@@ -127,8 +137,12 @@ class YilKapanis:
     alacak: float = 0.0
     stok: float = 0.0
     kvyk: float = 0.0              # kısa vadeli yabancı kaynak
+    uvyk: float = 0.0              # uzun vadeli yabancı kaynak
+    donen: float = 0.0             # dönen varlıklar (cari oran için)
     ozkaynak: float = 0.0
     aktif_toplam: float = 0.0
+    banka_kredisi: float = 0.0     # 300/303/400 — kredi borçluluğunun trendi
+    smm: float = 0.0               # satışların maliyeti (62), işaretli (negatif)
     maliyet_eksik: bool = False    # 62 (SMM) girilmemiş → kâr şişik görünür
     faaliyet_gideri: float = 0.0   # 63, işaretli (gider → negatif)
     finansman_gideri: float = 0.0  # 66, işaretli (gider → negatif)
@@ -143,16 +157,78 @@ class YilKapanis:
         """Dönem sonu bakiyesinin o günkü dolar karşılığı."""
         return tl / self.kur_son if self.kur_son > 0 else 0.0
 
-    def _marj(self, pay: float) -> float:
-        return (pay / self.net_satis * 100) if self.net_satis else 0.0
+    # Oranlar None dönebilir: payda sıfırsa uydurma 0,00 yazmak yerine hücre BOŞ kalır.
+    # "Stok devir hızı 0" ile "hesaplanamıyor" farklı şeylerdir.
+    @staticmethod
+    def _bol(pay: float, payda: float, kat: float = 1.0) -> float | None:
+        return (pay / payda * kat) if abs(payda) >= 0.005 else None
+
+    def _marj(self, pay: float) -> float | None:
+        return self._bol(pay, self.net_satis, 100.0)
 
     @property
-    def brut_marj(self) -> float:
+    def brut_marj(self) -> float | None:
         return self._marj(self.brut_kar)
 
     @property
-    def net_marj(self) -> float:
+    def faaliyet_marj(self) -> float | None:
+        return self._marj(self.faaliyet_kari)
+
+    @property
+    def net_marj(self) -> float | None:
         return self._marj(self.net_kar)
+
+    @property
+    def roe(self) -> float | None:
+        """Özkaynak kârlılığı — özkaynak eksiyse anlamsızdır, o yüzden boş bırakılır."""
+        return self._bol(self.net_kar, self.ozkaynak, 100.0) if self.ozkaynak > 0 else None
+
+    @property
+    def roa(self) -> float | None:
+        return self._bol(self.net_kar, self.aktif_toplam, 100.0)
+
+    @property
+    def stok_devir(self) -> float | None:
+        """Stok kaç kez döndü — SMM girilmemişse hesaplanamaz, uydurulmaz."""
+        if self.maliyet_eksik or abs(self.smm) < 0.005:
+            return None
+        return self._bol(abs(self.smm), self.stok)
+
+    @property
+    def stok_gun(self) -> float | None:
+        devir = self.stok_devir
+        return (365.0 / devir) if devir and devir > 0 else None
+
+    @property
+    def stok_satis(self) -> float | None:
+        """Stok / net satış — SMM olmasa da hesaplanır, stok şişkinliğinin kaba ölçüsü."""
+        return self._bol(self.stok, self.net_satis, 100.0)
+
+    @property
+    def dso(self) -> float | None:
+        """Alacak tahsil süresi (gün) — yıllar içinde uzuyorsa tahsilat bozuluyor."""
+        return self._bol(self.alacak * 365.0, self.net_satis)
+
+    @property
+    def cari_oran(self) -> float | None:
+        return self._bol(self.donen, self.kvyk)
+
+    @property
+    def asit_test(self) -> float | None:
+        return self._bol(self.donen - self.stok, self.kvyk)
+
+    @property
+    def borc_ozkaynak(self) -> float | None:
+        return self._bol(self.kvyk + self.uvyk, self.ozkaynak) if self.ozkaynak > 0 else None
+
+    @property
+    def kredi_aktif(self) -> float | None:
+        return self._bol(self.banka_kredisi, self.aktif_toplam, 100.0)
+
+    @property
+    def finansman_yuku(self) -> float | None:
+        """Faiz yükü: finansman gideri net satışın yüzde kaçını yiyor."""
+        return self._bol(abs(self.finansman_gideri), self.net_satis, 100.0)
 
 
 # Yıllar arası tabloda gösterilecek kalemler — az ve karşılaştırılabilir olanlar.
@@ -169,8 +245,31 @@ _YIL_KALEMLERI: tuple[tuple[str, str], ...] = (
     ("Ticari Alacak (dönem sonu)", "alacak"),
     ("Stok (dönem sonu)", "stok"),
     ("Kısa Vadeli Borç (dönem sonu)", "kvyk"),
+    ("Uzun Vadeli Borç (dönem sonu)", "uvyk"),
+    ("Banka Kredisi (dönem sonu)", "banka_kredisi"),
     ("Özkaynak (dönem sonu)", "ozkaynak"),
     ("Aktif Toplam (dönem sonu)", "aktif_toplam"),
+)
+
+# Asıl tahlil burada: seviyeler değil ORANLAR yıllar arası kıyaslanabilir. Nominal TL
+# enflasyonla şişer, oran şişmez — "stok 5 yıldır aynı" ile "stok 90 gün bekliyor"
+# arasındaki fark budur. Kullanıcının özellikle istediği kalemler: stok, kredi
+# borçluluğu ve kârlılık.
+_ORAN_SATIRLARI: tuple[tuple[str, str], ...] = (
+    ("Brüt Marj (%)", "brut_marj"),
+    ("Faaliyet Marjı (%)", "faaliyet_marj"),
+    ("Net Marj (%)", "net_marj"),
+    ("Özkaynak Kârlılığı — ROE (%)", "roe"),
+    ("Aktif Kârlılığı — ROA (%)", "roa"),
+    ("Stok Devir Hızı (kez/yıl)", "stok_devir"),
+    ("Stok Bekleme Süresi (gün)", "stok_gun"),
+    ("Stok / Net Satış (%)", "stok_satis"),
+    ("Alacak Tahsil Süresi — DSO (gün)", "dso"),
+    ("Cari Oran (x)", "cari_oran"),
+    ("Asit-Test (x)", "asit_test"),
+    ("Borç / Özkaynak (x)", "borc_ozkaynak"),
+    ("Banka Kredisi / Aktif (%)", "kredi_aktif"),
+    ("Finansman Gideri / Net Satış (%)", "finansman_yuku"),
 )
 
 # Dolar karşılığı verilecek bilanço kalemleri — stok, alacak ve borçta nominal TL
@@ -189,11 +288,18 @@ def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
     if len(kapanislar) < 2:
         return ""
     sirali = sorted(kapanislar, key=lambda k: k.yil)
+
+    def satir(etiket: str, deger) -> str:
+        """Bir kalem satırı; hesaplanamayan hücre BOŞ kalır (uydurma 0,00 yazılmaz)."""
+        return etiket + ";" + ";".join(
+            "" if (d := deger(k)) is None else csv_sayi(d) for k in sirali)
+
     out = ["Kalem;" + ";".join(str(k.yil) for k in sirali)]
-    for etiket, alan in _YIL_KALEMLERI:
-        out.append(etiket + ";" + ";".join(csv_sayi(getattr(k, alan)) for k in sirali))
-    out.append("Brüt Marj (%);" + ";".join(csv_sayi(k.brut_marj) for k in sirali))
-    out.append("Net Marj (%);" + ";".join(csv_sayi(k.net_marj) for k in sirali))
+    out += [satir(e, lambda k, a=a: getattr(k, a)) for e, a in _YIL_KALEMLERI]
+
+    out.append("")
+    out.append("--- ORANLAR VE DEVİR HIZLARI (yıllar arası asıl kıyas) ---")
+    out += [satir(e, lambda k, a=a: getattr(k, a)) for e, a in _ORAN_SATIRLARI]
 
     # DÖVİZ BLOĞU: nominal TL kıyası yüksek enflasyonda hiçbir şey anlatmaz — 3 yılda
     # "satış %53 arttı" demek, dolar bazında düşmüşken bile mümkündür. Kur Mikro'nun
@@ -201,11 +307,10 @@ def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
     if all(k.doviz_var for k in sirali):
         out.append("")
         out.append("--- DÖVİZ BAZLI (Mikro'nun kendi kur kaydından) ---")
-        out.append("TL/USD kuru (dönem sonu);" + ";".join(csv_sayi(k.kur_son) for k in sirali))
-        out.append("Net Satışlar (USD);" + ";".join(csv_sayi(k.satis_usd) for k in sirali))
-        for etiket, alan in _DOVIZ_KALEMLERI:
-            out.append(f"{etiket} (USD);"
-                       + ";".join(csv_sayi(k.usd(getattr(k, alan))) for k in sirali))
+        out.append(satir("TL/USD kuru (dönem sonu)", lambda k: k.kur_son))
+        out.append(satir("Net Satışlar (USD)", lambda k: k.satis_usd))
+        out += [satir(f"{e} (USD)", lambda k, a=a: k.usd(getattr(k, a)))
+                for e, a in _DOVIZ_KALEMLERI]
 
     # Kıyası bozan yıllar açıkça işaretlenir; model "satış düştü" diye yanlış okumasın.
     notlar = []
@@ -295,13 +400,10 @@ class AiVeriPaketi:
             "veritabanında tutar; sonraki aylara ait hareketler kaydedilmemiş değil, başka "
             "bir veritabanındadır ve bu pakete girmemiştir.",
             "Bu yüzden «kayıtlarınızı acilen işleyin», «verileriniz eksik», «kör uçuyorsunuz» "
-            "gibi tavsiyeler YAZMA — yanlış olur. Güncel tablo için MikRapor'da çalışma "
-            "yılının değiştirilmesi gerektiğini bir kez söylemen yeter.",
+            "gibi tavsiyeler YAZMA — yanlış olur. Bunu yalnız «Veride Göremediklerim» "
+            "bölümünde bir madde olarak belirt; «Karar Gerektiren 3 Konu»dan yer harcama.",
             f"«şu an», «bugün itibarıyla», «bu ay» deme; «{self.bit} itibarıyla» de. "
             "Bakiyeler, alacaklar ve nakit bugün farklı olabilir.",
-            f"«Bu Ay Yapılacak 3 İş» maddelerini BUGÜNE ({self.bugun}) göre yaz ve aradan "
-            f"{self.gecikme_ay} ay geçtiğini hesaba kat; ama maddeleri bu verinin gösterdiği "
-            "GERÇEK sorunlara ayır, veri toplamaya değil.",
         ]
 
     @property
