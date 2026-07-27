@@ -283,6 +283,142 @@ _DOVIZ_KALEMLERI: tuple[tuple[str, str], ...] = (
 )
 
 
+@dataclass
+class TabloSatir:
+    """Tablonun bir satırı — hücreler yıl sırasına göre, boş hücre 'hesaplanamadı'."""
+
+    etiket: str
+    hucreler: list[str] = field(default_factory=list)
+    degisim: str = ""
+    iyi: bool | None = None    # değişim lehte mi (renk için); None = nötr
+
+
+@dataclass
+class TabloBolum:
+    baslik: str
+    satirlar: list[TabloSatir] = field(default_factory=list)
+
+
+def _kisa(v: float) -> str:
+    """Tabloya sığan kısa tutar: 41,2M · 357B · 1.234. 6 yıl yan yana ancak böyle sığar."""
+    m = abs(v)
+    if m >= 1_000_000:
+        return f"{v / 1_000_000:.1f}M".replace(".", ",")
+    if m >= 1_000:
+        return f"{v / 1_000:.0f}B"
+    return f"{v:,.0f}".replace(",", ".")
+
+
+def _oran_metni(v: float | None, birim: str) -> str:
+    if v is None:
+        return "—"
+    if birim in ("TL", "USD"):
+        return _kisa(v)
+    return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+# (etiket, alan, birim, artis_iyi) — artis_iyi None ise değişim renklendirilmez.
+_TL_SATIR = (
+    ("Net Satışlar", "net_satis", True), ("Brüt Kâr", "brut_kar", True),
+    ("Faaliyet Kârı", "faaliyet_kari", True), ("Dönem Net Kârı", "net_kar", True),
+    ("Nakit", "nakit", True), ("Ticari Alacak", "alacak", False),
+    ("Stok", "stok", False), ("Kısa Vadeli Borç", "kvyk", False),
+    ("Uzun Vadeli Borç", "uvyk", False), ("Banka Kredisi", "banka_kredisi", False),
+    ("Özkaynak", "ozkaynak", True), ("Aktif Toplam", "aktif_toplam", None),
+)
+_USD_SATIR = (
+    ("Ticari Alacak", "alacak", False), ("Stok", "stok", False),
+    ("Kısa Vadeli Borç", "kvyk", False), ("Banka Kredisi", "banka_kredisi", False),
+    ("Nakit", "nakit", True), ("Özkaynak", "ozkaynak", True),
+)
+_ORAN_SATIR = (
+    ("Brüt Marj", "brut_marj", "%", True), ("Faaliyet Marjı", "faaliyet_marj", "%", True),
+    ("Net Marj", "net_marj", "%", True), ("Özkaynak Kârlılığı (ROE)", "roe", "%", True),
+    ("Aktif Kârlılığı (ROA)", "roa", "%", True),
+    ("Stok Devir Hızı", "stok_devir", "kez/yıl", True),
+    ("Stok Bekleme Süresi", "stok_gun", "gün", False),
+    ("Stok / Net Satış", "stok_satis", "%", False),
+    ("Alacak Tahsil Süresi (DSO)", "dso", "gün", False),
+    ("Cari Oran", "cari_oran", "x", True), ("Asit-Test", "asit_test", "x", True),
+    ("Borç / Özkaynak", "borc_ozkaynak", "x", False),
+    ("Banka Kredisi / Aktif", "kredi_aktif", "%", False),
+    ("Finansman Gideri / Net Satış", "finansman_yuku", "%", False),
+)
+
+
+def _degisim(ilk: float | None, son: float | None, birim: str,
+             artis_iyi: bool | None) -> tuple[str, bool | None]:
+    """
+    İlk yıldan son yıla değişim.
+
+    Tutarlarda YÜZDE, oranlarda PUAN farkı verilir — "cari oran %-33 düştü" demek
+    yanıltıcıdır, "−0,46 puan" doğrudur. Uçlar hesaplanamıyorsa değişim de yazılmaz.
+    """
+    if ilk is None or son is None:
+        return "—", None
+    if birim in ("TL", "USD"):
+        if abs(ilk) < 0.005:
+            return "—", None
+        yuzde_v = (son - ilk) / abs(ilk) * 100
+        metin = f"%{yuzde_v:+,.0f}".replace(",", ".")
+    else:
+        fark = son - ilk
+        metin = f"{fark:+,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        metin += " puan" if birim == "%" else ""
+    artti = son > ilk
+    iyi = None if artis_iyi is None or abs(son - ilk) < 1e-9 else (artti == artis_iyi)
+    return metin, iyi
+
+
+def yillar_tablosu(kapanislar: list[YilKapanis]) -> tuple[list[int], list[TabloBolum]]:
+    """
+    Yıllar arası karşılaştırmayı DETERMİNİSTİK olarak kurar.
+
+    Modele bırakıldığında hangi satırı anacağını kendi seçiyordu; kullanıcı her seferinde
+    tam mukayese istiyor. Burada hesap bizde: her yıl, her kalem, her oran ve ilk→son
+    değişim her zaman tam çıkar. Model bu tabloyu yorumlar, üretmez.
+    """
+    if len(kapanislar) < 2:
+        return [], []
+    s = sorted(kapanislar, key=lambda k: k.yil)
+    yillar = [k.yil for k in s]
+
+    def bolum(baslik: str, tarif, deger, birim: str) -> TabloBolum:
+        satirlar = []
+        for etiket, alan, artis_iyi in tarif:
+            degerler = [deger(k, alan) for k in s]
+            metin, iyi = _degisim(degerler[0], degerler[-1], birim, artis_iyi)
+            satirlar.append(TabloSatir(
+                etiket, [_oran_metni(d, birim) for d in degerler], metin, iyi))
+        return TabloBolum(baslik, satirlar)
+
+    bolumler = [bolum("TUTARLAR (TL)", _TL_SATIR,
+                      lambda k, a: getattr(k, a), "TL")]
+
+    if all(k.doviz_var for k in s):
+        usd = TabloBolum("DOLAR BAZINDA (Mikro'nun kendi kur kaydından)")
+        kurlar = [k.kur_son for k in s]
+        usd.satirlar.append(TabloSatir(
+            "TL/USD kuru (dönem sonu)", [_oran_metni(k, "x") for k in kurlar],
+            *_degisim(kurlar[0], kurlar[-1], "x", None)))
+        satislar = [k.satis_usd for k in s]
+        usd.satirlar.append(TabloSatir(
+            "Net Satışlar", [_oran_metni(v, "USD") for v in satislar],
+            *_degisim(satislar[0], satislar[-1], "USD", True)))
+        usd.satirlar += bolum("", _USD_SATIR,
+                              lambda k, a: k.usd(getattr(k, a)), "USD").satirlar
+        bolumler.append(usd)
+
+    bolumler.append(TabloBolum("ORANLAR VE DEVİR HIZLARI", [
+        TabloSatir(etiket + (f" ({birim})" if birim not in ("%", "x") else
+                             ("" if birim == "x" else " (%)")),
+                   [_oran_metni(getattr(k, alan), birim) for k in s],
+                   *_degisim(getattr(s[0], alan), getattr(s[-1], alan), birim, artis_iyi))
+        for etiket, alan, birim, artis_iyi in _ORAN_SATIR
+    ]))
+    return yillar, bolumler
+
+
 def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
     """Yılları yan yana koyan karşılaştırma tablosu — trendi tek bakışta görünür kılar."""
     if len(kapanislar) < 2:
@@ -343,6 +479,7 @@ class AiVeriPaketi:
     gecikme_ay: int = 0            # verinin bitişi ile bugün arasındaki ay farkı
     calisma_yili: int = 0          # Mikro'da seçili çalışma yılı (veritabanı yılı)
     yillar: list[int] = field(default_factory=list)   # çok yıllı analizde kapsanan yıllar
+    kapanislar: list = field(default_factory=list)   # deterministik mukayese tablosu için
 
     @property
     def aralik_bas(self) -> str:
@@ -486,6 +623,8 @@ class AiYorum:
     veri_ozeti: str = ""
     saglayici: str = ""
     kapsam_bas: str = ""   # çok yıllıda en eski yılın başı; boşsa bas ile aynı
+    # Yıllar arası mukayese tablosu buradan kurulur — model çıktısından BAĞIMSIZ.
+    kapanislar: list = field(default_factory=list)
 
     @property
     def aralik_bas(self) -> str:
@@ -517,6 +656,7 @@ def build_ai_veri_paketi(
     gecikme_ay: int = 0,
     calisma_yili: int = 0,
     yillar: list[int] | None = None,
+    kapanislar: list | None = None,
 ) -> AiVeriPaketi:
     """Rapor CSV'lerinden veri paketini kurar; boş/hatalı bölümler elenir."""
     temiz: list[tuple[str, str]] = []
@@ -527,7 +667,7 @@ def build_ai_veri_paketi(
         yil=yil, bas=bas, bit=bit, firma=firma, bolumler=temiz,
         bugun=bugun, tamamlandi=tamamlandi, ay_sayisi=ay_sayisi,
         gecikme_ay=gecikme_ay, calisma_yili=calisma_yili,
-        yillar=sorted(yillar or []))
+        yillar=sorted(yillar or []), kapanislar=list(kapanislar or []))
 
 
 def ai_yorum_csv(y: AiYorum) -> str:
@@ -537,6 +677,21 @@ def ai_yorum_csv(y: AiYorum) -> str:
     out.append(f"SAĞLAYICI;{y.saglayici}")
     out.append(f"MODEL;{y.model}")
     out.append(f"TOKEN;girdi {csv_sayi(y.girdi_token)} / çıktı {csv_sayi(y.cikti_token)}")
+
+    # Deterministik mukayese CSV'ye de girer — Excel'de kendi grafiğini çizebilsin.
+    yillar, bolumler = yillar_tablosu(y.kapanislar)
+    if yillar:
+        out.append("")
+        out.append("MUKAYESE;Kalem;" + ";".join(str(v) for v in yillar)
+                   + f";{yillar[0]}→{yillar[-1]}")
+        for bolum in bolumler:
+            if bolum.baslik:
+                out.append(f"MUKAYESE;{bolum.baslik}")
+            for satir in bolum.satirlar:
+                out.append("MUKAYESE;" + ";".join(
+                    [satir.etiket.replace(";", ","), *satir.hucreler, satir.degisim]))
+        out.append("")
+
     for satir in y.metin.splitlines():
         temiz = satir.replace(";", ",").strip()
         if temiz:
