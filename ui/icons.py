@@ -153,3 +153,18 @@ def icon_chevron_down(size: int = 14, color: str = MUTED) -> QIcon:
 def icon_table(size: int = 16, color: str = "#ffffff") -> QIcon:
     """Empty-state CTA için tablo ikonu."""
     return icon_csv(size, color)
+
+
+def icon_info(size: int = 16, color: str = SUBINK) -> QIcon:
+    """Hakkında düğmesi — daire içinde «i»."""
+    pm, p, dpr = _pm(size)
+    s = size * dpr
+    cx, cy = s / 2, s / 2
+    p.setPen(_stroke(color, 1.5 * dpr))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawEllipse(QPointF(cx, cy), s * 0.38, s * 0.38)
+    p.drawLine(QPointF(cx, s * 0.45), QPointF(cx, s * 0.70))   # gövde
+    p.drawPoint(QPointF(cx, s * 0.31))                          # nokta
+    p.end()
+    pm.setDevicePixelRatio(dpr)
+    return QIcon(pm)

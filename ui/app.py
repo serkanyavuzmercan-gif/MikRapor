@@ -27,9 +27,11 @@ from PyQt6.QtWidgets import (
 
 from infra.config import MikroConfig, load_config
 from infra.mikro_api import MikroClient
+from infra.surum import ALT_BASLIK, UYGULAMA_ADI
 from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
-from ui.icons import icon_gear
+from ui.hakkinda_dialog import HakkindaDialog
+from ui.icons import icon_gear, icon_info
 from ui.mikro_settings_dialog import MikroAyarlarDialog
 from ui.nav_tip import NavTip, bagla_nav_tip
 from ui.rapor_tab import RaporTab
@@ -247,7 +249,7 @@ def _start_single_instance_server(window: QMainWindow) -> QLocalServer:
 class MikRaporWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("MikRapor — Finansal Raporlama")
+        self.setWindowTitle(f"{UYGULAMA_ADI} — {ALT_BASLIK}")
         self.setWindowIcon(app_icon())
         self.setMinimumSize(960, 640)
         self.resize(1220, 840)
@@ -333,6 +335,15 @@ class MikRaporWindow(QMainWindow):
         btn_ayar.setIconSize(QSize(14, 14))
         btn_ayar.clicked.connect(self._on_ayarlar)
         header.addWidget(btn_ayar, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+        # Hakkında: yalnız ikon — marka barı zaten dolu, metin eklemek kalabalık yapardı.
+        btn_hakkinda = QPushButton()
+        btn_hakkinda.setObjectName("ghostBtn")
+        btn_hakkinda.setIcon(icon_info(15))
+        btn_hakkinda.setIconSize(QSize(15, 15))
+        btn_hakkinda.setToolTip(f"{UYGULAMA_ADI} hakkında · sürüm ve iletişim")
+        btn_hakkinda.clicked.connect(lambda: HakkindaDialog(self).exec())
+        header.addWidget(btn_hakkinda, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         self._conn = QLabel()
         self._conn.setObjectName("connStatus")
