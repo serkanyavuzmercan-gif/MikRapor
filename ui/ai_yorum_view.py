@@ -126,7 +126,7 @@ def build_ai_yorum_widget(y: AiYorum, firma: str = "") -> QWidget:
     firma_str = f" &nbsp;·&nbsp; <b>{html.escape(firma or y.firma)}</b>" if (firma or y.firma) else ""
     head = QLabel(
         f"<span style='color:{MUTED}; font-size:11px;'>YAPAY ZEKÂ YORUMU &nbsp;·&nbsp; "
-        f"{y.bas} → {y.bit}{firma_str}</span><br>"
+        f"{html.escape(y.aralik)}{firma_str}</span><br>"
         f"<span style='color:{FAINT}; font-size:11px;'>Model: {html.escape(y.model)} &nbsp;·&nbsp; "
         f"Gönderilen: {html.escape(y.veri_ozeti)}</span>"
     )
