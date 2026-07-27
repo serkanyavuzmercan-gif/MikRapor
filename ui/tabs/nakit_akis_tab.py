@@ -8,7 +8,7 @@ from typing import Any
 
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
-from domain.kredi import KrediOzet, kredi_ozet, taksitleri_derle
+from domain.kredi import kredi_odemelerini_derle, taksitleri_derle
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis, build_nakit_akis, nakit_akis_csv
 from domain.tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak
@@ -19,6 +19,7 @@ from infra.mikro_fetch import (
     fetch_cari_vade_gun,
     fetch_acik_kalemler,
     fetch_kredi_gl,
+    fetch_kredi_odemeleri_gl,
     fetch_kredi_taksitleri,
     fetch_nakit_akis_gl,
     fetch_nakit_akis_hareket,
@@ -130,31 +131,40 @@ class NakitAkisTab(RaporTab):
             except MikroAPIError:
                 runway_ta = None
 
-            # Banka hareketlerinde kredi hiç görünmüyorsa muhasebeden (300/303) yedek al —
-            # kredi taksitleri birçok kurulumda cari harekete değil doğrudan GL'ye işlenir.
-            if na.kredi_odeme < 0.005 and na.kredi_kullanim < 0.005:
-                try:
-                    bildir("Kredi hareketi muhasebeden okunuyor…")
-                    kgl = fetch_kredi_gl(client, bas, bit)
-                    na.kredi_odeme_gl = kgl.get("odeme", 0.0)
-                    na.kredi_kullanim_gl = kgl.get("kullanim", 0.0)
-                except MikroAPIError:
-                    pass
-            # Yaklaşan (ödenmemiş) kredi taksitleri — takvimden
-            kredi: KrediOzet | None = None
-            taksitler = []
+            # Kredi özeti nakit sınıflamasından değil, kredi borç hesaplarının iki yönlü
+            # muhasebe hareketinden kurulur. Böylece refinansman ve nakde uğramayan kapamalar
+            # da gerçek borç değişimine dahil olur; kredi kartı hesapları sorguda dışlanır.
             try:
-                bildir("Kredi taksit takvimi çekiliyor…")
-                taksitler = taksitleri_derle(fetch_kredi_taksitleri(client, ay_ileri=18, asof=bit))
-                if taksitler:
-                    kredi = kredi_ozet(taksitler, en_fazla=8)
+                bildir("Kredi borç hareketleri muhasebeden okunuyor…")
+                kgl = fetch_kredi_gl(client, bas, bit)
+                na.kredi_odeme_gl = kgl.get("odeme", 0.0)
+                na.kredi_kullanim_gl = kgl.get("kullanim", 0.0)
+                na.kredi_ozet_gl = True
             except MikroAPIError:
-                kredi = None
-                taksitler = []
+                pass
+            # Seçili dönemde fiilen nakitten çıkan banka kredisi anaparaları ekranda detaylanır.
+            # Gelecek sözleşme taksitleri yalnızca ileriye dönük runway hesabına gider.
+            kredi_odemeleri = []
+            gelecek_taksitler = []
+            try:
+                if na.kaynak == "gl":
+                    bildir("Dönem kredi ödemeleri detaylandırılıyor…")
+                    kredi_odemeleri = kredi_odemelerini_derle(
+                        fetch_kredi_odemeleri_gl(client, bas, bit)
+                    )
+            except MikroAPIError:
+                kredi_odemeleri = []
+            try:
+                gelecek_taksitler = taksitleri_derle(
+                    fetch_kredi_taksitleri(client, ay_ileri=18, asof=bit)
+                )
+            except MikroAPIError:
+                gelecek_taksitler = []
             return {
-                "na": na, "firma": firma_getir(cfg, client), "kredi": kredi,
+                "na": na, "firma": firma_getir(cfg, client),
+                "kredi_odemeleri": kredi_odemeleri,
                 "runway_na": runway_na, "runway_ta": runway_ta,
-                "runway_referans_bas": runway_bas, "taksitler": taksitler,
+                "runway_referans_bas": runway_bas, "taksitler": gelecek_taksitler,
             }
 
         return is_fn
@@ -164,7 +174,7 @@ class NakitAkisTab(RaporTab):
         self._na = na
         self._firma = sonuc["firma"]
         self._icerik_koy(build_nakit_akis_widget(
-            na, firma=self._firma, kredi=sonuc.get("kredi"),
+            na, firma=self._firma, kredi_odemeleri=sonuc.get("kredi_odemeleri"),
             runway_na=sonuc.get("runway_na"), runway_ta=sonuc.get("runway_ta"),
             runway_referans_bas=sonuc.get("runway_referans_bas", ""),
             kredi_taksitler=sonuc.get("taksitler"),

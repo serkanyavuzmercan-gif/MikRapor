@@ -29,6 +29,7 @@ _PREFIX_KATEGORI = {
     "159": "satici",  # verilen sipariş avansları
     "300": "kredi", "303": "kredi", "304": "kredi", "305": "kredi", "308": "kredi",
     "309": "kredi", "400": "kredi", "403": "kredi", "KRD": "kredi",
+    "KKT": "kredi_karti",
     "360": "vergi", "368": "vergi", "391": "vergi", "393": "vergi", "360.": "vergi",
     "361": "sgk",
     "335": "personel",
@@ -37,15 +38,23 @@ _PREFIX_KATEGORI = {
     "780": "gider",  # finansman giderleri (faiz) — banka kesintisi
 }
 
-GIRIS_SIRA = ("musteri", "kredi", "ortak", "satici", "vergi", "sgk", "personel", "gider", "diger")
-CIKIS_SIRA = ("satici", "kredi", "personel", "sgk", "vergi", "ortak", "gider", "musteri", "diger")
+GIRIS_SIRA = (
+    "musteri", "kredi", "kredi_karti", "ortak", "satici",
+    "vergi", "sgk", "personel", "gider", "diger",
+)
+CIKIS_SIRA = (
+    "satici", "kredi", "kredi_karti", "personel", "sgk",
+    "vergi", "ortak", "gider", "musteri", "diger",
+)
 GIRIS_ETIKET = {
-    "musteri": "Müşteri tahsilatı", "kredi": "Kredi kullanımı", "ortak": "Ortaklardan giriş",
+    "musteri": "Müşteri tahsilatı", "kredi": "Banka kredisi kullanımı",
+    "kredi_karti": "Kredi kartından giriş", "ortak": "Ortaklardan giriş",
     "satici": "Satıcıdan iade", "vergi": "Vergi iadesi", "sgk": "SGK iadesi",
     "personel": "Personelden", "gider": "Gider iadesi", "diger": "Diğer girişler",
 }
 CIKIS_ETIKET = {
-    "satici": "Satıcı ödemesi", "kredi": "Kredi ödemesi", "personel": "Personel / Maaş",
+    "satici": "Satıcı ödemesi", "kredi": "Banka kredisi ödemesi",
+    "kredi_karti": "Kredi kartı ödemesi", "personel": "Personel / Maaş",
     "sgk": "SGK", "vergi": "Vergi", "ortak": "Ortaklar", "gider": "Genel giderler",
     "musteri": "Müşteriye iade", "diger": "Diğer çıkışlar",
 }
@@ -98,6 +107,7 @@ class NakitAkis:
     # hiç işlenmemiş kurulumlarda yedek kaynak (0 göstermek yerine gerçeği göster).
     kredi_odeme_gl: float = 0.0
     kredi_kullanim_gl: float = 0.0
+    kredi_ozet_gl: bool = False
     aylik: list = field(default_factory=list)
     hareket_sayisi: int = 0
     kaynak: str = "cari"   # "gl" = muhasebe yevmiyesinden (tam kapsam) | "cari" = cari hareketten
@@ -123,10 +133,14 @@ class NakitAkis:
 
     @property
     def kredi_odeme_gosterim(self) -> float:
+        if self.kredi_ozet_gl:
+            return self.kredi_odeme_gl
         return self.kredi_odeme if self.kredi_odeme > 0.005 else self.kredi_odeme_gl
 
     @property
     def kredi_kullanim_gosterim(self) -> float:
+        if self.kredi_ozet_gl:
+            return self.kredi_kullanim_gl
         return self.kredi_kullanim if self.kredi_kullanim > 0.005 else self.kredi_kullanim_gl
 
     @property
@@ -136,6 +150,8 @@ class NakitAkis:
     @property
     def kredi_kaynak_gl(self) -> bool:
         """Gösterilen kredi rakamlarından en az biri muhasebeden (GL) mi geldi?"""
+        if self.kredi_ozet_gl:
+            return True
         return (
             (self.kredi_odeme <= 0.005 < self.kredi_odeme_gl)
             or (self.kredi_kullanim <= 0.005 < self.kredi_kullanim_gl)
@@ -265,9 +281,9 @@ def nakit_akis_csv(na: NakitAkis) -> str:
         out.append(f"ÇIKIŞLAR (diğer kırılım);{prefix};{s(tutar)}")
     for prefix, tutar in na.gider_cikis_kirilim:
         out.append(f"ÇIKIŞLAR (genel giderler kırılım);{prefix};{s(tutar)}")
-    out.append(f"KREDİ;Kredi Kullanımı;{s(na.kredi_kullanim_gosterim)}")
-    out.append(f"KREDİ;Kredi Ödemesi;{s(na.kredi_odeme_gosterim)}")
-    out.append(f"KREDİ;Net Kredi;{s(na.kredi_net_gosterim)}")
+    out.append(f"KREDİ;Yeni Kullanım / Borç Artışı (brüt);{s(na.kredi_kullanim_gosterim)}")
+    out.append(f"KREDİ;Anapara Kapama / Borç Azalışı (brüt);{s(na.kredi_odeme_gosterim)}")
+    out.append(f"KREDİ;Net Banka Kredisi Değişimi;{s(na.kredi_net_gosterim)}")
     if na.kredi_kaynak_gl:
         out.append("KREDİ;Kaynak;muhasebe kayıtları (300/303) — banka hareketlerinde yok")
     for a in na.aylik:

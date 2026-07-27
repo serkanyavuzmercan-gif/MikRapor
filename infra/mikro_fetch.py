@@ -232,7 +232,7 @@ def fetch_bakiye_ozet(client: MikroClient, asof: str) -> list[dict[str, Any]]:
 
 def fetch_kredi_anapara(client: MikroClient, bas: str, bit: str) -> float:
     """
-    Dönem (bas..bit) içinde kredi anapara geri ödemesi ≈ 300/303 hesabına yapılan BORÇ.
+    Dönem (bas..bit) içinde banka kredisi anapara geri ödemesi: kredi hesabına yapılan BORÇ.
 
     Kredi geri ödemesinde 300 (Banka Kredileri, pasif) borçlanır; yeni kullanım alacaktır.
     Bu yüzden dönem içi borç (fis_meblag0 > 0) toplamı ~ anapara ödemesidir. Faiz 66'dadır
@@ -243,7 +243,12 @@ def fetch_kredi_anapara(client: MikroClient, bas: str, bit: str) -> float:
     sql = (
         "SELECT SUM(CASE WHEN fis_meblag0 > 0 THEN fis_meblag0 ELSE 0 END) AS anapara "
         "FROM MUHASEBE_FISLERI WITH (NOLOCK) "
-        "WHERE fis_iptal = 0 AND (fis_hesap_kod LIKE '300%' OR fis_hesap_kod LIKE '303%') "
+        "WHERE fis_iptal = 0 AND LEFT(LTRIM(fis_hesap_kod), 3) "
+        "IN ('300','303','304','305','308','309','400','403') "
+        "AND NOT EXISTS ("
+        "SELECT 1 FROM MUHASEBE_HESAP_PLANI hp WITH (NOLOCK) "
+        "WHERE hp.muh_hesap_kod IN (fis_hesap_kod, LEFT(fis_hesap_kod, 6)) "
+        "AND UPPER(ISNULL(hp.muh_hesap_isim1, '')) LIKE '%KRED%KART%') "
         f"AND fis_tarih >= '{bas}' AND fis_tarih < '{_bit_son(bit)}'"
     )
     rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
@@ -287,7 +292,7 @@ def fetch_kredi_taksitleri(
 
 def fetch_kredi_gl(client: MikroClient, bas: str, bit: str) -> dict[str, float]:
     """
-    Dönem içi GL kredi hareketi (iki yön): 300/303 borç = anapara ÖDEMESİ,
+    Dönem içi GL banka kredisi hareketi (iki yön): borç = anapara ÖDEMESİ,
     alacak = yeni KULLANIM.
 
     Kredi taksitleri birçok kurulumda cari/banka hareketine değil doğrudan muhasebeye
@@ -300,7 +305,12 @@ def fetch_kredi_gl(client: MikroClient, bas: str, bit: str) -> dict[str, float]:
         "SELECT SUM(CASE WHEN fis_meblag0 > 0 THEN fis_meblag0 ELSE 0 END) AS odeme, "
         "SUM(CASE WHEN fis_meblag0 < 0 THEN -fis_meblag0 ELSE 0 END) AS kullanim "
         "FROM MUHASEBE_FISLERI WITH (NOLOCK) "
-        "WHERE fis_iptal = 0 AND (fis_hesap_kod LIKE '300%' OR fis_hesap_kod LIKE '303%') "
+        "WHERE fis_iptal = 0 AND LEFT(LTRIM(fis_hesap_kod), 3) "
+        "IN ('300','303','304','305','308','309','400','403') "
+        "AND NOT EXISTS ("
+        "SELECT 1 FROM MUHASEBE_HESAP_PLANI hp WITH (NOLOCK) "
+        "WHERE hp.muh_hesap_kod IN (fis_hesap_kod, LEFT(fis_hesap_kod, 6)) "
+        "AND UPPER(ISNULL(hp.muh_hesap_isim1, '')) LIKE '%KRED%KART%') "
         f"AND fis_tarih >= '{bas}' AND fis_tarih < '{_bit_son(bit)}'"
     )
     rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
@@ -593,6 +603,7 @@ def _fetch_nakit_akis_sql(
 
 
 _NAKIT_GL_ONEK = "('100', '101', '102', '108')"  # kasa + çek + banka; 103 verilen çek kontra
+_KREDI_GL_ONEK = "('300', '303', '304', '305', '308', '309', '400', '403')"
 
 
 def _gl_devir_haric(alias: str = "c") -> str:
@@ -641,7 +652,11 @@ def fetch_nakit_akis_gl(client: MikroClient, bas: str, bit: str) -> list[dict[st
         "karsi.prefix AS prefix, SUM(ABS(c.fis_meblag0) * karsi.pay) AS tutar "
         "FROM MUHASEBE_FISLERI c WITH (NOLOCK) "
         "CROSS APPLY ("
-        "SELECT LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) AS prefix, "
+        "SELECT CASE WHEN EXISTS ("
+        "SELECT 1 FROM MUHASEBE_HESAP_PLANI hp WITH (NOLOCK) "
+        "WHERE hp.muh_hesap_kod IN (k.fis_hesap_kod, LEFT(k.fis_hesap_kod, 6)) "
+        "AND UPPER(ISNULL(hp.muh_hesap_isim1, '')) LIKE '%KRED%KART%') "
+        "THEN 'KKT' ELSE LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) END AS prefix, "
         "ABS(k.fis_meblag0) / SUM(ABS(k.fis_meblag0)) OVER () AS pay "
         "FROM MUHASEBE_FISLERI k WITH (NOLOCK) "
         "WHERE k.fis_iptal = 0 AND k.fis_tarih = c.fis_tarih "
@@ -657,6 +672,55 @@ def fetch_nakit_akis_gl(client: MikroClient, bas: str, bit: str) -> list[dict[st
         "GROUP BY CONVERT(char(7), c.fis_tarih, 23), "
         "CASE WHEN c.fis_meblag0 > 0 THEN 0 ELSE 1 END, karsi.prefix "
         "HAVING SUM(ABS(c.fis_meblag0) * karsi.pay) >= 0.005"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
+def fetch_kredi_odemeleri_gl(
+    client: MikroClient, bas: str, bit: str,
+) -> list[dict[str, Any]]:
+    """
+    Seçili dönemde nakit/banka hesabından çıkan banka kredisi ANAPARA ödemeleri.
+
+    Nakit Akış kategorileriyle aynı oransal yevmiye dağıtımını kullanır; bu nedenle detay
+    toplamı ekrandaki «Banka kredisi ödemesi» satırıyla aynı anlamı ve tutarı taşır.
+    Hesap planında «kredi kartı» olarak adlandırılan 300 alt hesapları özellikle dışlanır.
+    """
+    bas, bit = _aralik(bas, bit)
+    sql = (
+        "SELECT CONVERT(char(10), c.fis_tarih, 23) AS tarih, "
+        "karsi.hesap AS hesap, karsi.hesap_ad AS hesap_ad, "
+        "SUM(ABS(c.fis_meblag0) * karsi.pay) AS tutar "
+        "FROM MUHASEBE_FISLERI c WITH (NOLOCK) "
+        "CROSS APPLY ("
+        "SELECT LTRIM(ISNULL(k.fis_hesap_kod, '')) AS hesap, "
+        "COALESCE(NULLIF(hp.muh_hesap_isim1, ''), "
+        "NULLIF(hpp.muh_hesap_isim1, ''), '') AS hesap_ad, "
+        "ABS(k.fis_meblag0) / SUM(ABS(k.fis_meblag0)) OVER () AS pay, "
+        f"CASE WHEN LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) IN {_KREDI_GL_ONEK} "
+        "THEN 1 ELSE 0 END AS banka_kredisi, "
+        "CASE WHEN UPPER(ISNULL(hp.muh_hesap_isim1, '')) LIKE '%KRED%KART%' "
+        "OR UPPER(ISNULL(hpp.muh_hesap_isim1, '')) LIKE '%KRED%KART%' "
+        "THEN 1 ELSE 0 END AS kredi_karti "
+        "FROM MUHASEBE_FISLERI k WITH (NOLOCK) "
+        "LEFT JOIN MUHASEBE_HESAP_PLANI hp WITH (NOLOCK) "
+        "ON hp.muh_hesap_kod = k.fis_hesap_kod "
+        "LEFT JOIN MUHASEBE_HESAP_PLANI hpp WITH (NOLOCK) "
+        "ON hpp.muh_hesap_kod = LEFT(k.fis_hesap_kod, 6) "
+        "WHERE k.fis_iptal = 0 AND k.fis_tarih = c.fis_tarih "
+        "AND k.fis_yevmiye_no = c.fis_yevmiye_no "
+        "AND SIGN(k.fis_meblag0) = -SIGN(c.fis_meblag0) "
+        f"AND LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) NOT IN {_NAKIT_GL_ONEK}"
+        ") karsi "
+        "WHERE c.fis_iptal = 0 AND c.fis_meblag0 < 0 "
+        f"AND LEFT(LTRIM(c.fis_hesap_kod), 3) IN {_NAKIT_GL_ONEK} "
+        f"AND c.fis_tarih >= '{bas}' AND c.fis_tarih < '{_bit_son(bit)}' "
+        "AND c.fis_yevmiye_no IS NOT NULL AND c.fis_yevmiye_no <> 0 "
+        "AND karsi.banka_kredisi = 1 AND karsi.kredi_karti = 0 "
+        f"{_gl_devir_haric('c')}"
+        "GROUP BY CONVERT(char(10), c.fis_tarih, 23), karsi.hesap, karsi.hesap_ad "
+        "HAVING SUM(ABS(c.fis_meblag0) * karsi.pay) >= 0.005 "
+        "ORDER BY CONVERT(char(10), c.fis_tarih, 23), karsi.hesap"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 

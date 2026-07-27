@@ -74,16 +74,24 @@ class TestUiSmoke(unittest.TestCase):
         self.assertIsNotNone(build_tahsilat_alacak_widget(ta, firma="Test A.Ş."))
 
     def test_nakit_akis_view(self) -> None:
+        from domain.kredi import KrediOdeme
         from domain.nakit_akis import build_nakit_akis
         from domain.tahsilat_alacak import build_tahsilat_alacak
         from ui.nakit_akis_view import _runway_banner, build_nakit_akis_widget
         na = build_nakit_akis(
             [{"ay": "2026-01", "tip": 0, "prefix": "120", "tutar": 5000.0},
-             {"ay": "2026-01", "tip": 1, "prefix": "320", "tutar": 2000.0}],
+             {"ay": "2026-01", "tip": 1, "prefix": "320", "tutar": 2000.0},
+             {"ay": "2026-01", "tip": 1, "prefix": "300", "tutar": 1000.0}],
             bakiye_kapanis_rows=[{"cins": 2, "borc_h": 10000.0, "alacak_h": 0.0, "ban_hesap_tip": 0}],
-            donem_delta=3000.0, bas="2026-01-01", bit="2026-06-30",
+            donem_delta=2000.0, bas="2026-01-01", bit="2026-06-30",
         )
-        self.assertIsNotNone(build_nakit_akis_widget(na, firma="Test A.Ş."))
+        self.assertIsNotNone(build_nakit_akis_widget(
+            na,
+            firma="Test A.Ş.",
+            kredi_odemeleri=[
+                KrediOdeme("2026-01-15", "300.01.0001", "Test Bankası Kredisi", 1000.0)
+            ],
+        ))
 
         runway_na = build_nakit_akis(
             [

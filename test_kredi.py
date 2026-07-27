@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import unittest
 
-from domain.kredi import kredi_ozet, kredi_takvimi_ay, taksitleri_derle
+from domain.kredi import (
+    kredi_odemelerini_derle,
+    kredi_ozet,
+    kredi_takvimi_ay,
+    taksitleri_derle,
+)
 
 
 def _row(vade, tutar, anapara=0.0, faiz=0.0, banka="VB"):
@@ -13,6 +18,19 @@ def _row(vade, tutar, anapara=0.0, faiz=0.0, banka="VB"):
 
 
 class TestKredi(unittest.TestCase):
+    def test_donem_odemelerini_derle_ve_sirala(self):
+        odemeler = kredi_odemelerini_derle([
+            {"tarih": "2026-06-15", "hesap": "300.01.0004",
+             "hesap_ad": "Vakıfbank Kredi", "tutar": 104478.90},
+            {"tarih": "2026-04-03", "hesap": "300.01.0001",
+             "hesap_ad": "Akbank Kredi", "tutar": 130869.10},
+            {"tarih": "2026-05-01", "hesap": "300.01.0002", "tutar": 0},
+        ])
+        self.assertEqual(len(odemeler), 2)
+        self.assertEqual(odemeler[0].tarih, "2026-04-03")
+        self.assertEqual(odemeler[0].hesap_ad, "Akbank Kredi")
+        self.assertAlmostEqual(odemeler[1].tutar, 104478.90, places=2)
+
     def test_derle_ve_sirala(self):
         t = taksitleri_derle([
             _row("2026-11-15", 100000, 80000, 20000),

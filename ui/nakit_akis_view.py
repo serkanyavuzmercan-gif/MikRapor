@@ -2,7 +2,7 @@
 Nakit Akış — yerel Qt görünümü.
 
 Banka + kasa fiili hareketlerinden nakit akış tablosu: açılış → girişler → çıkışlar → kapanış,
-kategori kırılımları (tahsilat, satıcı ödemesi, kredi, vergi…), kredi özeti ve yaklaşan taksitler.
+kategori kırılımları (tahsilat, satıcı ödemesi, kredi, vergi…) ve dönem kredi ödeme detayı.
 Kart/satır yardımcıları diğer sekmelerle paylaşılır. (Aylık trend: Trend & Oranlar sekmesinde.)
 """
 
@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.kredi import KrediOzet, kredi_takvimi_ay
+from domain.kredi import KrediOdeme, kredi_takvimi_ay
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis, hesap_kirilim_etiketi
 from domain.runway import nakit_akisi_mutabik, runway_takvim_kur
@@ -95,9 +95,11 @@ def _kategori_panel(
 def _kredi_panel(na: NakitAkis) -> QFrame:
     net = na.kredi_net_gosterim
     t = _agac(2, [(1, 140)])
-    _tsatir(t, [_c("Kredi Kullanımı (brüt)"), _c(tl(na.kredi_kullanim_gosterim), renk=POZ, sag=True)])
-    _tsatir(t, [_c("Kredi Ödemesi (brüt)"), _c(tl(-na.kredi_odeme_gosterim), renk=NEG, sag=True)])
-    _tsatir(t, [_c("Net Kredi (gerçek değişim)", kalin=True),
+    _tsatir(t, [_c("Yeni Kullanım / Borç Artışı (brüt)"),
+                _c(tl(na.kredi_kullanim_gosterim), renk=POZ, sag=True)])
+    _tsatir(t, [_c("Anapara Kapama / Borç Azalışı (brüt)"),
+                _c(tl(-na.kredi_odeme_gosterim), renk=NEG, sag=True)])
+    _tsatir(t, [_c("Net Banka Kredisi Değişimi", kalin=True),
                 _c(tl(net), renk=_renk(net), kalin=True, sag=True)])
     _fit_height(t)
 
@@ -108,12 +110,14 @@ def _kredi_panel(na: NakitAkis) -> QFrame:
     )
     notlar: list[tuple[str, str]] = [(aciklama, FAINT)]
     notlar.append((
-        "Kullanım/ödeme BRÜTtür: rotatif kredi yenilemeleri, faiz ve kur farkı bu iki satırı "
-        "şişirir (aynı limit birçok kez dönebilir). Dönemin gerçek borç değişimi «Net Kredi»dir.",
+        "Kredi borç hesaplarının brüt borç/alacak hareketidir; erken kapama ve refinansman aynı "
+        "limiti dönem içinde birden çok kez hareket ettirebilir. Kredi kartları dahil değildir. "
+        "Net satır, dönemin gerçek banka kredisi borç değişimidir.",
         FAINT))
     if na.kredi_kaynak_gl:
         notlar.append((
-            "Kaynak: muhasebe (300/303); üstteki Toplam Çıkış'a dâhil değildir.", FAINT))
+            "Kaynak: muhasebe kredi hesapları; brüt hareketler nakit giriş/çıkış toplamlarıyla "
+            "birebir aynı olmak zorunda değildir.", FAINT))
     return _card("KREDİ ÖZETİ", _ic(t, notlar))
 
 
@@ -228,36 +232,41 @@ def _vade_goster(vade: str) -> str:
         return vade
 
 
-def _yaklasan_taksit_panel(oz: KrediOzet) -> QFrame:
-    """Ödenmemiş kredi taksitleri — sıradaki vade/banka/tutar + toplam."""
+def _donem_kredi_odeme_panel(odemeler: list[KrediOdeme], na: NakitAkis) -> QFrame:
+    """Seçili dönemde fiilen nakitten çıkan banka kredisi anapara hareketleri."""
     t = _agac(4, [(0, 145), (1, 105), (3, 120)], esnek=2)
-    _tsatir(t, [_c("Vade", renk=MUTED, kalin=True), _c("Banka Kodu", renk=MUTED, kalin=True),
-                _c("Banka", renk=MUTED, kalin=True), _c("Tutar", renk=MUTED, kalin=True, sag=True)])
-    for tk in oz.taksitler:
-        _tsatir(t, [_c(_vade_goster(tk.vade), kalin=True), _c(tk.banka or "—", renk=FAINT),
-                    _c(tk.banka_ad or "—", renk=SUBINK), _c(tl(tk.tutar), renk=NEG, sag=True)])
+    _tsatir(t, [_c("Ödeme Tarihi", renk=MUTED, kalin=True),
+                _c("Hesap Kodu", renk=MUTED, kalin=True),
+                _c("Kredi Hesabı", renk=MUTED, kalin=True),
+                _c("Anapara", renk=MUTED, kalin=True, sag=True)])
+    for odeme in odemeler:
+        _tsatir(t, [_c(_vade_goster(odeme.tarih), kalin=True),
+                    _c(odeme.hesap or "—", renk=FAINT),
+                    _c(odeme.hesap_ad or "—", renk=SUBINK),
+                    _c(tl(odeme.tutar), renk=NEG, sag=True)])
 
-    notlar: list[tuple[str, str]] = []
-    if oz.adet < 1:
-        _tsatir(t, [_c("Ödenmemiş kredi taksiti bulunamadı.", renk=FAINT), _c(""), _c(""), _c("")])
-    else:
-        _tsatir(t, [_c(f"Toplam ({oz.adet} taksit)", kalin=True), _c(""), _c(""),
-                    _c(tl(oz.toplam), renk=NEG, kalin=True, sag=True)])
-        if oz.toplam_faiz > 0.005:
-            notlar.append((
-                f"içinde faiz {tl(oz.toplam_faiz)} · anapara {tl(oz.toplam_anapara)}", FAINT))
-        if oz.gecikmis_tutar > 0.005:
-            notlar.append((
-                f"⚠ {oz.gecikmis_adet} taksit ({tl(oz.gecikmis_tutar)}) vadesi geçmiş, "
-                "hâlâ ödenmemiş görünüyor.", "#8a5a00"))
+    toplam = sum(o.tutar for o in odemeler)
+    _tsatir(t, [_c(f"Toplam ({len(odemeler)} hareket)", kalin=True), _c(""), _c(""),
+                _c(tl(toplam), renk=NEG, kalin=True, sag=True)])
+    notlar: list[tuple[str, str]] = [(
+        "Muhasebe yevmiyesindeki banka/kasa çıkışlarının banka kredisi anapara hesaplarına "
+        "düşen kısmıdır; kredi kartı ödemeleri ve faiz giderleri dahil değildir.",
+        FAINT,
+    )]
+    fark = toplam - na.kredi_odeme
+    if abs(fark) > max(1.0, na.kredi_odeme * 0.001):
+        notlar.append((
+            f"Detay ile üst toplam arasında {tl(fark)} fark var; yevmiye dağılımı kontrol edilmeli.",
+            "#8a5a00",
+        ))
     _fit_height(t)
-    return _card("YAKLAŞAN KREDİ TAKSİTLERİ", _ic(t, notlar))
+    return _card("SEÇİLİ DÖNEM BANKA KREDİSİ ÖDEMELERİ", _ic(t, notlar))
 
 
 def build_nakit_akis_widget(
     na: NakitAkis,
     firma: str = "",
-    kredi: KrediOzet | None = None,
+    kredi_odemeleri: list[KrediOdeme] | None = None,
     *,
     runway_na: NakitAkis | None = None,
     runway_ta: TahsilatAlacak | None = None,
@@ -348,8 +357,8 @@ def build_nakit_akis_widget(
     row2.addWidget(_kredi_panel(na), 1)
     root.addLayout(row2)
 
-    if kredi is not None and kredi.adet > 0:
-        root.addWidget(_yaklasan_taksit_panel(kredi))
+    if kredi_odemeleri:
+        root.addWidget(_donem_kredi_odeme_panel(kredi_odemeleri, na))
 
     root.addStretch(1)
     return content

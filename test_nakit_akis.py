@@ -43,10 +43,10 @@ class TestNakitAkis(unittest.TestCase):
 
     def test_kategoriler(self):
         self.assertAlmostEqual(self.na.giris_kategori["Müşteri tahsilatı"], 150000, places=2)
-        self.assertAlmostEqual(self.na.giris_kategori["Kredi kullanımı"], 40000, places=2)
+        self.assertAlmostEqual(self.na.giris_kategori["Banka kredisi kullanımı"], 40000, places=2)
         self.assertAlmostEqual(self.na.giris_kategori["Diğer girişler"], 5000, places=2)
         self.assertAlmostEqual(self.na.cikis_kategori["Satıcı ödemesi"], 60000, places=2)
-        self.assertAlmostEqual(self.na.cikis_kategori["Kredi ödemesi"], 25000, places=2)
+        self.assertAlmostEqual(self.na.cikis_kategori["Banka kredisi ödemesi"], 25000, places=2)
         self.assertAlmostEqual(self.na.cikis_kategori["Vergi"], 15000, places=2)
         self.assertAlmostEqual(self.na.cikis_kategori["Personel / Maaş"], 8000, places=2)
 
@@ -76,6 +76,19 @@ class TestNakitAkis(unittest.TestCase):
         self.assertAlmostEqual(na.kredi_net, -70000, places=2)
         self.assertAlmostEqual(na.acilis_nakit, 500000, places=2)   # 480k − (−20k)
         self.assertAlmostEqual(na.mutabakat_farki, 0, places=2)      # delta(−20k) = net(50−70)
+
+    def test_kredi_karti_banka_kredisinden_ayrilir(self):
+        rows = [
+            _h("2026-01", 1, "300", 25000),
+            _h("2026-01", 1, "KKT", 70000),
+        ]
+        na = build_nakit_akis(
+            rows, kapanis_nakit=-95000, donem_delta=-95000,
+            bas="2026-01-01", bit="2026-01-31",
+        )
+        self.assertAlmostEqual(na.cikis_kategori["Banka kredisi ödemesi"], 25000, places=2)
+        self.assertAlmostEqual(na.cikis_kategori["Kredi kartı ödemesi"], 70000, places=2)
+        self.assertAlmostEqual(na.kredi_odeme, 25000, places=2)
 
     def test_diger_kirilim(self):
         rows = [_h("2026-01", 0, "600.01", 30000), _h("2026-01", 0, "127.01", 20000)]
@@ -109,6 +122,7 @@ class TestNakitAkis(unittest.TestCase):
         self.assertEqual(_kategori("320.05"), "satici")
         self.assertEqual(_kategori("300.01"), "kredi")
         self.assertEqual(_kategori("KRD"), "kredi")
+        self.assertEqual(_kategori("KKT"), "kredi_karti")
         self.assertEqual(_kategori("360.10"), "vergi")
         self.assertEqual(_kategori("361.01"), "sgk")
         self.assertEqual(_kategori("335.01"), "personel")
@@ -120,7 +134,7 @@ class TestNakitAkis(unittest.TestCase):
     def test_csv(self):
         csv = nakit_akis_csv(self.na)
         self.assertIn("GİRİŞLER", csv)
-        self.assertIn("Kredi Ödemesi", csv)
+        self.assertIn("Anapara Kapama / Borç Azalışı", csv)
         self.assertIn("Net Nakit Akışı", csv)
 
     def test_bos_veri(self):
@@ -148,6 +162,16 @@ class TestKrediGLYedek(unittest.TestCase):
         na.kredi_odeme_gl = 999_999.0  # GL farklı olsa bile banka hareketi öncelikli
         self.assertFalse(na.kredi_kaynak_gl)
         self.assertAlmostEqual(na.kredi_odeme_gosterim, 25000.0, places=2)
+
+    def test_kredi_ozeti_gl_borc_hareketini_onceler(self):
+        na = build_nakit_akis(
+            [_h("2026-01", 1, "300.01", 25000)], bas="2026-01-01", bit="2026-06-30")
+        na.kredi_odeme_gl = 80000.0
+        na.kredi_kullanim_gl = 120000.0
+        na.kredi_ozet_gl = True
+        self.assertTrue(na.kredi_kaynak_gl)
+        self.assertAlmostEqual(na.kredi_odeme_gosterim, 80000.0, places=2)
+        self.assertAlmostEqual(na.kredi_net_gosterim, 40000.0, places=2)
 
     def test_csv_kaynak_satiri(self):
         na = build_nakit_akis([], bas="2026-01-01", bit="2026-06-30")

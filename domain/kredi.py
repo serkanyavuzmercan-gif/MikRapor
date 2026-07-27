@@ -25,6 +25,14 @@ class KrediTaksit:
 
 
 @dataclass
+class KrediOdeme:
+    tarih: str
+    hesap: str
+    hesap_ad: str
+    tutar: float
+
+
+@dataclass
 class KrediOzet:
     taksitler: list[KrediTaksit] = field(default_factory=list)  # vadeye göre sıralı
     toplam: float = 0.0
@@ -55,6 +63,23 @@ def taksitleri_derle(rows: list[dict] | None) -> list[KrediTaksit]:
             banka_ad=str(r.get("banka_ad", r.get("BANKA_AD")) or "").strip(),
         ))
     out.sort(key=lambda t: t.vade)
+    return out
+
+
+def kredi_odemelerini_derle(rows: list[dict] | None) -> list[KrediOdeme]:
+    """Muhasebe kaynaklı dönem kredi ödeme detaylarını temizler ve tarihe göre sıralar."""
+    out: list[KrediOdeme] = []
+    for r in (rows or []):
+        tutar = _f(r.get("tutar", r.get("TUTAR")))
+        if tutar < 0.005:
+            continue
+        out.append(KrediOdeme(
+            tarih=str(r.get("tarih", r.get("TARIH")) or "")[:10],
+            hesap=str(r.get("hesap", r.get("HESAP")) or "").strip(),
+            hesap_ad=str(r.get("hesap_ad", r.get("HESAP_AD")) or "").strip(),
+            tutar=tutar,
+        ))
+    out.sort(key=lambda o: (o.tarih, o.hesap))
     return out
 
 
