@@ -6,9 +6,10 @@ açık onay kutusu vardır; ikisi birlikte sağlanmadan «Yorumla» çalışmaz 
 çağrısı yapılmaz. Gönderilen veri, diğer sekmelerin CSV üreticilerinden kurulur —
 ekranda görülen rakamla modele giden rakam aynı kaynaktan gelsin diye.
 
-Tarih aralığı birden çok yıl kapsıyorsa (Mikro'nun tek veritabanında birkaç yıl
-durabiliyor) EN YENİ yıl ham detayıyla, önceki yıllar birkaç satırlık kapanış
-özetiyle gider. Sınır AZAMI_YIL; aşılırsa kullanıcıya sorulup en yeni yıllara kırpılır.
+Seçilen aralığın EN YENİ yılı «odak» olur ve ham detayı o taşır. Yıllar arası mukayese
+ise seçimden BAĞIMSIZ kurulur: tek yıl seçilse bile geriye doğru AZAMI_YIL'e tamamlanır,
+çünkü kıyas her koşuda istenen bir şey. Veritabanında olmayan yıllar sessizce düşer.
+Aralık AZAMI_YIL'i aşarsa kullanıcıya sorulup en yeni yıllara kırpılır.
 """
 
 from __future__ import annotations
@@ -121,8 +122,8 @@ class AiYorumTab(RaporTab):
     BASLIK = "Yapay Zekâ Yorumu"
     ACIKLAMA = (
         "Seçili dönemin <b>tüm rapor verisini</b> girdiğiniz API anahtarına ait yapay zekâ<br>"
-        f"modeline gönderir ve sade Türkçe bir yönetim yorumu üretir. {AZAMI_YIL} yıla kadar<br>"
-        "aralık seçerseniz yıllar arası gidişatı da yorumlar.<br>"
+        "modeline gönderir ve sade Türkçe bir yönetim yorumu üretir. Son "
+        f"{AZAMI_YIL} yılın mukayese tablosu, tek yıl seçseniz de eklenir.<br>"
         "<span style='color:#9aa0a8;'>MikRapor'un dışarıya veri gönderdiği tek yer burasıdır; "
         "onay kutusu işaretlenmeden hiçbir veri çıkmaz.</span>")
     GETIR_ETIKET = "Yorumla ve Gönder"
@@ -315,6 +316,13 @@ class AiYorumTab(RaporTab):
         ay_sayisi = 12 if tamamlandi else y_son.month
         # Geçmiş bir yıl seçilmişse veri bugüne göre eskidir — model bugüne çekilmeli.
         gecikme_ay = ay_farki(y_bit, bugun.isoformat())
+        # MUKAYESE SEÇİMDEN BAĞIMSIZ KURULUR: kullanıcı tek yıl seçtiğinde tablo hiç
+        # oluşmuyordu ve model "geçmiş yıl verisi yok, trend analiz edilemiyor" diyordu
+        # (canlıda görüldü). Yıllar arası kıyas her koşuda istenen bir şey; aralık dar
+        # kalırsa geriye doğru AZAMI_YIL'e tamamlarız. Veritabanında olmayan yıllar
+        # sessizce düşer (bkz. YilKapanis.dolu), sıfır satırı tabloya girmez.
+        if len(yillar) < AZAMI_YIL:
+            yillar = list(range(yil - AZAMI_YIL + 1, yil + 1))
         gecmis = [y for y in yillar if y != yil]
         gd_ayarlar = load_gercek_durum_ayarlar()
 
@@ -342,25 +350,26 @@ class AiYorumTab(RaporTab):
                                      bas=y_bas, bit=y_bit)
             ekle("GELİR TABLOSU", lambda: gelir_tablosu_csv(gt))
 
-            # Geçmiş yıllar: ham kırılım DEĞİL, yalnız kapanış satırları. İki sorgu/yıl.
-            kapanislar: list[YilKapanis] = []
-            if gecmis:
-                kapanislar.append(_kapanis_kur(
-                    yil, tam=tamamlandi, b=bilanco, gt=gt,
-                    doviz=_doviz_dene(client, y_bas, y_bit)))
-                for sira, g in enumerate(gecmis, 1):
-                    bildir(f"{g} yılı özeti çekiliyor… ({sira}/{len(gecmis)})")
-                    g_bas, g_bit = f"{g}-01-01", f"{g}-12-31"
-                    try:
-                        kapanislar.append(_kapanis_kur(
-                            g, tam=True,
-                            b=build_bilanco(fetch_mizan(client, g_bit), asof=g_bit),
-                            gt=build_gelir_tablosu(
-                                fetch_gelir_tablosu(client, g_bas, g_bit),
-                                bas=g_bas, bit=g_bit),
-                            doviz=_doviz_dene(client, g_bas, g_bit)))
-                    except (MikroAPIError, ValueError, KeyError, TypeError):
-                        continue   # o yıl veritabanında yoksa sessizce atla
+            # Geçmiş yıllar: ham kırılım DEĞİL, yalnız kapanış satırları. Üç sorgu/yıl.
+            kapanislar: list[YilKapanis] = [_kapanis_kur(
+                yil, tam=tamamlandi, b=bilanco, gt=gt,
+                doviz=_doviz_dene(client, y_bas, y_bit))]
+            for sira, g in enumerate(gecmis, 1):
+                bildir(f"{g} yılı mukayese için çekiliyor… ({sira}/{len(gecmis)})")
+                g_bas, g_bit = f"{g}-01-01", f"{g}-12-31"
+                try:
+                    gecmis_yil = _kapanis_kur(
+                        g, tam=True,
+                        b=build_bilanco(fetch_mizan(client, g_bit), asof=g_bit),
+                        gt=build_gelir_tablosu(
+                            fetch_gelir_tablosu(client, g_bas, g_bit),
+                            bas=g_bas, bit=g_bit),
+                        doviz=_doviz_dene(client, g_bas, g_bit))
+                except (MikroAPIError, ValueError, KeyError, TypeError):
+                    continue   # o yıl veritabanında yoksa sessizce atla
+                if gecmis_yil.dolu:   # boş yıl sıfır satırı olarak tabloya girmesin
+                    kapanislar.append(gecmis_yil)
+            if len(kapanislar) > 1:
                 ekle("YILLAR ARASI KARŞILAŞTIRMA", lambda: yillar_arasi_csv(kapanislar))
 
             bildir("Satış, alış ve nakit hareketleri çekiliyor…")

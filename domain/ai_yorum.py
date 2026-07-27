@@ -150,6 +150,17 @@ class YilKapanis:
     kur_son: float = 0.0           # dönem sonu ima edilen TL/USD; 0 = güvenilir kur yok
 
     @property
+    def dolu(self) -> bool:
+        """
+        Bu yıl veritabanında gerçekten var mı?
+
+        Mikro her çalışma yılını ayrı veritabanında tutabilir; olmayan yılın sorgusu
+        hata değil BOŞ döner. Sıfır satırı tabloya girerse model "satış sıfırdan 41M'ye
+        çıkmış" diye okur — o yüzden böyle yıllar hiç eklenmez.
+        """
+        return abs(self.net_satis) > 0.005 or abs(self.aktif_toplam) > 0.005
+
+    @property
     def doviz_var(self) -> bool:
         return self.kur_son > 0 and abs(self.satis_usd) > 0.005
 

@@ -559,6 +559,13 @@ class TestMukayeseTablosu(unittest.TestCase):
     def test_tek_yilda_tablo_yok(self) -> None:
         self.assertEqual(yillar_tablosu(self._yillar()[:1]), ([], []))
 
+    def test_veritabaninda_olmayan_yil_dolu_degil(self) -> None:
+        """Boş yılın sorgusu hata değil sıfır döner; tabloya girerse trend uydurulur."""
+        self.assertFalse(YilKapanis(yil=2019).dolu)
+        self.assertFalse(YilKapanis(yil=2019, stok=140_000.0).dolu)   # yalnız devir kalıntısı
+        self.assertTrue(YilKapanis(yil=2025, net_satis=1.0).dolu)
+        self.assertTrue(YilKapanis(yil=2025, aktif_toplam=1.0).dolu)
+
     def test_csv_mukayeseyi_icerir(self) -> None:
         """Excel'de kendi grafiğini çizebilsin diye CSV'ye de girer."""
         csv = ai_yorum_csv(AiYorum(yil=2025, bas="2025-01-01", bit="2025-12-31",
