@@ -148,8 +148,19 @@ def kaynak_rozeti(kaynak: str) -> QLabel | None:
     return lbl
 
 
+def para_birimi_rozeti() -> QLabel:
+    """Rapor sekmelerindeki parasal değerlerin ortak birimini belirtir."""
+    lbl = QLabel("Tutarlar: TL")
+    lbl.setStyleSheet(
+        "QLabel { color: #475569; background: #f8fafc; border: 1px solid #dbe3ed; "
+        "border-radius: 9px; padding: 2px 9px; font-size: 11px; font-weight: 700; }"
+    )
+    lbl.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+    return lbl
+
+
 def baslik_ile_gelecek_uyari(head: QWidget, bitis: str, kaynak: str = "") -> QWidget:
-    """Başlık + (varsa) solda kaynak rozeti + (gerekirse) sağda gelecek-dönem uyarısı."""
+    """Başlık, kaynak ve para birimi rozetleri; gerekirse gelecek-dönem uyarısı."""
     row = QWidget()
     row.setStyleSheet("background: transparent;")
     lay = QHBoxLayout(row)
@@ -158,6 +169,7 @@ def baslik_ile_gelecek_uyari(head: QWidget, bitis: str, kaynak: str = "") -> QWi
     rozet = kaynak_rozeti(kaynak)
     if rozet is not None:
         lay.addWidget(rozet, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+    lay.addWidget(para_birimi_rozeti(), 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
     lay.addWidget(head, 1)
     if donem_gelecek_mi(bitis):
         lay.addWidget(
