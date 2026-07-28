@@ -354,5 +354,59 @@ class TestStokEvraktipTeshis(unittest.TestCase):
         self.assertIn("TOP 100", c.sorgular[0])
 
 
+class TestKrediKartiSorgusu(unittest.TestCase):
+    """
+    Açık kart borcu sorgusu — dev fiş tablosunu taramamalı.
+
+    Eski hâli hesap ADI süzgecini MUHASEBE_FISLERI'ne iki LEFT JOIN ile uyguluyordu;
+    biri `muh_hesap_kod = LEFT(fis_hesap_kod, 6)` olduğu için indeks kullanılamıyor,
+    sorgu canlıda 3,5 dakikada bile bitmiyordu. Artık önce küçük hesap planından
+    kodlar bulunup fişlere kod ÖNEKİ ile gidiliyor.
+    """
+
+    def _yakala(self, plan_satirlari):
+        class C(_SqlYakala):
+            def sql_veri_oku(self, sql, **kw):
+                self.sorgular.append(sql)
+                if "MUHASEBE_HESAP_PLANI" in sql:
+                    return {"Data": plan_satirlari}
+                return {"Data": [{"hesap": "300.01.001", "borc": 1000.0}]}
+        return C()
+
+    def test_hesap_plani_once_sorgulanir(self) -> None:
+        from infra.mikro_fetch import fetch_kredi_karti_borclari
+        c = self._yakala([{"kod": "300.01", "ad": "KREDİ KARTLARI"}])
+        fetch_kredi_karti_borclari(c, "2026-06-30")
+        self.assertIn("MUHASEBE_HESAP_PLANI", c.sorgular[0])
+        self.assertNotIn("JOIN", c.sorgular[1])          # fişlere join yok
+        self.assertIn("fis_hesap_kod LIKE '300.01%'", c.sorgular[1])
+
+    def test_kart_hesabi_yoksa_fislere_hic_gidilmez(self) -> None:
+        """En pahalı sorgu hiç kurulmamalı — kurulumların çoğunda kart hesabı yok."""
+        from infra.mikro_fetch import fetch_kredi_karti_borclari
+        c = self._yakala([])
+        self.assertEqual(fetch_kredi_karti_borclari(c, "2026-06-30"), [])
+        self.assertEqual(len(c.sorgular), 1)
+
+    def test_300_disi_hesap_alinmaz(self) -> None:
+        from infra.mikro_fetch import fetch_kredi_karti_borclari
+        c = self._yakala([{"kod": "320.55", "ad": "KREDİ KARTI SATICI"}])
+        self.assertEqual(fetch_kredi_karti_borclari(c, "2026-06-30"), [])
+        self.assertEqual(len(c.sorgular), 1)
+
+    def test_alt_hesap_ana_hesabin_adini_alir(self) -> None:
+        from infra.mikro_fetch import fetch_kredi_karti_borclari
+        c = self._yakala([{"kod": "300.01", "ad": "KREDİ KARTLARI"}])
+        rows = fetch_kredi_karti_borclari(c, "2026-06-30")
+        self.assertEqual(rows[0]["hesap_ad"], "KREDİ KARTLARI")
+
+    def test_like_jokerli_kod_elenir(self) -> None:
+        """Kodda % olsa önek süzgeci tüm tabloyu çekerdi."""
+        from infra.mikro_fetch import kredi_karti_hesaplari
+        c = self._yakala([{"kod": "300.%1", "ad": "KREDİ KARTI"},
+                          {"kod": "300.02", "ad": "KREDİ KARTI"}])
+        self.assertEqual([k for k, _ in kredi_karti_hesaplari(c)], ["300.02"])
+
+
 if __name__ == "__main__":
     unittest.main()

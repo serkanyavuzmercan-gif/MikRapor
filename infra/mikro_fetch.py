@@ -338,6 +338,43 @@ def fetch_kredi_taksitleri(
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+_KART_ADI_DESENI = "%KRED%KART%"
+_AZAMI_KART_HESABI = 200          # daha fazlası OR listesini sorgu için şişirir
+_LIKE_JOKERI = ("%", "_", "[")
+
+
+def kredi_karti_hesaplari(client: MikroClient) -> list[tuple[str, str]]:
+    """
+    Hesap planından kredi kartı hesaplarını çıkarır — [(kod, ad), …].
+
+    Neden ayrı sorgu: hesap ADI süzgecini dev MUHASEBE_FISLERI'ne JOIN'leyerek uygulamak
+    — üstelik `hp.muh_hesap_kod = LEFT(f.fis_hesap_kod, 6)` gibi indeks kullanılamayan bir
+    eşleşmeyle — sorguyu dakikalarca sürdürüyordu (canlıda 3,5 dk sonra hâlâ bitmemişti).
+    Hesap planı küçük bir tablo; önce burada eşleştirip fişlere yalnız KOD ÖNEKİ süzgeciyle
+    gitmek taramayı indeks aramasına çevirir. Kart hesabı yoksa fişlere hiç dokunulmaz.
+    """
+    sql = (
+        "SELECT muh_hesap_kod AS kod, muh_hesap_isim1 AS ad "
+        "FROM MUHASEBE_HESAP_PLANI WITH (NOLOCK) "
+        f"WHERE UPPER(ISNULL(muh_hesap_isim1, '')) LIKE '{_KART_ADI_DESENI}'"
+    )
+    out: list[tuple[str, str]] = []
+    for r in parse_sql_rows(client.sql_veri_oku(sql, timeout=30, max_attempts=2)):
+        kod = str(get_row_value(r, "kod", "KOD") or "").strip()
+        # 300 = kısa vadeli banka kredileri; kart hesapları bu grupta tutulur.
+        # LIKE jokeri içeren kod önek süzgecini bozar (pratikte olmaz, yine de eleriz).
+        if kod.startswith("300") and not any(j in kod for j in _LIKE_JOKERI):
+            out.append((kod, str(get_row_value(r, "ad", "AD") or "").strip()))
+    out.sort(key=lambda x: x[0])
+    return out[:_AZAMI_KART_HESABI]
+
+
+def _hesap_adi_bul(hesap: str, hesaplar: list[tuple[str, str]]) -> str:
+    """Fiş hesabına en uzun eşleşen plan önekinin adını verir (alt hesap → ana hesap adı)."""
+    eslesen = [ad for kod, ad in hesaplar if hesap.startswith(kod)]
+    return max(eslesen, key=len) if eslesen else ""
+
+
 def fetch_kredi_karti_borclari(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     """Tarih itibarıyla açık kredi kartı borçları (300 alt hesapları, pozitif borç tutarı).
 
@@ -345,24 +382,23 @@ def fetch_kredi_karti_borclari(client: MikroClient, asof: str) -> list[dict[str,
     muhasebeleşmiş açık borç okunur. Ödeme takvimi projeksiyon katmanında senaryo oranıyla kurulur.
     """
     asof = iso_tarih(asof, alan="asof")
+    hesaplar = kredi_karti_hesaplari(client)
+    if not hesaplar:
+        return []
+    onek = " OR ".join(f"fis_hesap_kod LIKE {sql_string(k + '%')}" for k, _ in hesaplar)
     sql = (
-        "SELECT f.fis_hesap_kod AS hesap, "
-        "COALESCE(NULLIF(hp.muh_hesap_isim1, ''), NULLIF(hpp.muh_hesap_isim1, ''), '') AS hesap_ad, "
-        "-SUM(f.fis_meblag0) AS borc "
-        "FROM MUHASEBE_FISLERI f WITH (NOLOCK) "
-        "LEFT JOIN MUHASEBE_HESAP_PLANI hp WITH (NOLOCK) "
-        "ON hp.muh_hesap_kod = f.fis_hesap_kod "
-        "LEFT JOIN MUHASEBE_HESAP_PLANI hpp WITH (NOLOCK) "
-        "ON hpp.muh_hesap_kod = LEFT(f.fis_hesap_kod, 6) "
-        f"WHERE f.fis_iptal = 0 AND f.fis_tarih < '{_bit_son(asof)}' "
-        "AND LEFT(LTRIM(f.fis_hesap_kod), 3) = '300' "
-        "AND (UPPER(ISNULL(hp.muh_hesap_isim1, '')) LIKE '%KRED%KART%' "
-        "OR UPPER(ISNULL(hpp.muh_hesap_isim1, '')) LIKE '%KRED%KART%') "
-        "GROUP BY f.fis_hesap_kod, hp.muh_hesap_isim1, hpp.muh_hesap_isim1 "
-        "HAVING SUM(f.fis_meblag0) < -0.005 "
-        "ORDER BY -SUM(f.fis_meblag0) DESC"
+        "SELECT fis_hesap_kod AS hesap, -SUM(fis_meblag0) AS borc "
+        "FROM MUHASEBE_FISLERI WITH (NOLOCK) "
+        f"WHERE fis_iptal = 0 AND fis_tarih < '{_bit_son(asof)}' AND ({onek}) "
+        "GROUP BY fis_hesap_kod "
+        "HAVING SUM(fis_meblag0) < -0.005 "
+        "ORDER BY -SUM(fis_meblag0) DESC"
     )
-    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+    rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+    for r in rows:
+        r["hesap_ad"] = _hesap_adi_bul(
+            str(get_row_value(r, "hesap", "HESAP") or "").strip(), hesaplar)
+    return rows
 
 
 def fetch_kredi_gl(client: MikroClient, bas: str, bit: str) -> dict[str, float]:
