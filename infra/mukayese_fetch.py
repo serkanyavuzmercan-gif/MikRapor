@@ -30,6 +30,7 @@ from __future__ import annotations
 from calendar import monthrange
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import date
 
 from domain.ai_yorum import YilKapanis
 from domain.gelir_tablosu import GelirTablosu, build_gelir_tablosu
@@ -54,6 +55,27 @@ _OKUMA_HATALARI = (MikroAPIError, ValueError, KeyError, TypeError)
 
 # 300 Banka Kredileri (KV), 303 UV kredilerin anapara taksitleri, 400 Banka Kredileri (UV).
 _KREDI_ANA = {"300", "303", "400"}
+
+
+def yil_donemleri(bas: str, bit: str) -> list[tuple[int, str, str]]:
+    """Tarih aralığını, her biri tek bir takvim yılında kalan parçalara ayırır.
+
+    Mikro'da geçmiş yıl çoğu kurulumda ayrı firma/veritabanındadır. Bu yüzden
+    ``2025-07-28..2026-07-28`` gibi bir aralık tek istemciyle okunmamalıdır:
+    2025 parçası 2025 istemcisiyle, 2026 parçası 2026 istemcisiyle çekilir.
+    """
+    ilk, son = date.fromisoformat(bas), date.fromisoformat(bit)
+    if ilk > son:
+        raise ValueError("Başlangıç tarihi bitiş tarihinden sonra olamaz.")
+
+    out: list[tuple[int, str, str]] = []
+    yil = ilk.year
+    while yil <= son.year:
+        parca_bas = ilk if yil == ilk.year else date(yil, 1, 1)
+        parca_son = son if yil == son.year else date(yil, 12, 31)
+        out.append((yil, parca_bas.isoformat(), parca_son.isoformat()))
+        yil += 1
+    return out
 
 
 def _banka_kredisi(b: Bilanco) -> float:

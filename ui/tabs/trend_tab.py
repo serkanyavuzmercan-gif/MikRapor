@@ -13,14 +13,14 @@ from domain.mizan_bilanco import build_bilanco, tl
 from domain.tahmin import ogrenme_penceresi_bas
 from domain.trend import TrendRapor, build_trend, trend_csv
 from infra.config import MikroConfig, load_gercek_durum_ayarlar
-from infra.mikro_api import MikroAPIError, MikroClient
+from infra.mikro_api import MikroAPIError
 from infra.mikro_fetch import (
     fetch_mizan,
     fetch_nakit_ozet_ve_aylik,
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
-from infra.mukayese_fetch import yillari_cek
+from infra.mukayese_fetch import yil_donemleri, yil_client, yillari_cek
 from ui.bilesenler import varsayilan_kayit_yolu
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.trend_pdf import export_trend_pdf
@@ -51,18 +51,35 @@ class TrendTab(RaporTab):
     def _ilk_mesaj(self) -> str:
         return "Hazır"
 
+    @staticmethod
+    def _donem_hareketlerini_cek(
+        cfg: MikroConfig, bas: str, bit: str, bildir,
+    ) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+        """Seçili dönemin hareketlerini yılın doğru veritabanından birleştirir."""
+        stok_rows: list[dict] = []
+        stok_aylik: list[dict] = []
+        nakit_rows: list[dict] = []
+        nakit_aylik: list[dict] = []
+        parcalar = yil_donemleri(bas, bit)
+        for sira, (yil, parca_bas, parca_bit) in enumerate(parcalar, 1):
+            bildir(f"{yil} veritabanından hareketler çekiliyor… ({sira}/{len(parcalar)})")
+            yil_istemcisi = yil_client(cfg, yil)
+            stok_rows.extend(fetch_stok_ozet(yil_istemcisi, parca_bas, parca_bit))
+            stok_aylik.extend(fetch_stok_aylik(yil_istemcisi, parca_bas, parca_bit))
+            n_rows, n_aylik = fetch_nakit_ozet_ve_aylik(yil_istemcisi, parca_bas, parca_bit)
+            nakit_rows.extend(n_rows)
+            nakit_aylik.extend(n_aylik)
+        return stok_rows, stok_aylik, nakit_rows, nakit_aylik
+
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
         ayarlar = load_gercek_durum_ayarlar()
 
         def is_fn(bildir) -> dict[str, Any]:
-            client = MikroClient(cfg)
-            bildir("Stok hareketleri çekiliyor…")
-            stok_rows = fetch_stok_ozet(client, bas, bit)
-            stok_aylik = fetch_stok_aylik(client, bas, bit)
-            bildir("Banka nakit hareketleri çekiliyor…")
-            nakit_rows, nakit_aylik = fetch_nakit_ozet_ve_aylik(client, bas, bit)
+            bit_client = yil_client(cfg, int(bit[:4]))
+            stok_rows, stok_aylik, nakit_rows, nakit_aylik = self._donem_hareketlerini_cek(
+                cfg, bas, bit, bildir)
             bildir("GL mizan çekiliyor…")
-            mizan_rows = fetch_mizan(client, bit)
+            mizan_rows = fetch_mizan(bit_client, bit)
             bildir("Trend kuruluyor…")
             gd = build_gercek_durum(
                 stok_rows=stok_rows, stok_aylik=stok_aylik,
@@ -76,10 +93,10 @@ class TrendTab(RaporTab):
             if g_bas < bas:
                 try:
                     bildir("Uzun dönem trendi çekiliyor (son 12 ay)…")
-                    g_nakit_rows, g_nakit_aylik = fetch_nakit_ozet_ve_aylik(client, g_bas, bit)
+                    g_stok_rows, g_stok_aylik, g_nakit_rows, g_nakit_aylik = self._donem_hareketlerini_cek(
+                        cfg, g_bas, bit, bildir)
                     gecmis = build_gercek_durum(
-                        stok_rows=fetch_stok_ozet(client, g_bas, bit),
-                        stok_aylik=fetch_stok_aylik(client, g_bas, bit),
+                        stok_rows=g_stok_rows, stok_aylik=g_stok_aylik,
                         nakit_rows=g_nakit_rows, nakit_aylik=g_nakit_aylik,
                         bas=g_bas, bit=bit, ayarlar=ayarlar,
                     ).trend
@@ -98,10 +115,10 @@ class TrendTab(RaporTab):
             if len(yillar) > 1:
                 odak = yillar[-1]
                 kapanislar = yillari_cek(
-                    cfg, yillar, odak_client=client, odak_bit=bit,
+                    cfg, yillar, odak_client=bit_client, odak_bit=bit,
                     odak_tam=bit >= f"{odak}-12-31", bildir=bildir)
 
-            return {"tr": tr, "firma": firma_getir(cfg, client),
+            return {"tr": tr, "firma": firma_getir(cfg, bit_client),
                     "kapanislar": kapanislar}
 
         return is_fn
