@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from domain.gercek_durum import AyTrend
+from domain.ai_yorum import YilKapanis, yillar_arasi_csv
 from domain.mizan_bilanco import build_bilanco
 from domain.trend import build_finansal_oranlar, build_trend, trend_csv
 from infra.mukayese_fetch import yil_donemleri
@@ -26,6 +27,14 @@ class TestTrend(unittest.TestCase):
     def test_ters_tarih_hata_verir(self) -> None:
         with self.assertRaises(ValueError):
             yil_donemleri("2026-01-01", "2025-12-31")
+
+    def test_kismi_yil_csv_notu_ayni_ytd_kiyasini_aciklar(self) -> None:
+        csv = yillar_arasi_csv([
+            YilKapanis(yil=2025, bit="2025-07-28", tam=False, net_satis=100),
+            YilKapanis(yil=2026, bit="2026-07-28", tam=False, net_satis=120),
+        ])
+        self.assertIn("2025 (01.01–28.07)", csv)
+        self.assertIn("aynı tarih penceresiyle hazırlanmış diğer YTD", csv)
 
     def test_cok_yilli_hareketler_her_yilin_istemcisinden_cekilir(self) -> None:
         parcalar = [(2025, "2025-07-28", "2025-12-31"), (2026, "2026-01-01", "2026-07-28")]

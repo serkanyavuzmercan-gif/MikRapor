@@ -592,7 +592,8 @@ def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
     for k in sirali:
         if not k.tam:
             out.append(f"NOT;{k.yil} yılı TAMAMLANMADI — rakamlar yılın tamamını "
-                       "kapsamaz, önceki yıllarla doğrudan kıyaslanamaz.")
+                       "kapsamaz. Yalnız aynı tarih penceresiyle hazırlanmış diğer YTD "
+                       "sütunlarıyla kıyaslanmalıdır.")
         if k.maliyet_eksik:
             out.append(f"NOT;{k.yil} yılında satışların maliyeti (62) girilmemiş — "
                        "brüt ve net kâr olduğundan yüksek görünüyor.")
