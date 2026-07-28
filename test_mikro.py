@@ -408,6 +408,30 @@ class TestStokMaliyetTeshis(unittest.TestCase):
         self.assertIn("< '2026-07-29'", sql)          # bitiş günü tam dahil
 
 
+class TestFaturalasmaTeshis(unittest.TestCase):
+    """
+    İrsaliye + fatura toplanınca satış iki kez mi sayılıyor?
+
+    Kullanıcının iş akışı: önce irsaliye, sonra carinin bekleyen irsaliyeleri toplu
+    faturalaşıyor; irsaliye satırı silinmiyor. Faturalaştırma AYRI stok hareketi
+    yaratıyorsa toplam mükerrer, mevcut satırı damgalayıp geçiyorsa toplam doğru.
+    Kararı satır sayısı tahminiyle değil `sth_fat_uid` damgasıyla veriyoruz.
+    """
+
+    def test_damga_dolu_bos_diye_ayrilir(self) -> None:
+        from infra.mikro_fetch import fetch_stok_faturalasma
+        c = _SqlYakala()
+        fetch_stok_faturalasma(c, "2026-01-01", "2026-07-28")
+        sql = c.sorgular[0]
+        self.assertIn("sth_fat_uid", sql)
+        self.assertIn("AS faturalandi", sql)
+        self.assertIn("00000000-0000-0000-0000-000000000000", sql)   # boş GUID = damgasız
+        self.assertIn("sth_fat_uid IS NULL", sql)                    # NULL da damgasız
+        grup = sql.split("GROUP BY")[1]
+        self.assertIn("sth_evraktip", grup)
+        self.assertIn("sth_fat_uid", grup)                           # damga kırılımda
+
+
 class TestKrediKartiSorgusu(unittest.TestCase):
     """
     Açık kart borcu sorgusu — dev fiş tablosunu taramamalı.

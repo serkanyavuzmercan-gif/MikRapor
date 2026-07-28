@@ -15,6 +15,10 @@ Stok hareketinde maliyet kolonu var mı (kapanış beklemeden brüt kâr çıkar
 Kolon VAR; peki dolu mu ve birim mi satır toplamı mı? (asıl karar bu)
 
     .\\.venv\\Scripts\\python.exe stok_diag_cli.py 2026-01-01 2026-07-28 --maliyet
+
+İrsaliye + fatura toplanınca satış iki kez mi sayılıyor?
+
+    .\\.venv\\Scripts\\python.exe stok_diag_cli.py 2026-01-01 2026-07-28 --fatura
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ from infra.config import MikroConfig, load_config, load_gercek_durum_ayarlar
 from infra.mikro_fetch import (
     fetch_stok_evraktip_tepe,
     fetch_stok_evraktip_yillik,
+    fetch_stok_faturalasma,
     fetch_stok_maliyet_teshis,
     fetch_stok_ozet,
     fetch_tablo_kolonlari,
@@ -50,6 +55,9 @@ _MAKUL_SATIR_TUTARI = 2_000_000.0
 SATIS_TIP = 1                      # sth_tip: 0 = giriş/alış, 1 = çıkış/satış
 _SATIS_EVRAKTIP = {1, 4}           # satış irsaliyesi, satış faturası (sarf fişi değil)
 _MALIYET_KOLON = ("ana", "alternatif", "orjinal")
+# Faturalanmış irsaliye kadar fatura satırı da varsa kopyalama modeli demektir.
+# Damgalama modelinde fatura satırı bunun çok altında kalır (canlıda 262 / 17.914).
+_KOPYA_ESIGI = 0.5
 # Maliyet güncellemesi çalıştırılmamışsa kolon 0'dır; 0'ı maliyet sanmak brüt marjı
 # %100 gösterir. Satırların bu kadarı dolu değilse kolon kullanılmaz.
 _ASGARI_DOLULUK = 90.0
@@ -243,6 +251,63 @@ def _maliyet_teshisi(cfg: MikroConfig, bas: str, bit: str) -> None:
     print("    Boşluk her aya dağılmışsa maliyet kolonu bu kurulumda güvenilir değildir.")
 
 
+def _faturalasma_teshisi(cfg: MikroConfig, bas: str, bit: str) -> None:
+    """
+    İrsaliye + fatura toplanınca satış iki kez sayılıyor mu?
+
+    İş akışı: önce irsaliye, sonra carinin bekleyen irsaliyeleri toplu faturalaşıyor.
+    İrsaliye satırı silinmiyor. Faturalaştırma AYRI bir stok hareketi yaratıyorsa
+    toplam mükerrer; mevcut satırı damgalayıp geçiyorsa toplam doğru. `sth_fat_uid`
+    o damga — sayı tahminiyle değil damgayla karar veriyoruz.
+    """
+    rows = donem_satirlari(cfg, bas, bit, fetch_stok_faturalasma)
+    satis = [r for r in rows if int(_f(r.get("sth_tip", r.get("STH_TIP")))) == SATIS_TIP]
+    if not satis:
+        print("\nFATURALAŞMA TEŞHİSİ: dönemde satış hareketi yok.")
+        return
+
+    def al(r: dict, ad: str) -> float:
+        return _f(r.get(ad, r.get(ad.upper())))
+
+    print(f"\nFATURALAŞMA TEŞHİSİ — çıkış hareketleri ({bas} → {bit})\n")
+    print(f"  {'evraktip':>8} {'damga':>12}  {'satır':>8} {'tutar':>20}  açıklama")
+    kova: dict[tuple[int, int], list[float]] = {}
+    for r in satis:
+        anahtar = (int(al(r, "sth_evraktip")), int(al(r, "faturalandi")))
+        t = kova.setdefault(anahtar, [0.0, 0.0])
+        t[0] += al(r, "adet")
+        t[1] += al(r, "tutar")
+    for (ev, fat), (adet, tutar) in sorted(kova.items()):
+        damga = "faturalanmış" if fat else "—"
+        print(f"  {ev:>8} {damga:>12}  {int(adet):>8} {tl(tutar):>20}  "
+              f"{_EVRAK_AD.get((SATIS_TIP, ev), '?')}")
+
+    irs_fat = kova.get((1, 1), [0.0, 0.0])       # faturalanmış irsaliye
+    irs_bek = kova.get((1, 0), [0.0, 0.0])       # bekleyen irsaliye
+    fatura = [sum(v[0] for (ev, _), v in kova.items() if ev == 4),
+              sum(v[1] for (ev, _), v in kova.items() if ev == 4)]
+    irs_top = irs_fat[1] + irs_bek[1]
+
+    print(f"\n  İrsaliye toplam   {tl(irs_top):>20}  "
+          f"({tl(irs_fat[1])} faturalanmış + {tl(irs_bek[1])} bekleyen)")
+    print(f"  Fatura toplam     {tl(fatura[1]):>20}")
+
+    print()
+    if irs_fat[0] > 0 and fatura[0] < irs_fat[0] * _KOPYA_ESIGI:
+        print("  → DAMGALAMA MODELİ: faturalaşan irsaliyeler yerinde duruyor ve ayrıca")
+        print("    fatura satırı YARATILMIYOR. İrsaliye + fatura toplamı MÜKERRER DEĞİL;")
+        print("    «Satış: İrsaliye+Fatura» ayarı doğru. Faturalanmamış irsaliyeler de")
+        print("    fiilen depodan çıkmış maldır, satışa dahil edilmeleri yerinde.")
+    elif fatura[0] >= irs_fat[0] * _KOPYA_ESIGI and irs_fat[0] > 0:
+        print("  → KOPYALAMA MODELİ ŞÜPHESİ: faturalanmış irsaliye kadar fatura satırı da")
+        print("    var. İkisini toplamak satışı ~2 kat şişirir. «Satış: Yalnız Fatura»")
+        print("    ayarına geçin (Nakit & Kârlılık → Hesaplama Kuralları).")
+    else:
+        print("  → Faturalanmış irsaliye satırı yok. Ya bu dönemde hiç faturalaştırma")
+        print("    yapılmamış ya da bu kurulumda damga (sth_fat_uid) kullanılmıyor;")
+        print("    ikinci durumda mükerrerlik bu yoldan ölçülemez.")
+
+
 def main() -> None:
     # Bayrakları ayır: «--kolonlar» tarih sanılıp başlığa basılmasın.
     arg = [a for a in sys.argv[1:] if not a.startswith("--")]
@@ -269,6 +334,9 @@ def main() -> None:
         return
     if "--maliyet" in sys.argv:
         _maliyet_teshisi(cfg, bas, bit)
+        return
+    if "--fatura" in sys.argv:
+        _faturalasma_teshisi(cfg, bas, bit)
         return
     if len(arg) > 3:
         _detay(cfg, bas, bit, int(arg[2]), int(arg[3]))
