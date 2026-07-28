@@ -75,6 +75,12 @@ _MAKUL_MARJ = (0.0, 90.0)
 _SON_AY_PENCERE = 2
 # İki bağımsız maliyet yöntemi bu kadar yakınsa ölçüm iç tutarlı sayılır.
 _MUTABAKAT_TOLERANS = 0.10
+# Faturaların bu oranından azı çakışıyorsa mükerrerlik yok sayılır. Canlıda 5.494
+# faturadan 1'i çakışıyordu (%0,02) ve «ortak > 0» eşiği «Yalnız Fatura'ya geç»
+# diyordu — o ayar satışı 20,5 milyondan 1,1 milyona düşürürdü.
+_CAKISMA_ESIGI = 1.0
+# Girişlerin bu oranından azı dışarıdan geliyorsa evraktip tamamen iç nakildir.
+_DISARIDAN_ESIGI = 1.0
 
 
 def _s(row: dict, ad: str) -> str:
@@ -326,13 +332,20 @@ def _fatura_ortakligi(cfg: MikroConfig, bas: str, bit: str, fatura_tutar: float)
     ortak = irs + fat - bir
     print(f"\n  Tekil fatura: irsaliyelerden {int(irs):,} · fatura satırlarından "
           f"{int(fat):,} · birleşik {int(bir):,}".replace(",", "."))
-    if ortak <= 0:
-        print("  → Kümeler AYRIK: fatura satırları irsaliyelerin kopyası değil, irsaliyesiz")
-        print("    doğrudan satışlar. İrsaliye + fatura toplamı MÜKERRER DEĞİL;")
-        print("    «Satış: İrsaliye+Fatura» ayarı doğru.")
+    # ORAN'a bakıyoruz, sıfıra değil. Canlıda 5.494 faturadan 1'i çakışıyordu ve eski
+    # eşik (ortak > 0) «Yalnız Fatura'ya geç» diyordu — o ayar satışı 20,5 milyondan
+    # 1,1 milyona düşürürdü. Tek bir karma evrak, ayar değiştirmek için sebep değildir.
+    oran = ortak / bir * 100 if bir else 0.0
+    if oran <= _CAKISMA_ESIGI:
+        print("  → Kümeler pratikte AYRIK: fatura satırları irsaliyelerin kopyası değil,")
+        print("    irsaliyesiz doğrudan satışlar. İrsaliye + fatura toplamı MÜKERRER")
+        print("    DEĞİL; «Satış: İrsaliye+Fatura» ayarı doğru.")
+        if ortak > 0:
+            print(f"    ({int(ortak)} fatura hem irsaliye hem fatura satırı taşıyor — "
+                  f"%{oran:.2f}, ihmal edilebilir.)")
     else:
-        print(f"  → {int(ortak)} fatura HEM irsaliye HEM fatura satırı taşıyor: o kadarı iki kez")
-        print(f"    sayılıyor (fatura satırlarının üst sınırı {tl(fatura_tutar)}).")
+        print(f"  → Faturaların %{oran:.1f}'i HEM irsaliye HEM fatura satırı taşıyor: o kadarı")
+        print(f"    iki kez sayılıyor (fatura satırlarının üst sınırı {tl(fatura_tutar)}).")
         print("    «Satış: Yalnız Fatura» ayarına geçmeyi değerlendirin.")
 
 
@@ -377,7 +390,18 @@ def _alis_teshisi(cfg: MikroConfig, bas: str, bit: str, kova: dict) -> None:
     print(f"        {tl(ic)} kadarı DEPOLAR ARASI transfer (iki depo da dolu).")
 
     print()
-    if ic > 0.005 and abs(dis - fatura[1]) <= 0.05 * max(fatura[1], 1.0):
+    toplam_depo = dis + ic
+    # ÖNCE «hepsi transfer mi» sorusu. Eski sıralama dışarıdan gelen malın alış
+    # faturasına YAKIN olmasını arıyordu; canlıda dışarıdan gelen 0,00 çıkınca o koşul
+    # tutmadı ve teşhis, kendi bastığı «%100 transfer» satırını görmezden gelip
+    # «açıklanamıyor» dedi. Veri cevabı vermişti, hüküm okuyamadı.
+    if toplam_depo > 0.005 and dis / toplam_depo * 100 <= _DISARIDAN_ESIGI:
+        print("  → Bu evraktipin TAMAMI depolar arası transfer: hiçbirinin çıkış deposu")
+        print("    boş değil, yani dışarıdan gelen mal bu koda hiç girmiyor. Demek ki")
+        print("    satın alınan mal doğrudan FATURAYLA depoya giriyor.")
+        print("    Şu anki sayım (yalnız fatura) DOĞRU; marj etkilenmiyor ve")
+        print("    «alış irsaliyesi» satırı aslında alış değil, iç nakildir.")
+    elif ic > 0.005 and abs(dis - fatura[1]) <= 0.05 * max(fatura[1], 1.0):
         print("  → Fark DEPO TRANSFERİNDEN geliyor: dışarıdan gelen mal ile alış faturası")
         print("    örtüşüyor. Şu anki sayım (yalnız fatura) doğru, marj etkilenmiyor.")
     elif irs_fat[0] > 0 and fatura[0] < irs_fat[0] * _KOPYA_ESIGI:
