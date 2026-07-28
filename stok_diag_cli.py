@@ -48,6 +48,7 @@ _EVRAK_AD = {
 _MAKUL_SATIR_TUTARI = 2_000_000.0
 
 SATIS_TIP = 1                      # sth_tip: 0 = giriş/alış, 1 = çıkış/satış
+_SATIS_EVRAKTIP = {1, 4}           # satış irsaliyesi, satış faturası (sarf fişi değil)
 _MALIYET_KOLON = ("ana", "alternatif", "orjinal")
 # Maliyet güncellemesi çalıştırılmamışsa kolon 0'dır; 0'ı maliyet sanmak brüt marjı
 # %100 gösterir. Satırların bu kadarı dolu değilse kolon kullanılmaz.
@@ -159,43 +160,51 @@ def _maliyet_teshisi(cfg: MikroConfig, bas: str, bit: str) -> None:
         print("\nMALİYET TEŞHİSİ: dönemde satış hareketi yok — daha geniş bir aralık verin.")
         return
 
-    print(f"\nMALİYET TEŞHİSİ — satış satırları ({bas} → {bit})\n")
-    print(f"  {'yıl':>4} {'satır':>8} {'satış tutarı':>20} "
-          f"{'kolon':>12} {'dolu %':>7} {'SUM(mal.)':>20} {'SUM(mal.×mik.)':>20}")
+    def al(r: dict, ad: str) -> float:
+        return _f(r.get(ad, r.get(ad.upper())))
 
-    toplam: dict[str, list[float]] = {k: [0.0, 0.0, 0.0] for k in _MALIYET_KOLON}
-    satis_toplam = adet_toplam = 0.0
-    for r in sorted(satis, key=lambda x: _f(x.get("yil", x.get("YIL")))):
-        yil = int(_f(r.get("yil", r.get("YIL"))))
-        adet = _f(r.get("adet", r.get("ADET")))
-        tutar = _f(r.get("tutar", r.get("TUTAR")))
-        satis_toplam += tutar
-        adet_toplam += adet
-        for i, kolon in enumerate(_MALIYET_KOLON):
-            duz = _f(r.get(f"{kolon}_duz", r.get(f"{kolon.upper()}_DUZ")))
-            carpim = _f(r.get(f"{kolon}_carpim", r.get(f"{kolon.upper()}_CARPIM")))
-            dolu = _f(r.get(f"{kolon}_dolu", r.get(f"{kolon.upper()}_DOLU")))
-            t = toplam[kolon]
-            t[0] += duz
-            t[1] += carpim
-            t[2] += dolu
-            bas_sutun = f"  {yil:>4} {int(adet):>8} {tl(tutar):>20} " if i == 0 else " " * 36
-            print(f"{bas_sutun}{kolon:>12} {dolu / adet * 100 if adet else 0:>6.1f}% "
-                  f"{tl(duz):>20} {tl(carpim):>20}")
+    # 1) Boşluk nerede? Maliyetsiz satır satış değil sarf/depo fişi olabilir.
+    print(f"\nMALİYET TEŞHİSİ — çıkış (satış) hareketleri ({bas} → {bit})\n")
+    print(f"  {'evraktip':>8}  {'satır':>8} {'tutar':>20} {'ana dolu %':>11}  açıklama")
+    ev_top: dict[int, list[float]] = {}
+    for r in satis:
+        ev = int(al(r, "sth_evraktip"))
+        t = ev_top.setdefault(ev, [0.0, 0.0, 0.0])
+        t[0] += al(r, "adet")
+        t[1] += al(r, "tutar")
+        t[2] += al(r, "ana_dolu")
+    for ev, (adet, tutar, dolu) in sorted(ev_top.items(), key=lambda kv: -kv[1][1]):
+        ad = _EVRAK_AD.get((SATIS_TIP, ev), "?")
+        gercek = "  ← gerçek satış" if ev in _SATIS_EVRAKTIP else ""
+        print(f"  {ev:>8}  {int(adet):>8} {tl(tutar):>20} "
+              f"{dolu / adet * 100 if adet else 0:>10.1f}%  {ad}{gercek}")
 
-    print(f"\n  Dönem satışı {tl(satis_toplam)} · {int(adet_toplam):,} satır".replace(",", "."))
+    # 2) Yorum YALNIZ gerçek satış evraklarından: sarf fişinin maliyeti olmaması normal,
+    #    onu doluluk oranına katmak kolonu haksız yere «kullanılamaz» yapıyordu.
+    sec = [r for r in satis if int(al(r, "sth_evraktip")) in _SATIS_EVRAKTIP]
+    if not sec:
+        print("\n  Satış irsaliyesi/faturası hareketi yok — yorum yapılamaz.")
+        return
+    satis_toplam = sum(al(r, "tutar") for r in sec)
+    adet_toplam = sum(al(r, "adet") for r in sec)
+
+    print(f"\n  Satış irsaliyesi + faturası: {tl(satis_toplam)} · "
+          f"{int(adet_toplam):,} satır".replace(",", "."))
     print("\n  YORUM (satış tutarına göre brüt marj):")
     aday: list[tuple[float, str, str, float]] = []
     for kolon in _MALIYET_KOLON:
-        duz, carpim, dolu = toplam[kolon]
+        duz = sum(al(r, f"{kolon}_duz") for r in sec)
+        carpim = sum(al(r, f"{kolon}_carpim") for r in sec)
+        dolu = sum(al(r, f"{kolon}_dolu") for r in sec)
         oran = dolu / adet_toplam * 100 if adet_toplam else 0.0
         if oran < _ASGARI_DOLULUK:
-            print(f"    {kolon:<12} satırların yalnız %{oran:.1f}'i dolu → KULLANILAMAZ")
+            print(f"    {kolon:<12} satış satırlarının %{oran:.1f}'i dolu → KULLANILAMAZ")
             continue
         for etiket, mal in (("satır toplamı", duz), ("birim × miktar", carpim)):
             marj = (satis_toplam - mal) / satis_toplam * 100 if satis_toplam else 0.0
             makul = "  ← MAKUL" if _MAKUL_MARJ[0] <= marj <= _MAKUL_MARJ[1] else ""
-            print(f"    {kolon:<12} {etiket:<15} SMM {tl(mal):>20}  brüt marj %{marj:>6.1f}{makul}")
+            print(f"    {kolon:<12} %{oran:>5.1f} dolu  {etiket:<15} "
+                  f"SMM {tl(mal):>18}  brüt marj %{marj:>6.1f}{makul}")
             if makul:
                 aday.append((abs(marj - 25.0), kolon, etiket, marj))
 
@@ -208,7 +217,7 @@ def _maliyet_teshisi(cfg: MikroConfig, bas: str, bit: str) -> None:
     _, kolon, etiket, marj = aday[0]
     print(f"  → KULLANILABİLİR: {kolon}, «{etiket}» olarak okunmalı (brüt marj %{marj:.1f}).")
     print("    Bunu bildirin; Nakit & Kârlılık ve mukayese tablosu kapanış fişi beklemeden")
-    print("    gerçek brüt kârı gösterecek şekilde bağlanacak.")
+    print("    gerçek brüt kârı ve GERÇEK STOĞU gösterecek şekilde bağlanacak.")
 
 
 def main() -> None:

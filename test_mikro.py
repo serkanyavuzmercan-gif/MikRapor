@@ -387,13 +387,21 @@ class TestStokMaliyetTeshis(unittest.TestCase):
             self.assertIn(f"SUM(sth_maliyet_{ad} * sth_miktar) AS {ad}_carpim", sql)
             self.assertIn(f"WHEN sth_maliyet_{ad} <> 0", sql)   # doluluk sayımı
 
-    def test_satis_ve_alis_ayri_yil_yil_doner(self) -> None:
-        """Satışın maliyeti alışınkiyle karışmamalı; yıl kırılımı tutarlılığı gösterir."""
+    def test_evraktipe_kadar_kirilir(self) -> None:
+        """
+        Doluluk evrak tipi bazında ölçülmeli.
+
+        Canlıda tip=1 satırlarının %89'u doluydu ve kolon «kullanılamaz» görünüyordu.
+        Oysa maliyetsiz satır satış değil sarf/depo fişi olabilir; gerçek satış
+        evrakları (irsaliye/fatura) ayrı ölçülmeden kolon haksız yere çöpe atılır.
+        """
         from infra.mikro_fetch import fetch_stok_maliyet_teshis
         c = _SqlYakala()
         fetch_stok_maliyet_teshis(c, "2026-01-01", "2026-07-28")
         sql = c.sorgular[0]
-        self.assertIn("sth_tip", sql.split("GROUP BY")[1])
+        grup = sql.split("GROUP BY")[1]
+        self.assertIn("sth_tip", grup)
+        self.assertIn("sth_evraktip", grup)
         self.assertIn("SUM(sth_tutar) AS tutar", sql)
         self.assertIn(">= '2026-01-01'", sql)
         self.assertIn("< '2026-07-29'", sql)          # bitiş günü tam dahil

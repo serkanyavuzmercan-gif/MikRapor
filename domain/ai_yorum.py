@@ -125,9 +125,25 @@ def ay_farki(bit: str, bugun: str) -> int:
 
 # Maliyet kapanışı (62) yapılmamışsa bu kalemler şişer — kıyasa girmemeli.
 # Satış, bakiye ve likidite kalemleri etkilenmez; onlar SMM'den bağımsızdır.
+# Satışın maliyeti (62) işlenmemiş bir yılda bu kalemler GERÇEK DEĞİLDİR.
+#
+# Eksik olan «621 SMM / 153 Ticari Mallar» fişinin İKİ ayağı var, o yüzden hata da
+# iki yerde: 621 borçlanmadığı için KÂR şişer, 153 alacaklanmadığı için STOK şişer —
+# tam olarak aynı tutarda. Önce yalnız kâr ayağını eliyorduk; canlıda 2026 stoğu
+# 21,5 milyon TL (459 bin USD) görünüp «geçen yıla göre %52 arttı» diyordu. İşlenmemiş
+# ~13,4 milyonluk maliyet düşülünce gerçek stok ~8,1 milyon TL (174 bin USD), yani
+# %42 AZALMIŞ çıkıyordu. Yön bile tersti; kullanıcı «biz stoğa mal almıyoruz, bu artış
+# imkânsız» derken haklıydı. Stok şiştiği için ondan türeyen her oran da yanlıştı
+# (Stok/Net Satış %109,8 → gerçekte %40; Cari Oran 2,25 → 1,28).
+#
+# Asit-Test listede YOK: (dönen − stok) şişkinliği zaten götürür, o oran temiz kalır.
 _KAPANISA_BAGLI = frozenset({
+    # kâr ayağı
     "brut_kar", "faaliyet_kari", "net_kar",
     "brut_marj", "faaliyet_marj", "net_marj", "roe", "roa",
+    # stok ayağı — ve şişmiş stoktan/özkaynaktan türeyen oranlar
+    "stok", "ozkaynak", "aktif_toplam",
+    "stok_satis", "cari_oran", "borc_ozkaynak", "kredi_aktif",
 })
 
 
@@ -595,8 +611,13 @@ def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
                        "kapsamaz. Yalnız aynı tarih penceresiyle hazırlanmış diğer YTD "
                        "sütunlarıyla kıyaslanmalıdır.")
         if k.maliyet_eksik:
-            out.append(f"NOT;{k.yil} yılında satışların maliyeti (62) girilmemiş — "
-                       "brüt ve net kâr olduğundan yüksek görünüyor.")
+            out.append(
+                f"NOT;{k.yil} yılında satışların maliyeti (62) muhasebeye işlenmemiş. "
+                "Eksik olan «621 SMM / 153 Ticari Mallar» fişinin iki ayağı var: 621 "
+                "borçlanmadığı için KÂR, 153 alacaklanmadığı için STOK aynı tutarda "
+                "şişer. Bu yüzden o yılın kâr kalemleri, stoğu, özkaynağı, aktif "
+                "toplamı ve bunlardan türeyen oranları BOŞ bırakıldı — boş hücreyi "
+                "«sıfır» ya da «değişmedi» diye yorumlama. Asit-Test etkilenmez.")
     return "\r\n".join(out)
 
 

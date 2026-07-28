@@ -177,6 +177,11 @@ def fetch_stok_maliyet_teshis(
     2) BİRİM Mİ SATIR TOPLAMI MI — `SUM(maliyet)` ve `SUM(maliyet × miktar)` yan yana
        döner. Satışta hangisi tutara yakınsa doğru yorum odur; yanlış seçim brüt kârı
        miktar katı şişirir ya da eritir. Tahmin etmiyoruz, canlı veriye soruyoruz.
+
+    Kırılım EVRAK TİPİNE kadar iner: canlıda tip=1 satırlarının %89'u doluydu ve bu
+    tek başına «kullanılamaz» gibi görünüyordu. Oysa maliyeti olmayan satır, satış
+    değil sarf/depo fişi olabilir — gerçek satış evrakları (irsaliye/fatura) ayrı
+    ölçülmeden kolon haksız yere çöpe atılır.
     """
     bas, bit = _aralik(bas, bit)
     tarih = _stok_tarih_sql()
@@ -188,12 +193,12 @@ def fetch_stok_maliyet_teshis(
             f"SUM(CASE WHEN {k} <> 0 THEN 1 ELSE 0 END) AS {ad}_dolu"
         )
     sql = (
-        f"SELECT YEAR({tarih}) AS yil, sth_tip, COUNT(*) AS adet, "
+        f"SELECT YEAR({tarih}) AS yil, sth_tip, sth_evraktip, COUNT(*) AS adet, "
         "SUM(sth_tutar) AS tutar, SUM(sth_miktar) AS miktar, "
         + ", ".join(kolonlar) +
         " FROM STOK_HAREKETLERI WITH (NOLOCK) "
         f"WHERE {tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}' "
-        f"GROUP BY YEAR({tarih}), sth_tip ORDER BY yil, sth_tip"
+        f"GROUP BY YEAR({tarih}), sth_tip, sth_evraktip ORDER BY yil, sth_tip, sth_evraktip"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 

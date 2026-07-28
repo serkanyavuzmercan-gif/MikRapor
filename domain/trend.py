@@ -54,6 +54,9 @@ class TrendRapor:
     alacak: float = 0.0
     stok: float = 0.0
     aktif_toplam: float = 0.0
+    # Satışın maliyeti (62) işlenmemiş: stok DA özkaynak DA aynı tutarda şişik.
+    # Rakamı sessizce basmak yerine yanına ne olduğunu yazmak için taşınır.
+    maliyet_eksik: bool = False
 
     @property
     def ay_sayisi(self) -> int:
@@ -70,6 +73,17 @@ class TrendRapor:
     @property
     def toplam_nakit_net(self) -> float:
         return sum(a.nakit_net for a in self.aylik)
+
+
+# Tek cümle, üç yerde (ekran, PDF, CSV): mekanizmayı söyler, suçlamaz.
+# «Kâr şişik» uyarısı tek başına yetmiyordu — kullanıcı stoğun da aynı fişten
+# şiştiğini bilmediği için mizan stoğunu gerçek sanıp «bu artış imkânsız» dedi.
+MALIYET_EKSIK_UYARI = (
+    "Satışların maliyeti (62) bu dönemde muhasebeye işlenmemiş. Her satış "
+    "«621 SMM / 153 Ticari Mallar» fişini gerektirir; bu fiş atılmadığı için stok "
+    "azalmamış, kâr da azalmamış — İKİSİ DE AYNI TUTARDA ŞİŞİK. Stoğa ve özkaynağa "
+    "dayanan oranlar bu yüzden boş bırakıldı. Asit-Test etkilenmez."
+)
 
 
 def _bolum_toplam(satirlar: list, digit: str) -> float:
@@ -113,20 +127,37 @@ def build_finansal_oranlar(b: Bilanco) -> tuple[list[FinansalOran], dict[str, fl
         """
         return oran(pay, ozkaynak) if ozkaynak > 0.005 else None
 
+    def stok_kirli(deger: float | None) -> float | None:
+        """
+        Satışın maliyeti işlenmemişse stoğa dayanan oran GÖSTERİLMEZ.
+
+        Her satış «621 SMM / 153 Ticari Mallar» fişini gerektirir. Bu fiş atılmayınca
+        153 hiç azalmaz, 621 hiç borçlanmaz: stok da kâr da AYNI tutarda şişer. Canlıda
+        2026'da 62 hiç girilmemişti; mizan stoğu 21,5 milyon TL (459 bin USD) diyordu,
+        işlenmemiş ~13,4 milyonluk maliyet düşülünce gerçek stok ~8,1 milyon TL
+        (174 bin USD) çıkıyordu. Yani stok %52 ARTMIŞ görünürken fiilen %42 AZALMIŞTI —
+        yön bile ters. Kullanıcı «bu kadar artmış olamaz» derken haklıydı.
+
+        Bu yüzden stoğa ya da özkaynağa dayanan oranlar bu durumda boş bırakılır.
+        Asit-Test dokunulmaz: (dönen − stok) şişkinliği zaten götürür.
+        """
+        return None if b.maliyet_eksik else deger
+
     # Açıklamalar formül tekrarı değil, sade dilde (bkz. domain.terimler).
     oranlar = [
-        FinansalOran("cari", "Cari Oran", oran(donen, kvyk), "x", sade_oran("cari")),
+        FinansalOran("cari", "Cari Oran", stok_kirli(oran(donen, kvyk)), "x",
+                     sade_oran("cari")),
         FinansalOran("asit", "Asit-Test (Likidite)", oran(donen - stok, kvyk), "x",
                      sade_oran("asit")),
         FinansalOran("nakit_oran", "Nakit Oranı", oran(nakit, kvyk), "x",
                      sade_oran("nakit_oran")),
-        FinansalOran("borc_oz", "Borç / Özkaynak", oz_orani(yabanci), "x",
+        FinansalOran("borc_oz", "Borç / Özkaynak", stok_kirli(oz_orani(yabanci)), "x",
                      sade_oran("borc_oz")),
-        FinansalOran("oz_oran", "Özkaynak Oranı", yuz(ozkaynak, aktif), "%",
+        FinansalOran("oz_oran", "Özkaynak Oranı", stok_kirli(yuz(ozkaynak, aktif)), "%",
                      sade_oran("oz_oran")),
-        FinansalOran("kv_oran", "Kısa Vadeli Borç Oranı", yuz(kvyk, aktif), "%",
+        FinansalOran("kv_oran", "Kısa Vadeli Borç Oranı", stok_kirli(yuz(kvyk, aktif)), "%",
                      sade_oran("kv_oran")),
-        FinansalOran("donen_oran", "Dönen Varlık Oranı", yuz(donen, aktif), "%",
+        FinansalOran("donen_oran", "Dönen Varlık Oranı", stok_kirli(yuz(donen, aktif)), "%",
                      sade_oran("donen_oran")),
     ]
     ozet = {
@@ -168,6 +199,7 @@ def build_trend(
         t.alacak = ozet["alacak"]
         t.stok = ozet["stok"]
         t.aktif_toplam = ozet["aktif_toplam"]
+        t.maliyet_eksik = bilanco.maliyet_eksik
     return t
 
 
@@ -186,7 +218,10 @@ def trend_csv(t: TrendRapor) -> str:
     out.append(f"BİLANÇO;Özkaynak;{s(t.ozkaynak)}")
     out.append(f"BİLANÇO;Nakit;{s(t.nakit)}")
     out.append(f"BİLANÇO;Alacak;{s(t.alacak)}")
-    out.append(f"BİLANÇO;Stok;{s(t.stok)}")
+    out.append(f"BİLANÇO;Stok;{s(t.stok)}"
+               + (" (ŞİŞİK — aşağıdaki uyarı)" if t.maliyet_eksik else ""))
+    if t.maliyet_eksik:
+        out.append(f"UYARI;{MALIYET_EKSIK_UYARI};")
     for a in t.aylik:
         out.append(f"AYLIK;{a.ay} Satış;{s(a.satis)}")
         out.append(f"AYLIK;{a.ay} Alış;{s(a.alis)}")
