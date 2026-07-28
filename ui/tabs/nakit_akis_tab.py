@@ -34,7 +34,13 @@ from infra.mikro_fetch import (
     fetch_nakit_delta,
     fetch_nakit_delta_gl,
 )
-from infra.mukayese_fetch import yil_client
+from infra.mukayese_fetch import (
+    YilVeritabaniHatasi,
+    donem_parcalari,
+    donem_satirlari,
+    donem_toplami,
+    yil_client,
+)
 from ui.bilesenler import varsayilan_kayit_yolu
 from ui.nakit_akis_pdf import export_nakit_akis_pdf
 from ui.nakit_akis_view import build_nakit_akis_widget
@@ -80,10 +86,13 @@ class NakitAkisTab(RaporTab):
             na = None
             try:
                 bildir("Nakit hareketleri muhasebeden çekiliyor…")
-                gl_rows = fetch_nakit_akis_gl(client, bas, bit)
+                # AKIŞ bölünür (dönem iki veritabanına yayılabilir), BAKİYE bölünmez:
+                # kapanış nakdi tek bir tarihe aittir, bitişin veritabanından okunur.
+                gl_rows = donem_satirlari(cfg, bas, bit, fetch_nakit_akis_gl,
+                                          bildir=bildir, ad="nakit hareketleri")
                 if gl_rows:
                     kapanis = fetch_nakit_bakiye_gl(client, bit)
-                    delta = fetch_nakit_delta_gl(client, bas, bit)
+                    delta = donem_toplami(cfg, bas, bit, fetch_nakit_delta_gl)
                     bildir("Nakit akış kuruluyor…")
                     na = build_nakit_akis(
                         gl_rows, kapanis_nakit=kapanis,
@@ -93,10 +102,11 @@ class NakitAkisTab(RaporTab):
                 na = None
             if na is None:
                 bildir("Banka/kasa hareketleri çekiliyor…")
-                hareket_rows = fetch_nakit_akis_hareket(client, bas, bit)
+                hareket_rows = donem_satirlari(cfg, bas, bit, fetch_nakit_akis_hareket,
+                                               bildir=bildir, ad="banka/kasa hareketleri")
                 bildir("Kapanış bakiyeleri çekiliyor…")
                 kapanis_rows = fetch_cari_bakiye(client, bit)
-                donem_delta = fetch_nakit_delta(client, bas, bit)
+                donem_delta = donem_toplami(cfg, bas, bit, fetch_nakit_delta)
                 bildir("Nakit akış kuruluyor…")
                 na = build_nakit_akis(
                     hareket_rows, bakiye_kapanis_rows=kapanis_rows,
@@ -108,24 +118,25 @@ class NakitAkisTab(RaporTab):
             runway_bas = _runway_referans_bas(bit)
             runway_na: NakitAkis | None = None
             try:
+                # 90 günlük pencere yıl sınırını aşabilir (ör. 18.11.2025 – 15.02.2026).
                 if na.kaynak == "gl":
-                    runway_rows = fetch_nakit_akis_gl(client, runway_bas, bit)
+                    runway_rows = donem_satirlari(cfg, runway_bas, bit, fetch_nakit_akis_gl)
                     if runway_rows:
                         runway_na = build_nakit_akis(
                             runway_rows, kapanis_nakit=na.kapanis_nakit,
-                            donem_delta=fetch_nakit_delta_gl(client, runway_bas, bit),
+                            donem_delta=donem_toplami(cfg, runway_bas, bit, fetch_nakit_delta_gl),
                             bas=runway_bas, bit=bit,
                         )
                         runway_na.kaynak = "gl"
                 else:
-                    runway_rows = fetch_nakit_akis_hareket(client, runway_bas, bit)
+                    runway_rows = donem_satirlari(cfg, runway_bas, bit, fetch_nakit_akis_hareket)
                     if runway_rows:
                         runway_na = build_nakit_akis(
                             runway_rows, kapanis_nakit=na.kapanis_nakit,
-                            donem_delta=fetch_nakit_delta(client, runway_bas, bit),
+                            donem_delta=donem_toplami(cfg, runway_bas, bit, fetch_nakit_delta),
                             bas=runway_bas, bit=bit,
                         )
-            except MikroAPIError:
+            except (MikroAPIError, YilVeritabaniHatasi):
                 runway_na = None
 
             # Açık cari kalemler, vadesi yaklaşan gerçek tahsilat/ödemeleri runway'e taşır.
@@ -145,11 +156,15 @@ class NakitAkisTab(RaporTab):
             # da gerçek borç değişimine dahil olur; kredi kartı hesapları sorguda dışlanır.
             try:
                 bildir("Kredi borç hareketleri muhasebeden okunuyor…")
-                kgl = fetch_kredi_gl(client, bas, bit)
-                na.kredi_odeme_gl = kgl.get("odeme", 0.0)
-                na.kredi_kullanim_gl = kgl.get("kullanim", 0.0)
+                odeme = kullanim = 0.0
+                for c, p_bas, p_bit in donem_parcalari(cfg, bas, bit):
+                    kgl = fetch_kredi_gl(c, p_bas, p_bit)
+                    odeme += kgl.get("odeme", 0.0)
+                    kullanim += kgl.get("kullanim", 0.0)
+                # Yarım kalan bir parça yanlış toplam vermesin: hepsi bitince yazılır.
+                na.kredi_odeme_gl, na.kredi_kullanim_gl = odeme, kullanim
                 na.kredi_ozet_gl = True
-            except MikroAPIError:
+            except (MikroAPIError, YilVeritabaniHatasi):
                 pass
             # Seçili dönemde fiilen nakitten çıkan banka kredisi anaparaları ekranda detaylanır.
             # Gelecek sözleşme taksitleri yalnızca ileriye dönük runway hesabına gider.
@@ -160,9 +175,9 @@ class NakitAkisTab(RaporTab):
                 if na.kaynak == "gl":
                     bildir("Dönem kredi ödemeleri detaylandırılıyor…")
                     kredi_odemeleri = kredi_odemelerini_derle(
-                        fetch_kredi_odemeleri_gl(client, bas, bit)
+                        donem_satirlari(cfg, bas, bit, fetch_kredi_odemeleri_gl)
                     )
-            except MikroAPIError:
+            except (MikroAPIError, YilVeritabaniHatasi):
                 kredi_odemeleri = []
             try:
                 gelecek_taksitler = taksitleri_derle(

@@ -59,7 +59,12 @@ from infra.mikro_fetch import (
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
-from infra.mukayese_fetch import yil_client
+from infra.mukayese_fetch import (
+    YilVeritabaniHatasi,
+    donem_satirlari,
+    donem_toplami,
+    yil_client,
+)
 from ui.bilesenler import hos_geldin, para_spin, varsayilan_kayit_yolu, yuzde_spin
 from ui.empty_state import DEFAULT_HERO_ASSET, HERO_SOLUK_OPACITY, build_soluk_arka_plan
 from ui.rapor_tab import RaporTab, firma_getir
@@ -211,8 +216,10 @@ class TahminTab(RaporTab):
             # marjı tek çeyrekte %49'a çıkarabiliyor; 12 ayda gerçek ~%25'e oturur).
             ogr_bas = ogrenme_penceresi_bas(bas, bit)
             bildir("Geçmiş satış/kâr öğreniliyor (son 12 ay)…")
-            stok_rows = fetch_stok_ozet(client, ogr_bas, bit)
-            stok_aylik = fetch_stok_aylik(client, ogr_bas, bit)
+            # 12 aylık öğrenme penceresi neredeyse hep yıl sınırını aşar; AKIŞ olduğu
+            # için her parça kendi veritabanından okunup birleştirilir. BAKİYE bölünmez.
+            stok_rows = donem_satirlari(cfg, ogr_bas, bit, fetch_stok_ozet)
+            stok_aylik = donem_satirlari(cfg, ogr_bas, bit, fetch_stok_aylik)
             gd = build_gercek_durum(
                 stok_rows=stok_rows, stok_aylik=stok_aylik, bas=ogr_bas, bit=bit)
             bildir("Nakit bakiyesi ve hareketleri çekiliyor…")
@@ -234,8 +241,8 @@ class TahminTab(RaporTab):
             except MikroAPIError:
                 kart_borclari = []
             kart_borcu_acik = sum(k.borc for k in kart_borclari)
-            hareket_rows = fetch_nakit_akis_hareket(client, bas, bit)
-            donem_delta = fetch_nakit_delta(client, bas, bit)
+            hareket_rows = donem_satirlari(cfg, bas, bit, fetch_nakit_akis_hareket)
+            donem_delta = donem_toplami(cfg, bas, bit, fetch_nakit_delta)
             na = build_nakit_akis(hareket_rows, bakiye_kapanis_rows=kapanis_rows,
                                   donem_delta=donem_delta, bas=bas, bit=bit)
             # Aylık gider DOĞRULANMIŞ GL gelir tablosundan (63 faaliyet, 66 finansman) —
@@ -246,8 +253,9 @@ class TahminTab(RaporTab):
             gt = None
             try:
                 bildir("Faaliyet gideri (gelir tablosu) çekiliyor…")
-                gt = build_gelir_tablosu(fetch_gelir_tablosu(client, bas, bit), bas=bas, bit=bit)
-            except MikroAPIError:
+                gt = build_gelir_tablosu(
+                    donem_satirlari(cfg, bas, bit, fetch_gelir_tablosu), bas=bas, bit=bit)
+            except (MikroAPIError, YilVeritabaniHatasi):
                 gt = None
             if gt is not None:
                 sabit_gider = -gt.faaliyet_gideri / ay_sayisi          # 63, işaretli negatif → pozitif
@@ -279,7 +287,7 @@ class TahminTab(RaporTab):
                     kredi_proxy = None
                 else:
                     kredi_takvimi = None
-                    kredi_proxy = fetch_kredi_anapara(client, bas, bit) / ay_sayisi
+                    kredi_proxy = donem_toplami(cfg, bas, bit, fetch_kredi_anapara) / ay_sayisi
                 runway_bilesenleri = {
                     "na": na, "ta": ta, "baslangic_ay": bit[:7], "ufuk_ay": 6,
                     "baslangic_nakit": baslangic_nakit,
@@ -292,7 +300,7 @@ class TahminTab(RaporTab):
                         kart_borclari, baslangic_ay=bit[:7],
                         odeme_yuzde=KART_BORCU_VARSAYILAN_ODEME_YUZDE, ufuk_ay=6,
                     ))
-            except MikroAPIError:
+            except (MikroAPIError, YilVeritabaniHatasi):
                 runway = None
             bildir("Varsayımlar öneriliyor…")
             satis_serisi = [a.satis for a in gd.trend]

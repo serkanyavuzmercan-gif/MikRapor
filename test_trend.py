@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import math
 import unittest
-from unittest.mock import patch
 
 from domain.ai_yorum import YilKapanis, yillar_arasi_csv
 from domain.gercek_durum import AyTrend
 from domain.mizan_bilanco import build_bilanco
 from domain.trend import build_finansal_oranlar, build_trend, trend_csv
 from infra.mukayese_fetch import yil_donemleri
-from ui.tabs.trend_tab import TrendTab
 
 
 class TestTrend(unittest.TestCase):
@@ -35,23 +33,6 @@ class TestTrend(unittest.TestCase):
         ])
         self.assertIn("2025 (01.01–28.07)", csv)
         self.assertIn("aynı tarih penceresiyle hazırlanmış diğer YTD", csv)
-
-    def test_cok_yilli_hareketler_her_yilin_istemcisinden_cekilir(self) -> None:
-        parcalar = [(2025, "2025-07-28", "2025-12-31"), (2026, "2026-01-01", "2026-07-28")]
-        with (
-            patch("ui.tabs.trend_tab.yil_donemleri", return_value=parcalar),
-            patch("ui.tabs.trend_tab.yil_client", side_effect=lambda _cfg, yil: f"istemci-{yil}"),
-            patch("ui.tabs.trend_tab.fetch_stok_ozet", side_effect=lambda c, b, e: [{"stok": c, "bas": b, "bit": e}]),
-            patch("ui.tabs.trend_tab.fetch_stok_aylik", side_effect=lambda c, _b, _e: [{"stok_ay": c}]),
-            patch("ui.tabs.trend_tab.fetch_nakit_ozet_ve_aylik", side_effect=lambda c, _b, _e: ([{"nakit": c}], [{"nakit_ay": c}])),
-        ):
-            stok, stok_aylik, nakit, nakit_aylik = TrendTab._donem_hareketlerini_cek(
-                object(), "2025-07-28", "2026-07-28", lambda _mesaj: None)
-
-        self.assertEqual([r["stok"] for r in stok], ["istemci-2025", "istemci-2026"])
-        self.assertEqual([r["stok_ay"] for r in stok_aylik], ["istemci-2025", "istemci-2026"])
-        self.assertEqual([r["nakit"] for r in nakit], ["istemci-2025", "istemci-2026"])
-        self.assertEqual([r["nakit_ay"] for r in nakit_aylik], ["istemci-2025", "istemci-2026"])
 
     def test_oranlar_bilanco(self) -> None:
         b = build_bilanco([
