@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MikRapor — Mikro ERP Finansal Raporlama Programı</title>
+<meta name="description" content="MikRapor, Mikro ERP verinizi mali müşavir raporu beklemeden okunur hâle getirir: anlık bilanço, gelir tablosu, nakit akışı, alacak yaşlandırma ve yıllar arası mukayese. Veriniz kendi sunucunuzdan çıkmaz.">
+<link rel="canonical" href="https://mikrapor.hidroteknik.com.tr/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="author" content="Hidroteknik A.Ş.">
+<meta name="theme-color" content="#0f766e">
+
+<meta property="og:type" content="website">
+<meta property="og:locale" content="tr_TR">
+<meta property="og:site_name" content="MikRapor">
+<meta property="og:title" content="MikRapor — Mikro ERP Finansal Raporlama Programı">
+<meta property="og:description" content="Mikro ERP verinizi mali müşavir raporu beklemeden okuyun: anlık bilanço, gelir tablosu, nakit akışı, alacak yaşlandırma. Veriniz kendi sunucunuzdan çıkmaz.">
+<meta property="og:url" content="https://mikrapor.hidroteknik.com.tr/">
+<meta property="og:image" content="https://mikrapor.hidroteknik.com.tr/og-mikrapor.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="MikRapor — Mikro ERP finansal raporlama">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="MikRapor — Mikro ERP Finansal Raporlama Programı">
+<meta name="twitter:description" content="Mikro ERP verinizi mali müşavir raporu beklemeden okuyun. Veriniz kendi sunucunuzdan çıkmaz.">
+<meta name="twitter:image" content="https://mikrapor.hidroteknik.com.tr/og-mikrapor.png">
+
+<link rel="icon" href="/logo.png" type="image/png">
+<link rel="apple-touch-icon" href="/logo.png">
+<link rel="stylesheet" href="/styles.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "name": "MikRapor",
+      "applicationCategory": "BusinessApplication",
+      "applicationSubCategory": "Finansal Raporlama",
+      "operatingSystem": "Windows 10, Windows 11",
+      "inLanguage": "tr-TR",
+      "url": "https://mikrapor.hidroteknik.com.tr/",
+      "image": "https://mikrapor.hidroteknik.com.tr/og-mikrapor.png",
+      "description": "Mikro ERP verisinden anlık bilanço, gelir tablosu, nakit akışı, alacak yaşlandırma ve yıllar arası mukayese üreten masaüstü finansal raporlama programı.",
+      "softwareVersion": "1.0.0",
+      "publisher": { "@id": "https://mikrapor.hidroteknik.com.tr/#kurulus" },
+      "featureList": [
+        "Anlık bilanço",
+        "Gelir tablosu ve gelir/gider dağılımı",
+        "Nakit akışı",
+        "Alacak yaşlandırma",
+        "Nakit ve kârlılık mutabakatı",
+        "Nakit projeksiyonu",
+        "Yıllar arası dolar bazlı mukayese",
+        "Yapay zekâ yorumu"
+      ]
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://mikrapor.hidroteknik.com.tr/#kurulus",
+      "name": "Hidroteknik A.Ş.",
+      "url": "https://mikrapor.hidroteknik.com.tr/",
+      "logo": "https://mikrapor.hidroteknik.com.tr/logo.png",
+      "email": "mikrapor@hidroteknik.com.tr"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "MikRapor verilerimi dışarı gönderiyor mu?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Hayır. Program kapalı devre çalışır; veriniz yalnız kendi Mikro sunucunuzla bilgisayarınız arasında kalır. Tek istisna «Yapay Zekâ Yorumu» sekmesidir; orada da veri, ancak kendi API anahtarınızı girip paylaşım onayını işaretlerseniz dışarı çıkar." }
+        },
+        {
+          "@type": "Question",
+          "name": "Mikro ERP'ye bir şey kurmam gerekiyor mu?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Hayır. MikRapor, Mikro'nun kendi REST arayüzünden yalnızca OKUR. Veritabanınıza hiçbir şey yazmaz, hiçbir kayıt değiştirmez." }
+        },
+        {
+          "@type": "Question",
+          "name": "Mali müşavirimin raporlarının yerine mi geçiyor?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Hayır, onun yerine geçmez. MikRapor resmi beyan üretmez; kendi kayıtlarınızı ay sonunu beklemeden görmenizi sağlar. Resmi tablolarınız yine mali müşavirinizden gelir." }
+        },
+        {
+          "@type": "Question",
+          "name": "Birden fazla yıl ve veritabanıyla çalışıyor mu?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Evet. Yılları farklı veritabanlarında tutan kurulumlarda program hangi yılın nerede olduğunu kendi bulur ve yıllar arası mukayeseyi doğru veritabanlarından kurar." }
+        },
+        {
+          "@type": "Question",
+          "name": "Hangi işletim sistemlerinde çalışıyor?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Windows 10 ve Windows 11. Microsoft Store sürümü çok yakında yayında olacak." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<a class="atla" href="#icerik">İçeriğe atla</a>
+
+<header class="ust">
+  <div class="kap ust-ic">
+    <a class="marka" href="/">
+      <img src="/logo.png" width="36" height="36" alt="MikRapor logosu" decoding="async">
+      <span>MikRapor</span>
+    </a>
+    <nav aria-label="Ana menü">
+      <a href="#neler-yapar">Neler yapar</a>
+      <a href="#gizlilik">Gizlilik</a>
+      <a href="#nasil">Nasıl çalışır</a>
+      <a href="#sss">S.S.S.</a>
+      <a class="dugme-kucuk" href="mailto:mikrapor@hidroteknik.com.tr">İletişim</a>
+    </nav>
+  </div>
+</header>
+
+<main id="icerik">
+
+<section class="kahraman">
+  <div class="kap">
+    <p class="rozet"><span class="nokta"></span> Microsoft Store'da çok yakında</p>
+    <h1>Mikro ERP verinizi <em>ay sonunu beklemeden</em> okuyun</h1>
+    <p class="giris">
+      MikRapor, Mikro ERP kayıtlarınızdan anlık bilanço, gelir tablosu, nakit akışı ve
+      alacak yaşlandırması üretir. Rakamlar mali müşavirinizin raporunu beklemeden,
+      doğrudan kendi sunucunuzdaki veriden gelir.
+    </p>
+    <div class="dugmeler">
+      <a class="dugme" href="mailto:mikrapor@hidroteknik.com.tr?subject=MikRapor%20bilgi%20talebi">Bilgi alın</a>
+      <a class="dugme dugme-sade" href="#neler-yapar">Neler yaptığını görün</a>
+    </div>
+    <p class="kucuk-not">Windows 10 ve 11 · Türkçe · Mikro ERP REST arayüzü ile çalışır</p>
+  </div>
+</section>
+
+
+<section id="neler-yapar" class="bolum">
+  <div class="kap">
+    <h2>Dokuz rapor, tek pencerede</h2>
+    <p class="bolum-giris">
+      Her sekme aynı kaynaktan — Mikro'daki kendi kayıtlarınızdan — beslenir.
+      Ekranda gördüğünüz rakamı PDF ve CSV olarak dışarı alabilirsiniz.
+    </p>
+    <ul class="kartlar">
+      <li><h3>Bilanço</h3><p>Seçtiğiniz tarih itibarıyla varlık ve borç durumu. Yıl sonu kapanış fişi hesaba katılır, bakiyeler sıfırlanmış görünmez.</p></li>
+      <li><h3>Gelir tablosu</h3><p>Tek düzen hesap planı şelalesi; yanında gelirin ve giderin hesap bazında dağılımı.</p></li>
+      <li><h3>Nakit &amp; kârlılık</h3><p>Stok hareketinden fiili al-sat farkı. Resmi kârla arasındaki köprü kalem kalem gösterilir.</p></li>
+      <li><h3>Alacak &amp; borç</h3><p>Müşteri ve satıcı bakiyeleri, vade yaşlandırması, gecikmiş alacaklar.</p></li>
+      <li><h3>Nakit akış</h3><p>Kasaya gerçekten giren ve çıkan para; muhasebeden okunur, çek ve EFT kaçmaz.</p></li>
+      <li><h3>Tahmin &amp; projeksiyon</h3><p>Vade takvimine dayalı nakit projeksiyonu ve senaryo varsayımları.</p></li>
+      <li><h3>Reel değer</h3><p>Enflasyon ve kur karşısında rakamların bugünkü karşılığı.</p></li>
+      <li><h3>Trend &amp; oranlar</h3><p>Aylık satış/alış trendi, klasik finansal oranlar ve yıllar arası dolar bazlı mukayese.</p></li>
+      <li><h3>Yapay zekâ yorumu</h3><p>İsteğe bağlı. Kendi API anahtarınızla, dönemin sade Türkçe yönetim yorumu.</p></li>
+    </ul>
+  </div>
+</section>
+
+
+<section id="gizlilik" class="bolum bolum-koyu">
+  <div class="kap dar">
+    <h2>Veriniz bilgisayarınızdan çıkmaz</h2>
+    <p>
+      MikRapor kapalı devre çalışır. Bağlantı doğrudan sizin Mikro sunucunuzladır;
+      arada bizim bir sunucumuz yoktur, veriniz hiçbir yere kopyalanmaz.
+      Mikro veritabanınıza <strong>yalnızca okuma</strong> için bağlanır — hiçbir kayıt
+      yazılmaz, değiştirilmez, silinmez.
+    </p>
+    <p>
+      Tek istisna <strong>Yapay Zekâ Yorumu</strong> sekmesidir. Orada da veri, ancak
+      kendi API anahtarınızı girip paylaşım onayını işaretlediğinizde dışarı çıkar;
+      neyin gönderildiği ekranda açıkça yazılıdır. Onayı kaldırdığınızda hiçbir veri
+      dışarı çıkmaz.
+    </p>
+  </div>
+</section>
+
+<section id="nasil" class="bolum">
+  <div class="kap dar">
+    <h2>Üç adımda çalışır</h2>
+    <ol class="adimlar">
+      <li><h3>Bağlantı bilgilerinizi girin</h3><p>Mikro API adresi, firma kodu ve kullanıcı bilgileri. Bilgiler yalnız bu bilgisayarda, şifreli olarak saklanır.</p></li>
+      <li><h3>Tarih aralığını seçin</h3><p>Çeyrek, yarıyıl, bu ay, bu yıl ya da serbest aralık. Yılları ayrı veritabanlarında tutuyorsanız program hangi yılın nerede olduğunu kendi bulur.</p></li>
+      <li><h3>Raporu getirin</h3><p>Rakamlar saniyeler içinde ekranda. Beğendiğinizi PDF ya da CSV olarak dışarı alın.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section id="sss" class="bolum bolum-acik">
+  <div class="kap dar">
+    <h2>Sık sorulan sorular</h2>
+    <dl class="sss">
+      <dt>MikRapor verilerimi dışarı gönderiyor mu?</dt>
+      <dd>Hayır. Program kapalı devre çalışır; veriniz yalnız kendi Mikro sunucunuzla bilgisayarınız arasında kalır. Tek istisna Yapay Zekâ Yorumu sekmesidir; orada da veri, ancak kendi API anahtarınızı girip paylaşım onayını işaretlerseniz dışarı çıkar.</dd>
+
+      <dt>Mikro ERP'ye bir şey kurmam gerekiyor mu?</dt>
+      <dd>Hayır. MikRapor, Mikro'nun kendi REST arayüzünden yalnızca okur. Veritabanınıza hiçbir şey yazmaz, hiçbir kayıt değiştirmez.</dd>
+
+      <dt>Mali müşavirimin raporlarının yerine mi geçiyor?</dt>
+      <dd>Hayır, onun yerine geçmez. MikRapor resmi beyan üretmez; kendi kayıtlarınızı ay sonunu beklemeden görmenizi sağlar. Resmi tablolarınız yine mali müşavirinizden gelir.</dd>
+
+      <dt>Birden fazla yıl ve veritabanıyla çalışıyor mu?</dt>
+      <dd>Evet. Yılları farklı veritabanlarında tutan kurulumlarda program hangi yılın nerede olduğunu kendi bulur ve yıllar arası mukayeseyi doğru veritabanlarından kurar.</dd>
+
+      <dt>Hangi işletim sistemlerinde çalışıyor?</dt>
+      <dd>Windows 10 ve Windows 11. Microsoft Store sürümü çok yakında yayında olacak.</dd>
+    </dl>
+  </div>
+</section>
+
+<section class="cagri">
+  <div class="kap dar">
+    <h2>Microsoft Store'da çok yakında</h2>
+    <p>Yayına çıktığında haberdar olmak ya da şimdiden denemek için bize yazın.</p>
+    <a class="dugme" href="mailto:mikrapor@hidroteknik.com.tr?subject=MikRapor%20bilgi%20talebi">mikrapor@hidroteknik.com.tr</a>
+  </div>
+</section>
+
+</main>
+
+<footer class="alt">
+  <div class="kap alt-ic">
+    <div>
+      <p class="alt-marka">MikRapor</p>
+      <p>Mikro ERP finansal raporlama · Sürüm 1.0.0</p>
+    </div>
+    <div>
+      <p><a href="mailto:mikrapor@hidroteknik.com.tr">mikrapor@hidroteknik.com.tr</a></p>
+      <p class="kunye">Proje sorumlusu: Serkan Yavuz Mercan · Geliştirme: Alper Alyaz, Berra Kaya</p>
+      <p class="telif">© 2026 Hidroteknik A.Ş. Tüm hakları saklıdır.</p>
+    </div>
+  </div>
+  <p class="marka-notu kap">
+    Mikro, Mikro Yazılımevi A.Ş.'nin tescilli markasıdır. MikRapor bağımsız bir üründür;
+    Mikro Yazılımevi ile ticari bir bağı yoktur.
+  </p>
+</footer>
+
+</body>
+</html>

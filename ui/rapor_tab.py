@@ -10,6 +10,7 @@ arka planda biten işler yalnızca kendi içerik alanını doldurur.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from PyQt6.QtCore import Qt
@@ -36,6 +37,10 @@ from ui.mikro_settings_dialog import MikroAyarlarDialog
 from ui.styles import PAGE_BG
 from ui.worker import IsFonksiyonu, RaporWorker
 from ui.yukleniyor import YukleniyorEkrani
+
+# Mikro kurulumlarında bu yıldan eskisi pratikte yok; asıl amaç 7026 gibi
+# parmak hatalarını yakalamak, geçmişi kısıtlamak değil.
+YIL_ALT = 1990
 
 # İçerik kökü yarı saydam beyaz — altındaki soluk illüstrasyon hafifçe görünsün
 _PAGE_BG_SOLUK = "rgba(255, 255, 255, 0.72)"
@@ -246,15 +251,37 @@ class RaporTab(QWidget):
             MikroAyarlarDialog(self).exec()
         return None
 
+    def _yil_makul(self, tarih) -> bool:
+        """
+        Yıl muhasebe kaydı olabilecek bir aralıkta mı?
+
+        Tarih kutusuna 2026 yerine 7026 yazılınca program uyarmadan kabul ediyor,
+        sonra 7022-7026 yıllarını veritabanında arıyordu (canlıda görüldü). Böyle
+        bir yılda kayıt olamaz; sessizce boş tablo üretmek yerine söylemek gerek.
+        """
+        yil = tarih.year()
+        ust = date.today().year + 1        # gelecek yıla bütçe/plan girilmiş olabilir
+        if YIL_ALT <= yil <= ust:
+            return True
+        QMessageBox.warning(
+            self, "Tarih Hatası",
+            f"{yil} yılı için muhasebe kaydı olamaz.\n\n"
+            f"Geçerli aralık: {YIL_ALT}–{ust}. Tarihi kontrol edin.")
+        return False
+
     def _on_getir(self) -> None:
         cfg = self._ayarlar_tamam()
         if cfg is None:
             return
         bit_d = self._donem.bit_tarih()
+        if not self._yil_makul(bit_d):
+            return
         if self.TEK_TARIH:
             bas = bit = bit_d.toString("yyyy-MM-dd")
         else:
             bas_d = self._donem.bas_tarih()
+            if not self._yil_makul(bas_d):
+                return
             if bas_d > bit_d:
                 QMessageBox.warning(self, "Tarih Hatası", "Başlangıç tarihi bitişten sonra olamaz.")
                 return
