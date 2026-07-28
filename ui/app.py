@@ -371,7 +371,7 @@ class MikRaporWindow(QMainWindow):
         self._conn.setObjectName("connStatus")
         self._conn.setCursor(Qt.CursorShape.ArrowCursor)
         header.addWidget(self._conn, alignment=Qt.AlignmentFlag.AlignVCenter)
-        self._firma_tip = bagla_nav_tip(self._conn, eyebrow="FİRMA", parent=self)
+        self._conn_tip = bagla_nav_tip(self._conn, eyebrow="BAĞLANTI", parent=self)
         layout.addWidget(brand_bar)
         layout.addWidget(nav)
         self._conn.setText("○  Ayarlanmadı")
@@ -429,7 +429,7 @@ class MikRaporWindow(QMainWindow):
     def _set_conn(self, text: str, connected: bool, *, tooltip: str = "") -> None:
         self._conn.setText(text)
         self._conn.setToolTip("")  # native kapalı; NavTipBag kullan
-        self._firma_tip.set_text(tooltip)
+        self._conn_tip.set_text(tooltip)
         self._conn.setProperty("connected", connected)
         self._conn.style().unpolish(self._conn)
         self._conn.style().polish(self._conn)
@@ -460,11 +460,12 @@ class MikRaporWindow(QMainWindow):
     def _on_ping_ok(self, cfg: object) -> None:
         if not isinstance(cfg, MikroConfig):
             return
-        kod = cfg.firma_kodu or "—"
+        # Rozet BAĞLANTIYI gösterir, veritabanını değil. Firma kodu yazmak artık
+        # yanlış bilgi: dönem iki yıla yayıldığında veri iki ayrı veritabanından
+        # gelir (canlıda 20 → 2020-2025, 26 → 2026+) ve tek kod bunu gizlerdi.
         ad = (cfg.firma_adi or "").strip()
-        label = f"●  Firma {kod}" + (f" · {ad[:18]}" if ad else "")
-        tip = f"Firma {kod}" + (f" · {ad}" if ad else "")
-        self._set_conn(label, True, tooltip=tip)
+        self._set_conn("●  Bağlı", True,
+                       tooltip=ad or "Veritabanı rapor dönemine göre seçilir.")
 
     def _on_ping_hata(self, _msg: str) -> None:
         self._set_conn("○  Bağlanılamadı", False)
