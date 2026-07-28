@@ -184,5 +184,100 @@ class TestAyniGunePencere(unittest.TestCase):
         self.assertEqual(pencere[-1][:2], (2026, "2026-07-28"))      # odak yıl
 
 
+class TestDonemParcalama(unittest.TestCase):
+    """
+    AKIŞ raporları dönem iki veritabanına yayıldığında parçalanmalı.
+
+    Canlıda 20 (2020-2025) ve 26 (2026+) ayrı veritabanı. 01.07.2025–30.06.2026
+    seçilince gelir tablosu/nakit akış tek istemciyle okunuyordu: 2025 yarısı
+    sessizce kayboluyordu. BAKİYE sorguları ise bölünemez — tek bir tarihe aitler.
+    """
+
+    def setUp(self) -> None:
+        self.yama = patch(
+            "infra.mukayese_fetch.yil_client",
+            side_effect=lambda _cfg, yil: f"istemci-{yil}")
+        self.yama.start()
+        self.addCleanup(self.yama.stop)
+
+    def test_satirlar_her_yilin_istemcisinden_birlestirilir(self) -> None:
+        from infra.mukayese_fetch import donem_satirlari
+        out = donem_satirlari(
+            _CFG, "2025-07-28", "2026-07-28",
+            lambda c, b, e: [{"c": c, "bas": b, "bit": e}])
+        self.assertEqual(out, [
+            {"c": "istemci-2025", "bas": "2025-07-28", "bit": "2025-12-31"},
+            {"c": "istemci-2026", "bas": "2026-01-01", "bit": "2026-07-28"},
+        ])
+
+    def test_tek_yilda_tek_cagri(self) -> None:
+        """Tek veritabanlı kurulum eskisi gibi çalışsın — fazladan sorgu yok."""
+        from infra.mukayese_fetch import donem_satirlari
+        cagrilar: list[str] = []
+        donem_satirlari(_CFG, "2026-01-01", "2026-06-30",
+                        lambda c, _b, _e: cagrilar.append(c) or [])
+        self.assertEqual(cagrilar, ["istemci-2026"])
+
+    def test_toplam_parcalarin_toplamidir(self) -> None:
+        from infra.mukayese_fetch import donem_toplami
+        self.assertEqual(
+            donem_toplami(_CFG, "2025-07-28", "2026-07-28", lambda _c, _b, _e: 1500.0),
+            3000.0)
+
+    def test_ilerleme_yalniz_cok_parcali_donemde_bildirilir(self) -> None:
+        from infra.mukayese_fetch import donem_satirlari
+        tek: list[str] = []
+        donem_satirlari(_CFG, "2026-01-01", "2026-06-30", lambda *_: [],
+                        bildir=tek.append)
+        cok: list[str] = []
+        donem_satirlari(_CFG, "2025-07-28", "2026-07-28", lambda *_: [],
+                        bildir=cok.append, ad="nakit hareketleri")
+        self.assertEqual(tek, [])
+        self.assertEqual(len(cok), 2)
+        self.assertIn("2025 veritabanından nakit hareketleri", cok[0])
+
+    def test_hareketler_dort_akisi_da_birlestirir(self) -> None:
+        from infra.mukayese_fetch import donem_hareketleri
+        with patch("infra.mukayese_fetch.fetch_stok_ozet",
+                   side_effect=lambda c, _b, _e: [{"stok": c}]), \
+                patch("infra.mukayese_fetch.fetch_stok_aylik",
+                      side_effect=lambda c, _b, _e: [{"stok_ay": c}]), \
+                patch("infra.mukayese_fetch.fetch_nakit_ozet_ve_aylik",
+                      side_effect=lambda c, _b, _e: ([{"nakit": c}], [{"nakit_ay": c}])):
+            stok, stok_aylik, nakit, nakit_aylik = donem_hareketleri(
+                _CFG, "2025-07-28", "2026-07-28")
+        bekle = ["istemci-2025", "istemci-2026"]
+        self.assertEqual([r["stok"] for r in stok], bekle)
+        self.assertEqual([r["stok_ay"] for r in stok_aylik], bekle)
+        self.assertEqual([r["nakit"] for r in nakit], bekle)
+        self.assertEqual([r["nakit_ay"] for r in nakit_aylik], bekle)
+
+
+class TestBakiyeBolunmez(unittest.TestCase):
+    """
+    Fotoğraf sorguları bitişin veritabanından okunur; yıllara bölünmemeli.
+
+    Mizanı ya da kapanış nakdini parçalayıp toplamak bakiyeyi ikiye katlar.
+    Bu test o çağrıların `donem_satirlari`/`donem_toplami`'ya taşınmasını engeller.
+    """
+
+    _BAKIYE = ("fetch_mizan", "fetch_cari_bakiye", "fetch_nakit_bakiye_gl",
+               "fetch_bakiye_ozet", "fetch_acik_kalemler", "fetch_cari_vade_gun",
+               "fetch_kredi_karti_borclari", "fetch_kredi_taksitleri")
+
+    def test_hicbir_sekme_bakiyeyi_parcalamaz(self) -> None:
+        import re
+        from pathlib import Path
+        desen = re.compile(
+            r"donem_(?:satirlari|toplami)\([^)]*?(" + "|".join(self._BAKIYE) + r")\b",
+            re.S)
+        for yol in sorted(Path("ui/tabs").glob("*_tab.py")):
+            bulgu = desen.search(yol.read_text(encoding="utf-8"))
+            self.assertIsNone(
+                bulgu,
+                f"{yol.name}: bakiye sorgusu ({bulgu.group(1) if bulgu else ''}) "
+                "yıllara bölünemez — bitişin veritabanından okunmalı.")
+
+
 if __name__ == "__main__":
     unittest.main()

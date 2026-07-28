@@ -12,7 +12,7 @@ from domain.mizan_bilanco import tl
 from domain.ortak import yuzde
 from infra.config import MikroConfig
 from infra.mikro_fetch import fetch_gelir_tablosu
-from infra.mukayese_fetch import yil_client
+from infra.mukayese_fetch import donem_satirlari, yil_client
 from ui.bilesenler import varsayilan_kayit_yolu
 from ui.gelir_tablosu_pdf import export_gelir_tablosu_pdf
 from ui.gelir_tablosu_view import build_gelir_tablosu_widget
@@ -40,7 +40,10 @@ class GelirTablosuTab(RaporTab):
             # veritabanındaysa oraya bağlanılır (bkz. infra/veritabani.py).
             client = yil_client(cfg, int(bit[:4]))
             bildir("Dönem gelir/gider hareketleri çekiliyor…")
-            rows = fetch_gelir_tablosu(client, bas, bit)
+            # Dönem iki veritabanına yayılabilir (2025 firma 20'de, 2026 firma 26'da).
+            # Gelir tablosu bir AKIŞ raporu: parçaların hesap bazında toplamı bütünü verir.
+            rows = donem_satirlari(cfg, bas, bit, fetch_gelir_tablosu,
+                                   bildir=bildir, ad="gelir/gider hareketleri")
             bildir("Gelir tablosu kuruluyor…")
             gt = build_gelir_tablosu(rows, bas=bas, bit=bit)
             return {"gt": gt, "firma": firma_getir(cfg, client)}

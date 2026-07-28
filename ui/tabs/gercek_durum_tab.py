@@ -17,11 +17,8 @@ from infra.mikro_fetch import (
     fetch_cari_bakiye,
     fetch_gelir_tablosu,
     fetch_mizan,
-    fetch_nakit_ozet_ve_aylik,
-    fetch_stok_aylik,
-    fetch_stok_ozet,
 )
-from infra.mukayese_fetch import yil_client
+from infra.mukayese_fetch import donem_hareketleri, donem_satirlari, yil_client
 from ui.bilesenler import varsayilan_kayit_yolu
 from ui.gercek_durum_pdf import export_gercek_durum_pdf
 from ui.gercek_durum_settings_dialog import GercekDurumAyarlarDialog
@@ -68,11 +65,11 @@ class GercekDurumTab(RaporTab):
             # Veritabanını firma kodu seçer: dönemin bittiği yıl hangi
             # veritabanındaysa oraya bağlanılır (bkz. infra/veritabani.py).
             client = yil_client(cfg, int(bit[:4]))
-            bildir("Stok hareketleri çekiliyor…")
-            stok_rows = fetch_stok_ozet(client, bas, bit)
-            stok_aylik = fetch_stok_aylik(client, bas, bit)
-            bildir("Banka nakit hareketleri çekiliyor…")
-            nakit_rows, nakit_aylik = fetch_nakit_ozet_ve_aylik(client, bas, bit)
+            bildir("Stok ve banka hareketleri çekiliyor…")
+            # AKIŞ bölünür (dönem iki veritabanına yayılabilir), BAKİYE bölünmez:
+            # cari bakiye ve mizan tek bir tarihe aittir, bitişin veritabanından okunur.
+            stok_rows, stok_aylik, nakit_rows, nakit_aylik = donem_hareketleri(
+                cfg, bas, bit, bildir=bildir)
             bildir("Cari bakiyeler çekiliyor…")
             cari_bakiye_rows = fetch_cari_bakiye(client, bit)
             bildir("GL mizan çekiliyor…")
@@ -81,7 +78,10 @@ class GercekDurumTab(RaporTab):
             # Resmi GL (karşılaştırma için) — başarısız olsa da rapor üretilir.
             try:
                 bildir("Resmi gelir tablosu çekiliyor…")
-                gt = build_gelir_tablosu(fetch_gelir_tablosu(client, bas, bit), bas=bas, bit=bit)
+                gt = build_gelir_tablosu(
+                    donem_satirlari(cfg, bas, bit, fetch_gelir_tablosu,
+                                    bildir=bildir, ad="gelir/gider hareketleri"),
+                    bas=bas, bit=bit)
             except MikroAPIError:
                 gt = None
             bildir("Rapor kuruluyor…")

@@ -28,7 +28,7 @@ tabloyu komple düşürmüştü — iki yıl seçilmesine rağmen mukayese çık
 from __future__ import annotations
 
 from calendar import monthrange
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 from datetime import date
 
@@ -46,6 +46,9 @@ from infra.mikro_fetch import (
     fetch_gelir_tablosu,
     fetch_mizan,
     fetch_nakit_bakiye_gl,
+    fetch_nakit_ozet_ve_aylik,
+    fetch_stok_aylik,
+    fetch_stok_ozet,
 )
 from infra.veritabani import katalog, yil_icin_firma
 
@@ -80,6 +83,83 @@ def yil_donemleri(bas: str, bit: str) -> list[tuple[int, str, str]]:
         out.append((yil, parca_bas.isoformat(), parca_son.isoformat()))
         yil += 1
     return out
+
+
+def donem_parcalari(
+    cfg: MikroConfig, bas: str, bit: str,
+    *, bildir: Callable[[str], None] | None = None,
+    ad: str = "hareketler",
+) -> Iterator[tuple[MikroClient, str, str]]:
+    """
+    Dönemi yıllara bölüp her parça için KENDİ veritabanının istemcisini verir.
+
+    Yalnız AKIŞ sorguları için: dönem içi hareketleri gruplayarak döndüren sorgular
+    (gelir tablosu 6xx hareketleri, stok hareketleri, GL nakit hareketleri). Bunların
+    tüketicileri satırları toplayarak yediği için aynı hesap/ay iki parçadan da gelse
+    doğru toplanır — parçalar takvim yılında ayrıldığı için ay/tarih de çakışmaz.
+
+    BAKİYE/FOTOĞRAF sorguları bölünemez — onlar tek bir tarihe aittir ve bitişin
+    veritabanından okunur (mizan, kapanış nakdi, cari bakiye, açık kalemler).
+
+    Tek parça varsa fazladan hiçbir şey yapılmaz; tek veritabanlı kurulum eskisi gibi.
+    """
+    parcalar = yil_donemleri(bas, bit)
+    for sira, (yil, p_bas, p_bit) in enumerate(parcalar, 1):
+        if bildir and len(parcalar) > 1:
+            bildir(f"{yil} veritabanından {ad} çekiliyor… ({sira}/{len(parcalar)})")
+        yield yil_client(cfg, yil), p_bas, p_bit
+
+
+def donem_satirlari(
+    cfg: MikroConfig, bas: str, bit: str,
+    cek: Callable[[MikroClient, str, str], list[dict]],
+    *, bildir: Callable[[str], None] | None = None,
+    ad: str = "hareketler",
+) -> list[dict]:
+    """Tek bir akış sorgusunu dönemin bütün veritabanlarından okuyup birleştirir."""
+    out: list[dict] = []
+    for c, p_bas, p_bit in donem_parcalari(cfg, bas, bit, bildir=bildir, ad=ad):
+        out.extend(cek(c, p_bas, p_bit))
+    return out
+
+
+def donem_toplami(
+    cfg: MikroConfig, bas: str, bit: str,
+    cek: Callable[[MikroClient, str, str], float],
+) -> float:
+    """
+    Dönem boyunca TOPLANABİLİR tek bir sayıyı yıl yıl okuyup toplar (ör. nakit deltası).
+
+    Delta bir SUM olduğu için parçalarının toplamı bütünün toplamına eşittir; bakiye
+    veya oran gibi bölünemez büyüklükler için KULLANILMAZ.
+    """
+    return sum(cek(c, p_bas, p_bit)
+               for c, p_bas, p_bit in donem_parcalari(cfg, bas, bit))
+
+
+def donem_hareketleri(
+    cfg: MikroConfig, bas: str, bit: str,
+    *, bildir: Callable[[str], None] | None = None,
+) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+    """
+    Nakit & Kârlılık ve Trend sekmelerinin ortak akış seti.
+
+    Dönüş: (stok, stok_aylık, nakit, nakit_aylık). Dördü de akış olduğu için dönem
+    iki veritabanına yayıldığında parçaları birleştirilir. İki sekme aynı rakamı
+    göstermek zorunda — çekme burada tektir.
+    """
+    stok_rows: list[dict] = []
+    stok_aylik: list[dict] = []
+    nakit_rows: list[dict] = []
+    nakit_aylik: list[dict] = []
+    for c, p_bas, p_bit in donem_parcalari(
+            cfg, bas, bit, bildir=bildir, ad="stok ve nakit hareketleri"):
+        stok_rows.extend(fetch_stok_ozet(c, p_bas, p_bit))
+        stok_aylik.extend(fetch_stok_aylik(c, p_bas, p_bit))
+        n_rows, n_aylik = fetch_nakit_ozet_ve_aylik(c, p_bas, p_bit)
+        nakit_rows.extend(n_rows)
+        nakit_aylik.extend(n_aylik)
+    return stok_rows, stok_aylik, nakit_rows, nakit_aylik
 
 
 def _banka_kredisi(b: Bilanco) -> float:

@@ -14,13 +14,13 @@ from domain.tahmin import ogrenme_penceresi_bas
 from domain.trend import TrendRapor, build_trend, trend_csv
 from infra.config import MikroConfig, load_gercek_durum_ayarlar
 from infra.mikro_api import MikroAPIError
-from infra.mikro_fetch import (
-    fetch_mizan,
-    fetch_nakit_ozet_ve_aylik,
-    fetch_stok_aylik,
-    fetch_stok_ozet,
+from infra.mikro_fetch import fetch_mizan
+from infra.mukayese_fetch import (
+    YilVeritabaniHatasi,
+    donem_hareketleri,
+    yil_client,
+    yillari_cek,
 )
-from infra.mukayese_fetch import yil_client, yil_donemleri, yillari_cek
 from ui.bilesenler import varsayilan_kayit_yolu
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.trend_pdf import export_trend_pdf
@@ -51,33 +51,14 @@ class TrendTab(RaporTab):
     def _ilk_mesaj(self) -> str:
         return "Hazır"
 
-    @staticmethod
-    def _donem_hareketlerini_cek(
-        cfg: MikroConfig, bas: str, bit: str, bildir,
-    ) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
-        """Seçili dönemin hareketlerini yılın doğru veritabanından birleştirir."""
-        stok_rows: list[dict] = []
-        stok_aylik: list[dict] = []
-        nakit_rows: list[dict] = []
-        nakit_aylik: list[dict] = []
-        parcalar = yil_donemleri(bas, bit)
-        for sira, (yil, parca_bas, parca_bit) in enumerate(parcalar, 1):
-            bildir(f"{yil} veritabanından hareketler çekiliyor… ({sira}/{len(parcalar)})")
-            yil_istemcisi = yil_client(cfg, yil)
-            stok_rows.extend(fetch_stok_ozet(yil_istemcisi, parca_bas, parca_bit))
-            stok_aylik.extend(fetch_stok_aylik(yil_istemcisi, parca_bas, parca_bit))
-            n_rows, n_aylik = fetch_nakit_ozet_ve_aylik(yil_istemcisi, parca_bas, parca_bit)
-            nakit_rows.extend(n_rows)
-            nakit_aylik.extend(n_aylik)
-        return stok_rows, stok_aylik, nakit_rows, nakit_aylik
-
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
         ayarlar = load_gercek_durum_ayarlar()
 
         def is_fn(bildir) -> dict[str, Any]:
             bit_client = yil_client(cfg, int(bit[:4]))
-            stok_rows, stok_aylik, nakit_rows, nakit_aylik = self._donem_hareketlerini_cek(
-                cfg, bas, bit, bildir)
+            bildir("Stok ve banka hareketleri çekiliyor…")
+            stok_rows, stok_aylik, nakit_rows, nakit_aylik = donem_hareketleri(
+                cfg, bas, bit, bildir=bildir)
             bildir("GL mizan çekiliyor…")
             mizan_rows = fetch_mizan(bit_client, bit)
             bildir("Trend kuruluyor…")
@@ -93,14 +74,14 @@ class TrendTab(RaporTab):
             if g_bas < bas:
                 try:
                     bildir("Uzun dönem trendi çekiliyor (son 12 ay)…")
-                    g_stok_rows, g_stok_aylik, g_nakit_rows, g_nakit_aylik = self._donem_hareketlerini_cek(
-                        cfg, g_bas, bit, bildir)
+                    g_stok_rows, g_stok_aylik, g_nakit_rows, g_nakit_aylik = donem_hareketleri(
+                        cfg, g_bas, bit, bildir=bildir)
                     gecmis = build_gercek_durum(
                         stok_rows=g_stok_rows, stok_aylik=g_stok_aylik,
                         nakit_rows=g_nakit_rows, nakit_aylik=g_nakit_aylik,
                         bas=g_bas, bit=bit, ayarlar=ayarlar,
                     ).trend
-                except MikroAPIError:
+                except (MikroAPIError, YilVeritabaniHatasi):
                     gecmis = []
             bilanco = build_bilanco(mizan_rows, asof=bit)
             tr = build_trend(aylik=gd.trend, aylik_gecmis=gecmis,
