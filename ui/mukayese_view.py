@@ -28,6 +28,31 @@ _YIL_SUTUN = 100
 _DEGISIM_SUTUN = 124   # «+310,89 puan» sığmalı
 
 
+_AY_ADI = ("Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+           "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık")
+
+
+def _kismi_bit(kapanislar: list[YilKapanis]) -> str:
+    """Yıllar tam okunmadıysa ortak bitiş günü («07-28»); tamsa boş."""
+    kismi = [k for k in kapanislar if not k.tam and len(k.bit) == 10]
+    return kismi[-1].bit[5:] if kismi else ""
+
+
+def _pencere_eki(kapanislar: list[YilKapanis]) -> str:
+    """Başlığa eklenen dönem eki — kısmi yılda «· 1 Ocak – 28 Temmuz»."""
+    ag = _kismi_bit(kapanislar)
+    if not ag:
+        return ""
+    return f" &nbsp;·&nbsp; 1 Ocak – {int(ag[3:5])} {_AY_ADI[int(ag[:2]) - 1]}"
+
+
+def _pencere_notu(kapanislar: list[YilKapanis]) -> str:
+    ag = _kismi_bit(kapanislar)
+    gun = f"{int(ag[3:5])} {_AY_ADI[int(ag[:2]) - 1]}"
+    return (f"Yıl sürüyor: her yıl 1 Ocak – {gun} penceresinden okundu. Geçmiş yılı "
+            "tam okuyup bu yılı yarım okumak kıyası bozardı.")
+
+
 def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     """
     Yıllar arası mukayese — DETERMİNİSTİK, modelden bağımsız.
@@ -72,7 +97,8 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     t.setFixedWidth(genislik)
     t.setFixedHeight(30 * t.topLevelItemCount() + 6)
 
-    notlar = [("Yıllar boyunca hiç değişmeyen kalemler tabloda GÖSTERİLMEZ — "
+    notlar = [(_pencere_notu(kapanislar), "")] if _pencere_eki(kapanislar) else []
+    notlar += [("Yıllar boyunca hiç değişmeyen kalemler tabloda GÖSTERİLMEZ — "
                "karşılaştırma değeri taşımazlar.", ""),
               ("Alacak, borç ve nakit ilgili sekmelerin canlı kaynağından gelir "
                "(cari hareketler / GL nakit hesapları); stok, özkaynak ve aktif mizandan.", ""),
@@ -89,7 +115,8 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     lay = QVBoxLayout(card)
     lay.setContentsMargins(16, 13, 16, 15)
     lay.setSpacing(8)
-    lbl = QLabel(f"YILLAR ARASI MUKAYESE &nbsp;·&nbsp; {yillar[0]}–{yillar[-1]}")
+    lbl = QLabel(f"YILLAR ARASI MUKAYESE &nbsp;·&nbsp; {yillar[0]}–{yillar[-1]}"
+                 + _pencere_eki(kapanislar))
     lbl.setTextFormat(Qt.TextFormat.RichText)
     lbl.setStyleSheet(
         "color: #0f766e; font-size: 13px; font-weight: 800; letter-spacing: 0.3px; "

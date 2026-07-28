@@ -17,6 +17,9 @@ FIRMA = "Hidroteknik Fabr. Malz. San. Tic. A.Ş."
 TELIF = "© 2026 Hidroteknik A.Ş. Tüm hakları saklıdır."
 ILETISIM = "mikrapor@hidroteknik.com.tr"
 
+PROJE_SORUMLUSU = "Serkan Yavuz Mercan"
+GELISTIRICILER = ("Alper Alyaz", "Berra Kaya")
+
 TANITIM = (
     "MikRapor, Mikro ERP verinizi mali müşavir raporu beklemeden okunur hâle getirir. "
     "Bilanço ve gelir tablosundan nakit akışına, alacak yaşlandırmasından yıllar arası "

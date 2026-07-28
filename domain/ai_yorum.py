@@ -129,6 +129,7 @@ class YilKapanis:
 
     yil: int
     tam: bool = True               # yıl tamamlandı mı (devam eden yıl kıyası bozar)
+    bit: str = ""                  # okunan pencerenin bitişi; kısmi yılda «1 Oca–28 Tem»
     net_satis: float = 0.0
     brut_kar: float = 0.0
     faaliyet_kari: float = 0.0
