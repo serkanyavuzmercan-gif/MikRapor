@@ -11,6 +11,7 @@ basar. Mantık `mizan_bilanco` modülünde (GUI ile aynı kaynak). Gizli değer 
 from __future__ import annotations
 
 import sys
+import time
 from datetime import date
 
 from domain.mizan_bilanco import bilanco_metni, build_bilanco, tl
@@ -27,8 +28,11 @@ def main() -> None:
         return
     client = MikroClient(cfg)
     print(f"GL çekiliyor (… {asof} tarihine kadar, firma {cfg.firma_kodu}, yıl {cfg.calisma_yili})…")
+    # Mizan sorgusunun ALT tarih sınırı yok: tabloyu baştan sona okur. Büyük
+    # veritabanında dakikalar sürebiliyor — ne kadar sürdüğü görünsün.
+    t0 = time.monotonic()
     rows = fetch_mizan(client, asof)
-    print(f"{len(rows)} hesap geldi.\n")
+    print(f"{len(rows)} hesap geldi  ({time.monotonic() - t0:.1f} sn).\n")
     b = build_bilanco(rows, asof=asof)
     print(bilanco_metni(b))
 
@@ -71,22 +75,25 @@ def _kapanis_teshisi(client, asof: str, b) -> None:
 
     Kapanış fişi tam o gün bütün bakiyeleri sıfırlar; kümülatif mizan o güne kadar
     alınınca bilanço boşalmış görünür (canlıda 134 milyon ciroluk firmada aktif
-    toplamı 176 bin TL çıktı). Bir gün öncesiyle kıyaslamak sorunu kesinleştirir.
-    """
-    from datetime import timedelta
+    toplamı 176 bin TL çıktı).
 
+    Teşhis TEK GÜNÜN fişlerine bakar. Bir gün öncesinin mizanını çekmek kesin sonuç
+    verirdi ama tüm tabloyu ikinci kez taramak demek — mizan sorgusunun alt tarih
+    sınırı yok, milyonlarca satır okur ve zaten dakikalarca sürüyor. O günün
+    fişleri hem ucuz hem yeterince açık: kapanış fişinin borç toplamı bilançonun
+    tamamı kadardır, kalan bakiye ise sıfıra yakındır.
+    """
     from domain.ortak import to_float as _f
     from infra.mikro_fetch import fetch_gl_gun_fisleri
 
-    onceki = (date.fromisoformat(asof) - timedelta(days=1)).isoformat()
     print(f"\nKAPANIŞ TEŞHİSİ — {asof} bir yıl sonu; kapanış fişi bakiyeleri sıfırlar mı?")
-    onceki_b = build_bilanco(fetch_mizan(client, onceki), asof=onceki)
-    print(f"   Aktif toplamı  {onceki}:  {tl(onceki_b.aktif_toplam):>20}")
-    print(f"   Aktif toplamı  {asof}:  {tl(b.aktif_toplam):>20}")
-
     fisler = fetch_gl_gun_fisleri(client, asof)
+    if not fisler:
+        print(f"   {asof} günü hiç yevmiye fişi yok → sorun kapanış fişi değil.")
+        return
+
     kapanis = [f for f in fisler if _f(f.get("ozkaynak_var", f.get("OZKAYNAK_VAR"))) > 0]
-    print(f"\n   {asof} günü {len(fisler)} yevmiye fişi var; "
+    print(f"   {asof} günü {len(fisler)} yevmiye fişi var; "
           f"{len(kapanis)} tanesi özkaynak (5xx) satırı içeriyor:")
     print(f"      {'yevmiye':>10} {'satır':>7} {'borç toplamı':>22}  içerik")
     for f in fisler[:10]:
@@ -97,12 +104,29 @@ def _kapanis_teshisi(client, asof: str, b) -> None:
               f"{int(_f(f.get('satir', f.get('SATIR')))):>7} "
               f"{tl(_f(f.get('borc', f.get('BORC')))):>22}  {ic}")
 
-    if onceki_b.aktif_toplam > b.aktif_toplam * 5:
-        print(f"\n   → DOĞRULANDI: bir gün öncesi {onceki_b.aktif_toplam / max(b.aktif_toplam, 1):.0f} "
-              "kat büyük. 31 Aralık bilançosu kapanış fişini içerdiği için çöküyor.")
-        print(f"      Gerçek yıl sonu bilançosu için {onceki} tarihini kullanın.")
+    en_buyuk = max((_f(f.get("borc", f.get("BORC"))) for f in kapanis), default=0.0)
+    print(f"\n   En büyük özkaynaklı fişin borç toplamı: {tl(en_buyuk)}")
+    print(f"   Bilançoda kalan aktif toplamı:          {tl(b.aktif_toplam)}")
+    if en_buyuk > max(b.aktif_toplam, 1.0) * 5:
+        print("\n   → DOĞRULANDI: o gün kesilen fiş, kalan bilançodan kat kat büyük — "
+              "bütün bakiyeleri kapatan yıl sonu fişi.")
+        print("      31 Aralık bilançosu bu fişi içerdiği için çöküyor; "
+              "gerçek yıl sonu için 30 Aralık'ı seçin.")
     else:
         print("\n   → Kapanış fişi bakiyeleri sıfırlamıyor; sorun başka yerde.")
+
+    # Yıl başı AÇILIŞ fişi var mı? Varsa mizan tüm geçmiş yerine yalnız o yıldan
+    # kurulabilir — açılış fişi önceki bakiyeleri zaten taşır. Sorgunun alt tarih
+    # sınırı olmadığı için şu an milyonlarca satır okunuyor; bu bilgi o iyileştirmenin
+    # yapılabilir olup olmadığını söyler.
+    acilis_gun = f"{asof[:4]}-01-01"
+    acilis = [f for f in fetch_gl_gun_fisleri(client, acilis_gun)
+              if _f(f.get("ozkaynak_var", f.get("OZKAYNAK_VAR"))) > 0]
+    en_buyuk_acilis = max((_f(f.get("borc", f.get("BORC"))) for f in acilis), default=0.0)
+    print(f"\n   {acilis_gun} açılış fişi: "
+          + (f"VAR — borç toplamı {tl(en_buyuk_acilis)}" if acilis else "YOK"))
+    if acilis:
+        print("      → Mizan tüm geçmiş yerine yalnız bu yıldan kurulabilir (çok daha hızlı).")
 
 
 if __name__ == "__main__":
