@@ -61,12 +61,10 @@ class MikroAyarlarDialog(QDialog):
         self._base_url.setPlaceholderText("https://192.168.1.50:443  (http yalnız localhost)")
         self._api_key = QLineEdit(self._cfg.api_key)
         self._api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self._firma_kodu = QLineEdit(self._cfg.firma_kodu)
-        self._firma_kodu.setPlaceholderText("örn. 01")
         # Mikro'da veritabanını firma kodu seçer ve bir veritabanı birden çok yıl
         # taşıyabilir. Liste veya sayısal aralık girilir; program yıl eşlemesini tarar.
-        self._firma_kodlari = QLineEdit(self._cfg.firma_kodlari)
-        self._firma_kodlari.setPlaceholderText("boş bırakılabilir — örn. 20, 26 veya 001-100")
+        self._firma_kodlari = QLineEdit(self._cfg.firma_kodlari or self._cfg.firma_kodu)
+        self._firma_kodlari.setPlaceholderText("zorunlu — örn. 20, 26 veya 001-100")
         self._calisma_yili = QSpinBox()
         self._calisma_yili.setRange(2000, 2100)
         self._calisma_yili.setValue(self._cfg.calisma_yili or date.today().year)
@@ -77,7 +75,6 @@ class MikroAyarlarDialog(QDialog):
 
         form.addRow("Mikro API adresi:", self._base_url)
         form.addRow("API anahtarı:", self._api_key)
-        form.addRow("Firma kodu:", self._firma_kodu)
         firma_kodlari_row = QHBoxLayout()
         firma_kodlari_row.addWidget(self._firma_kodlari, stretch=1)
         self._btn_katalog = QPushButton("Yılları Tara")
@@ -251,7 +248,7 @@ class MikroAyarlarDialog(QDialog):
         return MikroConfig(
             base_url=self._base_url.text(),
             api_key=self._api_key.text(),
-            firma_kodu=self._firma_kodu.text(),
+            firma_kodu="",  # firma_kodlari'nın ilk kodundan otomatik türetilir
             firma_kodlari=self._firma_kodlari.text(),
             calisma_yili=self._calisma_yili.value(),
             kullanici_kodu=self._kullanici.text(),

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
@@ -25,6 +26,17 @@ APP_DIR_NAME = "MikRapor"
 CONFIG_FILE_NAME = "config.json"
 
 _LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
+_KOD_AYIRAC = re.compile(r"[,;\s]+")
+_SAYISAL_KOD_ARALIGI = re.compile(r"^(\d+)-\d+$")
+
+
+def _varsayilan_firma_kodu(tekil: str, liste: str) -> str:
+    """API'nin zorunlu FirmaKodu alanını, kullanıcıdan ikinci kez istemeden üretir."""
+    if (tekil or "").strip():
+        return (tekil or "").strip()
+    ilk = next((p for p in _KOD_AYIRAC.split((liste or "").strip()) if p), "")
+    aralik = _SAYISAL_KOD_ARALIGI.fullmatch(ilk)
+    return aralik.group(1) if aralik else ilk
 
 
 def config_dir() -> Path:
@@ -72,10 +84,11 @@ class MikroConfig:
 
     base_url: str = ""          # MIKRO_BASE_URL  — örn. https://192.168.1.50:443 veya Tailscale adresi
     api_key: str = ""           # MIKRO_API_KEY
-    firma_kodu: str = ""        # MIKRO_FIRMA_KODU — örn. 01 (cari yıl firma kodu)
-    # Mikro'da veritabanını FİRMA KODU seçer ve bir veritabanı birden çok yıl taşır
-    # (canlıda 20 → 2020-2025, 26 → 2026+). Geçmiş yıllar başka veritabanındaysa
-    # kodları buraya yazılır: «20, 26». Boşsa yalnız firma_kodu kullanılır.
+    # API'nin zorunlu alanı; kullanıcı arayüzünde firma_kodlari'nın ilk kodundan türetilir.
+    # Eski config/env kayıtları için ayrı alan korunur.
+    firma_kodu: str = ""        # MIKRO_FIRMA_KODU — eski kurulumlarla uyumluluk
+    # Mikro'da veritabanını FİRMA KODU seçer. Kullanıcının tek girdiği alan budur:
+    # «20, 26» veya «001-100». Program yıl → kod eşlemesini katalogdan keşfeder.
     firma_kodlari: str = ""     # MIKRO_FIRMA_KODLARI
     calisma_yili: int = 0       # MIKRO_CALISMA_YILI — 0 ise içinde bulunulan yıl
     kullanici_kodu: str = ""    # MIKRO_KULLANICI_KODU
@@ -86,11 +99,12 @@ class MikroConfig:
 
     def normalized(self) -> MikroConfig:
         yil = self.calisma_yili or date.today().year
+        kod_listesi = (self.firma_kodlari or "").strip()
         return MikroConfig(
             base_url=(self.base_url or "").strip().rstrip("/"),
             api_key=(self.api_key or "").strip(),
-            firma_kodu=(self.firma_kodu or "").strip(),
-            firma_kodlari=(self.firma_kodlari or "").strip(),
+            firma_kodu=_varsayilan_firma_kodu(self.firma_kodu, kod_listesi),
+            firma_kodlari=kod_listesi,
             calisma_yili=int(yil),
             kullanici_kodu=(self.kullanici_kodu or "").strip(),
             sifre_gun=(self.sifre_gun or "").strip(),

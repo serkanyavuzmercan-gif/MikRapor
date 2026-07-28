@@ -25,6 +25,14 @@ from infra.mikro_api import (
 
 
 class TestPasswordHash(unittest.TestCase):
+    def test_firma_kodu_liste_ve_araliktan_turetilir(self) -> None:
+        cfg = MikroConfig(
+            base_url="https://x", api_key="K", firma_kodlari="001-100",
+            calisma_yili=2026, kullanici_kodu="U", sifre_gun="S",
+        ).normalized()
+        self.assertEqual(cfg.firma_kodu, "001")
+        self.assertTrue(cfg.is_complete())
+
     def test_with_salt(self) -> None:
         beklenen = hashlib.md5(b"2026-06-23 GIZLI").hexdigest()
         self.assertEqual(password_hash("GIZLI", today="2026-06-23"), beklenen)
