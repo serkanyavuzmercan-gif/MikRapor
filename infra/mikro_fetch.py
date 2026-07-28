@@ -418,6 +418,30 @@ def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+def fetch_gl_gun_fisleri(client: MikroClient, tarih: str) -> list[dict[str, Any]]:
+    """
+    Tek günün yevmiye fişleri — teşhis içindir (yıl sonu kapanışı var mı?).
+
+    Yıl sonu KAPANIŞ fişi (31 Aralık) bütün bilanço hesaplarını sıfırlar. Kümülatif
+    mizan tam o güne kadar alınırsa bakiyeler sıfırlanmış görünür; ertesi yılın açılış
+    fişi henüz aralığa girmediği için geri gelmez. Kapanış fişinin ayırt edici işareti,
+    normal bir işlem fişinden farklı olarak ÖZKAYNAK (5xx) satırı içermesidir.
+    Dönüş: yevmiye no, satır adedi, borç toplamı, 5xx satırı var mı.
+    """
+    tarih = iso_tarih(tarih, alan="tarih")
+    sql = (
+        "SELECT m.fis_yevmiye_no AS yevmiye, COUNT(*) AS satir, "
+        "SUM(CASE WHEN m.fis_meblag0 > 0 THEN m.fis_meblag0 ELSE 0 END) AS borc, "
+        "MAX(CASE WHEN m.fis_hesap_kod LIKE '5%' THEN 1 ELSE 0 END) AS ozkaynak_var, "
+        "MAX(CASE WHEN m.fis_hesap_kod LIKE '6%' THEN 1 ELSE 0 END) AS gelir_var "
+        "FROM MUHASEBE_FISLERI m WITH (NOLOCK) "
+        f"WHERE m.fis_iptal = 0 AND m.fis_tarih >= '{tarih}' "
+        f"AND m.fis_tarih < '{_bit_son(tarih)}' "
+        "GROUP BY m.fis_yevmiye_no ORDER BY borc DESC"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
 def fetch_cari_bakiye(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     """
     Tarih (asof) itibarıyla cari/banka/kasa bakiyeleri — CARI_HESAP_HAREKETLERI üzerinden.
