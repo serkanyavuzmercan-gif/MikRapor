@@ -33,6 +33,7 @@ from infra.config import MikroConfig, load_config, load_gercek_durum_ayarlar
 from infra.mikro_fetch import (
     fetch_stok_evraktip_tepe,
     fetch_stok_evraktip_yillik,
+    fetch_stok_fatura_ortakligi,
     fetch_stok_faturalasma,
     fetch_stok_maliyet_teshis,
     fetch_stok_ozet,
@@ -64,6 +65,10 @@ _ASGARI_DOLULUK = 90.0
 # Ticaret firmasında brüt marj bu aralığın dışına çıkıyorsa yorum yanlıştır:
 # eksi marj «maliyet satış tutarını aşıyor», %90 üstü «maliyet neredeyse sıfır» demek.
 _MAKUL_MARJ = (0.0, 90.0)
+# Ay deseni: boşluk zamanlama sorunuysa SON aylarda toplanır, sistematikse dağılır.
+_SON_AY_PENCERE = 2
+# İki bağımsız maliyet yöntemi bu kadar yakınsa ölçüm iç tutarlı sayılır.
+_MUTABAKAT_TOLERANS = 0.10
 
 
 def _s(row: dict, ad: str) -> str:
@@ -218,7 +223,7 @@ def _maliyet_teshisi(cfg: MikroConfig, bas: str, bit: str) -> None:
         print(f"    {ay:>7} {int(adet):>8} {int(dolu):>8} {oran:>7.1f}%{isaret}")
 
     print("\n  YORUM (satış tutarına göre brüt marj):")
-    yeterli = []
+    makul_olcum: list[tuple[str, str, float, float]] = []
     for kolon in _MALIYET_KOLON:
         duz = sum(al(r, f"{kolon}_duz") for r in sec)
         carpim = sum(al(r, f"{kolon}_carpim") for r in sec)
@@ -231,24 +236,98 @@ def _maliyet_teshisi(cfg: MikroConfig, bas: str, bit: str) -> None:
             makul = "  ← makul" if _MAKUL_MARJ[0] <= marj <= _MAKUL_MARJ[1] else ""
             print(f"    {kolon:<12} %{oran:>5.1f} dolu  {etiket:<15} "
                   f"SMM {tl(mal):>18}  brüt marj %{marj:>6.1f}{makul}")
-            if makul and oran >= _ASGARI_DOLULUK:
-                yeterli.append((abs(marj - 25.0), kolon, etiket, marj))
+            if makul:
+                makul_olcum.append((kolon, etiket, mal, marj))
         print()
 
-    if yeterli:
-        yeterli.sort()
-        _, kolon, etiket, marj = yeterli[0]
-        print(f"  → KULLANILABİLİR: {kolon}, «{etiket}» olarak okunmalı "
-              f"(brüt marj %{marj:.1f}).")
-        print("    Nakit & Kârlılık ve mukayese tablosu kapanış fişi beklemeden gerçek")
-        print("    brüt kârı ve GERÇEK STOĞU gösterecek şekilde bağlanabilir.")
-        return
+    _maliyet_hukmu(aylik, makul_olcum, satis_toplam, adet_toplam)
 
-    print(f"  → Doluluk %{_ASGARI_DOLULUK:.0f} eşiğinin altında; kolon OLDUĞU GİBİ bağlanamaz.")
-    print("    Ama yukarıdaki ay tablosuna bakın: boşluk SON aylarda toplanıyorsa kolon")
-    print("    sağlamdır, yalnız Mikro'da «Maliyet Güncelleme» o tarihten beri")
-    print("    çalıştırılmamıştır — çalıştırıldığında bu rapor kullanılabilir hâle gelir.")
-    print("    Boşluk her aya dağılmışsa maliyet kolonu bu kurulumda güvenilir değildir.")
+
+def _maliyet_hukmu(
+    aylik: dict[str, list[float]],
+    olcum: list[tuple[str, str, float, float]],
+    satis_toplam: float,
+    adet_toplam: float,
+) -> None:
+    """Ay deseni + kolonlar arası mutabakattan hüküm — iki ayrı soru, iki ayrı cevap."""
+    oranlar = [d / a * 100 for a, d in aylik.values() if a]
+    genel = sum(d for _, d in aylik.values()) / adet_toplam * 100 if adet_toplam else 0.0
+
+    # SORU 1: boşluk NE ZAMAN? Mikro'da «Maliyet Güncelleme» toplu işi geriye dönük
+    # doldurur; iş bir tarihten beri çalışmıyorsa boşluk SON aylarda toplanır. Boşluk
+    # her aya eşit dağılmışsa sebep zamanlama değil, satırların kendisidir.
+    if genel >= _ASGARI_DOLULUK:
+        print(f"  → Doluluk %{genel:.1f} — kolon yeterince dolu.")
+    elif oranlar and min(oranlar[-_SON_AY_PENCERE:]) < min(oranlar[:-_SON_AY_PENCERE] or [100.0]):
+        print("  → Boşluk SON aylarda toplanıyor: Mikro'da «Maliyet Güncelleme» bir")
+        print("    süredir çalıştırılmamış. Çalıştırılınca kolon kullanılabilir hâle gelir.")
+    else:
+        yayilim = max(oranlar) - min(oranlar) if oranlar else 0.0
+        print(f"  → Boşluk HER AYA dağılmış (doluluk %{genel:.1f}, aylar arası fark "
+              f"yalnız {yayilim:.1f} puan).")
+        print("    Yani sebep «maliyet güncellemesi geç kaldı» değil; satırların yaklaşık")
+        print(f"    %{100 - genel:.0f}'i sistematik olarak maliyetsiz. Muhtemel sebepler:")
+        print("    stok takibi olmayan hizmet/işçilik kalemleri, promosyon-numune çıkışları,")
+        print("    ya da eksi stoktan satış (Mikro maliyeti hesaplayamaz).")
+
+    # SORU 2: kolonlar birbirini tutuyor mu? Bağımsız iki maliyet yöntemi aynı rakama
+    # yakınsıyorsa ölçüm iç tutarlıdır — tek kolona bakıp karar vermekten çok daha güçlü.
+    # HEPSİNİN uyuşmasını aramıyoruz: canlıda «orjinal» 5,2 milyonda tek başına kalıp
+    # (ana 11,7M · alternatif 12,1M) gerçek mutabakatı gizliyordu. En kalabalık uyuşan
+    # kümeyi alıyoruz; aykırı kolon hem hükmü hem alt sınırı bozmasın.
+    kume = _uyusan_kume(olcum)
+    if len(kume) >= 2:
+        ad = " · ".join(f"{k} ({e})" for k, e, _, _ in kume)
+        print(f"\n  → MUTABAKAT: {ad}")
+        print(f"    aynı rakama yakınsıyor ({tl(min(o[2] for o in kume))} – "
+              f"{tl(max(o[2] for o in kume))}). Bağımsız iki maliyet yöntemi aynı şeyi")
+        print("    söylüyor; ölçüm iç tutarlı. Dışarıda kalan kolon aykırı değerdir.")
+    if kume:
+        alt_sinir = min(o[2] for o in kume)
+        marj = (satis_toplam - alt_sinir) / satis_toplam * 100 if satis_toplam else 0.0
+        print(f"\n  SMM EN AZ {tl(alt_sinir)} — boş satırlar bu rakamı yalnız ARTIRIR.")
+        print("  Dolayısıyla mizan stoğu en az bu kadar şişik ve gerçek brüt marj")
+        print(f"  %{marj:.1f}'in ALTINDA. Bunlar tahmin değil, tek yönlü sınır.")
+
+
+def _uyusan_kume(
+    olcum: list[tuple[str, str, float, float]],
+) -> list[tuple[str, str, float, float]]:
+    """Birbirine `_MUTABAKAT_TOLERANS` kadar yakın en kalabalık ölçüm kümesi."""
+    en_iyi: list[tuple[str, str, float, float]] = []
+    for merkez in olcum:
+        yakin = [o for o in olcum
+                 if max(o[2], merkez[2]) > 0
+                 and abs(o[2] - merkez[2]) / max(o[2], merkez[2]) <= _MUTABAKAT_TOLERANS]
+        if len(yakin) > len(en_iyi):
+            en_iyi = yakin
+    return en_iyi
+
+
+def _fatura_ortakligi(cfg: MikroConfig, bas: str, bit: str, fatura_tutar: float) -> None:
+    """
+    Kalan tek soru: evraktip 4 satırları irsaliyelerle AYNI faturaya mı ait?
+
+    Damgalama modeli anlaşılsa bile bu açık kalıyordu. Aynı faturaysa o tutar iki kez
+    sayılır; ayrı faturaysa irsaliyesiz doğrudan satıştır ve toplama girmelidir.
+    """
+    satirlar = donem_satirlari(cfg, bas, bit, fetch_stok_fatura_ortakligi)
+    if not satirlar:
+        return
+    irs = sum(_f(r.get("irsaliye_fatura", r.get("IRSALIYE_FATURA"))) for r in satirlar)
+    fat = sum(_f(r.get("fatura_fatura", r.get("FATURA_FATURA"))) for r in satirlar)
+    bir = sum(_f(r.get("birlesik_fatura", r.get("BIRLESIK_FATURA"))) for r in satirlar)
+    ortak = irs + fat - bir
+    print(f"\n  Tekil fatura: irsaliyelerden {int(irs):,} · fatura satırlarından "
+          f"{int(fat):,} · birleşik {int(bir):,}".replace(",", "."))
+    if ortak <= 0:
+        print("  → Kümeler AYRIK: fatura satırları irsaliyelerin kopyası değil, irsaliyesiz")
+        print("    doğrudan satışlar. İrsaliye + fatura toplamı MÜKERRER DEĞİL;")
+        print("    «Satış: İrsaliye+Fatura» ayarı doğru.")
+    else:
+        print(f"  → {int(ortak)} fatura HEM irsaliye HEM fatura satırı taşıyor: o kadarı iki kez")
+        print(f"    sayılıyor (fatura satırlarının üst sınırı {tl(fatura_tutar)}).")
+        print("    «Satış: Yalnız Fatura» ayarına geçmeyi değerlendirin.")
 
 
 def _faturalasma_teshisi(cfg: MikroConfig, bas: str, bit: str) -> None:
@@ -295,9 +374,9 @@ def _faturalasma_teshisi(cfg: MikroConfig, bas: str, bit: str) -> None:
     print()
     if irs_fat[0] > 0 and fatura[0] < irs_fat[0] * _KOPYA_ESIGI:
         print("  → DAMGALAMA MODELİ: faturalaşan irsaliyeler yerinde duruyor ve ayrıca")
-        print("    fatura satırı YARATILMIYOR. İrsaliye + fatura toplamı MÜKERRER DEĞİL;")
-        print("    «Satış: İrsaliye+Fatura» ayarı doğru. Faturalanmamış irsaliyeler de")
-        print("    fiilen depodan çıkmış maldır, satışa dahil edilmeleri yerinde.")
+        print("    fatura satırı YARATILMIYOR. Faturalanmamış irsaliyeler de fiilen")
+        print("    depodan çıkmış maldır, satışa dahil edilmeleri yerinde.")
+        _fatura_ortakligi(cfg, bas, bit, fatura[1])
     elif fatura[0] >= irs_fat[0] * _KOPYA_ESIGI and irs_fat[0] > 0:
         print("  → KOPYALAMA MODELİ ŞÜPHESİ: faturalanmış irsaliye kadar fatura satırı da")
         print("    var. İkisini toplamak satışı ~2 kat şişirir. «Satış: Yalnız Fatura»")
