@@ -59,7 +59,7 @@ from infra.ai_config import (
 )
 from infra.ai_saglayici import SAGLAYICILAR
 from infra.config import MikroConfig, load_gercek_durum_ayarlar
-from infra.mikro_api import MikroAPIError, MikroClient
+from infra.mikro_api import MikroAPIError
 from infra.mikro_fetch import (
     fetch_acik_kalemler,
     fetch_cari_vade_gun,
@@ -72,7 +72,7 @@ from infra.mikro_fetch import (
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
-from infra.mukayese_fetch import yillari_cek
+from infra.mukayese_fetch import yil_client, yillari_cek
 from ui.ai_yorum_pdf import export_ai_yorum_pdf
 from ui.ai_yorum_view import build_ai_yorum_widget
 from ui.bilesenler import soru_evet_hayir, varsayilan_kayit_yolu
@@ -291,7 +291,9 @@ class AiYorumTab(RaporTab):
         gd_ayarlar = load_gercek_durum_ayarlar()
 
         def is_fn(bildir) -> dict[str, Any]:
-            client = MikroClient(cfg)
+            # Veritabanını firma kodu seçer: dönemin bittiği yıl hangi
+            # veritabanındaysa oraya bağlanılır (bkz. infra/veritabani.py).
+            client = yil_client(cfg, int(bit[:4]))
             firma = firma_getir(cfg, client)
             bolumler: list[tuple[str, str]] = []
 

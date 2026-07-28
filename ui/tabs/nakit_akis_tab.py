@@ -19,7 +19,7 @@ from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis, build_nakit_akis, nakit_akis_csv
 from domain.tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak
 from infra.config import MikroConfig
-from infra.mikro_api import MikroAPIError, MikroClient
+from infra.mikro_api import MikroAPIError
 from infra.mikro_fetch import (
     fetch_acik_kalemler,
     fetch_cari_bakiye,
@@ -34,6 +34,7 @@ from infra.mikro_fetch import (
     fetch_nakit_delta,
     fetch_nakit_delta_gl,
 )
+from infra.mukayese_fetch import yil_client
 from ui.bilesenler import varsayilan_kayit_yolu
 from ui.nakit_akis_pdf import export_nakit_akis_pdf
 from ui.nakit_akis_view import build_nakit_akis_widget
@@ -69,7 +70,9 @@ class NakitAkisTab(RaporTab):
 
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
         def is_fn(bildir) -> dict[str, Any]:
-            client = MikroClient(cfg)
+            # Veritabanını firma kodu seçer: dönemin bittiği yıl hangi
+            # veritabanındaysa oraya bağlanılır (bkz. infra/veritabani.py).
+            client = yil_client(cfg, int(bit[:4]))
             # ÖNCE MUHASEBE (GL): cari tablosu yalnız cari modülünden geçen banka/kasa
             # hareketini görür; çek ödemesi / EFT / kredi gibi doğrudan muhasebeye
             # işlenenleri kaçırır (satıcı ödemesi 13K gibi külli eksik rakamlar).

@@ -10,8 +10,8 @@ from PyQt6.QtWidgets import QFileDialog, QMessageBox
 from domain.mizan_bilanco import tl
 from domain.tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak, tahsilat_alacak_csv
 from infra.config import MikroConfig
-from infra.mikro_api import MikroClient
 from infra.mikro_fetch import fetch_acik_kalemler, fetch_cari_vade_gun
+from infra.mukayese_fetch import yil_client
 from ui.bilesenler import varsayilan_kayit_yolu
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.tahsilat_alacak_pdf import export_tahsilat_alacak_pdf
@@ -40,7 +40,9 @@ class TahsilatAlacakTab(RaporTab):
 
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
         def is_fn(bildir) -> dict[str, Any]:
-            client = MikroClient(cfg)
+            # Veritabanını firma kodu seçer: dönemin bittiği yıl hangi
+            # veritabanındaysa oraya bağlanılır (bkz. infra/veritabani.py).
+            client = yil_client(cfg, int(bit[:4]))
             bildir("Cari ödeme planları çekiliyor…")
             vade_gun_map = fetch_cari_vade_gun(client)
             bildir("Cari açık kalemler çekiliyor…")

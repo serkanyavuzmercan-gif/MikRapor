@@ -20,7 +20,7 @@ from infra.mikro_fetch import (
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
-from infra.mukayese_fetch import yil_donemleri, yil_client, yillari_cek
+from infra.mukayese_fetch import yil_client, yil_donemleri, yillari_cek
 from ui.bilesenler import varsayilan_kayit_yolu
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.trend_pdf import export_trend_pdf
