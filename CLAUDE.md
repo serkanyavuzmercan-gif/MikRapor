@@ -97,6 +97,24 @@ Gizlemek çare değil. Bir rakam canlı veriden hesaplanabiliyorsa hesaplanır. 
 hesaplanamıyorsa **tahmin edilmez** — ölçülmüş tek yönlü sınır varsa o yazılır
 ("en az X"), yoksa `—` kalır.
 
+## 3b. Bir uyarı ancak İŞE YARIYORSA gösterilir
+
+Bulgu/uyarı gösterme ölçütü ikisi BİRDEN doğru olacak:
+  (a) ekranda görülen bir rakamı bozuyor,
+  (b) kullanıcının yapabileceği bir şey var.
+
+«Satış satırlarının %11'inde maliyet yok» uyarısı bu yüzden kaldırıldı — kendi metni
+bile «depodan geçen maldan hesaplanan marj bundan etkilenmez» diyordu, yani hiçbir
+rakamı bozmuyordu. Tanımsız evrak tipi yalnız önemli tutarda gösteriliyor (canlıda
+cironun %1'iydi).
+
+**«Bize bildirin» YASAK.** Satılan bir üründe «biz» diye bir muhatap yok. Aynı şekilde
+kullanıcıya terminal komutu (`stok_diag_cli.py …`) verilmez; tavsiye Mikro'da
+yapılabilecek bir şey olmalı.
+
+**Veri Sağlığı sekme DEĞİL**, Mikro Ayarları'ndan açılan bir penceredir: bütün rapor
+sekmeleri seçili tarih aralığına bağlıyken o değil, kurulumun hâlini gösterir.
+
 ## 4. LESS IS MORE
 
 Kısa ve öz. Etiket, uyarı ve not şişkinliği yok. Tablo altına altı paragraf uyarı

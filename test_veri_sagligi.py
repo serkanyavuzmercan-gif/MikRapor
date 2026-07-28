@@ -69,7 +69,9 @@ class TestBozukStokKaydi(unittest.TestCase):
         self.assertIn("bozuk_stok", _kodlar(vs))
         b = next(x for x in vs.bulgular if x.kod == "bozuk_stok")
         self.assertEqual(b.onem, KRITIK)
-        self.assertIn("0 12", b.ne_yapmali)      # hangi türe bakılacağı yazıyor
+        # CLI komutu YOK: satılan üründe kullanıcıya terminal komutu verilmez.
+        self.assertNotIn("stok_diag_cli", b.ne_yapmali)
+        self.assertIn("Mikro", b.ne_yapmali)
 
     def test_normal_hareket_bulgu_uretmez(self) -> None:
         vs = build_veri_sagligi(stok_rows=[self._NORMAL])
@@ -82,16 +84,31 @@ class TestBozukStokKaydi(unittest.TestCase):
 
 
 class TestTanimsizEvrak(unittest.TestCase):
-    """Canlıda tip=1/evraktip=0 · 187 satır · 200.964 TL — ne olduğu hâlâ bilinmiyor."""
+    """
+    Tanımsız evrak tipi yalnız ÖNEMLİ tutarda gösterilir.
 
-    def test_bilinmeyen_tur_uyari_verir(self) -> None:
+    Canlıda tip=1/evraktip=0 cironun %1'iydi ve ekranda «bize bildirin» diyordu:
+    kullanıcının yapabileceği bir şey yok, üstelik satılan bir üründe «biz» diye bir
+    muhatap da yok. Küçük tutar artık hiç gösterilmiyor.
+    """
+
+    def test_kucuk_tutar_gosterilmez(self) -> None:
         vs = build_veri_sagligi(stok_rows=[
             {"sth_tip": 1, "sth_evraktip": 1, "tutar": 19_386_234.0, "adet": 17_914},
             {"sth_tip": 1, "sth_evraktip": 0, "tutar": 200_964.0, "adet": 187},
         ])
+        self.assertNotIn("tanimsiz_evrak", _kodlar(vs))
+
+    def test_buyuk_tutar_gosterilir(self) -> None:
+        """Cironun beşte biri sınıflanamıyorsa rakamlar gerçekten eksik demektir."""
+        vs = build_veri_sagligi(stok_rows=[
+            {"sth_tip": 1, "sth_evraktip": 1, "tutar": 10_000_000.0, "adet": 5_000},
+            {"sth_tip": 1, "sth_evraktip": 0, "tutar": 4_000_000.0, "adet": 900},
+        ])
         b = next(x for x in vs.bulgular if x.kod == "tanimsiz_evrak")
         self.assertEqual(b.onem, UYARI)
-        self.assertIn("evraktip=0", b.ne_yapmali)
+        self.assertNotIn("bildirin", b.ne_yapmali)     # muhatap yok
+        self.assertIn("%29", b.olcum)                  # ne kadar eksik olduğu
 
     def test_bilinen_turler_sessiz(self) -> None:
         vs = build_veri_sagligi(stok_rows=[
@@ -99,27 +116,6 @@ class TestTanimsizEvrak(unittest.TestCase):
             {"sth_tip": 1, "sth_evraktip": 16, "tutar": 20.0, "adet": 1},
         ])
         self.assertNotIn("tanimsiz_evrak", _kodlar(vs))
-
-
-class TestMaliyetsizSatis(unittest.TestCase):
-    """Canlıda satış satırlarının %11'i maliyetsizdi — her ay aynı, sistematik."""
-
-    def test_dusuk_doluluk_uyari_verir(self) -> None:
-        vs = build_veri_sagligi(maliyet_rows=[
-            {"sth_tip": 1, "sth_evraktip": 1, "adet": 17_914, "ana_dolu": 16_100},
-            {"sth_tip": 1, "sth_evraktip": 4, "adet": 262, "ana_dolu": 147},
-        ])
-        b = next(x for x in vs.bulgular if x.kod == "maliyetsiz_satis")
-        self.assertEqual(b.onem, UYARI)
-        self.assertIn("%11", b.olcum)
-
-    def test_sarf_fisi_orana_katilmaz(self) -> None:
-        """Sarf fişinin maliyeti olmaması normal; onu saymak kolonu haksız yere yakar."""
-        vs = build_veri_sagligi(maliyet_rows=[
-            {"sth_tip": 1, "sth_evraktip": 1, "adet": 1000, "ana_dolu": 1000},
-            {"sth_tip": 1, "sth_evraktip": 16, "adet": 1000, "ana_dolu": 0},
-        ])
-        self.assertNotIn("maliyetsiz_satis", _kodlar(vs))
 
 
 class TestOkunamayanKaynak(unittest.TestCase):
@@ -131,7 +127,7 @@ class TestOkunamayanKaynak(unittest.TestCase):
     """
 
     def test_verilmeyen_kaynak_icin_bulgu_uydurulmaz(self) -> None:
-        vs = build_veri_sagligi(bilanco=None, stok_rows=None, maliyet_rows=None)
+        vs = build_veri_sagligi(bilanco=None, stok_rows=None)
         self.assertTrue(vs.temiz)
 
     def test_okunamayan_listesi_ozette_kalir(self) -> None:
