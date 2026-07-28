@@ -15,6 +15,10 @@ sunucu isteği O YILIN veritabanına yönlendirir. Tek bir client ile geçmiş y
 sorgulamak, tarih süzgeci doğru olsa bile hep aynı veritabanını okur — canlıda 2021
 ile 2025 bilançosu kuruşu kuruşuna aynı çıkıyordu.
 
+VERİTABANINI ASIL SEÇEN FİRMA KODUDUR. Ayarlarda birden çok firma kodu tanımlıysa
+(canlıda 20 → 2020-2025, 26 → 2026+) her yıl kendi veritabanından okunur; eşleme
+infra.veritabani kataloğundan gelir.
+
 AMA O YILIN VERİTABANI OLMAYABİLİR (tek veritabanında birkaç yıl tutan kurulumlar).
 O yüzden yıl bazlı deneme başarısız olur ya da boş dönerse SEÇİLİ çalışma yılıyla
 tekrar denenir. İkisi de boşsa yıl atlanır. Yıl bazlı denemeyi tek yol yapmak canlıda
@@ -41,6 +45,7 @@ from infra.mikro_fetch import (
     fetch_mizan,
     fetch_nakit_bakiye_gl,
 )
+from infra.veritabani import katalog, yil_icin_firma
 
 # Okuma hataları: bir yıl veritabanında yoksa sorgu hata değil boş döner, ama şema
 # farkı gerçek hata verebilir — ikisinde de o yılı atlarız, rapor komple düşmez.
@@ -110,8 +115,22 @@ def yil_kapanisi(client: MikroClient, yil: int, *, bit: str | None = None,
 
 
 def yil_client(cfg: MikroConfig, yil: int) -> MikroClient:
-    """O yılın veritabanına bağlanan istemci — CalismaYili yılın kendisi olur."""
-    return MikroClient(replace(cfg.normalized(), calisma_yili=yil))
+    """
+    O yılın verisini taşıyan veritabanına bağlanan istemci.
+
+    Veritabanını asıl seçen FİRMA KODUDUR; `calisma_yili` yalnız auth gövdesinde gider.
+    Ayarlarda birden çok firma kodu tanımlıysa (canlıda 20 → 2020-2025, 26 → 2026+)
+    yıl hangi veritabanındaysa oraya bağlanılır. Katalog yoksa ya da yıl hiçbir kapsama
+    girmiyorsa eski davranış sürer: aynı firma, CalismaYili yılın kendisi.
+    """
+    temel = replace(cfg.normalized(), calisma_yili=yil)
+    try:
+        kod = yil_icin_firma(katalog(cfg), yil)
+    except _OKUMA_HATALARI:
+        kod = ""
+    if kod and kod != temel.firma_kodu:
+        temel = replace(temel, firma_kodu=kod)
+    return MikroClient(temel)
 
 
 def yillari_cek(
