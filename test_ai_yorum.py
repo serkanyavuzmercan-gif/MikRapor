@@ -497,6 +497,28 @@ class TestKapanissizYil(unittest.TestCase):
                      "stok_satis", "cari_oran", "borc_ozkaynak", "kredi_aktif"):
             self.assertIsNone(k.kalem(alan), alan)
 
+    def test_canli_ayak_maliyetten_bagimsiz_doludur(self) -> None:
+        """
+        Depodan geçen mal 62'ye hiç bakmaz — kâr satırları «—» olsa da bunlar dolu.
+
+        Kullanıcının kuralı: ilk iki sekme (Bilanço, Gelir Tablosu) resmi kayda dayanır,
+        DİĞER HEPSİ canlı veriye. Mukayese tablosu mizandan kurulduğu için maliyet
+        işlenmemiş yılda kârlılığın tamamı boşalıyordu; oysa Nakit & Kârlılık sekmesi
+        aynı dönemin kârlılığını depodan geçen maldan zaten hesaplıyordu. Kullanıcı
+        haklı olarak «bu rakamları bulabiliyorsun, tabloda neden yok?» dedi.
+        """
+        k = self._yil(2026, eksik=True)
+        k.fiili_satis, k.fiili_alis, k.fiili_var = 20_000_000.0, 14_000_000.0, True
+        self.assertIsNone(k.kalem("brut_kar"))          # resmi ayak: şişik, gizli
+        self.assertEqual(k.kalem("fiili_fark"), 6_000_000.0)
+        self.assertAlmostEqual(k.kalem("fiili_marj"), 30.0)
+
+    def test_stok_hareketi_okunamazsa_fiili_ayak_bos(self) -> None:
+        """Sıfır satış «marj %0» değil «ölçemedim» demek — uydurmuyoruz."""
+        k = self._yil(2026, eksik=True)
+        self.assertIsNone(k.kalem("fiili_fark"))
+        self.assertIsNone(k.kalem("fiili_marj"))
+
     def test_smmden_bagimsiz_kalemler_etkilenmez(self) -> None:
         """Nakit, alacak ve satış o fişten geçmez — onları elemek bilgi kaybı olurdu."""
         k = self._yil(2026, eksik=True)

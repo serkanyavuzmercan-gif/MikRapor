@@ -33,10 +33,11 @@ from datetime import date
 
 from domain.ai_yorum import YilKapanis
 from domain.gelir_tablosu import GelirTablosu, build_gelir_tablosu
+from domain.gercek_durum import _siniflandir_stok
 from domain.mizan_bilanco import Bilanco, build_bilanco
 from domain.tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak
 from domain.trend import build_finansal_oranlar
-from infra.config import MikroConfig
+from infra.config import MikroConfig, load_gercek_durum_ayarlar
 from infra.mikro_api import MikroAPIError, MikroClient
 from infra.mikro_fetch import (
     fetch_acik_kalemler,
@@ -170,6 +171,7 @@ def kapanis_kur(yil: int, *, tam: bool, b: Bilanco, gt: GelirTablosu,
                 bas: str = "", bit: str = "",
                 doviz: dict[str, float] | None = None,
                 ta: TahsilatAlacak | None = None,
+                stok: dict[str, float] | None = None,
                 nakit_gl: float | None = None) -> YilKapanis:
     """Çekilmiş parçalardan bir yılın karşılaştırma satırını kurar (saf birleştirme)."""
     _, ozet = build_finansal_oranlar(b)
@@ -187,7 +189,10 @@ def kapanis_kur(yil: int, *, tam: bool, b: Bilanco, gt: GelirTablosu,
         banka_kredisi=_banka_kredisi(b), smm=gt.smm, maliyet_eksik=gt.maliyet_eksik,
         faaliyet_gideri=gt.faaliyet_gideri, finansman_gideri=gt.finansman_gideri,
         satis_usd=d.get("satis_usd", 0.0), kur_son=d.get("kur_son", 0.0),
-        kur_ort=d.get("kur_ortalama", 0.0))
+        kur_ort=d.get("kur_ortalama", 0.0),
+        fiili_satis=(stok or {}).get("satis", 0.0),
+        fiili_alis=(stok or {}).get("alis", 0.0),
+        fiili_var=stok is not None)
 
 
 def _dene(fn, varsayilan=None):
@@ -225,8 +230,13 @@ def yil_kapanisi(client: MikroClient, yil: int, *, bas: str | None = None,
         ta = _dene(lambda: build_tahsilat_alacak(
             fetch_acik_kalemler(client, son, bas, son),
             vade_gun_map=vade_gun or {}, bas=bas, bit=son, top_n=1))
+    # CANLI AYAK: depodan geçen mal. Muhasebeye hiç bakmaz, 62 işlenmese de doludur.
+    # Kullanıcının kuralı: ilk iki sekme resmi kayda dayanır, diğerleri canlı veriye.
+    ayarlar = load_gercek_durum_ayarlar()
+    stok = _dene(lambda: _siniflandir_stok(
+        fetch_stok_ozet(client, bas, son), ayarlar.satis_bazi, ayarlar.alis_bazi))
     return kapanis_kur(
-        yil, tam=tam, bas=bas, bit=son, b=b, gt=gt,
+        yil, tam=tam, bas=bas, bit=son, b=b, gt=gt, stok=stok,
         doviz=_dene(lambda: fetch_doviz_ozet(client, bas, son), {}),
         ta=ta, nakit_gl=_dene(lambda: fetch_nakit_bakiye_gl(client, son)))
 
