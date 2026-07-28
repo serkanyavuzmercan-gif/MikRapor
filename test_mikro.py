@@ -579,9 +579,17 @@ class TestStokBakiyeHukmu(unittest.TestCase):
     _KAPSAM_2020 = {"ilk": "2020-02-03", "adet": 96_000}
     _KAPSAM_2026 = {"ilk": "2025-01-10", "adet": 28_078}
     _BAKIYE_2020 = {"adet": 96_000, "maliyet_dolu": 88_000, "miktar": 120_000.0,
-                    "maliyet": 6_000_000.0, "tutar": 5_000_000.0}
+                    "maliyet": 6_000_000.0, "tutar": 5_000_000.0,
+                    "aykiri_satir": 0, "aykiri_maliyet": 0.0,
+                    "temiz_maliyet": 6_000_000.0, "temiz_miktar": 120_000.0}
     _BAKIYE_2026 = {"adet": 28_078, "maliyet_dolu": 25_635, "miktar": 276_129.45,
-                    "maliyet": 22_790_157.10, "tutar": 17_399_874.13}
+                    "maliyet": 22_790_157.10, "tutar": 17_399_874.13,
+                    "aykiri_satir": 0, "aykiri_maliyet": 0.0,
+                    "temiz_maliyet": 22_790_157.10, "temiz_miktar": 276_129.45}
+    # Canlıdaki bozuk kayıt: 2 adet mala 3,3 trilyon TL (07.12.2023, yevmiye 731).
+    _BAKIYE_BOZUK = dict(_BAKIYE_2020, aykiri_satir=1,
+                         aykiri_maliyet=3_333_333_333_340.0,
+                         maliyet=3_339_333_333_340.0)
     # Boş satırların çoğu ÇIKIŞTA: canlı rakam mizanla AYNI yönde şişik (canlı durum).
     _YON_CIKISTA = [
         {"tip": 0, "bos_satir": 384, "bos_miktar": 8_801.33,
@@ -671,6 +679,39 @@ class TestStokBakiyeHukmu(unittest.TestCase):
         metin = self._iki_veritabani(self._YON_DENGELI)
         self.assertIn("→ EVET", metin)
         self.assertIn("Düzeltilmiş canlı", metin)
+
+    def test_aykiri_satir_varken_hicbir_rakam_baglanmaz(self) -> None:
+        """
+        Tek bozuk kayıt 390 bin satırın toplamını ele geçiriyor.
+
+        Canlıda net maliyet 3,28 TRİLYON çıktı; 3,3 trilyonluk tek satır yüzünden.
+        Aykırı ayrı sayılır, elenen de yazılır — ama düzeltilmeden hüküm verilmez.
+        """
+        metin = self._calistir(
+            kapsamlar=[("20", 2020, 2025), ("26", 2025, 2026)],
+            parcalar=[("20", "2020-01-01", "2025-12-31"),
+                      ("26", "2026-01-01", "2026-07-28")],
+            bakiyeler={"20": self._BAKIYE_BOZUK, "26": self._BAKIYE_2026},
+            yon={"20": self._YON_DENGELI, "26": self._YON_DENGELI})
+        self.assertIn("Aykırı satır", metin)
+        self.assertIn("→ HAYIR", metin)
+        self.assertIn("Veri Sağlığı", metin)
+        # Temiz rakam aykırıdan arınmış olmalı; ham toplam basılsa 3 trilyon görünürdü.
+        self.assertIn("Temiz net maliyet", metin)
+
+    def test_bilinmeyen_yon_kodu_cikis_sayilmaz(self) -> None:
+        """
+        Canlıda üçüncü bir sth_tip vardı ve tabloda «çıkış» diye İKİ KEZ göründü.
+
+        Yönü bilinmeyen satırın işareti de bilinmez; net düzeltme hesaplanamaz.
+        """
+        yon = [*self._YON_DENGELI,
+               {"tip": 7, "bos_satir": 12, "bos_miktar": 40.0,
+                "dolu_satir": 5, "dolu_miktar": 100.0, "dolu_maliyet": 2_954.0}]
+        metin = self._tek_veritabani(yon)
+        self.assertIn("tip 7 (?)", metin)
+        self.assertEqual(metin.count("çıkış"), 1)
+        self.assertIn("net düzeltme hesaplanamıyor", metin)
 
     def test_gecmis_hareket_eksikse_uyarir(self) -> None:
         """Katalog 2020 diyor ama en erken hareket 2025 ise kümülatif eksik olabilir."""

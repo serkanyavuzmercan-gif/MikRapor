@@ -234,8 +234,23 @@ def fetch_stok_depo_kirilimi(
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+# Bir mal hareketi SATIRININ maliyeti bunu aşamaz. Canlıda tek bir kayıt (07.12.2023,
+# yevmiye 731) 2 adet mala 3,3 TRİLYON TL yazmış ve kümülatif stok değerini tek başına
+# ele geçiriyordu — 390 bin satırın toplamı 3,28 trilyon çıkıyor. Aykırıyı elemeden
+# ölçüm yapmak mümkün değil; ELENENİ DE YAZARIZ, sessizce atılmaz.
+AYKIRI_SATIR_MALIYETI = 2_000_000.0
+
+
+def _stok_pencere(asof: str, bas: str) -> tuple[str, str]:
+    """(tarih ifadesi, WHERE alt sınırı) — pencere donem_parcalari ile bölünürken gerekir."""
+    tarih = _stok_tarih_sql()
+    alt = f"{tarih} >= '{iso_tarih(bas, alan='başlangıç tarihi')}' AND " if bas else ""
+    return tarih, alt
+
+
 def fetch_stok_bakiye_teshis(
     client: MikroClient, asof: str, bas: str = "",
+    aykiri_esik: float = AYKIRI_SATIR_MALIYETI,
 ) -> list[dict[str, Any]]:
     """
     Depoda o tarihte NE VAR? — mizandan bağımsız, canlı stok değeri denemesi.
@@ -243,67 +258,67 @@ def fetch_stok_bakiye_teshis(
     Mizanın 153 bakiyesi satışın maliyeti işlenmemişse şişiktir. Stok hareketlerinin
     kümülatifi bundan bağımsızdır: giren − çıkan, kendi maliyetiyle.
 
-    ÜÇ YÖNTEM AYNI ANDA ölçülür, çünkü hangisinin dolu olduğu kurulumdan kurulma değişir:
+    ÜÇ YÖNTEM AYNI ANDA ölçülür, çünkü hangisinin dolu olduğu kurulumdan kuruluma değişir:
       • miktar     — her zaman dolu, ama TL değil
-      • maliyet    — sth_maliyet_ana; canlıda satırların ~%89'u dolu
+      • maliyet    — sth_maliyet_ana; canlıda satırların ~%82'si dolu
       • tutar      — sth_tutar; alışta maliyet, satışta SATIŞ FİYATI olduğu için
                      doğrudan stok değeri VERMEZ, yalnız kıyas için basılır
 
-    Bu bir TEŞHİS: rakamı rapora bağlamadan önce mizanla kıyaslanıp karar verilecek.
+    AYKIRI SATIRLAR AYRI SAYILIR. Tek bozuk kayıt (canlıda 3,3 trilyon TL) toplamı ele
+    geçirip bütün ölçümü anlamsız kılıyor. Sorgu hem aykırıyı hem temizi ayrı döndürür;
+    hangisinin kullanılacağına çağıran karar verir, ama ikisi de görünür.
+
     Alt sınır normalde YOKTUR (bakiye sorgusu, akış değil). `bas` yalnız veritabanı
     parçalarını birleştirirken verilir: bir yıl iki veritabanında birden duruyorsa
     (canlıda 2025 hem firma 20'de hem firma 26'da) sınırsız okumak o yılı İKİ KEZ
     sayardı — pencereler donem_parcalari ile çakışmayacak şekilde bölünür.
     """
-    tarih = _stok_tarih_sql()
-    alt = f"{tarih} >= '{iso_tarih(bas, alan='başlangıç tarihi')}' AND " if bas else ""
-    # tip 0 = giriş, 1 = çıkış. Çıkanı düşmek için işaret veriyoruz.
+    tarih, alt = _stok_pencere(asof, bas)
+    # tip 0 = giriş, diğerleri çıkış. Çıkanı düşmek için işaret veriyoruz.
     yon = "CASE WHEN sth_tip = 0 THEN 1 ELSE -1 END"
+    aykiri = f"ABS(sth_maliyet_ana) >= {float(aykiri_esik):.2f}"
     sql = (
         f"SELECT SUM({yon} * sth_miktar) AS miktar, "
         f"SUM({yon} * sth_maliyet_ana) AS maliyet, "
         f"SUM({yon} * sth_tutar) AS tutar, "
         "COUNT(*) AS adet, "
-        "SUM(CASE WHEN sth_maliyet_ana <> 0 THEN 1 ELSE 0 END) AS maliyet_dolu "
+        "SUM(CASE WHEN sth_maliyet_ana <> 0 THEN 1 ELSE 0 END) AS maliyet_dolu, "
+        f"SUM(CASE WHEN {aykiri} THEN 1 ELSE 0 END) AS aykiri_satir, "
+        f"SUM(CASE WHEN {aykiri} THEN {yon} * sth_maliyet_ana ELSE 0 END) AS aykiri_maliyet, "
+        f"SUM(CASE WHEN {aykiri} THEN 0 ELSE {yon} * sth_maliyet_ana END) AS temiz_maliyet, "
+        f"SUM(CASE WHEN {aykiri} THEN 0 ELSE {yon} * sth_miktar END) AS temiz_miktar "
         "FROM STOK_HAREKETLERI WITH (NOLOCK) "
         f"WHERE {alt}{tarih} < '{_bit_son(asof)}'"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 
 
-def fetch_stok_kapsam(client: MikroClient, asof: str) -> list[dict[str, Any]]:
+def fetch_stok_kapsam(client: MikroClient, asof: str, bas: str = "") -> list[dict[str, Any]]:
     """
-    Bu VERİTABANI stok geçmişinin ne kadarını taşıyor?
+    Bu pencerede stok tablosunda ilk/son hareket ne zaman, kaç satır var?
 
     Stok SEVİYESİ kümülatiftir: şirketin ilk gününden bugüne bütün hareketlerin
-    toplamıdır. Mikro her çalışma yılı grubunu ayrı veritabanında tutabildiği için
-    (canlıda firma 20 → 2020-2025, firma 26 → 2026+) tek bir veritabanının kümülatifi
-    seviye DEĞİL, o veritabanının kendi dönemindeki ARTIŞ olabilir.
+    toplamıdır. Mikro her çalışma yılı grubunu ayrı veritabanında tuttuğu için tek
+    veritabanı yetmez — çağıran katalogtaki bütün pencereleri dolaşır ve bu sorgu her
+    pencerenin gerçekten okunup okunmadığını gösterir.
 
-    Fark, yıl başında bir DEVİR (açılış) hareketi olup olmamasıdır: varsa kümülatif
-    seviyedir, yoksa artıştır ve mizanın yerine konulamaz. Bu sorgu ikisini ayırt eder:
-    tablodaki ilk/son tarih, yıl başından ÖNCEKİ satır sayısı ve yılın ilk günündeki
-    satır/maliyet toplamı.
+    `bas` ŞART: alt sınır verilmezse MIN her pencerede tablonun en eski tarihini
+    döndürür ve sekiz satırın sekizinde de aynı tarih yazar (canlıda «2019-02-02» sekiz
+    kez tekrarladı) — pencere hakkında hiçbir şey söylemez.
     """
-    asof = iso_tarih(asof, alan="tarih")
-    yil_bas = f"{asof[:4]}-01-01"
-    tarih = _stok_tarih_sql()
+    tarih, alt = _stok_pencere(asof, bas)
     sql = (
-        "SELECT MIN(x.t) AS ilk, MAX(x.t) AS son, COUNT(*) AS adet, "
-        f"SUM(CASE WHEN x.t < '{yil_bas}' THEN 1 ELSE 0 END) AS onceki_satir, "
-        f"SUM(CASE WHEN x.t < '{yil_bas}' THEN x.m ELSE 0 END) AS onceki_maliyet, "
-        f"SUM(CASE WHEN x.t = '{yil_bas}' THEN 1 ELSE 0 END) AS ilkgun_satir, "
-        f"SUM(CASE WHEN x.t = '{yil_bas}' THEN x.m ELSE 0 END) AS ilkgun_maliyet "
-        f"FROM (SELECT {tarih} AS t, "
-        "CASE WHEN sth_tip = 0 THEN sth_maliyet_ana ELSE -sth_maliyet_ana END AS m "
+        f"SELECT MIN({tarih}) AS ilk, MAX({tarih}) AS son, COUNT(*) AS adet "
         "FROM STOK_HAREKETLERI WITH (NOLOCK) "
-        f"WHERE {tarih} < '{_bit_son(asof)}') x"
+        f"WHERE {alt}{tarih} < '{_bit_son(asof)}'"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 
 
-def fetch_stok_maliyet_yonu(client: MikroClient, asof: str,
-                            bas: str = "") -> list[dict[str, Any]]:
+def fetch_stok_maliyet_yonu(
+    client: MikroClient, asof: str, bas: str = "",
+    aykiri_esik: float = AYKIRI_SATIR_MALIYETI,
+) -> list[dict[str, Any]]:
     """
     Maliyeti BOŞ satırlar girişte mi çıkışta mı? — canlı stok değerinin yönü.
 
@@ -313,19 +328,19 @@ def fetch_stok_maliyet_yonu(client: MikroClient, asof: str,
     bilmeden karar vermektir — mizanın şişkinliğini ölçmeye çalışırken aynı şişkinliği
     canlı rakama taşımak demek olurdu.
 
-    Dolu satırların birim maliyeti de döner: boş satırların miktarıyla çarpılınca
-    eksikliğin TL karşılığı ÖLÇÜLMÜŞ bir tahminle sınırlanabilir.
+    Birim maliyet AYKIRI SATIRLAR HARİÇ hesaplanır: 3,3 trilyonluk tek kayıt ortalamayı
+    adet başına 1 milyon TL'ye çıkarıp boş satırların TL karşılığını da anlamsız yapıyordu.
     """
-    asof = iso_tarih(asof, alan="tarih")
-    tarih = _stok_tarih_sql()
-    alt = f"{tarih} >= '{iso_tarih(bas, alan='başlangıç tarihi')}' AND " if bas else ""
+    tarih, alt = _stok_pencere(asof, bas)
+    aykiri = f"ABS(sth_maliyet_ana) >= {float(aykiri_esik):.2f}"
+    dolu = f"sth_maliyet_ana <> 0 AND NOT ({aykiri})"
     sql = (
         "SELECT sth_tip AS tip, "
         "SUM(CASE WHEN sth_maliyet_ana = 0 THEN 1 ELSE 0 END) AS bos_satir, "
         "SUM(CASE WHEN sth_maliyet_ana = 0 THEN sth_miktar ELSE 0 END) AS bos_miktar, "
-        "SUM(CASE WHEN sth_maliyet_ana <> 0 THEN 1 ELSE 0 END) AS dolu_satir, "
-        "SUM(CASE WHEN sth_maliyet_ana <> 0 THEN sth_miktar ELSE 0 END) AS dolu_miktar, "
-        "SUM(CASE WHEN sth_maliyet_ana <> 0 THEN sth_maliyet_ana ELSE 0 END) AS dolu_maliyet "
+        f"SUM(CASE WHEN {dolu} THEN 1 ELSE 0 END) AS dolu_satir, "
+        f"SUM(CASE WHEN {dolu} THEN sth_miktar ELSE 0 END) AS dolu_miktar, "
+        f"SUM(CASE WHEN {dolu} THEN sth_maliyet_ana ELSE 0 END) AS dolu_maliyet "
         "FROM STOK_HAREKETLERI WITH (NOLOCK) "
         f"WHERE {alt}{tarih} < '{_bit_son(asof)}' "
         "GROUP BY sth_tip"
