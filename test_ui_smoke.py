@@ -423,6 +423,56 @@ class TestIptalCokmesi(unittest.TestCase):
         tab._worker_birak(w)                  # hata vermeden dönmeli
 
 
+@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+class TestYilSagduyusu(unittest.TestCase):
+    """
+    Tarih kutusuna 7026 yazılınca program uyarmadan kabul ediyordu.
+
+    Sonra 7022-7026 yıllarını veritabanında arıyor, boş bir mukayese tablosu
+    üretiyordu (canlıda görüldü). Böyle bir yılda muhasebe kaydı olamaz.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def _tab(self):
+        from ui.rapor_tab import RaporTab
+        t = RaporTab.__new__(RaporTab)      # __init__ widget kurar; gerek yok
+        t._uyarilar = []
+        return t
+
+    @staticmethod
+    def _tarih(yil: int):
+        from PyQt6.QtCore import QDate
+        return QDate(yil, 6, 30)
+
+    def _makul_mu(self, yil: int) -> bool:
+        from unittest.mock import patch
+        with patch("ui.rapor_tab.QMessageBox.warning") as uyari:
+            sonuc = self._tab()._yil_makul(self._tarih(yil))
+        self.assertEqual(uyari.called, not sonuc)   # ret varsa uyarı da var
+        return sonuc
+
+    def test_parmak_hatasi_reddedilir(self) -> None:
+        self.assertFalse(self._makul_mu(7026))
+
+    def test_gecmis_yil_kabul_edilir(self) -> None:
+        self.assertTrue(self._makul_mu(2021))
+
+    def test_gelecek_yil_kabul_edilir(self) -> None:
+        """Gelecek yıla bütçe/plan girilmiş olabilir."""
+        from datetime import date
+        self.assertTrue(self._makul_mu(date.today().year + 1))
+
+    def test_iki_yil_sonrasi_reddedilir(self) -> None:
+        from datetime import date
+        self.assertFalse(self._makul_mu(date.today().year + 2))
+
+    def test_cok_eski_yil_reddedilir(self) -> None:
+        self.assertFalse(self._makul_mu(1899))
+
+
 class _SahteSinyal:
     def disconnect(self, *_a) -> None:
         raise TypeError("bağlı değil")        # RaporTab bunu yutmalı
