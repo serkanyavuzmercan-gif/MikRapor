@@ -408,5 +408,93 @@ class TestKrediKartiSorgusu(unittest.TestCase):
         self.assertEqual([k for k, _ in kredi_karti_hesaplari(c)], ["300.02"])
 
 
+class TestMizanSorgusu(unittest.TestCase):
+    """
+    Mizan sorgusu — yıl sonu kapanışı ve tarama genişliği.
+
+    Canlıda iki ayrı hata birleşiyordu: sorgunun alt tarih sınırı olmadığı için tüm
+    tablo taranıyor (120 sn zaman aşımı), ve 31 Aralık seçilince o günün KAPANIŞ fişi
+    hesaba girip bütün bakiyeleri sıfırlıyordu (aktif toplamı 176 bin TL). Kanıt:
+    2025-12-31'de 514 satırlık 39,8 milyonluk kapanış fişi, 2025-01-01'de 571 satırlık
+    36,1 milyonluk açılış fişi.
+    """
+
+    def _yakala(self, gun_fisleri):
+        """gun_fisleri: {'YYYY-MM-DD': [fiş, …]} — gün sorgusu buradan cevaplanır."""
+        class C(_SqlYakala):
+            def sql_veri_oku(self, sql, **kw):
+                self.sorgular.append(sql)
+                if "fis_yevmiye_no AS yevmiye" in sql:
+                    for gun, fisler in gun_fisleri.items():
+                        if f">= '{gun}'" in sql:
+                            return {"Data": fisler}
+                    return {"Data": []}
+                return {"Data": []}
+        return C()
+
+    @staticmethod
+    def _fis(yevmiye, satir, ozkaynak=1):
+        return {"yevmiye": yevmiye, "satir": satir, "borc": 1e6,
+                "ozkaynak_var": ozkaynak, "gelir_var": 0}
+
+    def test_acilis_fisi_varsa_aralik_yila_daralir(self) -> None:
+        from infra.mikro_fetch import fetch_mizan
+        c = self._yakala({"2025-01-01": [self._fis(1, 571)]})
+        fetch_mizan(c, "2025-06-30")
+        self.assertIn("fis_tarih >= '2025-01-01'", c.sorgular[-1])
+
+    def test_acilis_fisi_yoksa_tum_gecmis_taranir(self) -> None:
+        """Açılış fişi yokken daraltmak, o yıl öncesinin bakiyesini sessizce yok eder."""
+        from infra.mikro_fetch import fetch_mizan
+        c = self._yakala({})
+        fetch_mizan(c, "2025-06-30")
+        self.assertNotIn("fis_tarih >= '2025-01-01'", c.sorgular[-1])
+
+    def test_kucuk_ozkaynak_fisi_acilis_sayilmaz(self) -> None:
+        """Yıl başına düşen 2 satırlık düzeltme açılış fişi değildir."""
+        from infra.mikro_fetch import fetch_mizan
+        c = self._yakala({"2025-01-01": [self._fis(7, 2)]})
+        fetch_mizan(c, "2025-06-30")
+        self.assertNotIn("fis_tarih >= '2025-01-01'", c.sorgular[-1])
+
+    def test_yil_sonunda_kapanis_fisi_dislanir(self) -> None:
+        from infra.mikro_fetch import fetch_mizan
+        c = self._yakala({"2025-12-31": [self._fis(20089, 514), self._fis(20085, 2)]})
+        fetch_mizan(c, "2025-12-31")
+        sql = c.sorgular[-1]
+        self.assertIn("fis_yevmiye_no IN (20089, 20085)", sql)
+        self.assertIn("NOT (fis_tarih >= '2025-12-31'", sql)
+
+    def test_yil_ortasinda_kapanis_sorgusu_hic_yapilmaz(self) -> None:
+        """31 Aralık değilse kapanış fişi aranmaz — boşuna tur atılmasın."""
+        from infra.mikro_fetch import fetch_mizan
+        c = self._yakala({})
+        fetch_mizan(c, "2025-06-30")
+        gun_sorgulari = [s for s in c.sorgular if "fis_yevmiye_no AS yevmiye" in s]
+        self.assertEqual(len(gun_sorgulari), 1)      # yalnız açılış kontrolü
+
+    def test_ozkaynaksiz_fis_kapanis_sayilmaz(self) -> None:
+        from infra.mikro_fetch import fetch_mizan
+        c = self._yakala({"2025-12-31": [self._fis(20078, 38, ozkaynak=0)]})
+        fetch_mizan(c, "2025-12-31")
+        self.assertNotIn("fis_yevmiye_no IN", c.sorgular[-1])
+
+    def test_gun_sorgusu_patlarsa_mizan_yine_kurulur(self) -> None:
+        """Yardımcı sorgu teşhis amaçlı; asıl mizanı düşürmemeli."""
+        from infra.mikro_api import MikroAPIError
+        from infra.mikro_fetch import fetch_mizan
+
+        class C(_SqlYakala):
+            def sql_veri_oku(self, sql, **kw):
+                self.sorgular.append(sql)
+                if "fis_yevmiye_no AS yevmiye" in sql:
+                    raise MikroAPIError("gün sorgusu patladı")
+                return {"Data": []}
+
+        c = C()
+        fetch_mizan(c, "2025-12-31")
+        self.assertIn("GROUP BY fis_hesap_kod", c.sorgular[-1])
+
+
 if __name__ == "__main__":
     unittest.main()
