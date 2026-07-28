@@ -76,5 +76,5 @@ def mukayese_notu() -> Paragraph:
     # «Tutarlar TL'dir» YANLIŞTI: TL bölümü tablodan kaldırılınca not orada unutulmuştu.
     # Tablo dolar; birim «DOLAR BAZINDA (USD)» başlığında yazıyor, notta tekrarlanmıyor.
     return Paragraph(
-        "«—» hesaplanamadı &nbsp;·&nbsp; hiç değişmeyen satırlar gizlendi "
-        "&nbsp;·&nbsp; kaynak: cari hareketler, GL nakit, mizan", stil)
+        "«—» hesaplanamadı &#160;·&#160; hiç değişmeyen satırlar gizlendi "
+        "&#160;·&#160; kaynak: stok hareketleri, cari, GL nakit", stil)

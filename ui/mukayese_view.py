@@ -130,8 +130,9 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     # zaten «DOLAR BAZINDA (USD)» başlığında yazıyor, notta tekrarına gerek yok.
     notlar = [(_pencere_notu(kapanislar), "")] if _pencere_eki(kapanislar) else []
     notlar += _kapanis_notu(kapanislar)
-    notlar += [("«—» hesaplanamadı &nbsp;·&nbsp; hiç değişmeyen satırlar gizlendi "
-                "&nbsp;·&nbsp; kaynak: cari hareketler, GL nakit, mizan", "")]
+    # Not etiketleri DÜZ METİN (_ic düz QLabel kurar): «&nbsp;» harfi harfine basılır.
+    notlar += [("«—» hesaplanamadı  ·  hiç değişmeyen satırlar gizlendi  ·  "
+                "kaynak: stok hareketleri, cari, GL nakit", "")]
 
     card = QFrame()
     card.setObjectName("aiCard")

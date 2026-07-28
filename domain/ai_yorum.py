@@ -186,6 +186,30 @@ class YilKapanis:
     kur_son: float = 0.0           # dönem sonu ima edilen TL/USD; 0 = güvenilir kur yok
     kur_ort: float = 0.0           # dönem ortalama kuru — AKIŞ kalemleri için
 
+    # CANLI (STOK HAREKETİ) AYAK — muhasebeden BAĞIMSIZ.
+    #
+    # Kullanıcının kuralı: ilk iki sekme (Bilanço, Gelir Tablosu) resmi kayda dayanır,
+    # DİĞER HEPSİ canlı/reel veriye. Mukayese tablosunu mizan + GL gelir tablosundan
+    # kurmak bu yüzden yanlıştı: satışın maliyeti (62) işlenmemiş bir yılda kâr
+    # satırlarının hepsi «—» kalıyordu, oysa Nakit & Kârlılık sekmesi aynı dönemin
+    # kârlılığını depodan geçen maldan zaten hesaplıyordu. Kullanıcı haklı olarak
+    # «bu rakamları bulabiliyorsun, tabloda neden yok?» dedi.
+    #
+    # Bu üç alan 62'ye HİÇ dokunmaz; muhasebeci kapanış yapmasa da doludur.
+    fiili_satis: float = 0.0       # depodan çıkan mal (irsaliye + fatura)
+    fiili_alis: float = 0.0        # depoya giren mal (fatura)
+    fiili_var: bool = False        # stok hareketi okunabildi mi
+
+    @property
+    def fiili_fark(self) -> float | None:
+        """Fiili al-sat farkı: satılan malın maliyeti DEĞİL, alınan malın tamamıyla."""
+        return (self.fiili_satis - self.fiili_alis) if self.fiili_var else None
+
+    @property
+    def fiili_marj(self) -> float | None:
+        f = self.fiili_fark
+        return self._bol(f, self.fiili_satis, 100.0) if f is not None else None
+
     def pencere(self) -> str:
         """«28.07–31.12» — sütunun gerçekte hangi günleri kapsadığı. Tam yılda boş."""
         if self.tam or len(self.bas) != 10 or len(self.bit) != 10:
@@ -430,6 +454,13 @@ _USD_AKIS = (
     ("Faaliyet Kârı", "faaliyet_kari", True),
     ("Dönem Net Kârı", "net_kar", True),
 )
+# CANLI AYAK — depodan geçen mal. 62'ye bağlı değil, muhasebe kapanışı beklemez;
+# maliyet işlenmemiş yılda ÜSTTEKİ satırlar «—» olsa da bunlar dolu kalır.
+_USD_FIILI = (
+    ("Fiili Satış (depodan çıkan)", "fiili_satis", True),
+    ("Fiili Alış (depoya giren)", "fiili_alis", None),
+    ("Fiili Al-Sat Farkı", "fiili_fark", True),
+)
 # BAKİYE kalemleri: dönem sonu kuruyla çevrilir.
 _USD_BAKIYE = (
     ("Ticari Alacak", "alacak", False),
@@ -444,6 +475,7 @@ _USD_BAKIYE = (
     ("Aktif Toplam", "aktif_toplam", None),
 )
 _ORAN_SATIR = (
+    ("Fiili Al-Sat Marjı", "fiili_marj", "%", True),   # canlı; 62'siz de hesaplanır
     ("Brüt Marj", "brut_marj", "%", True), ("Faaliyet Marjı", "faaliyet_marj", "%", True),
     ("Net Marj", "net_marj", "%", True), ("Özkaynak Kârlılığı (ROE)", "roe", "%", True),
     ("Aktif Kârlılığı (ROA)", "roa", "%", True),
@@ -555,6 +587,9 @@ def yillar_tablosu(kapanislar: list[YilKapanis]) -> tuple[list[int], list[TabloB
             satir("Net Satışlar", [k.satis_usd for k in s], "USD", True))
         # tl_kiyas: sabitlik TL tutarından ölçülür — kur oynamasını hareket sanmayalım.
         usd.satirlar += bolum("", _USD_AKIS, lambda k, a: k.usd_akis(k.kalem(a)),
+                              "USD", tl_kiyas=True).satirlar
+        # Canlı ayak kalem() süzgecinden GEÇMEZ: maliyet_eksik bu satırları etkilemiyor.
+        usd.satirlar += bolum("", _USD_FIILI, lambda k, a: k.usd_akis(getattr(k, a)),
                               "USD", tl_kiyas=True).satirlar
         usd.satirlar += bolum("", _USD_BAKIYE, lambda k, a: k.usd(k.kalem(a)),
                               "USD", tl_kiyas=True).satirlar
