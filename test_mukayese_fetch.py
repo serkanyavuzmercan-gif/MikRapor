@@ -243,6 +243,55 @@ class TestGecenYilAyniDonem(unittest.TestCase):
         k = YilKapanis(yil=2026, bas="2025-07-28", bit="2026-07-28", tam=False)
         self.assertEqual(k.basligi(), "28.07.2025–28.07.2026")
 
+    def test_n_yil_geriye_ayni_pencere(self) -> None:
+        """Beş yıl geriye: altı sütun, hepsi 28.07–28.07, eskiden yeniye sıralı."""
+        from infra.mukayese_fetch import onceki_donemler
+        d = onceki_donemler("2025-07-28", "2026-07-28", 5)
+        self.assertEqual(len(d), 6)
+        self.assertEqual(d[0], ("2020-07-28", "2021-07-28"))
+        self.assertEqual(d[-1], ("2025-07-28", "2026-07-28"))
+        self.assertEqual({(b[5:], e[5:]) for b, e in d}, {("07-28", "07-28")})
+
+    def test_sifir_yil_yalniz_secili_donem(self) -> None:
+        from infra.mukayese_fetch import onceki_donemler
+        self.assertEqual(onceki_donemler("2026-01-01", "2026-06-30", 0),
+                         [("2026-01-01", "2026-06-30")])
+
+    def test_ortak_pencerede_baslik_yalniz_yil(self) -> None:
+        """
+        Altı sütunda «28.07.2021–28.07.2022» okunamaz hâle geliyordu.
+
+        Pencere bütün sütunlarda aynıysa bir kez kartın başlığında söylenir; sütunlarda
+        yalnız yıl kalır. Pencereler farklıysa her sütun kendi tarihini yazmak ZORUNDA —
+        yoksa 5 ay ile 7 ay aynı görünür.
+        """
+        from domain.ai_yorum import YilKapanis, ortak_pencere
+        ayni = [YilKapanis(yil=y, bas=f"{y - 1}-07-28", bit=f"{y}-07-28", tam=False)
+                for y in (2024, 2025, 2026)]
+        self.assertEqual(ortak_pencere(ayni), "28.07 – 28.07")
+
+        farkli = [YilKapanis(yil=2025, bas="2025-07-28", bit="2025-12-31", tam=False),
+                  YilKapanis(yil=2026, bas="2026-01-01", bit="2026-07-28", tam=False)]
+        self.assertEqual(ortak_pencere(farkli), "")
+
+    def test_tek_sutunda_ortak_pencere_yok(self) -> None:
+        """Tek sütun kıyas değildir; «hepsi aynı pencere» demenin anlamı yok."""
+        from domain.ai_yorum import YilKapanis, ortak_pencere
+        self.assertEqual(
+            ortak_pencere([YilKapanis(yil=2026, bas="2025-07-28", bit="2026-07-28")]), "")
+
+    def test_olmayan_yil_raporu_dusurmez(self) -> None:
+        """
+        Geriye gidince kataloğun kapsamadığı yıla denk gelmek BEKLENEN bir durum.
+
+        2020 öncesi veri yok; o sütun sessizce düşmeli, rapor ayakta kalmalı.
+        yil_client orada YilVeritabaniHatasi atıyor ve bu ValueError'dur.
+        """
+        from infra.mukayese_fetch import YilVeritabaniHatasi, donem_kapanisi
+        with patch("infra.mukayese_fetch.yil_client",
+                   side_effect=YilVeritabaniHatasi("2019 kapsam dışı")):
+            self.assertIsNone(donem_kapanisi(_CFG, "2018-07-28", "2019-07-28"))
+
     def test_donem_kapanisi_akisi_boler_bakiyeyi_bolmez(self) -> None:
         """Dönem iki veritabanına yayılsa da akış birleşir, bakiye bitişten okunur."""
         from infra.mukayese_fetch import donem_kapanisi

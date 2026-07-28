@@ -11,7 +11,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, Table, TableStyle
 
-from domain.ai_yorum import YilKapanis, yillar_tablosu
+from domain.ai_yorum import YilKapanis, ortak_pencere, yillar_tablosu
 from domain.ortak import tr_buyuk
 from ui.pdf_ortak import DARK, FONT, FONT_B, GRAY, LINE
 
@@ -26,7 +26,11 @@ def mukayese_tablosu(kapanislar: list[YilKapanis]) -> Table | None:
 
     # Başlık gerçek pencereyi yazar: «2025 (28.07–31.12)». Sütunlar farklı uzunlukta
     # olabilir; PDF bankaya/müşavire gittiğinde bunun görünmemesi yanlış okumaya yol açar.
+    ortak = ortak_pencere(kapanislar)
+
     def _bas(yil: int) -> str:
+        if ortak:                   # hepsi aynı pencere → başlıkta yalnız yıl
+            return str(yil)
         k = next((x for x in kapanislar if x.yil == yil), None)
         return k.basligi() if k is not None else str(yil)
 

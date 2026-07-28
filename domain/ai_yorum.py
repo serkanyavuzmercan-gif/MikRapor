@@ -210,6 +210,31 @@ class YilKapanis:
         f = self.fiili_fark
         return self._bol(f, self.fiili_satis, 100.0) if f is not None else None
 
+    # EKSİK OLAN YALNIZ 62. Faaliyet gideri (63) ve finansman gideri (66) normal
+    # işlenir; maliyet kapanışı onları hiç ilgilendirmez. O yüzden brüt ayağı canlı
+    # veriden koyunca aşağısı da kurulur — «hesaplanamaz» demek fazla kesindi.
+    # Bu, Nakit & Kârlılık'taki RESMİ → FİİLİ köprüsünün aynısıdır.
+    @property
+    def fiili_faaliyet_kari(self) -> float | None:
+        f = self.fiili_fark
+        return None if f is None else f + self.faaliyet_gideri      # 63 işaretli negatif
+
+    @property
+    def fiili_net_kar(self) -> float | None:
+        """Vergi ÖNCESİ: 691/692 her kurulumda ara dönemde işlenmiyor, uydurmuyoruz."""
+        f = self.fiili_faaliyet_kari
+        return None if f is None else f + self.finansman_gideri     # 66 işaretli negatif
+
+    @property
+    def fiili_faaliyet_marj(self) -> float | None:
+        f = self.fiili_faaliyet_kari
+        return self._bol(f, self.fiili_satis, 100.0) if f is not None else None
+
+    @property
+    def fiili_net_marj(self) -> float | None:
+        f = self.fiili_net_kar
+        return self._bol(f, self.fiili_satis, 100.0) if f is not None else None
+
     def pencere(self) -> str:
         """«28.07–31.12» — sütunun gerçekte hangi günleri kapsadığı. Tam yılda boş."""
         if self.tam or len(self.bas) != 10 or len(self.bit) != 10:
@@ -468,6 +493,8 @@ _USD_FIILI = (
     ("Fiili Satış (depodan çıkan)", "fiili_satis", True),
     ("Fiili Alış (depoya giren)", "fiili_alis", None),
     ("Fiili Al-Sat Farkı", "fiili_fark", True),
+    ("Fiili Faaliyet Kârı", "fiili_faaliyet_kari", True),
+    ("Fiili Net Kâr (vergi öncesi)", "fiili_net_kar", True),
 )
 # BAKİYE kalemleri: dönem sonu kuruyla çevrilir.
 _USD_BAKIYE = (
@@ -483,7 +510,10 @@ _USD_BAKIYE = (
     ("Aktif Toplam", "aktif_toplam", None),
 )
 _ORAN_SATIR = (
-    ("Fiili Al-Sat Marjı", "fiili_marj", "%", True),   # canlı; 62'siz de hesaplanır
+    # Canlı ayak — 62'siz de hesaplanır (eksik olan yalnız 62; 63 ve 66 işlenmiş).
+    ("Fiili Al-Sat Marjı", "fiili_marj", "%", True),
+    ("Fiili Faaliyet Marjı", "fiili_faaliyet_marj", "%", True),
+    ("Fiili Net Marj (vergi öncesi)", "fiili_net_marj", "%", True),
     ("Brüt Marj", "brut_marj", "%", True), ("Faaliyet Marjı", "faaliyet_marj", "%", True),
     ("Net Marj", "net_marj", "%", True), ("Özkaynak Kârlılığı (ROE)", "roe", "%", True),
     ("Aktif Kârlılığı (ROA)", "roa", "%", True),
@@ -620,6 +650,25 @@ def yillar_tablosu(kapanislar: list[YilKapanis]) -> tuple[list[int], list[TabloB
     return yillar, ayikli
 
 
+def ortak_pencere(kapanislar: list[YilKapanis]) -> str:
+    """
+    Bütün sütunlar AYNI ay-gün penceresini kullanıyorsa o pencere («28.07 – 28.07»).
+
+    «Geçmiş yılların aynı dönemi» modunda her sütun aynı takvim penceresidir; başlığa
+    tam tarih yazmak (28.07.2021–28.07.2022 …) altı sütunda okunamaz hâle geliyordu.
+    Ortak pencere bir kez kartın başlığında söylenir, sütunlarda yalnız yıl kalır.
+    Pencereler farklıysa boş döner — o zaman her sütun kendi tarihini yazmak ZORUNDA.
+    """
+    gecerli = [k for k in kapanislar if len(k.bas) == 10 and len(k.bit) == 10]
+    if len(gecerli) < 2:
+        return ""
+    kume = {(k.bas[5:], k.bit[5:]) for k in gecerli}
+    if len(kume) != 1:
+        return ""
+    b, s = kume.pop()
+    return f"{b[3:5]}.{b[:2]} – {s[3:5]}.{s[:2]}"
+
+
 def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
     """
     Modele giden yıllar arası tablo — ekrandakiyle AYNI satırlardan, ham rakamlarla.
@@ -632,12 +681,20 @@ def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
         return ""
     sirali = sorted(kapanislar, key=lambda k: k.yil)
 
-    out = ["Kalem;" + ";".join(k.basligi() for k in sirali)]
-    out.append(
-        "NOT;Her sütun, SEÇİLEN TARİH ARALIĞININ o yıla düşen parçasıdır — başlıktaki "
-        "gün aralığı budur. Aralık dışından tek gün bile okunmaz. Sütunlar farklı "
-        "uzunlukta olabilir; akış kalemlerini (satış, kâr) kıyaslarken bunu hesaba kat."
-    )
+    ortak = ortak_pencere(sirali)
+    out = ["Kalem;" + ";".join(
+        (str(k.yil) if ortak else k.basligi()) for k in sirali)]
+    if ortak:
+        out.append(
+            f"NOT;Her sütun {ortak} penceresidir — hepsi AYNI uzunlukta, bu yüzden akış "
+            "kalemleri (satış, kâr) doğrudan kıyaslanabilir. Kullanıcı geçmiş yıllarla "
+            "karşılaştırmayı açıkça istedi.")
+    else:
+        out.append(
+            "NOT;Her sütun, SEÇİLEN TARİH ARALIĞININ o yıla düşen parçasıdır — "
+            "başlıktaki gün aralığı budur. Aralık dışından tek gün bile okunmaz. "
+            "Sütunlar FARKLI UZUNLUKTA olabilir; akış kalemlerini (satış, kâr) "
+            "kıyaslarken bunu hesaba kat, aylığa indirmeden yorum yapma.")
     out.append(
         "KAYNAK;Yıllık Net Satışlar = muhasebe gelir tablosu (GL 60/61). "
         "Aylık Satış satırlarıyla aynı kaynak değildir."

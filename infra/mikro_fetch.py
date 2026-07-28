@@ -207,6 +207,40 @@ def fetch_stok_maliyet_teshis(
 _BOS_UID = "'00000000-0000-0000-0000-000000000000'"
 
 
+def fetch_stok_bakiye_teshis(
+    client: MikroClient, asof: str,
+) -> list[dict[str, Any]]:
+    """
+    Depoda o tarihte NE VAR? — mizandan bağımsız, canlı stok değeri denemesi.
+
+    Mizanın 153 bakiyesi satışın maliyeti işlenmemişse şişiktir. Stok hareketlerinin
+    kümülatifi bundan bağımsızdır: giren − çıkan, kendi maliyetiyle.
+
+    ÜÇ YÖNTEM AYNI ANDA ölçülür, çünkü hangisinin dolu olduğu kurulumdan kurulma değişir:
+      • miktar     — her zaman dolu, ama TL değil
+      • maliyet    — sth_maliyet_ana; canlıda satırların ~%89'u dolu
+      • tutar      — sth_tutar; alışta maliyet, satışta SATIŞ FİYATI olduğu için
+                     doğrudan stok değeri VERMEZ, yalnız kıyas için basılır
+
+    Bu bir TEŞHİS: rakamı rapora bağlamadan önce mizanla kıyaslanıp karar verilecek.
+    Kümülatif olduğu için tarih alt sınırı yoktur — bir BAKİYE sorgusudur, akış değil;
+    seçili aralığın bitişinde okunur (mizanın kendisi de aynı şekilde kümülatiftir).
+    """
+    tarih = _stok_tarih_sql()
+    # tip 0 = giriş, 1 = çıkış. Çıkanı düşmek için işaret veriyoruz.
+    yon = "CASE WHEN sth_tip = 0 THEN 1 ELSE -1 END"
+    sql = (
+        f"SELECT SUM({yon} * sth_miktar) AS miktar, "
+        f"SUM({yon} * sth_maliyet_ana) AS maliyet, "
+        f"SUM({yon} * sth_tutar) AS tutar, "
+        "COUNT(*) AS adet, "
+        "SUM(CASE WHEN sth_maliyet_ana <> 0 THEN 1 ELSE 0 END) AS maliyet_dolu "
+        "FROM STOK_HAREKETLERI WITH (NOLOCK) "
+        f"WHERE {tarih} < '{_bit_son(asof)}'"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
 def fetch_stok_faturalasma(
     client: MikroClient, bas: str, bit: str,
 ) -> list[dict[str, Any]]:

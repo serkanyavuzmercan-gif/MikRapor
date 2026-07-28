@@ -19,6 +19,10 @@ Kolon VAR; peki dolu mu ve birim mi satır toplamı mı? (asıl karar bu)
 İrsaliye + fatura toplanınca satış iki kez mi sayılıyor?
 
     .\\.venv\\Scripts\\python.exe stok_diag_cli.py 2026-01-01 2026-07-28 --fatura
+
+Depodaki stok, mizanın 153'üne alternatif olabilir mi? (kümülatif, canlı)
+
+    .\\.venv\\Scripts\\python.exe stok_diag_cli.py 2026-01-01 2026-07-28 --bakiye
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ from domain.mizan_bilanco import tl
 from domain.ortak import to_float as _f
 from infra.config import MikroConfig, load_config, load_gercek_durum_ayarlar
 from infra.mikro_fetch import (
+    fetch_stok_bakiye_teshis,
     fetch_stok_evraktip_tepe,
     fetch_stok_evraktip_yillik,
     fetch_stok_fatura_ortakligi,
@@ -330,6 +335,60 @@ def _fatura_ortakligi(cfg: MikroConfig, bas: str, bit: str, fatura_tutar: float)
         print("    «Satış: Yalnız Fatura» ayarına geçmeyi değerlendirin.")
 
 
+def _bakiye_teshisi(client, cfg: MikroConfig, bit: str) -> None:
+    """
+    Canlı stok değeri mizanın 153'üne alternatif olabilir mi?
+
+    Mizan stoğu, satışın maliyeti işlenmemişse şişik. Stok hareketlerinin kümülatifi
+    bundan bağımsız — ama kullanılabilmesi için maliyet kolonunun dolu olması şart.
+    Karar bu çıktıdan sonra verilecek; tahminle bağlanmayacak.
+    """
+    rows = fetch_stok_bakiye_teshis(client, bit)
+    if not rows:
+        print("\nSTOK BAKİYE TEŞHİSİ: sorgu boş döndü.")
+        return
+    r = rows[0]
+
+    def al(ad: str) -> float:
+        return _f(r.get(ad, r.get(ad.upper())))
+
+    adet, dolu = al("adet"), al("maliyet_dolu")
+    print(f"\nSTOK BAKİYE TEŞHİSİ — {bit} itibarıyla (kümülatif, tüm hareketler)\n")
+    print(f"  Hareket satırı        {int(adet):>18,}".replace(",", "."))
+    print(f"  Maliyet kolonu dolu   {dolu / adet * 100 if adet else 0:>17.1f}%")
+    print(f"  Net miktar (giren−çıkan) {al('miktar'):>18,.2f}")
+    print(f"  Net maliyet           {tl(al('maliyet')):>18}   ← stok değeri adayı")
+    print(f"  Net sth_tutar         {tl(al('tutar')):>18}   (alışta maliyet, satışta")
+    print(f"  {'':22}{'':18}    satış fiyatı — stok değeri DEĞİL)")
+
+    mizan = _dene_mizan(client, bit)
+    if mizan is not None:
+        print(f"\n  Mizan 15x stoğu       {tl(mizan):>18}")
+        fark = mizan - al("maliyet")
+        print(f"  Fark                  {tl(fark):>18}")
+    print()
+    oran = dolu / adet * 100 if adet else 0.0
+    if oran < _ASGARI_DOLULUK:
+        print(f"  → Maliyet kolonu %{oran:.1f} dolu: eksik satırlar hem girişte hem")
+        print("    çıkışta olduğu için net değerin yönü bile kestirilemez. Bu rakam")
+        print("    mizanın yerine KONULAMAZ; stok satırı «—» kalmaya devam etmeli.")
+    else:
+        print(f"  → Maliyet kolonu %{oran:.1f} dolu. Yukarıdaki «net maliyet» canlı stok")
+        print("    değeridir; mizanla farkı işlenmemiş maliyetin ölçüsüdür. Bildirin,")
+        print("    mukayese tablosundaki stok satırı buna bağlanacak.")
+
+
+def _dene_mizan(client, bit: str) -> float | None:
+    """Kıyas için mizanın 15x toplamı; okunamazsa None (teşhis yine de basılır)."""
+    try:
+        from domain.mizan_bilanco import build_bilanco
+        from infra.mikro_fetch import fetch_mizan
+        b = build_bilanco(fetch_mizan(client, bit), asof=bit)
+        return sum(s.tutar for s in b.aktif if s.ana[:2] == "15")
+    except Exception:  # noqa: BLE001 — teşhis aracı, kıyas satırı atlanır
+        return None
+
+
 def _faturalasma_teshisi(cfg: MikroConfig, bas: str, bit: str) -> None:
     """
     İrsaliye + fatura toplanınca satış iki kez sayılıyor mu?
@@ -416,6 +475,9 @@ def main() -> None:
         return
     if "--fatura" in sys.argv:
         _faturalasma_teshisi(cfg, bas, bit)
+        return
+    if "--bakiye" in sys.argv:
+        _bakiye_teshisi(client, cfg, bit)
         return
     if len(arg) > 3:
         _detay(cfg, bas, bit, int(arg[2]), int(arg[3]))
