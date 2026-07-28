@@ -490,34 +490,42 @@ def fetch_stok_evraktip_tepe(
 
 
 def fetch_stok_aykiri_satirlar(
-    client: MikroClient, bas: str, bit: str, adet: int = 25,
+    client: MikroClient, bas: str, bit: str, adet: int = 100,
 ) -> list[dict[str, Any]]:
     """
     Toplamdan çıkarılan aykırı stok satırlarının KENDİSİ — tarih, evrak no, stok kodu.
 
     «13 bozuk kayıt var, Mikro'da düzeltin» demek yetmiyor: kullanıcı 390 bin satır
-    içinde o 13'ünü nasıl bulacak? Bu sorgu evrakı açacak kadar bilgi verir. Eşik yine
-    ÖLÇÜLÜR (AYKIRI_KAT) — mutlak bir TL sınırı başka kurulumda ya hiçbir şey bulur ya
-    da gerçek faturaları bozuk ilan ederdi.
+    içinde o 13'ünü nasıl bulacak? Bu sorgu evrakı açacak kadar bilgi verir.
+
+    İKİ KOLON BİRDEN taranır. Raporlar `sth_tutar` toplar, stok değeri teşhisi
+    `sth_maliyet_ana`; bir satır yalnız birinde bozuk olabilir. Muhasebeciye gidecek
+    listenin eksik olmaması için ikisinden HERHANGİ BİRİNDE aykırı olan satır girer.
+
+    Eşik yine ÖLÇÜLÜR (AYKIRI_KAT) — mutlak bir TL sınırı başka kurulumda ya hiçbir şey
+    bulur ya da gerçek faturaları bozuk ilan ederdi.
     """
     bas, bit = _aralik(bas, bit)
     tarih = _stok_tarih_sql()
     pencere = f"{tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}'"
-    n = max(1, min(int(adet), 100))
-    esik = (
-        "SELECT ISNULL(NULLIF(AVG(ABS(sth_tutar)), 0) * "
-        f"{AYKIRI_KAT:.1f}, 1E30) AS esik "
-        f"FROM STOK_HAREKETLERI WITH (NOLOCK) WHERE {pencere}"
-    )
+    n = max(1, min(int(adet), 500))
+
+    def _esik(kolon: str) -> str:
+        return (
+            f"SELECT ISNULL(NULLIF(AVG(ABS({kolon})), 0) * {AYKIRI_KAT:.1f}, 1E30) AS esik "
+            f"FROM STOK_HAREKETLERI WITH (NOLOCK) WHERE {pencere}"
+        )
+
     sql = (
         f"SELECT TOP {n} {_stok_tarih_sql('h.')} AS tarih, "
         "h.sth_evrakno_seri, h.sth_evrakno_sira, h.sth_belge_no, h.sth_stok_kod, "
-        "h.sth_tip, h.sth_evraktip, h.sth_miktar, h.sth_tutar "
+        "h.sth_tip, h.sth_evraktip, h.sth_miktar, h.sth_tutar, h.sth_maliyet_ana "
         "FROM STOK_HAREKETLERI h WITH (NOLOCK) "
-        f"CROSS JOIN ({esik}) e "
+        f"CROSS JOIN ({_esik('sth_tutar')}) et "
+        f"CROSS JOIN ({_esik('sth_maliyet_ana')}) em "
         f"WHERE {pencere.replace(tarih, _stok_tarih_sql('h.'))} "
-        "AND ABS(h.sth_tutar) >= e.esik "
-        "ORDER BY ABS(h.sth_tutar) DESC"
+        "AND (ABS(h.sth_tutar) >= et.esik OR ABS(h.sth_maliyet_ana) >= em.esik) "
+        "ORDER BY ABS(h.sth_tutar) + ABS(h.sth_maliyet_ana) DESC"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 

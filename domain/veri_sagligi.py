@@ -179,8 +179,11 @@ def _bozuk_stok_kaydi(stok_rows: list[dict],
     firmaya satılacak ve mutlak sınır küçük firmada hiçbir şey yakalamaz, büyük firmada
     gerçek faturayı bozuk ilan ederdi.
     """
-    adet = sum(_f(r.get("aykiri_adet", r.get("AYKIRI_ADET"))) for r in stok_rows or [])
+    # Toplamlar sth_tutar'dan gelir; liste sth_maliyet_ana'da bozuk olanları da bulur.
+    # Hangisi daha çok satır görüyorsa o yazılır — eksik saymak, saymamaktan kötüdür.
+    ozet_adet = sum(_f(r.get("aykiri_adet", r.get("AYKIRI_ADET"))) for r in stok_rows or [])
     tutar = sum(_f(r.get("aykiri_tutar", r.get("AYKIRI_TUTAR"))) for r in stok_rows or [])
+    adet = max(ozet_adet, len(aykiri_rows or []))
     if adet < 1:
         return None
     return Bulgu(

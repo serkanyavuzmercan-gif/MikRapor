@@ -23,6 +23,10 @@ Kolon VAR; peki dolu mu ve birim mi satır toplamı mı? (asıl karar bu)
 Depodaki stok, mizanın 153'üne alternatif olabilir mi? (kümülatif, canlı)
 
     .\\.venv\\Scripts\\python.exe stok_diag_cli.py 2026-01-01 2026-07-28 --bakiye
+
+Rapor toplamlarından çıkarılan bozuk kayıtların listesi (muhasebeciye gönderilecek):
+
+    .\\.venv\\Scripts\\python.exe stok_diag_cli.py 2026-01-01 2026-07-28 --aykiri
 """
 
 from __future__ import annotations
@@ -33,9 +37,11 @@ from datetime import date
 from domain.gercek_durum import _siniflandir_stok
 from domain.mizan_bilanco import tl
 from domain.ortak import to_float as _f
+from domain.ortak import tr_sayi
 from infra.config import MikroConfig, load_config, load_gercek_durum_ayarlar
 from infra.mikro_fetch import (
     AYKIRI_KAT,
+    fetch_stok_aykiri_satirlar,
     fetch_stok_bakiye_teshis,
     fetch_stok_depo_kirilimi,
     fetch_stok_evraktip_tepe,
@@ -500,6 +506,42 @@ def _yon_dok(birikim: dict[int, list[float]]) -> float | None:
     return duzeltme
 
 
+def _aykiri_listesi(cfg: MikroConfig, bit: str) -> None:
+    """
+    Bozuk stok kayıtlarını MUHASEBECİYE GÖNDERİLECEK biçimde yazar.
+
+    Toplam («13 satır, 3,3 trilyon») bir şeyi düzeltmeye yetmez; düzeltecek kişi tarihi,
+    evrak numarasını ve stok kodunu ister. Kapsam katalogtan gelir: bozuk kayıt hangi
+    yıldaysa oradan okunur, çünkü yıllar ayrı veritabanlarında olabilir.
+    """
+    yil = int(bit[:4])
+    ilk_yil = min((k.ilk_yil for k in katalog(cfg) if k.ilk_yil <= yil), default=yil)
+    print(f"BOZUK STOK KAYITLARI — {ilk_yil}-01-01 → {bit}\n")
+    print("Satır başına tutarı, dönemin ortalama satırının "
+          f"{AYKIRI_KAT:,.0f} katını aşan kayıtlar.".replace(",", "."))
+    print("Bu satırlar rapor toplamlarına ALINMIYOR; Mikro'da düzeltilmeleri gerekiyor.\n")
+    print(f"  {'tarih':>10}  {'evrak':>14}  {'stok kodu':>20}  {'miktar':>12}"
+          f"  {'tutar':>22}  {'maliyet':>22}  tip/evrak")
+    toplam = 0
+    for c, p_bas, p_bit in donem_parcalari(cfg, f"{ilk_yil}-01-01", bit):
+        for r in fetch_stok_aykiri_satirlar(c, p_bas, p_bit):
+            toplam += 1
+            seri = _s(r, "sth_evrakno_seri").strip()
+            sira = int(_f(r.get("sth_evrakno_sira", r.get("STH_EVRAKNO_SIRA"))))
+            evrak = f"{seri}{sira}" if (seri or sira) else _s(r, "sth_belge_no") or "?"
+            miktar = _f(r.get("sth_miktar", r.get("STH_MIKTAR")))
+            print(f"  {_s(r, 'tarih')[:10]:>10}  {evrak:>14}  "
+                  f"{_s(r, 'sth_stok_kod'):>20}  {tr_sayi(miktar):>12}  "
+                  f"{tl(_f(r.get('sth_tutar', r.get('STH_TUTAR')))):>22}  "
+                  f"{tl(_f(r.get('sth_maliyet_ana', r.get('STH_MALIYET_ANA')))):>22}  "
+                  f"{int(_f(r.get('sth_tip', r.get('STH_TIP'))))}/"
+                  f"{int(_f(r.get('sth_evraktip', r.get('STH_EVRAKTIP'))))}")
+    if not toplam:
+        print("\n  Aykırı kayıt bulunamadı.")
+    else:
+        print(f"\n  Toplam {toplam} kayıt.")
+
+
 def _bakiye_teshisi(client, cfg: MikroConfig, bit: str) -> None:
     """
     Canlı stok değeri mizanın 153'üne alternatif olabilir mi?
@@ -711,6 +753,9 @@ def main() -> None:
         return
     if "--fatura" in sys.argv:
         _faturalasma_teshisi(cfg, bas, bit)
+        return
+    if "--aykiri" in sys.argv:
+        _aykiri_listesi(cfg, bit)
         return
     if "--bakiye" in sys.argv:
         _bakiye_teshisi(client, cfg, bit)
