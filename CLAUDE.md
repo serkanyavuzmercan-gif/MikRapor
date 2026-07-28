@@ -133,7 +133,14 @@ kullanıcıya terminal komutu (`stok_diag_cli.py …`) verilmez; tavsiye Mikro'd
 yapılabilecek bir şey olmalı.
 
 **Veri Sağlığı sekme DEĞİL**, Mikro Ayarları'ndan açılan bir penceredir: bütün rapor
-sekmeleri seçili tarih aralığına bağlıyken o değil, kurulumun hâlini gösterir.
+sekmeleri seçili tarih aralığına bağlıyken o değil, kurulumun hâlini gösterir. Bu yüzden
+**bütün geçmişi** tarar (kapsam katalogtan), son 12 ayı değil — bozuk kayıt mevsimsel
+değil kalıcıdır. Canlıda 2023'teki 13 bozuk stok kaydı, pencere 12 ay olduğu için hiç
+görünmüyordu; oysa o kayıtlar 2023'ü kapsayan HER raporu zehirliyor.
+
+**Bir bulgu «düzeltin» diyorsa hangi kaydın düzeltileceğini de yazar** (`Bulgu.kayitlar`):
+tarih, evrak no, stok kodu, miktar, tutar. 390 bin satır içinde 13 kaydı aratmak tavsiye
+değildir.
 
 ## 4. LESS IS MORE
 

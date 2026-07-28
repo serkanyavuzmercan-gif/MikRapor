@@ -5,13 +5,18 @@ SEKME DEĞİL. Bütün rapor sekmeleri seçili tarih aralığına bağlıyken bu
 durumu bir dönem raporu değil, kurulumun hâli. Sekme çubuğunda durunca hem oraya ait
 olmayan bir şey gibi görünüyordu hem de kullanıcı ondan dönem raporu bekliyordu.
 
-Pencere son 12 ayı okur — sabit ve tarih seçicisi yok. Bozukluk mevsimsel değil;
-dönem seçtirmek, cevabı olmayan bir soru sormak olurdu.
+Pencere BÜTÜN GEÇMİŞİ okur — sabit ve tarih seçicisi yok. Önce son 12 ay taranıyordu;
+canlıda 2023'teki 13 bozuk stok kaydı bu yüzden hiç görünmedi, oysa o kayıtlar 2023'ü
+kapsayan HER raporu zehirliyor. Bozuk kayıt mevsimsel değil, kalıcıdır: bir kez girilir
+ve düzeltilene kadar durur. «Kurulumun hâli» demek, kurulumun tamamına bakmak demek.
+
+Kapsam katalogtan gelir (infra/veritabani.py); yıllar ayrı veritabanlarındaysa hepsi
+sırayla okunur.
 """
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -31,6 +36,7 @@ from infra.config import load_config
 from infra.mikro_api import MikroAPIError
 from infra.mikro_fetch import fetch_mizan, fetch_stok_aykiri_satirlar, fetch_stok_ozet
 from infra.mukayese_fetch import YilVeritabaniHatasi, donem_satirlari, yil_client
+from infra.veritabani import katalog
 from ui.styles import MUTED, NAVY, SURFACE
 from ui.worker import RaporWorker
 
@@ -74,11 +80,10 @@ class VeriSagligiDialog(QDialog):
         self._ozet.setStyleSheet("color:#ffffff; font-size:16px; font-weight:800; "
                                  "background:transparent;")
         bl.addWidget(self._ozet)
-        alt = QLabel("Son 12 aylık kayıtlar taranır. Rapor rakamlarını bozabilecek "
-                     "sorunlar ve ne yapılması gerektiği listelenir.")
-        alt.setWordWrap(True)
-        alt.setStyleSheet("color:#c5d8e8; font-size:11px; background:transparent;")
-        bl.addWidget(alt)
+        self._alt = QLabel("Kayıtlar taranıyor…")
+        self._alt.setWordWrap(True)
+        self._alt.setStyleSheet("color:#c5d8e8; font-size:11px; background:transparent;")
+        bl.addWidget(self._alt)
         root.addWidget(baslik)
 
         kaydir = QScrollArea()
@@ -108,12 +113,14 @@ class VeriSagligiDialog(QDialog):
             self._ozet.setText("Mikro bağlantı ayarları eksik")
             self._not("Önce Mikro Ayarları'nı doldurun: " + ", ".join(cfg.eksik_alanlar()))
             return
-        bit = date.today()
-        bas = (bit - timedelta(days=365)).isoformat()
-        bit = bit.isoformat()
+        bit = date.today().isoformat()
 
         def is_fn(bildir) -> VeriSagligi:
             client = yil_client(cfg, int(bit[:4]))
+            # Kapsam katalogtan: bozuk kayıt hangi yılda olursa olsun bulunmalı.
+            # Katalog okunamazsa içinde bulunulan yıla düşülür (boş liste yerine).
+            ilk_yil = min((k.ilk_yil for k in katalog(cfg)), default=int(bit[:4]))
+            bas = f"{ilk_yil}-01-01"
             okunamayan: list[str] = []
             # Her kaynak AYRI denenir; düşen kaynak sessizce atlanmaz, «kontrol
             # edilemedi» diye görünür. Bakılamayanı temiz sanmak hatadan kötüdür.
@@ -123,11 +130,12 @@ class VeriSagligiDialog(QDialog):
                 bilanco = build_bilanco(fetch_mizan(client, bit), asof=bit)
             except (MikroAPIError, YilVeritabaniHatasi):
                 okunamayan.append("Muhasebe mizanı")
-            bildir("Stok hareketleri okunuyor…")
+            bildir(f"Stok hareketleri okunuyor ({ilk_yil}–{bit[:4]})…")
             stok_rows = None
             aykiri_rows: list[dict] = []
             try:
-                stok_rows = donem_satirlari(cfg, bas, bit, fetch_stok_ozet)
+                stok_rows = donem_satirlari(cfg, bas, bit, fetch_stok_ozet,
+                                            bildir=bildir, ad="stok hareketleri")
                 # Aykırı satırların KENDİSİ ayrı çekilir — «düzeltin» demek yetmez,
                 # hangi evrak olduğu yazmazsa kullanıcı onu bulamaz. Bu sorgu
                 # başarısız olsa da bulgu (sayı + tutar) yine gösterilir.
@@ -135,7 +143,8 @@ class VeriSagligiDialog(QDialog):
                        for r in stok_rows):
                     bildir("Hatalı stok kayıtları listeleniyor…")
                     aykiri_rows = donem_satirlari(
-                        cfg, bas, bit, fetch_stok_aykiri_satirlar)
+                        cfg, bas, bit, fetch_stok_aykiri_satirlar,
+                        bildir=bildir, ad="hatalı kayıtlar")
             except (MikroAPIError, YilVeritabaniHatasi):
                 if stok_rows is None:
                     okunamayan.append("Stok hareketleri")
@@ -161,6 +170,11 @@ class VeriSagligiDialog(QDialog):
         if not isinstance(sonuc, VeriSagligi):
             return
         self._ozet.setText(sonuc.ozet())
+        # Hangi dönemin tarandığı YAZAR: «temiz» sonucu, neye bakıldığı bilinmeden
+        # sahte bir güven verir.
+        self._alt.setText(
+            f"{_gun(sonuc.bas)} – {_gun(sonuc.bit)} arası bütün kayıtlar tarandı. "
+            "Rapor rakamlarını bozabilecek sorunlar ve ne yapılması gerektiği listelenir.")
         for b in sonuc.bulgular:
             self._ekle(_kart(b))
         if sonuc.temiz and not sonuc.okunamayan:
@@ -177,6 +191,10 @@ class VeriSagligiDialog(QDialog):
         lbl.setWordWrap(True)
         lbl.setStyleSheet(f"color:{MUTED}; font-size:11px; background:transparent;")
         self._ekle(lbl)
+
+
+def _gun(iso: str) -> str:
+    return f"{iso[8:10]}.{iso[5:7]}.{iso[:4]}" if len(iso) == 10 else iso
 
 
 def _cerceve(yazi: str, arka: str, kenar: str) -> QFrame:

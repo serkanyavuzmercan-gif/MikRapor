@@ -319,6 +319,44 @@ class TestUiSmoke(unittest.TestCase):
         finally:
             kart.deleteLater()
 
+    def test_veri_sagligi_butun_gecmisi_tarar(self) -> None:
+        """
+        Son 12 ay taranıyordu; canlıda 2023'teki 13 bozuk kayıt bu yüzden HİÇ görünmedi.
+
+        Bozuk kayıt mevsimsel değil kalıcıdır ve yılını kapsayan her raporu zehirler —
+        «kurulumun hâli» demek kurulumun tamamına bakmak demek. Kapsam katalogtan gelir.
+        """
+        from datetime import date
+        from unittest.mock import patch
+
+        import ui.veri_sagligi_dialog as vsd
+        from infra.config import MikroConfig
+        from infra.veritabani import FirmaKapsami
+        cfg = MikroConfig(base_url="https://m.local", api_key="K", firma_kodu="26",
+                          calisma_yili=2026, kullanici_kodu="U", sifre_gun="S")
+        gorulen: list[tuple[str, str]] = []
+
+        def sahte_satirlar(_cfg, bas, bit, _cek, **_kw):
+            gorulen.append((bas, bit))
+            return []
+
+        with patch.object(vsd, "load_config", return_value=cfg), \
+             patch.object(vsd, "katalog", return_value=[
+                 FirmaKapsami("20", 2019, 2025), FirmaKapsami("26", 2026, 2026)]), \
+             patch.object(vsd, "yil_client", return_value=None), \
+             patch.object(vsd, "fetch_mizan", return_value=[]), \
+             patch.object(vsd, "donem_satirlari", side_effect=sahte_satirlar), \
+             patch.object(vsd, "RaporWorker") as sahte_worker:
+            d = vsd.VeriSagligiDialog()
+            try:
+                vs = sahte_worker.call_args[0][0](lambda _m: None)
+            finally:
+                d.deleteLater()
+
+        self.assertEqual(gorulen[0][0], "2019-01-01")        # katalogun ilk yılı
+        self.assertEqual(gorulen[0][1], date.today().isoformat())
+        self.assertEqual(vs.bas, "2019-01-01")
+
     def test_tahmin_tazelik_gostergesi(self) -> None:
         """Sağdaki raporun güncel mi bayat mı olduğu panelde yazmalı.
 
