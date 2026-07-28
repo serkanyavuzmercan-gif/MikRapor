@@ -11,7 +11,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
-from domain.ai_yorum import YilKapanis, yillar_tablosu
+from domain.ai_yorum import YilKapanis, ortak_pencere, yillar_tablosu
 from domain.ortak import tr_buyuk
 from ui.gercek_durum_view import _agac, _c, _ic, _tsatir
 from ui.styles import BAD as NEG
@@ -25,6 +25,7 @@ _BASLIK_RENK = "#0f766e"
 # «2025 (28.07–31.12)» en uzun hücre; sütun genişliği ona göre.
 _ETIKET_SUTUN = 246
 _YIL_SUTUN = 132   # «2025 (28.07–31.12)» sığmalı
+_YIL_SUTUN_DAR = 96   # ortak pencerede başlık yalnız yıl; 10 sütun sığsın
 _DEGISIM_SUTUN = 124   # «+310,89 puan» sığmalı
 
 
@@ -52,19 +53,28 @@ def _pencere_eki(kapanislar: list[YilKapanis]) -> str:
     son = max((k.bit for k in kapanislar if len(k.bit) == 10), default="")
     if not ilk or not son:
         return ""
+    ortak = ortak_pencere(kapanislar)
+    if ortak:                       # hepsi aynı pencere → tek kez, kartın başlığında
+        return f" &nbsp;·&nbsp; her yıl {ortak}"
     return (f" &nbsp;·&nbsp; {ilk[8:10]} {_AY_ADI[int(ilk[5:7]) - 1]} {ilk[:4]}"
             f" – {son[8:10]} {_AY_ADI[int(son[5:7]) - 1]} {son[:4]}")
 
 
-def _sutun_basligi(kapanislar: list[YilKapanis], yil: int) -> str:
+def _sutun_basligi(kapanislar: list[YilKapanis], yil: int, ortak: str) -> str:
+    """Pencere bütün sütunlarda aynıysa yalnız yıl; değilse sütunun kendi tarihi."""
+    if ortak:
+        return str(yil)
     k = next((x for x in kapanislar if x.yil == yil), None)
     return k.basligi() if k is not None else str(yil)
 
 
 def _pencere_notu(kapanislar: list[YilKapanis]) -> str:
-    del kapanislar
+    if ortak_pencere(kapanislar):
+        return ("Sütunların hepsi AYNI uzunlukta — satış ve kâr doğrudan "
+                "kıyaslanabilir.")
     return ("Her sütun, seçtiğiniz aralığın o yıla düşen parçasıdır — başlıktaki gün "
-            "aralığı budur. Aralık dışından tek gün okunmaz.")
+            "aralığı budur. Sütunlar farklı uzunlukta olabilir: akış kalemlerini "
+            "aylığa indirmeden kıyaslamayın.")
 
 
 def _kapanis_notu(kapanislar: list[YilKapanis]) -> list[tuple[str, str]]:
@@ -93,9 +103,12 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     if not yillar:
         return None
 
+    # Ortak pencerede başlık yalnız yıl → sütun dar olabilir; farklıysa tam tarih sığmalı.
+    ortak = ortak_pencere(kapanislar)
+    yil_sutun = _YIL_SUTUN_DAR if ortak else _YIL_SUTUN
     kolon = 1 + len(yillar) + 1
     sabit = [(0, _ETIKET_SUTUN)]
-    sabit += [(i + 1, _YIL_SUTUN) for i in range(len(yillar))]
+    sabit += [(i + 1, yil_sutun) for i in range(len(yillar))]
     sabit.append((kolon - 1, _DEGISIM_SUTUN))
     t = _agac(kolon, sabit, esnek=0, hucre_renkli=True)
     t.header().setStretchLastSection(False)
@@ -103,7 +116,7 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     _tsatir(t, [_c("", renk=MUTED)]
             # Sütun başlığı gerçek pencereyi yazar: «2025 (28.07–31.12)». Sütunlar farklı
             # uzunlukta olabilir ve bunun görünmemesi akış kalemlerinde yanlış okumaya yol açar.
-            + [_c(_sutun_basligi(kapanislar, yil), renk=MUTED, kalin=True, sag=True)
+            + [_c(_sutun_basligi(kapanislar, yil, ortak), renk=MUTED, kalin=True, sag=True)
                for yil in yillar]
             + [_c(f"{yillar[0]}→{yillar[-1]}", renk=MUTED, kalin=True, sag=True)])
 
@@ -120,7 +133,7 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
             hucreler.append(_c(satir.degisim, renk=renk, kalin=True, sag=True))
             _tsatir(t, hucreler)
 
-    genislik = _ETIKET_SUTUN + _YIL_SUTUN * len(yillar) + _DEGISIM_SUTUN + 4
+    genislik = _ETIKET_SUTUN + yil_sutun * len(yillar) + _DEGISIM_SUTUN + 4
     t.setFixedWidth(genislik)
     t.setFixedHeight(30 * t.topLevelItemCount() + 6)
 

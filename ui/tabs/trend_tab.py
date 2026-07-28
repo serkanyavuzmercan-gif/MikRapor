@@ -9,7 +9,9 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QFileDialog,
+    QHBoxLayout,
     QMessageBox,
+    QSpinBox,
     QVBoxLayout,
 )
 
@@ -22,7 +24,7 @@ from infra.mikro_fetch import fetch_mizan
 from infra.mukayese_fetch import (
     donem_hareketleri,
     donem_kapanisi,
-    onceki_donem,
+    onceki_donemler,
     yil_client,
     yil_donemleri,
     yillari_cek,
@@ -33,6 +35,11 @@ from ui.rapor_tab import RaporTab, firma_getir
 from ui.trend_pdf import export_trend_pdf
 from ui.trend_view import build_trend_widget
 from ui.worker import IsFonksiyonu
+
+# Canlıda firma 20 → 2020'den başlıyor; altı yıl yan yana sığıyor ve okunuyor.
+# Her yıl ~5 sorgu demek, sınırsız bırakmak raporu dakikalara çıkarırdı.
+_AZAMI_GERI_YIL = 10
+_VARSAYILAN_GERI_YIL = 1
 
 
 class TrendTab(RaporTab):
@@ -71,7 +78,10 @@ class TrendTab(RaporTab):
         aylığa indirilince satış %25 DÜŞMÜŞTÜ. Aynı uzunlukta iki pencere olmadan akış
         kalemleri kıyaslanamaz.
         """
-        self._chk_gecen_yil = QCheckBox("Geçen yılın aynı dönemiyle karşılaştır")
+        satir = QHBoxLayout()
+        satir.setContentsMargins(2, 0, 0, 8)
+        satir.setSpacing(8)
+        self._chk_gecen_yil = QCheckBox("Geçmiş yılların aynı dönemiyle karşılaştır")
         self._chk_gecen_yil.setObjectName("trGecenYil")
         self._chk_gecen_yil.setCursor(Qt.CursorShape.PointingHandCursor)
         # QSS verilince Qt tüm çizimi stil sayfasına devreder; ::indicator kuralı yoksa
@@ -86,16 +96,32 @@ class TrendTab(RaporTab):
             "border-color:#0f766e; }")
         bagla_nav_tip(
             self._chk_gecen_yil,
-            "Mukayese tablosu, seçtiğiniz dönemi bir yıl öncesinin AYNI dönemiyle "
-            "yan yana koyar. İki sütun eşit uzunlukta olduğu için satış ve kâr "
-            "gerçekten kıyaslanabilir.",
+            "Mukayese tablosu, seçtiğiniz dönemi geçmiş yılların AYNI dönemiyle yan "
+            "yana koyar. Sütunlar eşit uzunlukta olduğu için satış ve kâr gerçekten "
+            "kıyaslanabilir; dolar sütunları enflasyondan da arınmış olur.",
             eyebrow="MUKAYESE", parent=self)
-        layout.addWidget(self._chk_gecen_yil)
+        satir.addWidget(self._chk_gecen_yil)
+
+        self._sp_yil = QSpinBox()
+        self._sp_yil.setRange(1, _AZAMI_GERI_YIL)
+        self._sp_yil.setValue(_VARSAYILAN_GERI_YIL)
+        self._sp_yil.setSuffix(" yıl geriye")
+        self._sp_yil.setFixedWidth(112)
+        self._sp_yil.setEnabled(False)
+        self._chk_gecen_yil.toggled.connect(self._sp_yil.setEnabled)
+        bagla_nav_tip(
+            self._sp_yil,
+            "Kaç yıl geriye gidilsin. Veritabanında bulunmayan yıllar sessizce düşer; "
+            "her yıl kendi veritabanından okunur.",
+            eyebrow="KAÇ YIL", parent=self)
+        satir.addWidget(self._sp_yil)
+        satir.addStretch(1)
+        layout.addLayout(satir)
 
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
         ayarlar = load_gercek_durum_ayarlar()
-        # Widget durumu GUI iş parçacığında okunur; worker'a sade bir bool gider.
-        gecen_yil = self._chk_gecen_yil.isChecked()
+        # Widget durumu GUI iş parçacığında okunur; worker'a sade değerler gider.
+        geri_yil = self._sp_yil.value() if self._chk_gecen_yil.isChecked() else 0
 
         def is_fn(bildir) -> dict[str, Any]:
             bit_client = yil_client(cfg, int(bit[:4]))
@@ -118,14 +144,18 @@ class TrendTab(RaporTab):
             tr = build_trend(aylik=gd.trend, bilanco=bilanco, bas=bas, bit=bit)
 
             kapanislar: list[YilKapanis] = []
-            if gecen_yil:
-                # KULLANICI AÇIKÇA İSTEDİ: seçili dönem + bir yıl öncesinin aynı dönemi.
-                # İki sütun eşit uzunlukta, o yüzden akış kalemleri kıyaslanabilir.
-                o_bas, o_bit = onceki_donem(bas, bit)
-                kapanislar = [k for k in (
-                    donem_kapanisi(cfg, o_bas, o_bit, bildir=bildir),
-                    donem_kapanisi(cfg, bas, bit, client=bit_client, bildir=bildir),
-                ) if k is not None]
+            if geri_yil:
+                # KULLANICI AÇIKÇA İSTEDİ: seçili dönem + geçmiş yılların aynı dönemi.
+                # Sütunlar eşit uzunlukta, o yüzden akış kalemleri kıyaslanabilir.
+                # Olmayan yıl sessizce düşer (donem_kapanisi None döner).
+                donemler = onceki_donemler(bas, bit, geri_yil)
+                for sira, (d_bas, d_bit) in enumerate(donemler, 1):
+                    bildir(f"{d_bit[:4]} dönemi çekiliyor… ({sira}/{len(donemler)})")
+                    son = (d_bas, d_bit) == (bas, bit)
+                    k = donem_kapanisi(cfg, d_bas, d_bit,
+                                       client=bit_client if son else None)
+                    if k is not None:
+                        kapanislar.append(k)
             elif len(yil_donemleri(bas, bit)) > 1:
                 # Varsayılan: SEÇİLEN ARALIĞIN yıllara bölünmüş hâli. Her sütun o yılın
                 # aralıkla kesişimi kadar okunur, aralık dışından tek gün alınmaz.

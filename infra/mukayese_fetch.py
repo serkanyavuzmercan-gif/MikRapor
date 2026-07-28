@@ -255,6 +255,20 @@ def onceki_donem(bas: str, bit: str) -> tuple[str, str]:
     return _bir_yil_geri(bas), _bir_yil_geri(bit)
 
 
+def onceki_donemler(bas: str, bit: str, yil_sayisi: int) -> list[tuple[str, str]]:
+    """
+    Seçili dönem + `yil_sayisi` kadar geriye AYNI dönem — eskiden yeniye sıralı.
+
+    Hepsi aynı ay-gün penceresini kullanır, o yüzden akış kalemleri (satış, kâr)
+    yıllar boyunca gerçekten kıyaslanabilir. Veritabanında olmayan yıllar çekim
+    sırasında sessizce düşer; burada yalnız tarihler üretilir.
+    """
+    out = [(bas, bit)]
+    for _ in range(max(0, yil_sayisi)):
+        out.append(onceki_donem(*out[-1]))
+    return list(reversed(out))
+
+
 def donem_kapanisi(
     cfg: MikroConfig, bas: str, bit: str,
     *, client: MikroClient | None = None,
@@ -276,12 +290,19 @@ def donem_kapanisi(
     if bildir:
         bildir(f"{bas} – {bit} dönemi çekiliyor…")
     son_yil = int(bit[:4])
-    c = client or yil_client(cfg, son_yil)
+    # Katalog o yılı kapsamıyorsa yil_client YilVeritabaniHatasi atar. Geriye doğru
+    # gidildiğinde bu BEKLENEN bir durumdur (2020 öncesi veri yok) — raporu düşürmek
+    # yerine o sütunu atlamak gerekir; _dene ValueError'ı da yakalar.
+    c = client or _dene(lambda: yil_client(cfg, son_yil))
+    if c is None:
+        return None
     b = _dene(lambda: build_bilanco(fetch_mizan(c, bit), asof=bit))
     if b is None:
         return None
-    gt = build_gelir_tablosu(
-        donem_satirlari(cfg, bas, bit, fetch_gelir_tablosu), bas=bas, bit=bit)
+    gt = _dene(lambda: build_gelir_tablosu(
+        donem_satirlari(cfg, bas, bit, fetch_gelir_tablosu), bas=bas, bit=bit))
+    if gt is None:
+        return None
     if ta is None:
         ta = _dene(lambda: build_tahsilat_alacak(
             fetch_acik_kalemler(c, bit, bas, bit),
