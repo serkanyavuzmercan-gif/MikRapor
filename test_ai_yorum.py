@@ -458,6 +458,62 @@ class TestOranTablosu(unittest.TestCase):
             self.assertIn(anahtar, SISTEM_PROMPT)
 
 
+class TestKapanissizYil(unittest.TestCase):
+    """
+    Maliyet kapanışı yapılmamış yılın kâr kalemleri kıyasa girmemeli.
+
+    Canlıda süren yılın brüt marjı %100 çıkıyordu (62 boş) ve tablo bunu
+    «Brüt Kâr %+434» diye YEŞİLLE kutluyordu — oysa net satışlar %32 düşmüştü.
+    Şişik rakamı kıyaslamaktansa hiç göstermemek doğru.
+    """
+
+    @staticmethod
+    def _yil(yil: int, *, eksik: bool):
+        return YilKapanis(
+            yil=yil, net_satis=10_000_000.0, brut_kar=3_000_000.0,
+            faaliyet_kari=2_000_000.0, net_kar=1_500_000.0,
+            smm=0.0 if eksik else -7_000_000.0, maliyet_eksik=eksik,
+            stok=2_000_000.0, alacak=3_000_000.0, ozkaynak=5_000_000.0,
+            aktif_toplam=12_000_000.0, donen=7_000_000.0, kvyk=4_000_000.0,
+            kur_son=40.0, kur_ort=38.0, satis_usd=260_000.0)
+
+    def test_kar_kalemleri_bos_doner(self) -> None:
+        k = self._yil(2026, eksik=True)
+        for alan in ("brut_kar", "faaliyet_kari", "net_kar",
+                     "brut_marj", "faaliyet_marj", "net_marj", "roe", "roa"):
+            self.assertIsNone(k.kalem(alan), alan)
+
+    def test_satis_ve_bakiye_etkilenmez(self) -> None:
+        """SMM'den bağımsız kalemler kapanış olmasa da doğrudur."""
+        k = self._yil(2026, eksik=True)
+        self.assertEqual(k.kalem("net_satis"), 10_000_000.0)
+        self.assertEqual(k.kalem("stok"), 2_000_000.0)
+        self.assertEqual(k.kalem("alacak"), 3_000_000.0)
+        self.assertIsNotNone(k.kalem("cari_oran"))
+
+    def test_kapanis_varsa_kar_gorunur(self) -> None:
+        k = self._yil(2025, eksik=False)
+        self.assertEqual(k.kalem("brut_kar"), 3_000_000.0)
+        self.assertIsNotNone(k.kalem("brut_marj"))
+
+    def test_tabloda_sisik_kar_gosterilmez(self) -> None:
+        _, bolumler = yillar_tablosu(
+            [self._yil(2025, eksik=False), self._yil(2026, eksik=True)])
+        satirlar = {r.etiket: r for b in bolumler for r in b.satirlar}
+        marj = satirlar.get("Brüt Marj (%)")
+        self.assertIsNotNone(marj)
+        self.assertEqual(marj.hucreler[-1], "—")          # kapanışsız yıl boş
+        self.assertNotEqual(marj.hucreler[0], "—")        # kapanmış yıl dolu
+
+    def test_bos_hucre_yuzde_degisim_uydurmaz(self) -> None:
+        _, bolumler = yillar_tablosu(
+            [self._yil(2025, eksik=False), self._yil(2026, eksik=True)])
+        for b in bolumler:
+            for r in b.satirlar:
+                if r.hucreler[-1] == "—":
+                    self.assertNotIn("%", r.degisim, r.etiket)
+
+
 class TestMukayeseTablosu(unittest.TestCase):
     """
     Yıllar arası mukayese DETERMİNİSTİK ve YALNIZ DOLAR + ORAN.
@@ -701,9 +757,10 @@ class TestDovizBazli(unittest.TestCase):
         k[1].kur_son = 0.0
         self.assertIsNone(self._bolum(k))
 
-    def test_usd_kursuz_sifir_doner(self) -> None:
-        self.assertEqual(YilKapanis(yil=2025).usd(1_000.0), 0.0)
-        self.assertEqual(YilKapanis(yil=2025).usd_akis(1_000.0), 0.0)
+    def test_usd_kursuz_bos_doner(self) -> None:
+        """Kur yoksa 0,00 yazmak «dolar karşılığı sıfır» demek olurdu — hücre boş kalır."""
+        self.assertIsNone(YilKapanis(yil=2025).usd(1_000.0))
+        self.assertIsNone(YilKapanis(yil=2025).usd_akis(1_000.0))
 
     def test_ortalama_kur_yoksa_donem_sonuna_duser(self) -> None:
         k = YilKapanis(yil=2025, kur_son=40.0)
