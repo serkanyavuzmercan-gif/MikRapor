@@ -188,10 +188,10 @@ class TestUiSmoke(unittest.TestCase):
         w = MikRaporWindow()
         try:
             # Sekmeler artık HeaderTabBar (_tab_bar) + QStackedWidget (_stack) ile.
-            # 9 rapor + Veri Sağlığı (rapor değil araç, sonda durur)
-            self.assertEqual(w._stack.count(), 10)
-            self.assertEqual(w._tab_bar.count(), 10)
-            self.assertEqual(w._tab_bar.tabText(9), "Veri Sağlığı")
+            # 9 RAPOR sekmesi. Veri Sağlığı burada DEĞİL: bütün sekmeler takvime
+            # bağlıyken o değil — Mikro Ayarları'ndan açılan bir kontrol penceresi.
+            self.assertEqual(w._stack.count(), 9)
+            self.assertEqual(w._tab_bar.count(), 9)
         finally:
             w.close()
 

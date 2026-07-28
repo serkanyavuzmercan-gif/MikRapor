@@ -5,6 +5,16 @@ BU BİR DENETİM RAPORU DEĞİLDİR. Okuyan kişi idarecidir; «sth_maliyet_ana 
 doluluk oranı %89» cümlesi ona hiçbir şey söylemez. Her bulgu üç şeyi sade dille
 söyler: ne olmuş, hangi rakamı bozuyor, ne yapılmalı.
 
+BİR BULGU ANCAK İKİSİ BİRDEN DOĞRUYSA GÖSTERİLİR:
+  (a) ekranda görülen bir rakamı bozuyor,
+  (b) kullanıcının yapabileceği bir şey var.
+
+Bu kural elemeyi sertleştirdi. «Satış satırlarının %11'inde maliyet yok» uyarısı
+kaldırıldı: kendi metni bile «depodan geçen maldan hesaplanan marj bundan etkilenmez»
+diyordu — yani hiçbir rakamı bozmuyordu. Tanımsız evrak tipi yalnız ÖNEMLİ tutarda
+gösteriliyor; canlıda cironun %1'iydi ve kullanıcıya yapamayacağı bir iş veriyordu.
+«Bize bildirin» gibi cümleler de yok: satılan bir üründe «biz» diye bir muhatap yok.
+
 Neden var: bu programda çıkan her «bu rakam yanlış» şikâyeti, kovalandığında verinin
 belirli bir yerindeki bozukluğa çıktı — işlenmemiş maliyet fişi, tek bir hatalı stok
 kaydı, tanınmayan evrak tipi. Bunları bulan mantık zaten vardı ama teşhis
@@ -30,9 +40,6 @@ _ONEM_SIRA = {KRITIK: 0, UYARI: 1, BILGI: 2}
 # 3,3 trilyon TL) bütün 2023 raporunu zehirliyordu.
 _MAKUL_SATIR_TUTARI = 2_000_000.0
 
-# Satış satırlarının bu oranından azı maliyet taşıyorsa kârlılık olduğundan yüksek.
-_ASGARI_MALIYET_DOLULUK = 90.0
-
 # Aktif ile pasif bu orandan fazla ayrışıyorsa mizan kendi içinde tutarsızdır.
 # Bilinçli olarak GENİŞ: mizan sorgusu kapanış/açılış fişlerini eliyor, bu da küçük
 # bir sapma bırakabiliyor. Dar tolerans her kullanıcıya sahte «kritik» gösterirdi.
@@ -40,6 +47,10 @@ _DENGE_TOLERANS = 0.01
 
 # STOK_HAREKETLERI'nde tanıdığımız (tip, evraktip) çiftleri.
 _BILINEN_EVRAK = {(0, 3), (0, 12), (1, 1), (1, 4), (1, 16)}
+
+# Tanımsız hareket, toplam hareketin bu yüzdesine ulaşmıyorsa GÖSTERİLMEZ.
+# Canlıda %1'di; kullanıcının yapabileceği bir şey yok ve gerçek bulguyu gölgeliyor.
+_ONEMLI_PAY = 5.0
 
 
 @dataclass
@@ -151,66 +162,46 @@ def _bozuk_stok_kaydi(stok_rows: list[dict]) -> Bulgu | None:
     if not supheli:
         return None
     supheli.sort(reverse=True)
-    birim, tip, ev = supheli[0]
+    birim, _tip, _ev = supheli[0]
     return Bulgu(
         kod="bozuk_stok", onem=KRITIK,
         baslik="Stok hareketlerinde hatalı bir kayıt var",
         etkisi=("Satış ya da alış toplamınız gerçekte olmadığı kadar büyük görünüyor; "
                 "kârlılık ve stok rakamları bu tek kayıt yüzünden anlamsızlaşıyor."),
-        ne_yapmali=("Mikro'da o evrakı bulup düzeltin. Hangi evrak olduğunu görmek için: "
-                    f"stok_diag_cli.py <baş> <bitiş> {tip} {ev}"),
+        ne_yapmali=("Mikro'da bu evrak tipindeki en büyük kaydı bulup düzeltin — "
+                    "tek bir hatalı satır bütün dönemi bozuyor."),
         olcum=f"Satır başına ortalama {tl(birim)} — bir mal hareketi bu kadar olamaz")
 
 
 def _tanimsiz_evrak(stok_rows: list[dict]) -> Bulgu | None:
     """Sınıflandıramadığımız hareket türü: satış mı alış mı bilmiyoruz, dışarıda kalıyor."""
     bilinmeyen: list[tuple[float, int, int]] = []
+    toplam_hareket = 0.0
     for r in stok_rows or []:
         tip = int(_f(r.get("sth_tip", r.get("STH_TIP"))))
         ev = int(_f(r.get("sth_evraktip", r.get("STH_EVRAKTIP"))))
         tutar = _f(r.get("tutar", r.get("TUTAR")))
+        toplam_hareket += abs(tutar)
         if (tip, ev) not in _BILINEN_EVRAK and abs(tutar) > 0.005:
             bilinmeyen.append((abs(tutar), tip, ev))
     if not bilinmeyen:
         return None
     bilinmeyen.sort(reverse=True)
-    toplam = sum(t for t, _, _ in bilinmeyen)
-    tutar, tip, ev = bilinmeyen[0]
+    disarida = sum(t for t, _, _ in bilinmeyen)
+    # ÖNEMSİZ TUTAR GÖSTERİLMEZ. Canlıda tanımsız tür cironun %1'iydi; onu ekrana
+    # koymak kullanıcıya yapamayacağı bir iş vermek ve gerçek bulguyu gölgelemekti.
+    if toplam_hareket <= 0.005 or disarida / toplam_hareket * 100 < _ONEMLI_PAY:
+        return None
+    _, _tip, ev = bilinmeyen[0]
     return Bulgu(
         kod="tanimsiz_evrak", onem=UYARI,
-        baslik="Tanımadığımız bir evrak tipi kullanılmış",
-        etkisi=("Bu hareketler satış ya da alış sayılmadığı için fiili kârlılık "
-                "hesabının dışında kalıyor — rakam eksik olabilir."),
-        ne_yapmali=(f"Mikro'da tip={tip}/evraktip={ev} olan bir evrakı açıp ne olduğunu "
-                    "bize bildirin; sınıflandırmaya ekleyelim."),
-        olcum=f"{len(bilinmeyen)} tür · toplam {tl(toplam)} (en büyüğü {tl(tutar)})")
+        baslik="Satış/alış sayılmayan büyük bir hareket türü var",
+        etkisi=("Bu tutar fiili kârlılık hesabının dışında kalıyor; satış ve alış "
+                "rakamlarınız bu kadar eksik."),
+        ne_yapmali=(f"Mikro'da bu hareketi açıp ne olduğuna bakın (evrak tipi {ev}). "
+                    "Gerçekten satış ya da alışsa rakamlarınız eksik demektir."),
+        olcum=f"{tl(disarida)} · hareketlerin %{disarida / toplam_hareket * 100:.0f}'i")
 
-
-def _maliyetsiz_satis(maliyet_rows: list[dict]) -> Bulgu | None:
-    """Satış satırının kendi maliyeti yoksa o satıştan kâr hesaplanamaz."""
-    adet = dolu = 0.0
-    for r in maliyet_rows or []:
-        if int(_f(r.get("sth_tip", r.get("STH_TIP")))) != 1:
-            continue
-        if int(_f(r.get("sth_evraktip", r.get("STH_EVRAKTIP")))) not in (1, 4):
-            continue
-        adet += _f(r.get("adet", r.get("ADET")))
-        dolu += _f(r.get("ana_dolu", r.get("ANA_DOLU")))
-    if adet <= 0:
-        return None
-    oran = dolu / adet * 100
-    if oran >= _ASGARI_MALIYET_DOLULUK:
-        return None
-    return Bulgu(
-        kod="maliyetsiz_satis", onem=UYARI,
-        baslik="Bazı satışların maliyeti kayıtlı değil",
-        etkisi=("Bu satışlar bedava satılmış gibi görünür; kârlılık olduğundan yüksek "
-                "çıkar. Depodan geçen maldan hesaplanan marj bundan etkilenmez."),
-        ne_yapmali=("Maliyetsiz satırlar genelde hizmet/işçilik kalemi, promosyon ya da "
-                    "eksi stoktan satıştır. Mikro'da «Maliyet Güncelleme» çalıştırın; "
-                    "sorun sürerse o kalemlerin stok kartını kontrol edin."),
-        olcum=f"Satış satırlarının %{100 - oran:.0f}'inde maliyet yok "
-              f"({int(adet - dolu):,} satır)".replace(",", "."))
 
 
 def build_veri_sagligi(
@@ -219,7 +210,6 @@ def build_veri_sagligi(
     bit: str = "",
     bilanco: Bilanco | None = None,
     stok_rows: list[dict] | None = None,
-    maliyet_rows: list[dict] | None = None,
     okunamayan: list[str] | None = None,
 ) -> VeriSagligi:
     """
@@ -235,8 +225,6 @@ def build_veri_sagligi(
         bulgular += [_maliyet_kapanisi(bilanco), _mizan_dengesi(bilanco)]
     if stok_rows is not None:
         bulgular += [_bozuk_stok_kaydi(stok_rows), _tanimsiz_evrak(stok_rows)]
-    if maliyet_rows is not None:
-        bulgular.append(_maliyetsiz_satis(maliyet_rows))
     vs.bulgular = _sirala([b for b in bulgular if b is not None])
     return vs
 

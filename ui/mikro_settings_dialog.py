@@ -119,6 +119,12 @@ class MikroAyarlarDialog(QDialog):
         self._btn_test = QPushButton("Bağlantıyı Test Et")
         self._btn_test.clicked.connect(self._on_test)
         test_row.addWidget(self._btn_test)
+        # VERİ SAĞLIĞI BURADA, sekme çubuğunda DEĞİL: bütün rapor sekmeleri seçili
+        # tarih aralığına bağlıyken bu değil — verinin durumu bir dönem raporu değil,
+        # kurulumun hâli. Sekmede durunca kullanıcı ondan dönem raporu bekliyordu.
+        self._btn_saglik = QPushButton("Veri Sağlığı")
+        self._btn_saglik.clicked.connect(self._on_veri_sagligi)
+        test_row.addWidget(self._btn_saglik)
         self._test_result = QLabel("")
         self._test_result.setWordWrap(True)
         test_row.addWidget(self._test_result, stretch=1)
@@ -236,6 +242,11 @@ class MikroAyarlarDialog(QDialog):
             self._test_result.setStyleSheet("color: #e57373;")
 
         self._baslat_is(is_fn, on_ok, on_err)
+
+    def _on_veri_sagligi(self) -> None:
+        """Rapor rakamlarını bozabilecek kayıt sorunlarını ayrı pencerede gösterir."""
+        from ui.veri_sagligi_dialog import VeriSagligiDialog
+        VeriSagligiDialog(self).exec()
 
     def _on_toggle_secrets(self, checked: bool) -> None:
         mode = QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password
