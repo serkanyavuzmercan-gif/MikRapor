@@ -519,6 +519,30 @@ def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+def fetch_yil_araligi(client: MikroClient) -> tuple[int, int]:
+    """
+    Bu veritabanının kapsadığı ilk/son muhasebe yılı. Kapsamıyorsa (0, 0).
+
+    Mikro'da veritabanını FİRMA KODU seçer ve bir veritabanı birden çok yıl taşıyabilir
+    (canlıda firma 20 → 2020-2025, firma 26 → 2026). Hangi yılın nerede olduğunu bilmek
+    için tek ucuz yol bu: MIN/MAX bir tarih indeksinden okunur, tablo taranmaz.
+    Süzgeç bilerek yok — iptal edilmiş fiş yıl kapsamını değiştirmez, indeks aramasını bozar.
+    """
+    sql = ("SELECT MIN(fis_tarih) AS ilk, MAX(fis_tarih) AS son "
+           "FROM MUHASEBE_FISLERI WITH (NOLOCK)")
+    rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=60, max_attempts=2))
+    if not rows:
+        return (0, 0)
+
+    def _yil(deger: Any) -> int:
+        metin = str(deger or "").strip()
+        return int(metin[:4]) if len(metin) >= 4 and metin[:4].isdigit() else 0
+
+    ilk = _yil(get_row_value(rows[0], "ilk", "ILK"))
+    son = _yil(get_row_value(rows[0], "son", "SON"))
+    return (ilk, son) if ilk and son else (0, 0)
+
+
 def fetch_gl_gun_fisleri(client: MikroClient, tarih: str) -> list[dict[str, Any]]:
     """
     Tek günün yevmiye fişleri — teşhis içindir (yıl sonu kapanışı var mı?).

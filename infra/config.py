@@ -73,6 +73,10 @@ class MikroConfig:
     base_url: str = ""          # MIKRO_BASE_URL  — örn. https://192.168.1.50:443 veya Tailscale adresi
     api_key: str = ""           # MIKRO_API_KEY
     firma_kodu: str = ""        # MIKRO_FIRMA_KODU — örn. 01 (cari yıl firma kodu)
+    # Mikro'da veritabanını FİRMA KODU seçer ve bir veritabanı birden çok yıl taşır
+    # (canlıda 20 → 2020-2025, 26 → 2026+). Geçmiş yıllar başka veritabanındaysa
+    # kodları buraya yazılır: «20, 26». Boşsa yalnız firma_kodu kullanılır.
+    firma_kodlari: str = ""     # MIKRO_FIRMA_KODLARI
     calisma_yili: int = 0       # MIKRO_CALISMA_YILI — 0 ise içinde bulunulan yıl
     kullanici_kodu: str = ""    # MIKRO_KULLANICI_KODU
     sifre_gun: str = ""         # MIKRO_SIFRE_GUN — Mikro kullanıcı şifresi (zorunlu)
@@ -86,6 +90,7 @@ class MikroConfig:
             base_url=(self.base_url or "").strip().rstrip("/"),
             api_key=(self.api_key or "").strip(),
             firma_kodu=(self.firma_kodu or "").strip(),
+            firma_kodlari=(self.firma_kodlari or "").strip(),
             calisma_yili=int(yil),
             kullanici_kodu=(self.kullanici_kodu or "").strip(),
             sifre_gun=(self.sifre_gun or "").strip(),
@@ -159,6 +164,7 @@ def _from_env() -> MikroConfig:
         base_url=os.environ.get("MIKRO_BASE_URL", ""),
         api_key=os.environ.get("MIKRO_API_KEY", ""),
         firma_kodu=os.environ.get("MIKRO_FIRMA_KODU", ""),
+        firma_kodlari=os.environ.get("MIKRO_FIRMA_KODLARI", ""),
         calisma_yili=_int_or_zero(os.environ.get("MIKRO_CALISMA_YILI")),
         kullanici_kodu=os.environ.get("MIKRO_KULLANICI_KODU", ""),
         sifre_gun=os.environ.get("MIKRO_SIFRE_GUN", ""),
@@ -179,6 +185,7 @@ def load_config() -> MikroConfig:
                 base_url=data.get("base_url", ""),
                 api_key=gizli.coz(str(data.get("api_key", "") or "")),
                 firma_kodu=str(data.get("firma_kodu", "")),
+                firma_kodlari=str(data.get("firma_kodlari", "")),
                 calisma_yili=_int_or_zero(data.get("calisma_yili")),
                 kullanici_kodu=data.get("kullanici_kodu", ""),
                 sifre_gun=gizli.coz(str(data.get("sifre_gun", "") or "")),

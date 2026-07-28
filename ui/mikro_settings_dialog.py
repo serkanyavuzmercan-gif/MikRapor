@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
 from infra.config import MikroConfig, config_path, load_config, save_config
 from infra.mikro_api import MikroClient
 from infra.mikro_fetch import fetch_firma_adi
+from infra.veritabani import onbellegi_temizle
 from ui.worker import RaporWorker
 
 
@@ -62,6 +63,11 @@ class MikroAyarlarDialog(QDialog):
         self._api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self._firma_kodu = QLineEdit(self._cfg.firma_kodu)
         self._firma_kodu.setPlaceholderText("örn. 01")
+        # Mikro'da veritabanını firma kodu seçer ve bir veritabanı birden çok yıl
+        # taşıyabilir. Geçmiş yıllar başka veritabanındaysa kodları buraya yazılır;
+        # program hangi yılın nerede olduğunu kendi bulur (bkz. infra/veritabani.py).
+        self._firma_kodlari = QLineEdit(self._cfg.firma_kodlari)
+        self._firma_kodlari.setPlaceholderText("boş bırakılabilir — örn. 20, 26")
         self._calisma_yili = QSpinBox()
         self._calisma_yili.setRange(2000, 2100)
         self._calisma_yili.setValue(self._cfg.calisma_yili or date.today().year)
@@ -73,6 +79,7 @@ class MikroAyarlarDialog(QDialog):
         form.addRow("Mikro API adresi:", self._base_url)
         form.addRow("API anahtarı:", self._api_key)
         form.addRow("Firma kodu:", self._firma_kodu)
+        form.addRow("Geçmiş yıl veritabanları:", self._firma_kodlari)
         form.addRow("Çalışma yılı:", self._calisma_yili)
         form.addRow("Kullanıcı kodu:", self._kullanici)
         form.addRow("Şifre:", self._sifre_gun)
@@ -196,6 +203,7 @@ class MikroAyarlarDialog(QDialog):
             base_url=self._base_url.text(),
             api_key=self._api_key.text(),
             firma_kodu=self._firma_kodu.text(),
+            firma_kodlari=self._firma_kodlari.text(),
             calisma_yili=self._calisma_yili.value(),
             kullanici_kodu=self._kullanici.text(),
             sifre_gun=self._sifre_gun.text(),
@@ -261,6 +269,9 @@ class MikroAyarlarDialog(QDialog):
         except OSError as exc:
             QMessageBox.critical(self, "Kaydedilemedi", str(exc))
             return
+        # Firma listesi değişmiş olabilir; eski kapsamlar yılları yanlış
+        # veritabanına yönlendirmesin.
+        onbellegi_temizle()
         self._cfg = cfg
         self.accept()
 
