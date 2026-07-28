@@ -207,6 +207,33 @@ def fetch_stok_maliyet_teshis(
 _BOS_UID = "'00000000-0000-0000-0000-000000000000'"
 
 
+def fetch_stok_depo_kirilimi(
+    client: MikroClient, bas: str, bit: str, tip: int, evraktip: int,
+) -> list[dict[str, Any]]:
+    """
+    Bir hareket türü gerçekten ALIŞ mı, yoksa depolar arası TRANSFER mi? — teşhis içindir.
+
+    evraktip 12'nin Mikro'daki adı «alış irsaliyesi / DEPO GİRİŞİ»: aynı kod hem dışarıdan
+    gelen malı hem de kendi depoların arasındaki nakli taşır. Transferi alış saymak
+    maliyeti şişirir, alış saymamak da eksik bırakır — hangisi olduğu ölçülmeli.
+
+    Ayırt edici: dışarıdan alınan malın ÇIKIŞ deposu yoktur (0). Transferde iki depo da
+    doludur. Kırılım o iki kümeyi ayrı toplar.
+    """
+    bas, bit = _aralik(bas, bit)
+    tarih = _stok_tarih_sql()
+    sql = (
+        "SELECT CASE WHEN ISNULL(sth_cikis_depo_no, 0) = 0 THEN 0 ELSE 1 END AS transfer, "
+        "COUNT(*) AS adet, SUM(sth_tutar) AS tutar, "
+        "COUNT(DISTINCT sth_giris_depo_no) AS giris_depo "
+        "FROM STOK_HAREKETLERI WITH (NOLOCK) "
+        f"WHERE {tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}' "
+        f"AND {_tip_evrak(tip, evraktip)} "
+        "GROUP BY CASE WHEN ISNULL(sth_cikis_depo_no, 0) = 0 THEN 0 ELSE 1 END"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
 def fetch_stok_bakiye_teshis(
     client: MikroClient, asof: str,
 ) -> list[dict[str, Any]]:

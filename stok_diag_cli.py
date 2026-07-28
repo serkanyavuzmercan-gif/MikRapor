@@ -36,6 +36,7 @@ from domain.ortak import to_float as _f
 from infra.config import MikroConfig, load_config, load_gercek_durum_ayarlar
 from infra.mikro_fetch import (
     fetch_stok_bakiye_teshis,
+    fetch_stok_depo_kirilimi,
     fetch_stok_evraktip_tepe,
     fetch_stok_evraktip_yillik,
     fetch_stok_fatura_ortakligi,
@@ -335,6 +336,62 @@ def _fatura_ortakligi(cfg: MikroConfig, bas: str, bit: str, fatura_tutar: float)
         print("    «Satış: Yalnız Fatura» ayarına geçmeyi değerlendirin.")
 
 
+def _alis_teshisi(cfg: MikroConfig, bas: str, bit: str, kova: dict) -> None:
+    """
+    ALIŞ tarafı: irsaliye ile fatura arasındaki fark gerçek mal mı, kopya mı, transfer mi?
+
+    Satışta faturalaşmanın kopya yaratmadığını damgadan kanıtladık (17.430 irsaliyeye
+    karşı 262 fatura satırı). Alışta oran bambaşka: 6.592 irsaliyeye karşı 2.492 fatura.
+    Bu, mekanizmanın alışta farklı işlediğini düşündürüyor ve MARJI DOĞRUDAN ETKİLER:
+
+      • Fark gerçek maldan geliyorsa → alışımız eksik sayılıyor, marj OLDUĞUNDAN YÜKSEK
+      • Fark faturalaşan irsaliyenin kopyasıysa → şu anki sayım doğru
+      • Fark depolar arası transferse → alış değil, hiç sayılmamalı
+
+    evraktip 12'nin Mikro'daki adı «alış irsaliyesi / DEPO GİRİŞİ» — üçüncü ihtimal
+    gerçek ve tek başına farkı açıklayabilir.
+    """
+    irs_fat = kova.get((12, 1), [0.0, 0.0])
+    irs_bek = kova.get((12, 0), [0.0, 0.0])
+    fatura = [sum(v[0] for (ev, _), v in kova.items() if ev == 3),
+              sum(v[1] for (ev, _), v in kova.items() if ev == 3)]
+    irs_top = irs_fat[1] + irs_bek[1]
+    if irs_top <= 0.005 and fatura[1] <= 0.005:
+        return
+
+    print(f"\n  Alış irsaliyesi   {tl(irs_top):>20}  "
+          f"({tl(irs_fat[1])} faturalanmış + {tl(irs_bek[1])} bekleyen)")
+    print(f"  Alış faturası     {tl(fatura[1]):>20}")
+    print(f"  FARK              {tl(irs_top - fatura[1]):>20}")
+
+    depo = donem_satirlari(
+        cfg, bas, bit, lambda c, b, e: fetch_stok_depo_kirilimi(c, b, e, 0, 12))
+    dis = ic = 0.0
+    for r in depo:
+        tutar = _f(r.get("tutar", r.get("TUTAR")))
+        if int(_f(r.get("transfer", r.get("TRANSFER")))):
+            ic += tutar
+        else:
+            dis += tutar
+    print(f"\n  Bunun {tl(dis)} kadarı DIŞARIDAN gelen mal (çıkış deposu yok),")
+    print(f"        {tl(ic)} kadarı DEPOLAR ARASI transfer (iki depo da dolu).")
+
+    print()
+    if ic > 0.005 and abs(dis - fatura[1]) <= 0.05 * max(fatura[1], 1.0):
+        print("  → Fark DEPO TRANSFERİNDEN geliyor: dışarıdan gelen mal ile alış faturası")
+        print("    örtüşüyor. Şu anki sayım (yalnız fatura) doğru, marj etkilenmiyor.")
+    elif irs_fat[0] > 0 and fatura[0] < irs_fat[0] * _KOPYA_ESIGI:
+        print("  → DAMGALAMA MODELİ: faturalaşan irsaliye yerinde duruyor, ayrıca fatura")
+        print("    satırı yaratılmıyor. O hâlde depoya giren mal irsaliye tutarıdır ve")
+        print("    ALIŞIMIZ EKSİK SAYILIYOR — fiili marj olduğundan yüksek görünüyor.")
+        print("    «Alış: İrsaliye» ayarına geçmeyi değerlendirin.")
+    else:
+        print("  → Fark ne transferle ne damgayla açıklanıyor. Faturalanmamış irsaliye")
+        print(f"    ({tl(irs_bek[1])}) henüz faturası gelmemiş mal olabilir: fiilen")
+        print("    depodadır ama maliyeti kayda girmemiştir. Mikro'da birkaç bekleyen")
+        print("    irsaliyeyi açıp gerçek mal mı diye bakın.")
+
+
 def _bakiye_teshisi(client, cfg: MikroConfig, bit: str) -> None:
     """
     Canlı stok değeri mizanın 153'üne alternatif olabilir mi?
@@ -400,6 +457,7 @@ def _faturalasma_teshisi(cfg: MikroConfig, bas: str, bit: str) -> None:
     """
     rows = donem_satirlari(cfg, bas, bit, fetch_stok_faturalasma)
     satis = [r for r in rows if int(_f(r.get("sth_tip", r.get("STH_TIP")))) == SATIS_TIP]
+    alis = [r for r in rows if int(_f(r.get("sth_tip", r.get("STH_TIP")))) == 0]
     if not satis:
         print("\nFATURALAŞMA TEŞHİSİ: dönemde satış hareketi yok.")
         return
@@ -436,6 +494,18 @@ def _faturalasma_teshisi(cfg: MikroConfig, bas: str, bit: str) -> None:
         print("    fatura satırı YARATILMIYOR. Faturalanmamış irsaliyeler de fiilen")
         print("    depodan çıkmış maldır, satışa dahil edilmeleri yerinde.")
         _fatura_ortakligi(cfg, bas, bit, fatura[1])
+
+    # ALIŞ TARAFI da sorulmalı: satışta doğrulanan davranış alışta geçerli olmayabilir.
+    # Canlıda satışta 262/17.914 iken alışta 2.492/6.592 — oran bambaşka.
+    if alis:
+        print("\n  ALIŞ TARAFI")
+        alis_kova: dict[tuple[int, int], list[float]] = {}
+        for r in alis:
+            anahtar = (int(al(r, "sth_evraktip")), int(al(r, "faturalandi")))
+            t = alis_kova.setdefault(anahtar, [0.0, 0.0])
+            t[0] += al(r, "adet")
+            t[1] += al(r, "tutar")
+        _alis_teshisi(cfg, bas, bit, alis_kova)
     elif fatura[0] >= irs_fat[0] * _KOPYA_ESIGI and irs_fat[0] > 0:
         print("  → KOPYALAMA MODELİ ŞÜPHESİ: faturalanmış irsaliye kadar fatura satırı da")
         print("    var. İkisini toplamak satışı ~2 kat şişirir. «Satış: Yalnız Fatura»")
