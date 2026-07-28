@@ -47,7 +47,8 @@ from infra.mikro_fetch import (
     fetch_stok_ozet,
     fetch_tablo_kolonlari,
 )
-from infra.mukayese_fetch import donem_satirlari, yil_client
+from infra.mukayese_fetch import donem_parcalari, donem_satirlari, yil_client
+from infra.veritabani import katalog
 
 _EVRAK_AD = {
     (0, 3): "alış faturası",
@@ -70,8 +71,6 @@ _KOPYA_ESIGI = 0.5
 # Maliyet güncellemesi çalıştırılmamışsa kolon 0'dır; 0'ı maliyet sanmak brüt marjı
 # %100 gösterir. Satırların bu kadarı dolu değilse kolon kullanılmaz.
 _ASGARI_DOLULUK = 90.0
-# Bu veritabanında bu kadar geçmiş satır varsa kümülatif gerçekten SEVİYEDİR.
-_GECMIS_ASGARI_SATIR = 100
 _SIFIR_TL = 0.005
 # Boş satırların ölçülen net etkisi canlı değerin bu payını aşıyorsa rakam bağlanmaz.
 _AZAMI_DUZELTME_PAYI = 5.0
@@ -423,72 +422,56 @@ def _alis_teshisi(cfg: MikroConfig, bas: str, bit: str, kova: dict) -> None:
         print("    irsaliyeyi açıp gerçek mal mı diye bakın.")
 
 
-def _kapsam_teshisi(client, bit: str) -> bool:
-    """
-    Bu veritabanı stok geçmişini taşıyor mu? Dönen değer: kümülatif SEVİYE sayılabilir mi.
-
-    Mikro her çalışma yılı grubunu ayrı veritabanında tutabilir; tek bir veritabanının
-    kümülatifi seviye değil, o dönemin ARTIŞI olabilir. Ayırt eden şey yıl başındaki
-    devir hareketidir.
-    """
+def _kapsam_satiri(client, bit: str, bas: str) -> tuple[str, int]:
+    """Bir veritabanının stok tablosunda ilk hareket ne zaman, kaç satır var."""
     rows = fetch_stok_kapsam(client, bit)
     if not rows:
-        print("  Kapsam sorgusu boş döndü.")
-        return False
+        return "", 0
     r = rows[0]
-
-    def al(ad: str) -> float:
-        return _f(r.get(ad, r.get(ad.upper())))
-
     ilk = str(r.get("ilk", r.get("ILK")) or "")[:10]
-    son = str(r.get("son", r.get("SON")) or "")[:10]
-    onceki, ilkgun = int(al("onceki_satir")), int(al("ilkgun_satir"))
-    print(f"  Tablodaki ilk hareket {ilk:>18}")
-    print(f"  Tablodaki son hareket {son:>18}")
-    print(f"  {bit[:4]} öncesi satır  {onceki:>18,}".replace(",", "."))
-    print(f"  1 Ocak {bit[:4]} satırı  {ilkgun:>18,}".replace(",", "."))
-    print(f"  1 Ocak {bit[:4]} maliyeti{tl(al('ilkgun_maliyet')):>18}")
-
-    if onceki >= _GECMIS_ASGARI_SATIR:
-        print("  → Geçmiş yıllar bu veritabanında; kümülatif = SEVİYE.")
-        return True
-    if abs(al("ilkgun_maliyet")) > _SIFIR_TL:
-        print("  → Geçmiş yok ama 1 Ocak'ta devir hareketi var; kümülatif = SEVİYE.")
-        return True
-    print("  → Ne geçmiş hareket ne 1 Ocak devri var. Bu veritabanının kümülatifi")
-    print(f"    stok SEVİYESİ değil, {bit[:4]} yılının ARTIŞIDIR — mizanın yerine konulamaz.")
-    return False
+    adet = int(_f(r.get("adet", r.get("ADET"))))
+    print(f"  firma {client.cfg.firma_kodu:>4}  {bas} → {bit}  "
+          f"ilk hareket {ilk or '—':>10}  {adet:>9,} satır".replace(",", "."))
+    return ilk, adet
 
 
-def _maliyet_yonu_teshisi(client, bit: str) -> float | None:
+def _yon_topla(client, bit: str, bas: str, birikim: dict[int, list[float]]) -> None:
+    """Maliyeti boş satırları YÖNE göre biriktirir (giriş 0, çıkış 1)."""
+    for r in fetch_stok_maliyet_yonu(client, bit, bas):
+        def al(ad: str, satir=r) -> float:
+            return _f(satir.get(ad, satir.get(ad.upper())))
+
+        t = birikim.setdefault(int(al("tip")), [0.0, 0.0, 0.0, 0.0])
+        t[0] += al("bos_satir")
+        t[1] += al("bos_miktar")
+        t[2] += al("dolu_miktar")
+        t[3] += al("dolu_maliyet")
+
+
+def _yon_dok(birikim: dict[int, list[float]]) -> float | None:
     """
-    Maliyeti boş satırlar net değeri hangi yöne çekiyor? Dönen değer: ölçülen düzeltme.
+    Boş satırların net maliyete ölçülen etkisi.
 
-    Doluluk oranına bakıp karar vermek yetmez: eksik bir GİRİŞ satırı stoğu düşük,
-    eksik bir ÇIKIŞ satırı YÜKSEK gösterir. Yön bilinmeden %91 doluluk bir şey söylemez.
+    Net maliyet = giren − çıkan olduğu için eksik bir GİRİŞ satırı stoğu düşük, eksik
+    bir ÇIKIŞ satırı YÜKSEK gösterir. Yön bilinmeden doluluk oranı bir şey söylemez:
+    canlıda boş satırların %84'ü çıkıştaydı, yani canlı rakam mizanla AYNI yönde şişikti.
     """
-    rows = fetch_stok_maliyet_yonu(client, bit)
-    if not rows:
+    if not birikim:
         print("  Yön sorgusu boş döndü.")
         return None
     print(f"  {'yön':>7}  {'boş satır':>10}  {'boş miktar':>14}  {'birim maliyet':>16}"
           f"  {'eksik TL (tahmin)':>20}")
     duzeltme = 0.0
     olculebilir = True
-    for r in rows:
-        def al(ad: str, satir=r) -> float:
-            return _f(satir.get(ad, satir.get(ad.upper())))
-
-        tip = int(al("tip"))
+    for tip in sorted(birikim):
+        bos_satir, bos_miktar, dolu_miktar, dolu_maliyet = birikim[tip]
         ad = "giriş" if tip == 0 else "çıkış"
-        bos_miktar, dolu_miktar = al("bos_miktar"), al("dolu_miktar")
-        birim = al("dolu_maliyet") / dolu_miktar if dolu_miktar else 0.0
+        birim = dolu_maliyet / dolu_miktar if dolu_miktar else 0.0
         eksik = bos_miktar * birim
-        if not birim and al("bos_satir"):
+        if not birim and bos_satir:
             olculebilir = False
-        # Net maliyet = giren − çıkan: eksik giriş eklenir, eksik çıkış düşülür.
         duzeltme += eksik if tip == 0 else -eksik
-        print(f"  {ad:>7}  {int(al('bos_satir')):>10,}  {bos_miktar:>14,.2f}"
+        print(f"  {ad:>7}  {int(bos_satir):>10,}  {bos_miktar:>14,.2f}"
               f"  {tl(birim):>16}  {tl(eksik):>20}".replace(",", "."))
     print(f"\n  Ölçülen net düzeltme  {tl(duzeltme):>18}"
           "   (eksik giriş − eksik çıkış)")
@@ -499,38 +482,55 @@ def _bakiye_teshisi(client, cfg: MikroConfig, bit: str) -> None:
     """
     Canlı stok değeri mizanın 153'üne alternatif olabilir mi?
 
-    Üç şey birden doğru olmadan CEVAP EVET DEĞİLDİR:
-      1. bu veritabanı stok geçmişini taşıyor (yoksa kümülatif seviye değil artıştır),
+    Stok SEVİYESİ kümülatiftir — şirketin ilk gününden bugüne bütün hareketlerin
+    toplamı. Mikro yılları ayrı veritabanlarına böldüğü için tek bir veritabanının
+    kümülatifi seviye DEĞİLDİR: canlıda firma 26'nın stok tablosu 2025-01-10'da
+    başlıyor, oysa geçmiş firma 20'de (2020-2025). Bu yüzden KATALOĞUN TAMAMI okunur
+    ve pencereler donem_parcalari ile çakışmadan bölünür (2025 iki veritabanında birden
+    var; sınırsız okumak o yılı iki kez sayardı).
+
+    Üç şart birden doğru olmadan cevap EVET değildir:
+      1. bütün yıllar okunabildi,
       2. maliyet kolonu yeterince dolu,
-      3. boş satırların net değere etkisi ölçülüp önemsiz çıkıyor.
-    Eskiden yalnız (2) bakılıp yeşil ışık yakılıyordu; %91 doluluğun hangi yöne çektiği
-    bilinmeden verilen karar, mizanın şişkinliğini canlı rakama taşıyabilirdi.
+      3. boş satırların net etkisi ölçülüp önemsiz çıkıyor.
     """
-    rows = fetch_stok_bakiye_teshis(client, bit)
-    if not rows:
-        print("\nSTOK BAKİYE TEŞHİSİ: sorgu boş döndü.")
+    yil = int(bit[:4])
+    kapsamlar = [k for k in katalog(cfg) if k.ilk_yil <= yil]
+    ilk_yil = min((k.ilk_yil for k in kapsamlar), default=yil)
+    tarih_bas = f"{ilk_yil}-01-01"
+
+    print(f"\nSTOK BAKİYE TEŞHİSİ — {bit} itibarıyla (kümülatif: {tarih_bas} →)\n")
+    print("VERİTABANLARI — stok seviyesi hepsinin toplamıdır\n")
+    toplam = dict.fromkeys(("miktar", "maliyet", "tutar", "adet", "maliyet_dolu"), 0.0)
+    yon: dict[int, list[float]] = {}
+    en_erken = ""
+    okunan = 0
+    for c, p_bas, p_bit in donem_parcalari(cfg, tarih_bas, bit):
+        ilk, adet = _kapsam_satiri(c, p_bit, p_bas)
+        if ilk and (not en_erken or ilk < en_erken):
+            en_erken = ilk
+        if not adet:
+            continue
+        okunan += 1
+        for r in fetch_stok_bakiye_teshis(c, p_bit, p_bas):
+            for ad in toplam:
+                toplam[ad] += _f(r.get(ad, r.get(ad.upper())))
+        _yon_topla(c, p_bit, p_bas, yon)
+
+    if not okunan:
+        print("\n  Hiçbir veritabanından stok hareketi okunamadı.")
         return
-    r = rows[0]
 
-    def al(ad: str) -> float:
-        return _f(r.get(ad, r.get(ad.upper())))
-
-    adet, dolu = al("adet"), al("maliyet_dolu")
-    maliyet = al("maliyet")
-    print(f"\nSTOK BAKİYE TEŞHİSİ — {bit} itibarıyla "
-          f"(firma {client.cfg.firma_kodu} veritabanı)\n")
-    print(f"  Hareket satırı        {int(adet):>18,}".replace(",", "."))
+    adet, dolu, maliyet = toplam["adet"], toplam["maliyet_dolu"], toplam["maliyet"]
+    print(f"\n  Hareket satırı        {int(adet):>18,}".replace(",", "."))
     print(f"  Maliyet kolonu dolu   {dolu / adet * 100 if adet else 0:>17.1f}%")
-    print(f"  Net miktar (giren−çıkan) {al('miktar'):>18,.2f}")
+    print(f"  Net miktar (giren−çıkan) {toplam['miktar']:>18,.2f}")
     print(f"  Net maliyet           {tl(maliyet):>18}   ← stok değeri adayı")
-    print(f"  Net sth_tutar         {tl(al('tutar')):>18}   (alışta maliyet, satışta")
+    print(f"  Net sth_tutar         {tl(toplam['tutar']):>18}   (alışta maliyet, satışta")
     print(f"  {'':22}{'':18}    satış fiyatı — stok değeri DEĞİL)")
 
-    print("\nKAPSAM — bu veritabanı geçmişi taşıyor mu?\n")
-    seviye = _kapsam_teshisi(client, bit)
-
     print("\nEKSİK MALİYETİN YÖNÜ\n")
-    duzeltme = _maliyet_yonu_teshisi(client, bit)
+    duzeltme = _yon_dok(yon)
 
     mizan = _dene_mizan(client, bit)
     if mizan is not None:
@@ -541,11 +541,11 @@ def _bakiye_teshisi(client, cfg: MikroConfig, bit: str) -> None:
             print(f"  Düzeltilmiş fark      {tl(mizan - maliyet - duzeltme):>18}")
 
     print()
+    if en_erken and en_erken[:4] > str(ilk_yil):
+        print(f"  → DİKKAT: katalog {ilk_yil}'den başlıyor ama en erken stok hareketi")
+        print(f"    {en_erken}. Öncesi ya yok ya da başka bir veritabanında —")
+        print("    kümülatif eksik olabilir.")
     oran = dolu / adet * 100 if adet else 0.0
-    if not seviye:
-        print("  → HAYIR: bu veritabanının kümülatifi stok seviyesi değil. Seviye ancak")
-        print("    bütün yıl veritabanları toplanarak bulunur; stok satırı «—» kalmalı.")
-        return
     if oran < _ASGARI_DOLULUK:
         print(f"  → HAYIR: maliyet kolonu %{oran:.1f} dolu; eksik satırlar hem girişte hem")
         print("    çıkışta olduğu için net değerin yönü kestirilemez. Stok satırı «—» kalmalı.")
@@ -558,9 +558,8 @@ def _bakiye_teshisi(client, cfg: MikroConfig, bit: str) -> None:
         print(f"  → HAYIR: boş satırların net etkisi {tl(duzeltme)}, canlı değerin %{pay:.1f}'i.")
         print("    Bu kadar oynayan bir rakam mizanın yerine konulamaz.")
         return
-    print(f"  → EVET: kümülatif seviye, maliyet %{oran:.1f} dolu ve boş satırların net")
-    print(f"    etkisi canlı değerin yalnız %{pay:.1f}'i. «Düzeltilmiş canlı» rakamı")
-    print("    mukayese tablosundaki stok satırına bağlanabilir.")
+    print(f"  → EVET: maliyet %{oran:.1f} dolu ve boş satırların net etkisi canlı değerin")
+    print(f"    yalnız %{pay:.1f}'i. «Düzeltilmiş canlı» rakamı stok satırına bağlanabilir.")
 
 
 def _dene_mizan(client, bit: str) -> float | None:

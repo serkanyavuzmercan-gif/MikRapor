@@ -235,7 +235,7 @@ def fetch_stok_depo_kirilimi(
 
 
 def fetch_stok_bakiye_teshis(
-    client: MikroClient, asof: str,
+    client: MikroClient, asof: str, bas: str = "",
 ) -> list[dict[str, Any]]:
     """
     Depoda o tarihte NE VAR? — mizandan bağımsız, canlı stok değeri denemesi.
@@ -250,10 +250,13 @@ def fetch_stok_bakiye_teshis(
                      doğrudan stok değeri VERMEZ, yalnız kıyas için basılır
 
     Bu bir TEŞHİS: rakamı rapora bağlamadan önce mizanla kıyaslanıp karar verilecek.
-    Kümülatif olduğu için tarih alt sınırı yoktur — bir BAKİYE sorgusudur, akış değil;
-    seçili aralığın bitişinde okunur (mizanın kendisi de aynı şekilde kümülatiftir).
+    Alt sınır normalde YOKTUR (bakiye sorgusu, akış değil). `bas` yalnız veritabanı
+    parçalarını birleştirirken verilir: bir yıl iki veritabanında birden duruyorsa
+    (canlıda 2025 hem firma 20'de hem firma 26'da) sınırsız okumak o yılı İKİ KEZ
+    sayardı — pencereler donem_parcalari ile çakışmayacak şekilde bölünür.
     """
     tarih = _stok_tarih_sql()
+    alt = f"{tarih} >= '{iso_tarih(bas, alan='başlangıç tarihi')}' AND " if bas else ""
     # tip 0 = giriş, 1 = çıkış. Çıkanı düşmek için işaret veriyoruz.
     yon = "CASE WHEN sth_tip = 0 THEN 1 ELSE -1 END"
     sql = (
@@ -263,7 +266,7 @@ def fetch_stok_bakiye_teshis(
         "COUNT(*) AS adet, "
         "SUM(CASE WHEN sth_maliyet_ana <> 0 THEN 1 ELSE 0 END) AS maliyet_dolu "
         "FROM STOK_HAREKETLERI WITH (NOLOCK) "
-        f"WHERE {tarih} < '{_bit_son(asof)}'"
+        f"WHERE {alt}{tarih} < '{_bit_son(asof)}'"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 
@@ -299,7 +302,8 @@ def fetch_stok_kapsam(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 
 
-def fetch_stok_maliyet_yonu(client: MikroClient, asof: str) -> list[dict[str, Any]]:
+def fetch_stok_maliyet_yonu(client: MikroClient, asof: str,
+                            bas: str = "") -> list[dict[str, Any]]:
     """
     Maliyeti BOŞ satırlar girişte mi çıkışta mı? — canlı stok değerinin yönü.
 
@@ -314,6 +318,7 @@ def fetch_stok_maliyet_yonu(client: MikroClient, asof: str) -> list[dict[str, An
     """
     asof = iso_tarih(asof, alan="tarih")
     tarih = _stok_tarih_sql()
+    alt = f"{tarih} >= '{iso_tarih(bas, alan='başlangıç tarihi')}' AND " if bas else ""
     sql = (
         "SELECT sth_tip AS tip, "
         "SUM(CASE WHEN sth_maliyet_ana = 0 THEN 1 ELSE 0 END) AS bos_satir, "
@@ -322,7 +327,7 @@ def fetch_stok_maliyet_yonu(client: MikroClient, asof: str) -> list[dict[str, An
         "SUM(CASE WHEN sth_maliyet_ana <> 0 THEN sth_miktar ELSE 0 END) AS dolu_miktar, "
         "SUM(CASE WHEN sth_maliyet_ana <> 0 THEN sth_maliyet_ana ELSE 0 END) AS dolu_maliyet "
         "FROM STOK_HAREKETLERI WITH (NOLOCK) "
-        f"WHERE {tarih} < '{_bit_son(asof)}' "
+        f"WHERE {alt}{tarih} < '{_bit_son(asof)}' "
         "GROUP BY sth_tip"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
