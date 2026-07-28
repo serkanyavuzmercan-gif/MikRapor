@@ -433,6 +433,57 @@ def fetch_kredi_gl(client: MikroClient, bas: str, bit: str) -> dict[str, float]:
     return {"odeme": 0.0, "kullanim": 0.0}
 
 
+# Açılış fişi bütün bilanço hesaplarını tek yevmiyede kurar — canlıda 571 satırdı.
+# Yıl başına düşen 2-3 satırlık bir özkaynak düzeltmesi açılış fişi DEĞİLDİR;
+# onu açılış sanıp mizanı yıla daraltmak bakiyeleri sessizce yok ederdi.
+_ACILIS_ASGARI_SATIR = 10
+
+
+def _ozkaynakli_fisler(client: MikroClient, gun: str) -> list[dict[str, Any]]:
+    """Bir günün ÖZKAYNAK (5xx) satırı içeren yevmiye fişleri; okunamazsa boş liste."""
+    try:
+        fisler = fetch_gl_gun_fisleri(client, gun)
+    except MikroAPIError:
+        return []       # teşhis amaçlı yardımcı sorgu; asıl mizanı düşürmemeli
+    return [f for f in fisler
+            if _f_local(get_row_value(f, "ozkaynak_var", "OZKAYNAK_VAR")) > 0]
+
+
+def _acilis_fisi_var(client: MikroClient, yil: int) -> bool:
+    """
+    Yıl başında AÇILIŞ fişi var mı? Varsa mizan yalnız o yıldan kurulabilir.
+
+    Açılış fişi önceki yılların bakiyesini olduğu gibi taşır; dolayısıyla ondan
+    geriye gitmeye gerek yoktur. Sorgunun alt tarih sınırı olmadığında tüm tablo
+    taranıyor ve canlıda 120 sn zaman aşımına takıldı. Açılış fişi YOKSA daraltma
+    yapılamaz — o yıl öncesinin bakiyesi kaybolur, bilanço sessizce yanlış çıkar.
+    """
+    return any(_f_local(get_row_value(f, "satir", "SATIR")) >= _ACILIS_ASGARI_SATIR
+               for f in _ozkaynakli_fisler(client, f"{yil}-01-01"))
+
+
+def _kapanis_fis_nolari(client: MikroClient, asof: str) -> list[int]:
+    """
+    asof bir 31 Aralık ise, o gün kesilen KAPANIŞ fişlerinin yevmiye numaraları.
+
+    Kapanış fişi bütün bakiyeleri sıfırlar. Bilanço tam o güne kadar alınınca fiş
+    hesaba girer, ertesi yılın açılışı henüz aralıkta olmadığı için bakiye geri
+    gelmez: canlıda 134 milyon ciroluk firmanın 31.12.2025 aktif toplamı 176 bin TL
+    çıkıyordu (kapanış fişi 514 satır, 39,8 milyon TL). Numaraları önden bulup dışlamak,
+    dev tabloya korelasyonlu alt sorgu koymaktan hem doğru hem ucuz.
+    """
+    if not asof.endswith("-12-31"):
+        return []
+    out: list[int] = []
+    for f in _ozkaynakli_fisler(client, asof):
+        no = get_row_value(f, "yevmiye", "YEVMIYE")
+        try:
+            out.append(int(_f_local(no)))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     """
     Belirli tarihe (asof = 'YYYY-MM-DD') kadar kümülatif mizan: hesap başına borç/alacak.
@@ -441,14 +492,28 @@ def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     bakiye = SUM(fis_meblag0). Mikro'nun kendi mizanıyla kuruşu kuruşuna doğrulandı.
     Bitiş günü tam dahil: fis_tarih < (asof+1gün) — datetime'da <= asof gün-içi saatleri kaçırır.
     Dönüş: [{'hesap_kodu','borc','alacak'}, ...] — mizan_bilanco.build_bilanco() bunu yer.
+
+    İki ucuz ön sorgu (tek günlük, saniyenin altında) sorguyu şekillendirir:
+      • Yıl başında açılış fişi varsa aralık o yıla daraltılır — aksi hâlde tüm tablo
+        taranıyor ve zaman aşımına uğruyordu.
+      • asof bir yıl sonuysa o günün kapanış fişleri dışlanır — yoksa bilanço sıfırlanmış
+        görünüyordu.
+    İkisi de kanıt bulunamazsa eski davranışa (sınırsız tarama) düşülür: yavaş ama doğru.
     """
     asof = iso_tarih(asof, alan="tarih")
+    kosul = [f"fis_iptal = 0 AND fis_tarih < '{_bit_son(asof)}'"]
+    if _acilis_fisi_var(client, int(asof[:4])):
+        kosul.append(f"AND fis_tarih >= '{asof[:4]}-01-01'")
+    haric = _kapanis_fis_nolari(client, asof)
+    if haric:
+        liste = ", ".join(str(n) for n in haric)
+        kosul.append(f"AND NOT (fis_tarih >= '{asof}' AND fis_yevmiye_no IN ({liste}))")
     sql = (
         "SELECT fis_hesap_kod AS hesap_kodu, "
         "SUM(CASE WHEN fis_meblag0 > 0 THEN fis_meblag0 ELSE 0 END) AS borc, "
         "SUM(CASE WHEN fis_meblag0 < 0 THEN -fis_meblag0 ELSE 0 END) AS alacak "
         "FROM MUHASEBE_FISLERI WITH (NOLOCK) "
-        f"WHERE fis_iptal = 0 AND fis_tarih < '{_bit_son(asof)}' "
+        f"WHERE {' '.join(kosul)} "
         "GROUP BY fis_hesap_kod"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
