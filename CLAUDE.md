@@ -109,7 +109,24 @@ dolar rakamlarını TL sandırıyordu.)
 Sekme adı = PDF başlığı = sayfa başlığı. Sekmeler arasında veri tekrarı yok.
 Her tabloda satır vurgusu (row hover) standarttır, ayrıca istenmesi gerekmez.
 
-## 6. Veri dışarı çıkmaz
+## 6. Bu program yalnız bize göre yazılmaz
+
+Hedef, Mikro ERP kullanan HER firmaya satmak. Bir kurulumun iş akışını varsayılan
+yapmak, başka kurulumda sessizce yanlış rakam demektir — hem de küçük farkla değil:
+aynı veride «Satış: İrsaliye + Fatura» 20.481.407 TL derken «Yalnız Fatura»
+1.095.172 TL diyor. **On dokuz kat.**
+
+Bu yüzden kurulum bağımlı her kural VARSAYILMAZ, ÖLÇÜLÜR (`domain/kurulum.py`;
+Hesaplama Kuralları → «Kurulumdan otomatik algıla»). Ölçüm zayıfsa ayar
+DEĞİŞTİRİLMEZ: yanlış bir otomatik ayar, elle seçilmişten daha zararlıdır çünkü
+kullanıcı onu kendi seçmediği için sorgulamaz.
+
+Ölçülen kurulum farkları: faturalaşma kopya satır yaratıyor mu, mal irsaliyeyle mi
+faturayla mı giriyor, `evraktip 12` gerçek alış mı depo transferi mi.
+
+**Arayüz %100 Türkçe, hesap planı TDHP.** İngilizce sürüm planı yok.
+
+## 7. Veri dışarı çıkmaz
 
 MikRapor'un dışarıya veri gönderdiği **tek** yer Yapay Zekâ Yorumu sekmesidir; API
 anahtarı **ve** açık onay kutusu birlikte olmadan hiçbir ağ çağrısı yapılmaz.

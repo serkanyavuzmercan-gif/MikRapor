@@ -35,6 +35,7 @@ from domain.gercek_durum_ayarlar import (
 from infra.config import config_path, load_gercek_durum_ayarlar, save_gercek_durum_ayarlar
 from ui.icons import icon_chevron_down
 from ui.styles import ACCENT, ACCENT_SOFT, BORDER, BORDER_STRONG, MUTED, NAVY, NAVY_SOFT, SURFACE
+from ui.worker import RaporWorker
 
 _CHEVRON_PNG = Path(__file__).resolve().parent.parent / "assets" / "chevron-down-teal.png"
 
@@ -66,6 +67,7 @@ class GercekDurumAyarlarDialog(QDialog):
         self.setMinimumWidth(440)
         self.setMaximumWidth(480)
         self._ayarlar = load_gercek_durum_ayarlar()
+        self._worker: RaporWorker | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -151,8 +153,24 @@ class GercekDurumAyarlarDialog(QDialog):
         varsayilan.setCursor(Qt.CursorShape.PointingHandCursor)
         varsayilan.clicked.connect(self._on_varsayilan)
         alt.addWidget(varsayilan)
+
+        # OTOMATİK ALGILA. Bu ayarlar şimdiye kadar VARSAYIMDI ve varsayılanları tek bir
+        # firmanın iş akışına göreydi. Program başka bir Mikro kurulumunda açıldığında
+        # sessizce yanlış rakam gösteriyordu — hem de küçük farkla değil: aynı veride
+        # «İrsaliye + Fatura» 20.481.407 TL derken «Yalnız Fatura» 1.095.172 TL diyor.
+        # Artık varsaymak yerine ölçüyoruz.
+        self._algila = QPushButton("Kurulumdan otomatik algıla")
+        self._algila.setObjectName("primaryBtn")
+        self._algila.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._algila.clicked.connect(self._on_algila)
+        alt.addWidget(self._algila)
         alt.addStretch(1)
         gl.addLayout(alt)
+
+        self._algila_sonuc = QLabel("")
+        self._algila_sonuc.setWordWrap(True)
+        self._algila_sonuc.setStyleSheet(f"color: {MUTED}; font-size: 11px;")
+        gl.addWidget(self._algila_sonuc)
 
         path_lbl = QLabel(f"Kayıt: {config_path().name} → gercek_durum")
         path_lbl.setObjectName("gdAyarPath")
@@ -266,6 +284,84 @@ class GercekDurumAyarlarDialog(QDialog):
         _combo_secenekler(self._alacak_borc, ALACAK_BORC_SECENEKLERI, self._ayarlar.alacak_borc_kaynak)
         self._kredi_haric.setChecked(self._ayarlar.banka_kredi_haric)
         self._avans_goster.setChecked(self._ayarlar.musteri_avans_goster)
+
+    def _on_algila(self) -> None:
+        """
+        Hesaplama kurallarını kurulumun kendi verisinden ölçer.
+
+        Son 12 ay okunuyor: desen mevsimsel değil, yapısal — bir yıl fazlasıyla yeter ve
+        beş yıl taramak dialogu dakikalarca bekletirdi. Ölçüm zayıfsa AYAR DEĞİŞMEZ;
+        yanlış bir otomatik ayar, elle seçilmişten daha zararlıdır çünkü kullanıcı onu
+        kendi seçmediği için sorgulamaz.
+        """
+        from datetime import date, timedelta
+
+        from domain.kurulum import KESIN, kurulumu_tespit_et
+        from infra.config import load_config
+        from infra.mikro_fetch import fetch_stok_depo_kirilimi, fetch_stok_faturalasma
+        from infra.mukayese_fetch import donem_satirlari
+
+        cfg = load_config()
+        if not cfg.is_complete():
+            self._algila_sonuc.setText(
+                "Önce Mikro bağlantı ayarları gerekli: " + ", ".join(cfg.eksik_alanlar()))
+            self._algila_sonuc.setStyleSheet("color: #b45309; font-size: 11px;")
+            return
+        bit = date.today()
+        bas = (bit - timedelta(days=365)).isoformat()
+        bit = bit.isoformat()
+
+        def is_fn(bildir):
+            bildir("Faturalaşma deseni ölçülüyor…")
+            fat = donem_satirlari(cfg, bas, bit, fetch_stok_faturalasma)
+            bildir("Depo giriş kırılımı ölçülüyor…")
+            depo = donem_satirlari(
+                cfg, bas, bit, lambda c, b, e: fetch_stok_depo_kirilimi(c, b, e, 0, 12))
+            return kurulumu_tespit_et(fat, depo)
+
+        def on_ok(sonuc: object) -> None:
+            uygulanan: list[str] = []
+            for t in getattr(sonuc, "tespitler", []):
+                if t.guven != KESIN:
+                    continue
+                combo, secenekler = ((self._satis, SATIS_BAZI_SECENEKLERI)
+                                     if t.alan == "satis_bazi"
+                                     else (self._alis, ALIS_BAZI_SECENEKLERI))
+                _combo_secenekler(combo, secenekler, t.deger)
+                uygulanan.append(f"• {t.gerekce}")
+            geri = [f"• {t.gerekce}" for t in getattr(sonuc, "tespitler", [])
+                    if t.guven != KESIN]
+            satirlar = [sonuc.ozet(), *uygulanan]
+            if geri:
+                satirlar.append("Değiştirilmeyenler:")
+                satirlar += geri
+            satirlar.append("Kaydetmek için «Kaydet»e basın.")
+            self._algila_sonuc.setText("\n".join(satirlar))
+            self._algila_sonuc.setStyleSheet(
+                f"color: {'#166534' if uygulanan else '#b45309'}; font-size: 11px;")
+
+        def on_err(mesaj: str) -> None:
+            self._algila_sonuc.setText(f"Algılama başarısız: {mesaj}")
+            self._algila_sonuc.setStyleSheet("color: #b91c1c; font-size: 11px;")
+
+        if self._worker is not None and self._worker.isRunning():
+            return
+        self._algila.setEnabled(False)
+        self._algila_sonuc.setText("Kurulum ölçülüyor…")
+        self._algila_sonuc.setStyleSheet(f"color: {MUTED}; font-size: 11px;")
+        worker = RaporWorker(is_fn, parent=self)
+        self._worker = worker
+        worker.bitti.connect(on_ok)
+        worker.hata.connect(on_err)
+
+        def _bitti() -> None:
+            self._algila.setEnabled(True)
+            if self._worker is worker:
+                self._worker = None
+
+        # Çalışan QThread üzerinde deleteLater() süreci çökertir; silme finished'a bırakılır.
+        worker.finished.connect(_bitti)
+        worker.start()
 
     def _current(self) -> GercekDurumAyarlar:
         return GercekDurumAyarlar(
