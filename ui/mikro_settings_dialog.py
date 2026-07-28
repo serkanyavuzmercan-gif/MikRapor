@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import (
 from infra.config import MikroConfig, config_path, load_config, save_config
 from infra.mikro_api import MikroClient
 from infra.mikro_fetch import fetch_firma_adi
-from infra.veritabani import onbellegi_temizle
+from infra.veritabani import FirmaKapsami, firma_kodlari, katalog, onbellegi_temizle
 from ui.worker import RaporWorker
 
 
@@ -64,10 +64,9 @@ class MikroAyarlarDialog(QDialog):
         self._firma_kodu = QLineEdit(self._cfg.firma_kodu)
         self._firma_kodu.setPlaceholderText("örn. 01")
         # Mikro'da veritabanını firma kodu seçer ve bir veritabanı birden çok yıl
-        # taşıyabilir. Geçmiş yıllar başka veritabanındaysa kodları buraya yazılır;
-        # program hangi yılın nerede olduğunu kendi bulur (bkz. infra/veritabani.py).
+        # taşıyabilir. Liste veya sayısal aralık girilir; program yıl eşlemesini tarar.
         self._firma_kodlari = QLineEdit(self._cfg.firma_kodlari)
-        self._firma_kodlari.setPlaceholderText("boş bırakılabilir — örn. 20, 26")
+        self._firma_kodlari.setPlaceholderText("boş bırakılabilir — örn. 20, 26 veya 001-100")
         self._calisma_yili = QSpinBox()
         self._calisma_yili.setRange(2000, 2100)
         self._calisma_yili.setValue(self._cfg.calisma_yili or date.today().year)
@@ -79,7 +78,20 @@ class MikroAyarlarDialog(QDialog):
         form.addRow("Mikro API adresi:", self._base_url)
         form.addRow("API anahtarı:", self._api_key)
         form.addRow("Firma kodu:", self._firma_kodu)
-        form.addRow("Geçmiş yıl veritabanları:", self._firma_kodlari)
+        firma_kodlari_row = QHBoxLayout()
+        firma_kodlari_row.addWidget(self._firma_kodlari, stretch=1)
+        self._btn_katalog = QPushButton("Yılları Tara")
+        self._btn_katalog.setToolTip("Kodların taşıdığı yıl aralıklarını Mikro'dan tarar")
+        self._btn_katalog.clicked.connect(self._on_katalog_tara)
+        firma_kodlari_row.addWidget(self._btn_katalog)
+        form.addRow("Yıl veritabanları:", firma_kodlari_row)
+        self._katalog_sonuc = QLabel(
+            "Birden çok veritabanı varsa kodları liste veya aralık olarak girin; "
+            "örnek: 20, 26 ya da 001-100."
+        )
+        self._katalog_sonuc.setWordWrap(True)
+        self._katalog_sonuc.setStyleSheet("color: #9aa0a8; font-size: 11px;")
+        form.addRow("", self._katalog_sonuc)
         form.addRow("Çalışma yılı:", self._calisma_yili)
         form.addRow("Kullanıcı kodu:", self._kullanici)
         form.addRow("Şifre:", self._sifre_gun)
@@ -144,7 +156,44 @@ class MikroAyarlarDialog(QDialog):
     def _set_busy(self, busy: bool) -> None:
         self._btn_test.setEnabled(not busy)
         self._btn_firma.setEnabled(not busy)
+        self._btn_katalog.setEnabled(not busy)
         self._buttons.setEnabled(not busy)
+
+    def _on_katalog_tara(self) -> None:
+        """Girilen kodların yıl kapsamını arka planda bulur; raporları etkilemez."""
+        cfg = self._current_config()
+        eksik = cfg.eksik_alanlar()
+        if eksik:
+            self._katalog_sonuc.setText("Tarama için eksik: " + ", ".join(eksik))
+            self._katalog_sonuc.setStyleSheet("color: #ffb74d; font-size: 11px;")
+            return
+        kodlar = firma_kodlari(cfg)
+        self._katalog_sonuc.setText(f"{len(kodlar)} kod taranıyor; bu işlem biraz sürebilir…")
+        self._katalog_sonuc.setStyleSheet("color: #9aa0a8; font-size: 11px;")
+
+        def is_fn(bildir) -> list[FirmaKapsami]:
+            bildir("Veritabanı yıl kapsamları taranıyor…")
+            return katalog(cfg, yenile=True)
+
+        def on_ok(sonuc: object) -> None:
+            kapsamlar = list(sonuc or [])
+            if not kapsamlar:
+                self._katalog_sonuc.setText(
+                    "Erişilebilir bir yıl veritabanı bulunamadı. Kodları ve bağlantıyı kontrol edin."
+                )
+                self._katalog_sonuc.setStyleSheet("color: #ffb74d; font-size: 11px;")
+                return
+            ozet = " · ".join(
+                f"{k.firma_kodu}: {k.ilk_yil}–{k.son_yil}" for k in kapsamlar
+            )
+            self._katalog_sonuc.setText(f"Bulunan yıl eşlemesi: {ozet}")
+            self._katalog_sonuc.setStyleSheet("color: #81c784; font-size: 11px;")
+
+        def on_err(mesaj: str) -> None:
+            self._katalog_sonuc.setText(f"Tarama başarısız: {mesaj}")
+            self._katalog_sonuc.setStyleSheet("color: #e57373; font-size: 11px;")
+
+        self._baslat_is(is_fn, on_ok, on_err)
 
     def _baslat_is(self, is_fn, on_ok, on_err) -> None:
         if self._worker is not None and self._worker.isRunning():
@@ -245,7 +294,8 @@ class MikroAyarlarDialog(QDialog):
         try:
             from infra.sql_params import firma_kodu_guvenli
 
-            firma_kodu_guvenli(cfg.firma_kodu)
+            for kod in firma_kodlari(cfg):
+                firma_kodu_guvenli(kod)
         except ValueError as exc:
             QMessageBox.warning(self, "Geçersiz Firma Kodu", str(exc))
             return

@@ -24,6 +24,8 @@ from infra.mikro_api import MikroAPIError, MikroClient
 from infra.mikro_fetch import fetch_yil_araligi
 
 _AYIRAC = re.compile(r"[,;\s]+")
+_SAYISAL_ARALIK = re.compile(r"^(\d+)-(\d+)$")
+_AZAMI_TARANACAK_FIRMA = 500
 
 
 @dataclass(frozen=True)
@@ -43,13 +45,27 @@ class FirmaKapsami:
 
 def firma_kodlari(cfg: MikroConfig) -> list[str]:
     """
-    Ayarlardaki firma kodu listesi — «20, 26» gibi. Boşsa tek firma koduna düşer.
+    Ayarlardaki firma kodu listesi — «20, 26» veya «001-100» gibi.
+
+    Sayısal aralık, yüzlerce yıl veritabanı olan kurulumda kodları tek tek yazma
+    gereğini kaldırır. Başındaki sıfırlar korunur (``001-003`` → ``001, 002, 003``).
+    Yanlışlıkla aşırı büyük tarama başlatmamak için en çok 500 kod genişletilir.
 
     Sıra korunur, tekrarlar elenir: kullanıcının yazdığı sıra kapsam çakışmasında
     öncelik anlamına gelir.
     """
     ham = (getattr(cfg, "firma_kodlari", "") or "").strip()
-    parcalar = [p for p in _AYIRAC.split(ham) if p] if ham else []
+    parcalar: list[str] = []
+    for parca in ([p for p in _AYIRAC.split(ham) if p] if ham else []):
+        aralik = _SAYISAL_ARALIK.fullmatch(parca)
+        if aralik:
+            ilk, son = int(aralik.group(1)), int(aralik.group(2))
+            adet = son - ilk + 1
+            if 0 < adet <= _AZAMI_TARANACAK_FIRMA:
+                hane = max(len(aralik.group(1)), len(aralik.group(2)))
+                parcalar.extend(f"{kod:0{hane}d}" for kod in range(ilk, son + 1))
+                continue
+        parcalar.append(parca)
     if not parcalar and cfg.firma_kodu:
         parcalar = [cfg.firma_kodu.strip()]
     gorulen: set[str] = set()

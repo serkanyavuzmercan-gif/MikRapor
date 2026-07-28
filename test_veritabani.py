@@ -36,6 +36,14 @@ class TestFirmaKodlari(unittest.TestCase):
         cfg = MikroConfig(firma_kodu="1", firma_kodlari="20; 26  31")
         self.assertEqual(firma_kodlari(cfg), ["20", "26", "31"])
 
+    def test_sayisal_aralik_basindaki_sifiri_korur(self) -> None:
+        cfg = MikroConfig(firma_kodu="1", firma_kodlari="001-003, 10")
+        self.assertEqual(firma_kodlari(cfg), ["001", "002", "003", "10"])
+
+    def test_cok_buyuk_aralik_genisletilmez(self) -> None:
+        cfg = MikroConfig(firma_kodu="1", firma_kodlari="001-999")
+        self.assertEqual(firma_kodlari(cfg), ["001-999"])
+
     def test_tekrarlar_elenir_sira_korunur(self) -> None:
         cfg = MikroConfig(firma_kodu="1", firma_kodlari="26, 20, 26")
         self.assertEqual(firma_kodlari(cfg), ["26", "20"])
