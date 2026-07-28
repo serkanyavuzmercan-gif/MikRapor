@@ -695,7 +695,7 @@ class TestStokBakiyeHukmu(unittest.TestCase):
             yon={"20": self._YON_DENGELI, "26": self._YON_DENGELI})
         self.assertIn("Aykırı satır", metin)
         self.assertIn("→ HAYIR", metin)
-        self.assertIn("Veri Sağlığı", metin)
+        self.assertIn("Mikro'da düzeltilmeden", metin)
         # Temiz rakam aykırıdan arınmış olmalı; ham toplam basılsa 3 trilyon görünürdü.
         self.assertIn("Temiz net maliyet", metin)
 

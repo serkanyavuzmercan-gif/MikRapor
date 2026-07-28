@@ -257,11 +257,18 @@ def fetch_stok_depo_kirilimi(
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
-# Bir mal hareketi SATIRININ maliyeti bunu aşamaz. Canlıda tek bir kayıt (07.12.2023,
-# yevmiye 731) 2 adet mala 3,3 TRİLYON TL yazmış ve kümülatif stok değerini tek başına
-# ele geçiriyordu — 390 bin satırın toplamı 3,28 trilyon çıkıyor. Aykırıyı elemeden
-# ölçüm yapmak mümkün değil; ELENENİ DE YAZARIZ, sessizce atılmaz.
-AYKIRI_SATIR_MALIYETI = 2_000_000.0
+def _maliyet_esigi(pencere: str) -> str:
+    """
+    Aykırı satır eşiği — dönemin KENDİ ortalama satır maliyetinden ölçülür.
+
+    Mutlak bir TL sınırı kurulum bağımlıdır (bkz. AYKIRI_KAT). Ortalama okunamazsa eşik
+    pratikte sonsuzdur: hiçbir satır elenmez, eksik veri yüzünden rakam bozulmaz.
+    """
+    return (
+        "SELECT ISNULL(NULLIF(AVG(ABS(sth_maliyet_ana)), 0) * "
+        f"{AYKIRI_KAT:.1f}, 1E30) AS esik "
+        f"FROM STOK_HAREKETLERI WITH (NOLOCK) WHERE {pencere}"
+    )
 
 
 def _stok_pencere(asof: str, bas: str) -> tuple[str, str]:
@@ -273,7 +280,6 @@ def _stok_pencere(asof: str, bas: str) -> tuple[str, str]:
 
 def fetch_stok_bakiye_teshis(
     client: MikroClient, asof: str, bas: str = "",
-    aykiri_esik: float = AYKIRI_SATIR_MALIYETI,
 ) -> list[dict[str, Any]]:
     """
     Depoda o tarihte NE VAR? — mizandan bağımsız, canlı stok değeri denemesi.
@@ -297,21 +303,23 @@ def fetch_stok_bakiye_teshis(
     sayardı — pencereler donem_parcalari ile çakışmayacak şekilde bölünür.
     """
     tarih, alt = _stok_pencere(asof, bas)
+    pencere = f"{alt}{tarih} < '{_bit_son(asof)}'"
     # tip 0 = giriş, diğerleri çıkış. Çıkanı düşmek için işaret veriyoruz.
-    yon = "CASE WHEN sth_tip = 0 THEN 1 ELSE -1 END"
-    aykiri = f"ABS(sth_maliyet_ana) >= {float(aykiri_esik):.2f}"
+    yon = "CASE WHEN h.sth_tip = 0 THEN 1 ELSE -1 END"
+    aykiri = "ABS(h.sth_maliyet_ana) >= e.esik"
     sql = (
-        f"SELECT SUM({yon} * sth_miktar) AS miktar, "
-        f"SUM({yon} * sth_maliyet_ana) AS maliyet, "
-        f"SUM({yon} * sth_tutar) AS tutar, "
+        f"SELECT SUM({yon} * h.sth_miktar) AS miktar, "
+        f"SUM({yon} * h.sth_maliyet_ana) AS maliyet, "
+        f"SUM({yon} * h.sth_tutar) AS tutar, "
         "COUNT(*) AS adet, "
-        "SUM(CASE WHEN sth_maliyet_ana <> 0 THEN 1 ELSE 0 END) AS maliyet_dolu, "
+        "SUM(CASE WHEN h.sth_maliyet_ana <> 0 THEN 1 ELSE 0 END) AS maliyet_dolu, "
         f"SUM(CASE WHEN {aykiri} THEN 1 ELSE 0 END) AS aykiri_satir, "
-        f"SUM(CASE WHEN {aykiri} THEN {yon} * sth_maliyet_ana ELSE 0 END) AS aykiri_maliyet, "
-        f"SUM(CASE WHEN {aykiri} THEN 0 ELSE {yon} * sth_maliyet_ana END) AS temiz_maliyet, "
-        f"SUM(CASE WHEN {aykiri} THEN 0 ELSE {yon} * sth_miktar END) AS temiz_miktar "
-        "FROM STOK_HAREKETLERI WITH (NOLOCK) "
-        f"WHERE {alt}{tarih} < '{_bit_son(asof)}'"
+        f"SUM(CASE WHEN {aykiri} THEN {yon} * h.sth_maliyet_ana ELSE 0 END) AS aykiri_maliyet, "
+        f"SUM(CASE WHEN {aykiri} THEN 0 ELSE {yon} * h.sth_maliyet_ana END) AS temiz_maliyet, "
+        f"SUM(CASE WHEN {aykiri} THEN 0 ELSE {yon} * h.sth_miktar END) AS temiz_miktar "
+        "FROM STOK_HAREKETLERI h WITH (NOLOCK) "
+        f"CROSS JOIN ({_maliyet_esigi(pencere)}) e "
+        f"WHERE {pencere.replace(tarih, _stok_tarih_sql('h.'))}"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 
@@ -340,7 +348,6 @@ def fetch_stok_kapsam(client: MikroClient, asof: str, bas: str = "") -> list[dic
 
 def fetch_stok_maliyet_yonu(
     client: MikroClient, asof: str, bas: str = "",
-    aykiri_esik: float = AYKIRI_SATIR_MALIYETI,
 ) -> list[dict[str, Any]]:
     """
     Maliyeti BOŞ satırlar girişte mi çıkışta mı? — canlı stok değerinin yönü.
@@ -355,18 +362,19 @@ def fetch_stok_maliyet_yonu(
     adet başına 1 milyon TL'ye çıkarıp boş satırların TL karşılığını da anlamsız yapıyordu.
     """
     tarih, alt = _stok_pencere(asof, bas)
-    aykiri = f"ABS(sth_maliyet_ana) >= {float(aykiri_esik):.2f}"
-    dolu = f"sth_maliyet_ana <> 0 AND NOT ({aykiri})"
+    pencere = f"{alt}{tarih} < '{_bit_son(asof)}'"
+    dolu = "h.sth_maliyet_ana <> 0 AND ABS(h.sth_maliyet_ana) < e.esik"
     sql = (
-        "SELECT sth_tip AS tip, "
-        "SUM(CASE WHEN sth_maliyet_ana = 0 THEN 1 ELSE 0 END) AS bos_satir, "
-        "SUM(CASE WHEN sth_maliyet_ana = 0 THEN sth_miktar ELSE 0 END) AS bos_miktar, "
+        "SELECT h.sth_tip AS tip, "
+        "SUM(CASE WHEN h.sth_maliyet_ana = 0 THEN 1 ELSE 0 END) AS bos_satir, "
+        "SUM(CASE WHEN h.sth_maliyet_ana = 0 THEN h.sth_miktar ELSE 0 END) AS bos_miktar, "
         f"SUM(CASE WHEN {dolu} THEN 1 ELSE 0 END) AS dolu_satir, "
-        f"SUM(CASE WHEN {dolu} THEN sth_miktar ELSE 0 END) AS dolu_miktar, "
-        f"SUM(CASE WHEN {dolu} THEN sth_maliyet_ana ELSE 0 END) AS dolu_maliyet "
-        "FROM STOK_HAREKETLERI WITH (NOLOCK) "
-        f"WHERE {alt}{tarih} < '{_bit_son(asof)}' "
-        "GROUP BY sth_tip"
+        f"SUM(CASE WHEN {dolu} THEN h.sth_miktar ELSE 0 END) AS dolu_miktar, "
+        f"SUM(CASE WHEN {dolu} THEN h.sth_maliyet_ana ELSE 0 END) AS dolu_maliyet "
+        "FROM STOK_HAREKETLERI h WITH (NOLOCK) "
+        f"CROSS JOIN ({_maliyet_esigi(pencere)}) e "
+        f"WHERE {pencere.replace(tarih, _stok_tarih_sql('h.'))} "
+        "GROUP BY h.sth_tip"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 

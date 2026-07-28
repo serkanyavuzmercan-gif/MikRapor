@@ -35,7 +35,7 @@ from domain.mizan_bilanco import tl
 from domain.ortak import to_float as _f
 from infra.config import MikroConfig, load_config, load_gercek_durum_ayarlar
 from infra.mikro_fetch import (
-    AYKIRI_SATIR_MALIYETI,
+    AYKIRI_KAT,
     fetch_stok_bakiye_teshis,
     fetch_stok_depo_kirilimi,
     fetch_stok_evraktip_tepe,
@@ -558,9 +558,10 @@ def _bakiye_teshisi(client, cfg: MikroConfig, bit: str) -> None:
     # Sayı ayrı biçimlenir: tl() Türkçe ondalık üretir, cümlenin tamamında
     # virgül→nokta değiştirmek o rakamı bozardı (canlıda «2.000.000.00» çıktı).
     sayi = f"{aykiri_satir:,}".replace(",", ".")
-    print(f"\n  Aykırı satır (>{tl(AYKIRI_SATIR_MALIYETI)}/satır)  {sayi:>8}")
-    print(f"  {'Aykırıların net etkisi':<22}{tl(toplam['aykiri_maliyet']):>18}")
-    print(f"  Temiz net maliyet     {tl(temiz):>18}   ← stok değeri adayı")
+    print(f"\n  {f'Aykırı satır (>{AYKIRI_KAT:,.0f}× ortalama)':<24}{sayi:>16}"
+          .replace(",", "."))
+    print(f"  {'Aykırıların net etkisi':<24}{tl(toplam['aykiri_maliyet']):>16}")
+    print(f"  {'Temiz net maliyet':<24}{tl(temiz):>16}   ← stok değeri adayı")
 
     print("\nEKSİK MALİYETİN YÖNÜ  (aykırılar birim maliyete girmez)\n")
     duzeltme = _yon_dok(yon)
