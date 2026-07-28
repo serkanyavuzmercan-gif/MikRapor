@@ -268,6 +268,66 @@ def fetch_stok_bakiye_teshis(
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 
 
+def fetch_stok_kapsam(client: MikroClient, asof: str) -> list[dict[str, Any]]:
+    """
+    Bu VERİTABANI stok geçmişinin ne kadarını taşıyor?
+
+    Stok SEVİYESİ kümülatiftir: şirketin ilk gününden bugüne bütün hareketlerin
+    toplamıdır. Mikro her çalışma yılı grubunu ayrı veritabanında tutabildiği için
+    (canlıda firma 20 → 2020-2025, firma 26 → 2026+) tek bir veritabanının kümülatifi
+    seviye DEĞİL, o veritabanının kendi dönemindeki ARTIŞ olabilir.
+
+    Fark, yıl başında bir DEVİR (açılış) hareketi olup olmamasıdır: varsa kümülatif
+    seviyedir, yoksa artıştır ve mizanın yerine konulamaz. Bu sorgu ikisini ayırt eder:
+    tablodaki ilk/son tarih, yıl başından ÖNCEKİ satır sayısı ve yılın ilk günündeki
+    satır/maliyet toplamı.
+    """
+    asof = iso_tarih(asof, alan="tarih")
+    yil_bas = f"{asof[:4]}-01-01"
+    tarih = _stok_tarih_sql()
+    sql = (
+        "SELECT MIN(x.t) AS ilk, MAX(x.t) AS son, COUNT(*) AS adet, "
+        f"SUM(CASE WHEN x.t < '{yil_bas}' THEN 1 ELSE 0 END) AS onceki_satir, "
+        f"SUM(CASE WHEN x.t < '{yil_bas}' THEN x.m ELSE 0 END) AS onceki_maliyet, "
+        f"SUM(CASE WHEN x.t = '{yil_bas}' THEN 1 ELSE 0 END) AS ilkgun_satir, "
+        f"SUM(CASE WHEN x.t = '{yil_bas}' THEN x.m ELSE 0 END) AS ilkgun_maliyet "
+        f"FROM (SELECT {tarih} AS t, "
+        "CASE WHEN sth_tip = 0 THEN sth_maliyet_ana ELSE -sth_maliyet_ana END AS m "
+        "FROM STOK_HAREKETLERI WITH (NOLOCK) "
+        f"WHERE {tarih} < '{_bit_son(asof)}') x"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
+def fetch_stok_maliyet_yonu(client: MikroClient, asof: str) -> list[dict[str, Any]]:
+    """
+    Maliyeti BOŞ satırlar girişte mi çıkışta mı? — canlı stok değerinin yönü.
+
+    Doluluk oranı tek başına yetmez. Net maliyet = giren − çıkan olduğu için eksik bir
+    GİRİŞ satırı stoğu olduğundan düşük, eksik bir ÇIKIŞ satırı olduğundan YÜKSEK
+    gösterir. %91 doluluğa bakıp «kullanılabilir» demek, kalan %9'un hangi yöne çektiğini
+    bilmeden karar vermektir — mizanın şişkinliğini ölçmeye çalışırken aynı şişkinliği
+    canlı rakama taşımak demek olurdu.
+
+    Dolu satırların birim maliyeti de döner: boş satırların miktarıyla çarpılınca
+    eksikliğin TL karşılığı ÖLÇÜLMÜŞ bir tahminle sınırlanabilir.
+    """
+    asof = iso_tarih(asof, alan="tarih")
+    tarih = _stok_tarih_sql()
+    sql = (
+        "SELECT sth_tip AS tip, "
+        "SUM(CASE WHEN sth_maliyet_ana = 0 THEN 1 ELSE 0 END) AS bos_satir, "
+        "SUM(CASE WHEN sth_maliyet_ana = 0 THEN sth_miktar ELSE 0 END) AS bos_miktar, "
+        "SUM(CASE WHEN sth_maliyet_ana <> 0 THEN 1 ELSE 0 END) AS dolu_satir, "
+        "SUM(CASE WHEN sth_maliyet_ana <> 0 THEN sth_miktar ELSE 0 END) AS dolu_miktar, "
+        "SUM(CASE WHEN sth_maliyet_ana <> 0 THEN sth_maliyet_ana ELSE 0 END) AS dolu_maliyet "
+        "FROM STOK_HAREKETLERI WITH (NOLOCK) "
+        f"WHERE {tarih} < '{_bit_son(asof)}' "
+        "GROUP BY sth_tip"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
 def fetch_stok_faturalasma(
     client: MikroClient, bas: str, bit: str,
 ) -> list[dict[str, Any]]:

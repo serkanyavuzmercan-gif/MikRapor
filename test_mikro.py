@@ -547,6 +547,97 @@ class TestMaliyetHukmu(unittest.TestCase):
         self.assertIn("Maliyet Güncelleme", cikti.getvalue())
 
 
+class TestStokBakiyeHukmu(unittest.TestCase):
+    """
+    Canlı stok değeri mizanın yerine geçebilir mi? — ölçmeden EVET denmemeli.
+
+    Canlıda tek bir doluluk oranına (%91,3) bakılıp yeşil ışık yakılıyordu. İki şey
+    ölçülmemişti: (1) bu veritabanı geçmişi taşıyor mu — taşımıyorsa kümülatif seviye
+    değil o yılın ARTIŞIDIR, (2) maliyeti boş satırlar girişte mi çıkışta mı — eksik
+    çıkış satırı stoğu tam da mizandaki gibi şişirir, yani hatayı düzeltmek yerine
+    kopyalardık.
+    """
+
+    @staticmethod
+    def _yaz(fn, *args) -> str:
+        import contextlib
+        import io
+        cikti = io.StringIO()
+        with contextlib.redirect_stdout(cikti):
+            fn(*args)
+        return cikti.getvalue()
+
+    def _client(self, kapsam: dict, yon: list[dict], bakiye: dict):
+        from unittest.mock import patch
+        cfg = MikroConfig(base_url="https://m.local", api_key="K", firma_kodu="26",
+                          calisma_yili=2026, kullanici_kodu="U", sifre_gun="S")
+        client = MikroClient(cfg, transport=lambda *a: (200, "{}"), max_attempts=1)
+        return client, [
+            patch("stok_diag_cli.fetch_stok_kapsam", return_value=[kapsam]),
+            patch("stok_diag_cli.fetch_stok_maliyet_yonu", return_value=yon),
+            patch("stok_diag_cli.fetch_stok_bakiye_teshis", return_value=[bakiye]),
+            patch("stok_diag_cli._dene_mizan", return_value=21_498_296.17),
+        ]
+
+    _BAKIYE = {"adet": 28_078, "maliyet_dolu": 25_635, "miktar": 276_129.45,
+               "maliyet": 22_790_157.10, "tutar": 17_399_874.13}
+    # Canlı kurulum: 2026 veritabanı geçmişi taşımıyor, 1 Ocak'ta devir de yok.
+    _GECMISSIZ = {"ilk": "2026-01-02", "son": "2026-07-28", "adet": 28_078,
+                  "onceki_satir": 0, "onceki_maliyet": 0.0,
+                  "ilkgun_satir": 0, "ilkgun_maliyet": 0.0}
+    _GECMISLI = {"ilk": "2020-01-03", "son": "2026-07-28", "adet": 128_078,
+                 "onceki_satir": 100_000, "onceki_maliyet": 8_000_000.0,
+                 "ilkgun_satir": 0, "ilkgun_maliyet": 0.0}
+    # Boş satırlar dengeli: net etki küçük.
+    _DENGELI = [
+        {"tip": 0, "bos_satir": 900, "bos_miktar": 4_000.0,
+         "dolu_satir": 12_000, "dolu_miktar": 300_000.0, "dolu_maliyet": 30_000_000.0},
+        {"tip": 1, "bos_satir": 1_500, "bos_miktar": 3_800.0,
+         "dolu_satir": 13_600, "dolu_miktar": 280_000.0, "dolu_maliyet": 28_000_000.0},
+    ]
+    # Boş satırların hepsi ÇIKIŞTA: canlı değer tam da mizan gibi şişik.
+    _CIKISTA = [
+        {"tip": 0, "bos_satir": 0, "bos_miktar": 0.0,
+         "dolu_satir": 12_000, "dolu_miktar": 300_000.0, "dolu_maliyet": 30_000_000.0},
+        {"tip": 1, "bos_satir": 2_400, "bos_miktar": 60_000.0,
+         "dolu_satir": 13_600, "dolu_miktar": 280_000.0, "dolu_maliyet": 28_000_000.0},
+    ]
+
+    def _hukum(self, kapsam: dict, yon: list[dict]) -> str:
+        from stok_diag_cli import _bakiye_teshisi
+        client, yamalar = self._client(kapsam, yon, self._BAKIYE)
+        for y in yamalar:
+            y.start()
+        try:
+            return self._yaz(_bakiye_teshisi, client, client.cfg, "2026-07-28")
+        finally:
+            for y in yamalar:
+                y.stop()
+
+    def test_gecmisi_olmayan_veritabani_seviye_vermez(self) -> None:
+        metin = self._hukum(self._GECMISSIZ, self._DENGELI)
+        self.assertIn("ARTIŞIDIR", metin)
+        self.assertIn("→ HAYIR", metin)
+
+    def test_bos_satirlar_cikistaysa_baglanmaz(self) -> None:
+        """Eksik çıkış satırı stoğu şişirir — mizanın hatasını kopyalamış olurduk."""
+        metin = self._hukum(self._GECMISLI, self._CIKISTA)
+        self.assertIn("→ HAYIR", metin)
+        self.assertIn("net etkisi", metin)
+
+    def test_gecmis_var_ve_bosluk_dengeliyse_baglanabilir(self) -> None:
+        metin = self._hukum(self._GECMISLI, self._DENGELI)
+        self.assertIn("→ EVET", metin)
+        self.assertIn("Düzeltilmiş canlı", metin)
+
+    def test_devir_hareketi_de_seviye_sayilir(self) -> None:
+        """Geçmiş yok ama 1 Ocak'ta devir varsa kümülatif yine seviyedir."""
+        devirli = dict(self._GECMISSIZ, ilkgun_satir=1_200, ilkgun_maliyet=9_400_000.0)
+        metin = self._hukum(devirli, self._DENGELI)
+        self.assertIn("devir hareketi var", metin)
+        self.assertIn("→ EVET", metin)
+
+
 class TestKrediKartiSorgusu(unittest.TestCase):
     """
     Açık kart borcu sorgusu — dev fiş tablosunu taramamalı.
