@@ -33,6 +33,11 @@ class TestPasswordHash(unittest.TestCase):
         self.assertEqual(cfg.firma_kodu, "001")
         self.assertTrue(cfg.is_complete())
 
+    def test_calisma_yili_bosken_baglanti_icin_bugun_kullanilir(self) -> None:
+        cfg = MikroConfig(calisma_yili=0).normalized()
+        from datetime import date
+        self.assertEqual(cfg.calisma_yili, date.today().year)
+
     def test_with_salt(self) -> None:
         beklenen = hashlib.md5(b"2026-06-23 GIZLI").hexdigest()
         self.assertEqual(password_hash("GIZLI", today="2026-06-23"), beklenen)

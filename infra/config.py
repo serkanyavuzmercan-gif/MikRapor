@@ -90,7 +90,9 @@ class MikroConfig:
     # Mikro'da veritabanını FİRMA KODU seçer. Kullanıcının tek girdiği alan budur:
     # «20, 26» veya «001-100». Program yıl → kod eşlemesini katalogdan keşfeder.
     firma_kodlari: str = ""     # MIKRO_FIRMA_KODLARI
-    calisma_yili: int = 0       # MIKRO_CALISMA_YILI — 0 ise içinde bulunulan yıl
+    # Teknik API alanı. Masaüstü arayüzünde sorulmaz; rapor yılı seçili tarihten türetilir.
+    # 0 ise bağlantı/test için içinde bulunulan yıl kullanılır.
+    calisma_yili: int = 0       # MIKRO_CALISMA_YILI — başsız kullanım uyumluluğu
     kullanici_kodu: str = ""    # MIKRO_KULLANICI_KODU
     sifre_gun: str = ""         # MIKRO_SIFRE_GUN — Mikro kullanıcı şifresi (zorunlu)
     firma_adi: str = ""         # Raporlarda (bilanço başlığı) görünen firma unvanı (opsiyonel)

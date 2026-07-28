@@ -9,8 +9,6 @@ Ağ çağrıları (ping, firma adı) RaporWorker ile arka planda çalışır —
 
 from __future__ import annotations
 
-from datetime import date
-
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -22,7 +20,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QVBoxLayout,
 )
 
@@ -65,9 +62,6 @@ class MikroAyarlarDialog(QDialog):
         # taşıyabilir. Liste veya sayısal aralık girilir; program yıl eşlemesini tarar.
         self._firma_kodlari = QLineEdit(self._cfg.firma_kodlari or self._cfg.firma_kodu)
         self._firma_kodlari.setPlaceholderText("zorunlu — örn. 20, 26 veya 001-100")
-        self._calisma_yili = QSpinBox()
-        self._calisma_yili.setRange(2000, 2100)
-        self._calisma_yili.setValue(self._cfg.calisma_yili or date.today().year)
         self._kullanici = QLineEdit(self._cfg.kullanici_kodu)
         self._sifre_gun = QLineEdit(self._cfg.sifre_gun)
         self._sifre_gun.setEchoMode(QLineEdit.EchoMode.Password)
@@ -89,7 +83,6 @@ class MikroAyarlarDialog(QDialog):
         self._katalog_sonuc.setWordWrap(True)
         self._katalog_sonuc.setStyleSheet("color: #9aa0a8; font-size: 11px;")
         form.addRow("", self._katalog_sonuc)
-        form.addRow("Çalışma yılı:", self._calisma_yili)
         form.addRow("Kullanıcı kodu:", self._kullanici)
         form.addRow("Şifre:", self._sifre_gun)
 
@@ -255,7 +248,9 @@ class MikroAyarlarDialog(QDialog):
             api_key=self._api_key.text(),
             firma_kodu="",  # firma_kodlari'nın ilk kodundan otomatik türetilir
             firma_kodlari=self._firma_kodlari.text(),
-            calisma_yili=self._calisma_yili.value(),
+            # Rapor yılını kullanıcı seçer; Mikro API için çalışma yılı da o seçili
+            # tarihten türetilir. Burada kalıcı bir yıl tercihi yoktur.
+            calisma_yili=0,
             kullanici_kodu=self._kullanici.text(),
             sifre_gun=self._sifre_gun.text(),
             firma_adi=self._firma_adi.text(),

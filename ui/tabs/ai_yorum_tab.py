@@ -358,7 +358,7 @@ class AiYorumTab(RaporTab):
             paket = build_ai_veri_paketi(
                 yil=yil, bas=y_bas, bit=y_bit, firma=firma, bolumler=bolumler,
                 bugun=bugun.isoformat(), tamamlandi=tamamlandi, ay_sayisi=ay_sayisi,
-                gecikme_ay=gecikme_ay, calisma_yili=cfg.calisma_yili,
+                gecikme_ay=gecikme_ay, calisma_yili=int(y_bit[:4]),
                 yillar=[k.yil for k in kapanislar], kapanislar=kapanislar)
             yorum = yorumla(ai_cfg, paket, bildir=bildir)
             return {"yorum": yorum, "firma": firma}
