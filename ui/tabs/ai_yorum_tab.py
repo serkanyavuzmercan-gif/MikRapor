@@ -7,8 +7,8 @@ açık onay kutusu vardır; ikisi birlikte sağlanmadan «Yorumla» çalışmaz 
 ekranda görülen rakamla modele giden rakam aynı kaynaktan gelsin diye.
 
 Seçilen aralığın EN YENİ yılı «odak» olur ve ham detayı o taşır. Yıllar arası mukayese
-ise seçimden BAĞIMSIZ kurulur: tek yıl seçilse bile geriye doğru AZAMI_YIL'e tamamlanır,
-çünkü kıyas her koşuda istenen bir şey. Veritabanında olmayan yıllar sessizce düşer.
+YALNIZCA SEÇİLEN aralıktan kurulur — tek yıl seçilirse mukayese olmaz. Seçim dışına
+çıkıp geriye doğru tamamlamak, veritabanında bulunmayan yılları dakikalarca aratıyordu.
 Aralık AZAMI_YIL'i aşarsa kullanıcıya sorulup en yeni yıllara kırpılır.
 """
 
@@ -90,8 +90,8 @@ class AiYorumTab(RaporTab):
     BASLIK = "Yapay Zekâ Yorumu"
     ACIKLAMA = (
         "Seçili dönemin <b>tüm rapor verisini</b> girdiğiniz API anahtarına ait yapay zekâ<br>"
-        "modeline gönderir ve sade Türkçe bir yönetim yorumu üretir. Son "
-        f"{AZAMI_YIL} yılın mukayese tablosu, tek yıl seçseniz de eklenir.<br>"
+        "modeline gönderir ve sade Türkçe bir yönetim yorumu üretir. Birden çok yıl "
+        f"seçerseniz (en fazla {AZAMI_YIL}) mukayese tablosu da eklenir.<br>"
         "<span style='color:#9aa0a8;'>MikRapor'un dışarıya veri gönderdiği tek yer burasıdır; "
         "onay kutusu işaretlenmeden hiçbir veri çıkmaz.</span>")
     GETIR_ETIKET = "Yorumla ve Gönder"
@@ -284,13 +284,10 @@ class AiYorumTab(RaporTab):
         ay_sayisi = 12 if tamamlandi else y_son.month
         # Geçmiş bir yıl seçilmişse veri bugüne göre eskidir — model bugüne çekilmeli.
         gecikme_ay = ay_farki(y_bit, bugun.isoformat())
-        # MUKAYESE SEÇİMDEN BAĞIMSIZ KURULUR: kullanıcı tek yıl seçtiğinde tablo hiç
-        # oluşmuyordu ve model "geçmiş yıl verisi yok, trend analiz edilemiyor" diyordu
-        # (canlıda görüldü). Yıllar arası kıyas her koşuda istenen bir şey; aralık dar
-        # kalırsa geriye doğru AZAMI_YIL'e tamamlarız. Veritabanında olmayan yıllar
-        # sessizce düşer (bkz. YilKapanis.dolu), sıfır satırı tabloya girmez.
-        if len(yillar) < AZAMI_YIL:
-            yillar = list(range(yil - AZAMI_YIL + 1, yil + 1))
+        # MUKAYESE YALNIZCA SEÇİLEN ARALIKTAN: eskiden tek yıl seçilse bile geriye doğru
+        # AZAMI_YIL'e tamamlanıyordu. Kullanıcı 2026'nın ilk yarısını seçtiğinde program
+        # veritabanında hiç bulunmayan 2023'ü aramaya başlıyordu — her eksik yıl iki
+        # deneme (kendi yılı + yedek) demek ve dakikalar sürüyor. Seçim neyse o.
         gd_ayarlar = load_gercek_durum_ayarlar()
 
         def is_fn(bildir) -> dict[str, Any]:

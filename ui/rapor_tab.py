@@ -262,18 +262,30 @@ class RaporTab(QWidget):
             bit = bit_d.toString("yyyy-MM-dd")
         self._calistir(self._is_hazirla(cfg, bas, bit))
 
+    def _worker_birak(self, w: RaporWorker) -> None:
+        """
+        Çalışan worker'ı bırak — BEKLEMEDEN ve SİLMEDEN.
+
+        KRİTİK: hâlâ çalışan bir QThread'i deleteLater ile yok etmek Qt'de
+        «Destroyed while thread is still running» ile SÜRECİ ÖLDÜRÜR. Eskiden
+        wait(3000) dolduktan sonra deleteLater çağrılıyordu; sunucu tarafı 3+ dakika
+        süren bir sorguda İptal'e basınca program kapanıyordu (canlıda görüldü).
+        Silmeyi worker'ın kendi `finished` sinyaline bağlı _on_worker_bitti yapar.
+        Ayrıca wait() UI thread'ini kilitliyordu — iptal artık anında dönüyor.
+        """
+        w.iptal_et()
+        try:
+            w.bitti.disconnect(self._on_bitti)
+            w.hata.disconnect(self._on_hata)
+            w.ilerleme.disconnect(self._on_ilerleme)
+        except TypeError:
+            pass
+        if w is self._worker:
+            self._worker = None
+
     def _calistir(self, is_fn: IsFonksiyonu) -> None:
         if self._worker is not None:
-            eski = self._worker
-            eski.iptal_et()
-            try:
-                eski.bitti.disconnect(self._on_bitti)
-                eski.hata.disconnect(self._on_hata)
-                eski.ilerleme.disconnect(self._on_ilerleme)
-            except TypeError:
-                pass
-            self._worker = None
-            eski.wait(3000)
+            self._worker_birak(self._worker)
         if self._chrome_aktif():
             assert self._chrome is not None
             self._chrome.set_getir_aktif(False)
@@ -328,17 +340,7 @@ class RaporTab(QWidget):
 
     def _on_iptal(self) -> None:
         if self._worker is not None:
-            w = self._worker
-            w.iptal_et()
-            try:
-                w.bitti.disconnect(self._on_bitti)
-                w.hata.disconnect(self._on_hata)
-                w.ilerleme.disconnect(self._on_ilerleme)
-            except TypeError:
-                pass
-            self._worker = None
-            w.wait(3000)
-            w.deleteLater()
+            self._worker_birak(self._worker)
         if getattr(self, "_yukleniyor", None) is not None:
             self._yukleniyor.durdur()
             self._stack.setCurrentIndex(1 if self._rapor_var else 0)
@@ -348,18 +350,16 @@ class RaporTab(QWidget):
         self._durum("İptal edildi.", "uyari")
 
     def iptal_ve_bekle(self, timeout_ms: int = 8000) -> None:
-        """Uygulama kapanırken çalışan worker'ı iptal edip bekle."""
+        """
+        Uygulama KAPANIRKEN çalışan worker'ı iptal edip bekle.
+
+        Burada beklemek şart: süreç sonlanırken thread hâlâ koşuyorsa Qt çöker.
+        Kullanıcının «İptal» düğmesi bu yolu kullanmaz — orada beklemek UI'yı kilitler.
+        """
         if self._worker is None:
             return
         w = self._worker
-        w.iptal_et()
-        try:
-            w.bitti.disconnect(self._on_bitti)
-            w.hata.disconnect(self._on_hata)
-            w.ilerleme.disconnect(self._on_ilerleme)
-        except TypeError:
-            pass
-        self._worker = None
+        self._worker_birak(w)
         w.wait(timeout_ms)
 
     def _on_csv(self) -> None:

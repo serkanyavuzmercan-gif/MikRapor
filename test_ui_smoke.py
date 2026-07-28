@@ -375,5 +375,58 @@ class TestUiSmoke(unittest.TestCase):
         self.assertEqual(rozet.toolTip(), "")
 
 
+@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+class TestIptalCokmesi(unittest.TestCase):
+    """
+    İptal, ÇALIŞAN worker'ı silmemeli.
+
+    Çalışan bir QThread'i deleteLater ile yok etmek Qt'de «Destroyed while thread is
+    still running» ile süreci öldürür. Eskiden wait(3000) dolduktan sonra deleteLater
+    çağrılıyordu; sunucu tarafı 3+ dakika süren bir sorguda İptal'e basınca program
+    kapanıyordu. Silmeyi worker'ın kendi `finished` sinyali yapmalı.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def _tab(self):
+        """RaporTab'ın worker yönetimini, ağa çıkmadan, sahte bir worker'la sınar."""
+        from ui.rapor_tab import RaporTab
+
+        class SahteWorker:
+            def __init__(self) -> None:
+                self.iptal_edildi = False
+                self.silindi = False
+                self.bitti = self.hata = self.ilerleme = _SahteSinyal()
+
+            def iptal_et(self) -> None:
+                self.iptal_edildi = True
+
+            def deleteLater(self) -> None:  # noqa: N802 — Qt API
+                self.silindi = True
+
+        tab = RaporTab.__new__(RaporTab)      # __init__ widget kurar; gerek yok
+        tab._worker = SahteWorker()
+        return tab, tab._worker
+
+    def test_calisan_worker_silinmez(self) -> None:
+        tab, w = self._tab()
+        tab._worker_birak(w)
+        self.assertTrue(w.iptal_edildi)
+        self.assertFalse(w.silindi)           # ← süreci öldüren çağrı
+        self.assertIsNone(tab._worker)
+
+    def test_birakma_ui_threadini_bekletmez(self) -> None:
+        """wait() çağrılsaydı sahte worker'da AttributeError patlardı."""
+        tab, w = self._tab()
+        tab._worker_birak(w)                  # hata vermeden dönmeli
+
+
+class _SahteSinyal:
+    def disconnect(self, *_a) -> None:
+        raise TypeError("bağlı değil")        # RaporTab bunu yutmalı
+
+
 if __name__ == "__main__":
     unittest.main()
