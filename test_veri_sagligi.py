@@ -98,6 +98,53 @@ class TestBozukStokKaydi(unittest.TestCase):
         self.assertNotIn("bozuk_stok", _kodlar(vs))
 
 
+class TestBozukKayitListesi(unittest.TestCase):
+    """
+    «13 bozuk kayıt var, düzeltin» demek yetmez.
+
+    Kullanıcı 390 bin satır içinde o 13'ünü bulamaz. Bulgu, Mikro'da evrakı açmaya
+    yetecek kadar bilgi taşımalı: tarih, evrak no, stok kodu, miktar, tutar.
+    """
+
+    _STOK = [{"sth_tip": 0, "sth_evraktip": 12, "tutar": 22_594_651.34, "adet": 6_592,
+              "aykiri_adet": 2, "aykiri_tutar": 3_333_333_333_340.0}]
+    _AYKIRI = [
+        {"tarih": "2023-12-07T00:00:00", "sth_evrakno_seri": "A",
+         "sth_evrakno_sira": 731, "sth_stok_kod": "MAL.001", "sth_tip": 0,
+         "sth_evraktip": 12, "sth_miktar": 2.0, "sth_tutar": 3_333_333_333_340.0},
+        {"tarih": "2024-05-02T00:00:00", "sth_evrakno_seri": "",
+         "sth_evrakno_sira": 0, "sth_belge_no": "IRS-9", "sth_stok_kod": "MAL.002",
+         "sth_tip": 0, "sth_evraktip": 12, "sth_miktar": 1.0, "sth_tutar": 9_000_000.0},
+    ]
+
+    def _bulgu(self, **kw):
+        vs = build_veri_sagligi(stok_rows=self._STOK, **kw)
+        return next(b for b in vs.bulgular if b.kod == "bozuk_stok")
+
+    def test_kayit_satiri_evraki_bulmaya_yeter(self) -> None:
+        b = self._bulgu(aykiri_rows=self._AYKIRI)
+        self.assertEqual(len(b.kayitlar), 2)
+        ilk = b.kayitlar[0]
+        for parca in ("2023-12-07", "A731", "MAL.001", "3.333.333.333.340,00"):
+            self.assertIn(parca, ilk)
+
+    def test_evrak_serisi_yoksa_belge_no_kullanilir(self) -> None:
+        b = self._bulgu(aykiri_rows=self._AYKIRI)
+        self.assertIn("IRS-9", b.kayitlar[1])
+
+    def test_liste_cekilemezse_bulgu_yine_gosterilir(self) -> None:
+        """Kayıt listesi düşse de «2 satır, 3,3 trilyon» bilgisi kaybolmamalı."""
+        b = self._bulgu()
+        self.assertEqual(b.kayitlar, [])
+        self.assertIn("2 satır", b.olcum)
+
+    def test_kayitlar_csvye_de_girer(self) -> None:
+        vs = build_veri_sagligi(stok_rows=self._STOK, aykiri_rows=self._AYKIRI)
+        csv = veri_sagligi_csv(vs)
+        self.assertIn("BULGU;KAYIT", csv)
+        self.assertIn("MAL.001", csv)
+
+
 class TestTanimsizEvrak(unittest.TestCase):
     """
     Tanımsız evrak tipi yalnız ÖNEMLİ tutarda gösterilir.

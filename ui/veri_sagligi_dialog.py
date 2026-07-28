@@ -25,10 +25,11 @@ from PyQt6.QtWidgets import (
 )
 
 from domain.mizan_bilanco import build_bilanco
+from domain.ortak import to_float as _f
 from domain.veri_sagligi import KRITIK, Bulgu, VeriSagligi, build_veri_sagligi
 from infra.config import load_config
 from infra.mikro_api import MikroAPIError
-from infra.mikro_fetch import fetch_mizan, fetch_stok_ozet
+from infra.mikro_fetch import fetch_mizan, fetch_stok_aykiri_satirlar, fetch_stok_ozet
 from infra.mukayese_fetch import YilVeritabaniHatasi, donem_satirlari, yil_client
 from ui.styles import MUTED, NAVY, SURFACE
 from ui.worker import RaporWorker
@@ -36,6 +37,10 @@ from ui.worker import RaporWorker
 _RENK = {KRITIK: ("#b91c1c", "#fef2f2", "#fecaca")}
 _UYARI_RENK = ("#7a5b00", "#fff8e1", "#f0d48a")
 _IYI = ("#166534", "#f0fdf4", "#bbf7d0")
+
+# Ekranda en fazla bu kadar kayıt listelenir; kalanı CSV'de. Yüz satırlık bir liste
+# pencereyi okunmaz yapar, ilk birkaçı zaten hangi evrak olduğunu gösterir.
+_AZAMI_KAYIT = 12
 
 
 class VeriSagligiDialog(QDialog):
@@ -120,12 +125,23 @@ class VeriSagligiDialog(QDialog):
                 okunamayan.append("Muhasebe mizanı")
             bildir("Stok hareketleri okunuyor…")
             stok_rows = None
+            aykiri_rows: list[dict] = []
             try:
                 stok_rows = donem_satirlari(cfg, bas, bit, fetch_stok_ozet)
+                # Aykırı satırların KENDİSİ ayrı çekilir — «düzeltin» demek yetmez,
+                # hangi evrak olduğu yazmazsa kullanıcı onu bulamaz. Bu sorgu
+                # başarısız olsa da bulgu (sayı + tutar) yine gösterilir.
+                if any(_f(r.get("aykiri_adet", r.get("AYKIRI_ADET")))
+                       for r in stok_rows):
+                    bildir("Hatalı stok kayıtları listeleniyor…")
+                    aykiri_rows = donem_satirlari(
+                        cfg, bas, bit, fetch_stok_aykiri_satirlar)
             except (MikroAPIError, YilVeritabaniHatasi):
-                okunamayan.append("Stok hareketleri")
+                if stok_rows is None:
+                    okunamayan.append("Stok hareketleri")
             return build_veri_sagligi(bas=bas, bit=bit, bilanco=bilanco,
-                                      stok_rows=stok_rows, okunamayan=okunamayan)
+                                      stok_rows=stok_rows, aykiri_rows=aykiri_rows,
+                                      okunamayan=okunamayan)
 
         worker = RaporWorker(is_fn, parent=self)
         self._worker = worker
@@ -197,7 +213,37 @@ def _kart(bulgu: Bulgu) -> QFrame:
         e.setStyleSheet("color:#334155; font-size:12px; background:transparent; "
                         "border:none;")
         lay.addWidget(e)
+    # HANGİ KAYIT olduğu yazmazsa «düzeltin» tavsiyesi işe yaramaz: kullanıcı yüz
+    # binlerce satır içinde onu bulamaz. Tarih + evrak no + stok kodu, Mikro'da evrakı
+    # açmaya yeter. Liste kırpılıyorsa kaç tanesinin gösterildiği de yazılır.
+    if bulgu.kayitlar:
+        lay.addWidget(_kayit_listesi(bulgu.kayitlar, yazi))
     return kart
+
+
+def _kayit_listesi(kayitlar: list[str], yazi: str) -> QWidget:
+    kutu = QFrame()
+    kutu.setObjectName("vsKayit")
+    kutu.setStyleSheet(
+        "QFrame#vsKayit { background: rgba(255,255,255,0.72); "
+        "border: 1px solid rgba(0,0,0,0.08); border-radius: 7px; }")
+    lay = QVBoxLayout(kutu)
+    lay.setContentsMargins(11, 8, 11, 9)
+    lay.setSpacing(3)
+    for satir in kayitlar[:_AZAMI_KAYIT]:
+        lbl = QLabel(satir)
+        lbl.setWordWrap(True)
+        lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        lbl.setStyleSheet(f"color:{yazi}; font-size:11px; font-family:'Consolas',"
+                          "'Courier New',monospace; background:transparent; border:none;")
+        lay.addWidget(lbl)
+    if len(kayitlar) > _AZAMI_KAYIT:
+        kalan = QLabel(f"… ve {len(kayitlar) - _AZAMI_KAYIT} kayıt daha "
+                       "(tamamı CSV'de)")
+        kalan.setStyleSheet(f"color:{MUTED}; font-size:11px; background:transparent; "
+                            "border:none;")
+        lay.addWidget(kalan)
+    return kutu
 
 
 def _iyi_kart() -> QFrame:

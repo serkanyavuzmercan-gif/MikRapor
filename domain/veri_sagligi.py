@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 
 from domain.mizan_bilanco import Bilanco, tl
 from domain.ortak import to_float as _f
+from domain.ortak import tr_sayi
 
 KRITIK = "kritik"
 UYARI = "uyari"
@@ -36,8 +37,6 @@ BILGI = "bilgi"
 
 _ONEM_SIRA = {KRITIK: 0, UYARI: 1, BILGI: 2}
 
-# Bir mal hareketi satırının makul üst sınırı. Canlıda tek bir kayıt (2 adet mala
-# 3,3 trilyon TL) bütün 2023 raporunu zehirliyordu.
 # Aktif ile pasif bu orandan fazla ayrışıyorsa mizan kendi içinde tutarsızdır.
 # Bilinçli olarak GENİŞ: mizan sorgusu kapanış/açılış fişlerini eliyor, bu da küçük
 # bir sapma bırakabiliyor. Dar tolerans her kullanıcıya sahte «kritik» gösterirdi.
@@ -61,6 +60,9 @@ class Bulgu:
     etkisi: str          # hangi rakamlar bundan etkileniyor
     ne_yapmali: str
     olcum: str = ""      # varsa rakam
+    # «Düzeltin» demek yetmez: hangi kayıt olduğu yazmazsa kullanıcı yüz binlerce satır
+    # içinde onu bulamaz. Her satır Mikro'da evrakı açmaya yetecek kadar bilgi taşır.
+    kayitlar: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -140,7 +142,31 @@ def _mizan_dengesi(b: Bilanco) -> Bulgu | None:
               f"fark {tl(fark)}")
 
 
-def _bozuk_stok_kaydi(stok_rows: list[dict]) -> Bulgu | None:
+def _aykiri_satir_metni(r: dict) -> str:
+    """Bir aykırı satırı Mikro'da bulunabilecek şekilde tek satıra yazar."""
+    def al(*adlar: str):
+        for ad in adlar:
+            v = r.get(ad, r.get(ad.upper()))
+            if v not in (None, ""):
+                return v
+        return ""
+
+    tarih = str(al("tarih"))[:10]
+    # Seri boş + sıra 0 ise evrak no yok demektir; "0" yazmak kullanıcıyı yanıltır.
+    seri = str(al("sth_evrakno_seri")).strip()
+    sira = int(_f(al("sth_evrakno_sira")))
+    evrak = f"{seri}{sira}" if (seri or sira) else str(al("sth_belge_no")).strip() or "?"
+    stok = str(al("sth_stok_kod")) or "?"
+    tip, ev = int(_f(al("sth_tip"))), int(_f(al("sth_evraktip")))
+    # Sayılar TEK TEK biçimlenir; cümlenin tamamında virgül→nokta değişimi
+    # tl() çıktısını bozardı (bkz. domain.ortak.tr_sayi).
+    return (f"{tarih}  ·  evrak {evrak}  ·  {stok}  ·  "
+            f"{tr_sayi(_f(al('sth_miktar')))} adet  ·  {tl(_f(al('sth_tutar')))}  "
+            f"(tip {tip}/evrak {ev})")
+
+
+def _bozuk_stok_kaydi(stok_rows: list[dict],
+                      aykiri_rows: list[dict] | None = None) -> Bulgu | None:
     """
     Mal olamayacak kadar büyük stok hareketi satırı.
 
@@ -164,7 +190,8 @@ def _bozuk_stok_kaydi(stok_rows: list[dict]) -> Bulgu | None:
                 "kârlılık rakamlarınız gerçekte olmadığı kadar büyük görünürdü."),
         ne_yapmali=("Mikro'da bu kayıtları bulup düzeltin; düzeltilene kadar o dönemin "
                     "stok değeri hesaplanamaz."),
-        olcum=f"{int(adet)} satır, toplam {tl(tutar)} — bir mal hareketi bu kadar olamaz")
+        olcum=f"{int(adet)} satır, toplam {tl(tutar)} — bir mal hareketi bu kadar olamaz",
+        kayitlar=[_aykiri_satir_metni(r) for r in (aykiri_rows or [])])
 
 
 def _tanimsiz_evrak(stok_rows: list[dict]) -> Bulgu | None:
@@ -204,6 +231,7 @@ def build_veri_sagligi(
     bit: str = "",
     bilanco: Bilanco | None = None,
     stok_rows: list[dict] | None = None,
+    aykiri_rows: list[dict] | None = None,
     okunamayan: list[str] | None = None,
 ) -> VeriSagligi:
     """
@@ -218,7 +246,8 @@ def build_veri_sagligi(
     if bilanco is not None:
         bulgular += [_maliyet_kapanisi(bilanco), _mizan_dengesi(bilanco)]
     if stok_rows is not None:
-        bulgular += [_bozuk_stok_kaydi(stok_rows), _tanimsiz_evrak(stok_rows)]
+        bulgular += [_bozuk_stok_kaydi(stok_rows, aykiri_rows),
+                     _tanimsiz_evrak(stok_rows)]
     vs.bulgular = _sirala([b for b in bulgular if b is not None])
     return vs
 
@@ -231,4 +260,12 @@ def veri_sagligi_csv(vs: VeriSagligi) -> str:
                             (b.onem, b.baslik, b.olcum, b.etkisi, b.ne_yapmali)))
     for ad in vs.okunamayan:
         out.append(f"kontrol edilemedi;{ad};;;")
+    # Tek tek kayıtlar CSV'ye de girer: kullanıcı Excel'de süzüp Mikro'da açabilsin.
+    kayitli = [b for b in vs.bulgular if b.kayitlar]
+    if kayitli:
+        out.append("")
+        out.append("BULGU;KAYIT")
+        for b in kayitli:
+            for satir in b.kayitlar:
+                out.append(f"{b.baslik.replace(';', ',')};{satir.replace(';', ',')}")
     return "\r\n".join(out)

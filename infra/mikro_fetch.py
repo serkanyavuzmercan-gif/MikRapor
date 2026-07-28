@@ -489,6 +489,39 @@ def fetch_stok_evraktip_tepe(
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+def fetch_stok_aykiri_satirlar(
+    client: MikroClient, bas: str, bit: str, adet: int = 25,
+) -> list[dict[str, Any]]:
+    """
+    Toplamdan çıkarılan aykırı stok satırlarının KENDİSİ — tarih, evrak no, stok kodu.
+
+    «13 bozuk kayıt var, Mikro'da düzeltin» demek yetmiyor: kullanıcı 390 bin satır
+    içinde o 13'ünü nasıl bulacak? Bu sorgu evrakı açacak kadar bilgi verir. Eşik yine
+    ÖLÇÜLÜR (AYKIRI_KAT) — mutlak bir TL sınırı başka kurulumda ya hiçbir şey bulur ya
+    da gerçek faturaları bozuk ilan ederdi.
+    """
+    bas, bit = _aralik(bas, bit)
+    tarih = _stok_tarih_sql()
+    pencere = f"{tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}'"
+    n = max(1, min(int(adet), 100))
+    esik = (
+        "SELECT ISNULL(NULLIF(AVG(ABS(sth_tutar)), 0) * "
+        f"{AYKIRI_KAT:.1f}, 1E30) AS esik "
+        f"FROM STOK_HAREKETLERI WITH (NOLOCK) WHERE {pencere}"
+    )
+    sql = (
+        f"SELECT TOP {n} {_stok_tarih_sql('h.')} AS tarih, "
+        "h.sth_evrakno_seri, h.sth_evrakno_sira, h.sth_belge_no, h.sth_stok_kod, "
+        "h.sth_tip, h.sth_evraktip, h.sth_miktar, h.sth_tutar "
+        "FROM STOK_HAREKETLERI h WITH (NOLOCK) "
+        f"CROSS JOIN ({esik}) e "
+        f"WHERE {pencere.replace(tarih, _stok_tarih_sql('h.'))} "
+        "AND ABS(h.sth_tutar) >= e.esik "
+        "ORDER BY ABS(h.sth_tutar) DESC"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
 def fetch_stok_aylik(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
     """Dönem içi STOK_HAREKETLERI'nin AYLIK kırılımı (trend için): ay × tip × evraktip → tutar."""
     bas, bit = _aralik(bas, bit)

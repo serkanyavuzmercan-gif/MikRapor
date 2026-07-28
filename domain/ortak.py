@@ -45,6 +45,18 @@ def tl0(v: float) -> str:
     return f"{v:,.0f}".replace(",", ".")
 
 
+def tr_sayi(v: float, ondalik: int = 2) -> str:
+    """
+    Türkçe biçimli sayı — «1.234,50». Birim/etiket EKLEMEZ.
+
+    Bunun için ayrı bir yardımcı var çünkü aynı hata üç kez yapıldı: cümlenin tamamında
+    `.replace(",", ".")` çağrılınca içindeki tl() çıktısı da bozuluyor ve
+    «3.333.333.333.340,00» → «3.333.333.333.340.00» oluyordu. Sayı ayrı biçimlenir.
+    """
+    s = f"{abs(v):,.{ondalik}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{'-' if v < 0 else ''}{s}"
+
+
 def yuzde(v: float) -> str:
     """12.5 -> '%12,5' (Türkçe ondalık)."""
     return ("%" + f"{v:.1f}").replace(".", ",")

@@ -298,6 +298,27 @@ class TestUiSmoke(unittest.TestCase):
         finally:
             w.deleteLater()
 
+    def test_veri_sagligi_bozuk_kayitlari_listeler(self) -> None:
+        """«Düzeltin» tavsiyesi ancak hangi kaydın düzeltileceği yazarsa işe yarar."""
+        from domain.veri_sagligi import build_veri_sagligi
+        from ui.veri_sagligi_dialog import _kart
+        vs = build_veri_sagligi(
+            stok_rows=[{"sth_tip": 0, "sth_evraktip": 12, "tutar": 2e7, "adet": 6_592,
+                        "aykiri_adet": 1, "aykiri_tutar": 3_333_333_333_340.0}],
+            aykiri_rows=[{"tarih": "2023-12-07T00:00:00", "sth_evrakno_seri": "A",
+                          "sth_evrakno_sira": 731, "sth_stok_kod": "MAL.001",
+                          "sth_tip": 0, "sth_evraktip": 12, "sth_miktar": 2.0,
+                          "sth_tutar": 3_333_333_333_340.0}])
+        bulgu = next(b for b in vs.bulgular if b.kod == "bozuk_stok")
+        kart = _kart(bulgu)
+        try:
+            metinler = " ".join(lbl.text() for lbl in kart.findChildren(QLabel))
+            self.assertIn("2023-12-07", metinler)
+            self.assertIn("A731", metinler)
+            self.assertIn("MAL.001", metinler)
+        finally:
+            kart.deleteLater()
+
     def test_tahmin_tazelik_gostergesi(self) -> None:
         """Sağdaki raporun güncel mi bayat mı olduğu panelde yazmalı.
 
