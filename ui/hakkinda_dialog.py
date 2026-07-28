@@ -24,8 +24,10 @@ from PyQt6.QtWidgets import (
 
 from infra.surum import (
     ALT_BASLIK,
+    GELISTIRICILER,
     GIZLILIK,
     ILETISIM,
+    PROJE_SORUMLUSU,
     SURUM,
     TANITIM,
     TELIF,
@@ -55,6 +57,7 @@ class HakkindaDialog(QDialog):
         kok.addLayout(self._baslik())
         kok.addWidget(self._metin(TANITIM, INK))
         kok.addWidget(self._kutu(GIZLILIK))
+        kok.addWidget(self._ekip())
         kok.addWidget(self._iletisim())
 
         telif = self._metin(TELIF, FAINT, 11)
@@ -104,6 +107,17 @@ class HakkindaDialog(QDialog):
         lay.setContentsMargins(13, 11, 13, 12)
         lay.addWidget(self._metin(icerik, SUBINK, 12))
         return kutu
+
+    def _ekip(self) -> QLabel:
+        """Projeyi kimin yürüttüğü ve kimin yazdığı — künye."""
+        gelistirici = ", ".join(html.escape(a) for a in GELISTIRICILER)
+        lbl = QLabel(
+            f"<span style='color:{MUTED};'>Proje sorumlusu</span> &nbsp;"
+            f"<b>{html.escape(PROJE_SORUMLUSU)}</b><br>"
+            f"<span style='color:{MUTED};'>Geliştirme</span> &nbsp;<b>{gelistirici}</b>")
+        lbl.setTextFormat(Qt.TextFormat.RichText)
+        lbl.setStyleSheet("font-size:13px; background:transparent;")
+        return lbl
 
     def _iletisim(self) -> QFrame:
         kutu = QFrame()

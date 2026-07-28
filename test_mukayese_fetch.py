@@ -140,5 +140,47 @@ class TestYillariCek(unittest.TestCase):
         self.yama.start()
 
 
+class TestAyniGunePencere(unittest.TestCase):
+    """
+    Devam eden yılla kıyas AYNI PENCEREDEN yapılmalı.
+
+    Canlıda 27.07.2025–28.07.2026 seçilmişken 2025 sütunu 12 aylık, 2026 sütunu
+    7 aylıktı; ciro «%59 düştü» görünüyordu. Kullanıcı haklı olarak "1,1 milyon USD
+    ciroyu ilk 7 ayda yapmış olamayız" dedi — gerçekten de o rakam tam 2025'ti.
+    """
+
+    def test_odak_yil_surerken_gecmis_yil_ayni_gune_kirpilir(self) -> None:
+        from infra.mukayese_fetch import ayni_gune_kirp
+        self.assertEqual(ayni_gune_kirp(2025, "2026-07-28"), ("2025-07-28", False))
+
+    def test_odak_yil_tamsa_hepsi_tam_yil(self) -> None:
+        from infra.mukayese_fetch import ayni_gune_kirp
+        self.assertEqual(ayni_gune_kirp(2024, "2025-12-31"), ("2024-12-31", True))
+
+    def test_odak_bit_yoksa_tam_yil(self) -> None:
+        from infra.mukayese_fetch import ayni_gune_kirp
+        self.assertEqual(ayni_gune_kirp(2024, ""), ("2024-12-31", True))
+
+    def test_29_subat_olmayan_yila_kirpilir(self) -> None:
+        """2028 artık yıl, 2027 değil — geçersiz tarih üretilmemeli."""
+        from infra.mukayese_fetch import ayni_gune_kirp
+        self.assertEqual(ayni_gune_kirp(2027, "2028-02-29"), ("2027-02-28", False))
+
+    def test_gecmis_yil_kirpilmis_pencereden_okunur(self) -> None:
+        from infra.mukayese_fetch import yillari_cek
+        pencere: list[tuple[int, str, bool]] = []
+
+        def sahte(client, yil, **kw):
+            from domain.ai_yorum import YilKapanis
+            pencere.append((yil, kw.get("bit") or "", kw.get("tam", True)))
+            return YilKapanis(yil=yil, net_satis=1_000_000.0)
+
+        with patch("infra.mukayese_fetch.yil_kapanisi", side_effect=sahte), \
+                patch("infra.mukayese_fetch.fetch_cari_vade_gun", return_value={}):
+            yillari_cek(_CFG, [2025, 2026], odak_bit="2026-07-28", odak_tam=False)
+        self.assertEqual(pencere[0], (2025, "2025-07-28", False))    # geçmiş yıl
+        self.assertEqual(pencere[-1][:2], (2026, "2026-07-28"))      # odak yıl
+
+
 if __name__ == "__main__":
     unittest.main()
