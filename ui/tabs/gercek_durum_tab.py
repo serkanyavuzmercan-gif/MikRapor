@@ -12,7 +12,7 @@ from domain.gercek_durum import GercekDurum, build_gercek_durum, gercek_durum_cs
 from domain.mizan_bilanco import build_bilanco, tl
 from domain.ortak import yuzde
 from infra.config import MikroConfig, load_gercek_durum_ayarlar
-from infra.mikro_api import MikroAPIError, MikroClient
+from infra.mikro_api import MikroAPIError
 from infra.mikro_fetch import (
     fetch_cari_bakiye,
     fetch_gelir_tablosu,
@@ -21,6 +21,7 @@ from infra.mikro_fetch import (
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
+from infra.mukayese_fetch import yil_client
 from ui.bilesenler import varsayilan_kayit_yolu
 from ui.gercek_durum_pdf import export_gercek_durum_pdf
 from ui.gercek_durum_settings_dialog import GercekDurumAyarlarDialog
@@ -64,7 +65,9 @@ class GercekDurumTab(RaporTab):
         ayarlar = load_gercek_durum_ayarlar()
 
         def is_fn(bildir) -> dict[str, Any]:
-            client = MikroClient(cfg)
+            # Veritabanını firma kodu seçer: dönemin bittiği yıl hangi
+            # veritabanındaysa oraya bağlanılır (bkz. infra/veritabani.py).
+            client = yil_client(cfg, int(bit[:4]))
             bildir("Stok hareketleri çekiliyor…")
             stok_rows = fetch_stok_ozet(client, bas, bit)
             stok_aylik = fetch_stok_aylik(client, bas, bit)

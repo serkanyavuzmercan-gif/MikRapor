@@ -6,8 +6,8 @@ import math
 import unittest
 from unittest.mock import patch
 
-from domain.gercek_durum import AyTrend
 from domain.ai_yorum import YilKapanis, yillar_arasi_csv
+from domain.gercek_durum import AyTrend
 from domain.mizan_bilanco import build_bilanco
 from domain.trend import build_finansal_oranlar, build_trend, trend_csv
 from infra.mukayese_fetch import yil_donemleri

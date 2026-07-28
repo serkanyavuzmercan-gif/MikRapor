@@ -163,22 +163,30 @@ def yil_client(cfg: MikroConfig, yil: int) -> MikroClient:
     O yılın verisini taşıyan veritabanına bağlanan istemci.
 
     Veritabanını asıl seçen FİRMA KODUDUR; `calisma_yili` yalnız auth gövdesinde gider.
-    Ayarlardaki her kodun yıl kapsamı Mikro'dan okunur; istenen yıl bu kapsamlardan
-    birinde değilse rapor DURUR. Başka bir veritabanına sessizce düşmek yanlış rakam
-    üretir ve kesinlikle yapılmaz.
+
+    İKİ AYRI DURUM, İKİ AYRI DAVRANIŞ:
+
+    • Katalog DOLU ama istenen yıl hiçbir kapsamda değil → rapor DURUR. Birden çok
+      veritabanı varken yanlışını seçmek sessizce yanlış rakam üretir; canlıda 2023'ü
+      firma 26'da aramak tam olarak buydu.
+    • Katalog BOŞ (hiç kod tanımlı değil ya da yoklama ağ hatasıyla düştü) → seçili
+      firmayla devam edilir. Seçenek tek olduğunda «yanlışını seçmek» diye bir şey
+      yoktur; burada durmak, geçici bir ağ hatasında programı komple kullanılamaz
+      yapardı — mukayese tablosunun hiç çıkmaması sorunu tam da böyle doğmuştu.
     """
     temel = replace(cfg.normalized(), calisma_yili=yil)
     kapsamlar = katalog(cfg)
     kod = yil_icin_firma(kapsamlar, yil)
     if not kod:
-        bulunan = ", ".join(
-            f"{k.firma_kodu} ({k.ilk_yil}–{k.son_yil})" for k in kapsamlar
-        ) or "doğrulanmış veritabanı yok"
-        raise YilVeritabaniHatasi(
-            f"{yil} yılı için kapsamı doğrulanmış veritabanı bulunamadı. "
-            f"Bulunan kapsamlar: {bulunan}. Mikro Ayarları'ndan kodları kontrol edip "
-            "‘Yılları Tara’ ile yeniden doğrulayın."
-        )
+        if kapsamlar:
+            bulunan = ", ".join(
+                f"{k.firma_kodu} ({k.ilk_yil}–{k.son_yil})" for k in kapsamlar)
+            raise YilVeritabaniHatasi(
+                f"{yil} yılı için kapsamı doğrulanmış veritabanı bulunamadı. "
+                f"Bulunan kapsamlar: {bulunan}. Mikro Ayarları'ndan kodları kontrol edip "
+                "‘Yılları Tara’ ile yeniden doğrulayın."
+            )
+        return MikroClient(temel)          # katalog kurulamadı → seçili firma
     temel = replace(temel, firma_kodu=kod)
     return MikroClient(temel)
 

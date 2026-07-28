@@ -16,8 +16,8 @@ from domain.reel_deger import (
 )
 from domain.tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak
 from infra.config import MikroConfig
-from infra.mikro_api import MikroClient
 from infra.mikro_fetch import fetch_acik_kalemler, fetch_cari_vade_gun, fetch_kredi_karti_borclari
+from infra.mukayese_fetch import yil_client
 from ui.bilesenler import para_spin, yuzde_spin
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.reel_deger_view import build_reel_deger_widget
@@ -122,7 +122,9 @@ class ReelDegerTab(RaporTab):
 
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
         def is_fn(bildir) -> dict[str, Any]:
-            client = MikroClient(cfg)
+            # Veritabanını firma kodu seçer: dönemin bittiği yıl hangi
+            # veritabanındaysa oraya bağlanılır (bkz. infra/veritabani.py).
+            client = yil_client(cfg, int(bit[:4]))
             bildir("Cari ödeme planları çekiliyor…")
             vade_gun_map = fetch_cari_vade_gun(client)
             bildir("Açık alacak ve borç kalemleri çekiliyor…")

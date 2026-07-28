@@ -9,8 +9,8 @@ from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
 from domain.mizan_bilanco import Bilanco, bilanco_csv, build_bilanco
 from infra.config import MikroConfig
-from infra.mikro_api import MikroClient
 from infra.mikro_fetch import fetch_mizan
+from infra.mukayese_fetch import yil_client
 from ui.bilanco_pdf import export_bilanco_pdf
 from ui.bilanco_view import build_bilanco_widget
 from ui.bilesenler import varsayilan_kayit_yolu
@@ -40,7 +40,9 @@ class BilancoTab(RaporTab):
         asof = bit
 
         def is_fn(bildir) -> dict[str, Any]:
-            client = MikroClient(cfg)
+            # Veritabanını firma kodu seçer: dönemin bittiği yıl hangi
+            # veritabanındaysa oraya bağlanılır (bkz. infra/veritabani.py).
+            client = yil_client(cfg, int(bit[:4]))
             bildir(f"{asof} itibarıyla GL mizan çekiliyor…")
             rows = fetch_mizan(client, asof)
             bildir("Bilanço kuruluyor…")

@@ -11,8 +11,8 @@ from domain.gelir_tablosu import GelirTablosu, build_gelir_tablosu, gelir_tablos
 from domain.mizan_bilanco import tl
 from domain.ortak import yuzde
 from infra.config import MikroConfig
-from infra.mikro_api import MikroClient
 from infra.mikro_fetch import fetch_gelir_tablosu
+from infra.mukayese_fetch import yil_client
 from ui.bilesenler import varsayilan_kayit_yolu
 from ui.gelir_tablosu_pdf import export_gelir_tablosu_pdf
 from ui.gelir_tablosu_view import build_gelir_tablosu_widget
@@ -36,7 +36,9 @@ class GelirTablosuTab(RaporTab):
 
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
         def is_fn(bildir) -> dict[str, Any]:
-            client = MikroClient(cfg)
+            # Veritabanını firma kodu seçer: dönemin bittiği yıl hangi
+            # veritabanındaysa oraya bağlanılır (bkz. infra/veritabani.py).
+            client = yil_client(cfg, int(bit[:4]))
             bildir("Dönem gelir/gider hareketleri çekiliyor…")
             rows = fetch_gelir_tablosu(client, bas, bit)
             bildir("Gelir tablosu kuruluyor…")

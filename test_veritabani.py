@@ -155,14 +155,59 @@ class TestYilClientEntegrasyonu(unittest.TestCase):
         self.assertEqual(c.cfg.firma_kodu, "20")
         self.assertEqual(c.cfg.calisma_yili, 2023)
 
-    def test_yil_kapsami_yoksa_rapor_durur(self) -> None:
-        """Başka firmaya sessizce düşmek yerine kullanıcıya açık hata verilmelidir."""
+    def test_kapsam_disi_yilda_rapor_durur(self) -> None:
+        """
+        Katalog DOLU ama yıl hiçbir kapsamda değil → başka firmaya düşmek yasak.
+
+        Birden çok veritabanı varken yanlışını seçmek sessizce yanlış rakam üretir;
+        canlıda 2023'ü firma 26'da aramak tam olarak buydu.
+        """
         from infra.mukayese_fetch import YilVeritabaniHatasi, yil_client
+        with patch("infra.veritabani.fetch_yil_araligi",
+                   side_effect=lambda c: {"20": (2020, 2025)}.get(c.cfg.firma_kodu, (2026, 2026))):
+            with self.assertRaises(YilVeritabaniHatasi):
+                yil_client(_CFG, 2019)
+
+    def test_katalog_bosken_secili_firmayla_devam(self) -> None:
+        """
+        Katalog hiç kurulamadıysa durmak yanlış: seçenek tek, yanlışını seçmek imkânsız.
+
+        Geçici bir ağ hatasında programın komple kullanılamaz olmaması için.
+        """
+        from infra.mukayese_fetch import yil_client
         cfg = MikroConfig(base_url="https://x", api_key="k", firma_kodu="20",
                           calisma_yili=2025, kullanici_kodu="u", sifre_gun="s")
         with patch("infra.veritabani.fetch_yil_araligi", return_value=(0, 0)):
-            with self.assertRaises(YilVeritabaniHatasi):
-                yil_client(cfg, 2021)
+            c = yil_client(cfg, 2021)
+        self.assertEqual(c.cfg.firma_kodu, "20")
+        self.assertEqual(c.cfg.calisma_yili, 2021)
+
+
+class TestSekmelerYilaGore(unittest.TestCase):
+    """
+    Her rapor sekmesi, dönemin bittiği yılın veritabanına bağlanmalı.
+
+    Ayarlarda «20, 26» yazılıyken firma kodu listenin İLKİNDEN türetiliyor (20).
+    Sekmeler doğrudan MikroClient(cfg) kurarsa 2026 raporu 2020-2025 veritabanından
+    okunur ve boş/yanlış çıkar. Bu testin amacı o yolu kapalı tutmak.
+    """
+
+    def test_hicbir_sekme_dogrudan_istemci_kurmaz(self) -> None:
+        import pathlib as _p
+        suclu = [y.name for y in sorted(_p.Path("ui/tabs").glob("*_tab.py"))
+                 if "MikroClient(cfg)" in y.read_text(encoding="utf-8")]
+        self.assertEqual(suclu, [], "yil_client kullanılmalı: " + ", ".join(suclu))
+
+    def test_ilk_kod_secili_yila_ait_olmayabilir(self) -> None:
+        """«20, 26» yazan kullanıcıda türetilen firma kodu 20'dir — 2026 raporu için yanlış."""
+        cfg = MikroConfig(base_url="https://x", api_key="k", firma_kodlari="20, 26",
+                          kullanici_kodu="u", sifre_gun="s").normalized()
+        self.assertEqual(cfg.firma_kodu, "20")
+        from infra.mukayese_fetch import yil_client
+        with patch("infra.veritabani.fetch_yil_araligi",
+                   side_effect=lambda c: {"20": (2020, 2025)}.get(c.cfg.firma_kodu, (2026, 2026))):
+            self.assertEqual(yil_client(cfg, 2026).cfg.firma_kodu, "26")
+            self.assertEqual(yil_client(cfg, 2023).cfg.firma_kodu, "20")
 
 
 if __name__ == "__main__":

@@ -69,31 +69,33 @@ class TestYillariCek(unittest.TestCase):
     def test_bos_yil_listesi(self) -> None:
         self.assertEqual(yillari_cek(_CFG, []), [])
 
-    def test_yil_veritabani_yoksa_secili_yila_dusulur(self) -> None:
+    def test_katalog_kurulamazsa_secili_firmayla_devam(self) -> None:
         """
-        Yıl bazlı DB olmayan kurulumda tablo DÜŞMEMELİ.
+        Katalog yoklaması düşerse rapor DURMAMALI.
 
-        Canlıda 2024-2025 seçilmesine rağmen mukayese hiç çıkmadı: 2024 kendi çalışma
-        yılıyla sorgulanıp hata alınca yıl atlanmış, geriye tek yıl kalmıştı.
+        Yıl → veritabanı eşlemesi kurulamadığında seçenek zaten tek: seçili firma.
+        «Yanlışını seçmek» diye bir şey yok. Burada durmak, geçici bir ağ hatasında
+        programı komple kullanılamaz yapardı — canlıda iki yıl seçilmesine rağmen
+        mukayesenin hiç çıkmaması sorunu tam da böyle doğmuştu.
         """
         from domain.ai_yorum import YilKapanis
         from infra.mikro_api import MikroAPIError
 
-        denenen: list[int] = []
+        kullanilan: list[str] = []
 
-        def yil_bazli_yok(client, yil, **kw):
-            denenen.append(client.cfg.calisma_yili)
-            if client.cfg.calisma_yili != 2025:      # yalnız seçili yıl DB'si var
-                raise MikroAPIError("veritabanı yok")
+        def kapanis(client, yil, **kw):
+            kullanilan.append(client.cfg.firma_kodu)
             return YilKapanis(yil=yil, net_satis=7_000_000.0)
 
         self.yama.stop()
-        with patch("infra.mukayese_fetch.yil_kapanisi", side_effect=yil_bazli_yok):
+        with patch("infra.veritabani.fetch_yil_araligi",
+                   side_effect=MikroAPIError("yoklama düştü")), \
+                patch("infra.mukayese_fetch.yil_kapanisi", side_effect=kapanis):
             out = yillari_cek(_CFG, [2024, 2025])
         self.yama.start()
 
-        self.assertEqual([k.yil for k in out], [2024, 2025])   # tablo kurulabilir
-        self.assertEqual(denenen[:2], [2024, 2025])            # önce kendi yılı, sonra yedek
+        self.assertEqual([k.yil for k in out], [2024, 2025])   # tablo kurulabildi
+        self.assertEqual(set(kullanilan), {_CFG.firma_kodu})   # seçili firma kullanıldı
 
     def test_yil_bazli_db_varsa_yedege_dusulmez(self) -> None:
         from domain.ai_yorum import YilKapanis

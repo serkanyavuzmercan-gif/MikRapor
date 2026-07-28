@@ -44,7 +44,7 @@ from domain.tahmin import (
 )
 from domain.tahsilat_alacak import build_tahsilat_alacak
 from infra.config import MikroConfig
-from infra.mikro_api import MikroAPIError, MikroClient
+from infra.mikro_api import MikroAPIError
 from infra.mikro_fetch import (
     fetch_acik_kalemler,
     fetch_bakiye_ozet,
@@ -59,6 +59,7 @@ from infra.mikro_fetch import (
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
+from infra.mukayese_fetch import yil_client
 from ui.bilesenler import hos_geldin, para_spin, varsayilan_kayit_yolu, yuzde_spin
 from ui.empty_state import DEFAULT_HERO_ASSET, HERO_SOLUK_OPACITY, build_soluk_arka_plan
 from ui.rapor_tab import RaporTab, firma_getir
@@ -202,7 +203,9 @@ class TahminTab(RaporTab):
         ufuk = self._sp_ufuk.value()
 
         def is_fn(bildir) -> dict[str, Any]:
-            client = MikroClient(cfg)
+            # Veritabanını firma kodu seçer: dönemin bittiği yıl hangi
+            # veritabanındaysa oraya bağlanılır (bkz. infra/veritabani.py).
+            client = yil_client(cfg, int(bit[:4]))
             # Varsayımlar (kâr oranı, aylık ciro, büyüme) SON 12 AYIN ortalamasından
             # öğrenilir — tek çeyrek seçilse bile temsili olsun (stok dalgalanması
             # marjı tek çeyrekte %49'a çıkarabiliyor; 12 ayda gerçek ~%25'e oturur).
