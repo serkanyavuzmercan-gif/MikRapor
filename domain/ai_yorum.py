@@ -123,6 +123,14 @@ def ay_farki(bit: str, bugun: str) -> int:
     return max(0, ay)
 
 
+# Maliyet kapanışı (62) yapılmamışsa bu kalemler şişer — kıyasa girmemeli.
+# Satış, bakiye ve likidite kalemleri etkilenmez; onlar SMM'den bağımsızdır.
+_KAPANISA_BAGLI = frozenset({
+    "brut_kar", "faaliyet_kari", "net_kar",
+    "brut_marj", "faaliyet_marj", "net_marj", "roe", "roa",
+})
+
+
 @dataclass
 class YilKapanis:
     """Bir yılın kapanış fotoğrafı — yıllar arası karşılaştırma için, ham kırılım yok."""
@@ -173,11 +181,13 @@ class YilKapanis:
     def doviz_var(self) -> bool:
         return self.kur_son > 0 and abs(self.satis_usd) > 0.005
 
-    def usd(self, tl: float) -> float:
-        """BAKİYE kaleminin dönem sonundaki dolar karşılığı."""
-        return tl / self.kur_son if self.kur_son > 0 else 0.0
+    def usd(self, tl: float | None) -> float | None:
+        """BAKİYE kaleminin dönem sonundaki dolar karşılığı; hesaplanamazsa None."""
+        if tl is None or self.kur_son <= 0:
+            return None
+        return tl / self.kur_son
 
-    def usd_akis(self, tl: float) -> float:
+    def usd_akis(self, tl: float | None) -> float | None:
         """
         AKIŞ kaleminin (satış, kâr, gider) dolar karşılığı — dönem ORTALAMA kuruyla.
 
@@ -185,7 +195,22 @@ class YilKapanis:
         içinde yükseldiyse tüm ciroyu en pahalı günün kuruyla bölmüş oluruz.
         """
         kur = self.kur_ort or self.kur_son
-        return tl / kur if kur > 0 else 0.0
+        if tl is None or kur <= 0:
+            return None
+        return tl / kur
+
+    def kalem(self, ad: str) -> float | None:
+        """
+        Bir kalemin karşılaştırmaya girecek değeri; hesaplanamıyorsa None.
+
+        Maliyet kapanışı yapılmamış bir yılda (62 boş) kâr kalemleri GERÇEKTE
+        OLDUĞUNDAN yüksektir. Canlıda süren yılın brüt marjı %100 çıkıyor, tablo da
+        bunu «brüt kâr %434 arttı» diye yeşille kutluyordu — oysa satışlar %32
+        düşmüştü. Şişik rakamı kıyaslamaktansa hiç göstermemek doğru.
+        """
+        if self.maliyet_eksik and ad in _KAPANISA_BAGLI:
+            return None
+        return getattr(self, ad)
 
     # Oranlar None dönebilir: payda sıfırsa uydurma 0,00 yazmak yerine hücre BOŞ kalır.
     # "Stok devir hızı 0" ile "hesaplanamıyor" farklı şeylerdir.
@@ -485,7 +510,7 @@ def yillar_tablosu(kapanislar: list[YilKapanis]) -> tuple[list[int], list[TabloB
     def bolum(baslik: str, tarif, deger, birim: str, *, tl_kiyas: bool = False) -> TabloBolum:
         return TabloBolum(baslik, [
             satir(etiket, [deger(k, alan) for k in s], birim, artis_iyi,
-                  kiyas=[getattr(k, alan) for k in s] if tl_kiyas else None)
+                  kiyas=[k.kalem(alan) for k in s] if tl_kiyas else None)
             for etiket, alan, artis_iyi in tarif
         ])
 
@@ -497,15 +522,15 @@ def yillar_tablosu(kapanislar: list[YilKapanis]) -> tuple[list[int], list[TabloB
         usd.satirlar.append(
             satir("Net Satışlar", [k.satis_usd for k in s], "USD", True))
         # tl_kiyas: sabitlik TL tutarından ölçülür — kur oynamasını hareket sanmayalım.
-        usd.satirlar += bolum("", _USD_AKIS, lambda k, a: k.usd_akis(getattr(k, a)),
+        usd.satirlar += bolum("", _USD_AKIS, lambda k, a: k.usd_akis(k.kalem(a)),
                               "USD", tl_kiyas=True).satirlar
-        usd.satirlar += bolum("", _USD_BAKIYE, lambda k, a: k.usd(getattr(k, a)),
+        usd.satirlar += bolum("", _USD_BAKIYE, lambda k, a: k.usd(k.kalem(a)),
                               "USD", tl_kiyas=True).satirlar
         bolumler.append(usd)
 
     bolumler.append(TabloBolum("ORANLAR VE DEVİR HIZLARI", [
         satir(etiket + (" (%)" if birim == "%" else "" if birim == "x" else f" ({birim})"),
-              [getattr(k, alan) for k in s], birim, artis_iyi)
+              [k.kalem(alan) for k in s], birim, artis_iyi)
         for etiket, alan, birim, artis_iyi in _ORAN_SATIR
     ]))
 

@@ -53,6 +53,16 @@ def _pencere_notu(kapanislar: list[YilKapanis]) -> str:
             "tam okuyup bu yılı yarım okumak kıyası bozardı.")
 
 
+def _kapanis_notu(kapanislar: list[YilKapanis]) -> list[tuple[str, str]]:
+    """Maliyet kapanışı yapılmamış yıl varsa kâr hücrelerinin neden boş olduğunu söyle."""
+    eksik = [str(k.yil) for k in kapanislar if k.maliyet_eksik]
+    if not eksik:
+        return []
+    return [(f"<b>{', '.join(eksik)}</b> için satışların maliyeti (62) henüz işlenmemiş. "
+             "Kâr ve marj satırları o yıl «—» kalır: kapanış öncesi rakam gerçekte "
+             "olduğundan yüksek çıkar, kıyaslamak yanıltır.", "")]
+
+
 def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     """
     Yıllar arası mukayese — DETERMİNİSTİK, modelden bağımsız.
@@ -98,6 +108,7 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     t.setFixedHeight(30 * t.topLevelItemCount() + 6)
 
     notlar = [(_pencere_notu(kapanislar), "")] if _pencere_eki(kapanislar) else []
+    notlar += _kapanis_notu(kapanislar)
     notlar += [("Yıllar boyunca hiç değişmeyen kalemler tabloda GÖSTERİLMEZ — "
                "karşılaştırma değeri taşımazlar.", ""),
               ("Alacak, borç ve nakit ilgili sekmelerin canlı kaynağından gelir "
