@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
 
 from domain.mizan_bilanco import tl
 from domain.terimler import sade_oran
-from domain.trend import TrendRapor
+from domain.trend import MALIYET_EKSIK_UYARI, TrendRapor
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _fit_height
 from ui.gercek_durum_view import _DARK, _agac, _c, _ic, _tsatir
 from ui.mukayese_view import mukayese_karti
@@ -269,9 +269,29 @@ def _bilanco_ozet(tr: TrendRapor) -> QFrame:
     _tsatir(t, [_c("Özkaynak", kalin=True), _c(tl(tr.ozkaynak), kalin=True, sag=True)])
     _tsatir(t, [_c("Nakit"), _c(tl(tr.nakit), sag=True)])
     _tsatir(t, [_c("Alacak"), _c(tl(tr.alacak), sag=True)])
-    _tsatir(t, [_c("Stok"), _c(tl(tr.stok), sag=True)])
+    # Şişik rakamı sessizce basmak, boş bırakmaktan daha zararlı: kullanıcı mizan
+    # stoğunu gerçek sanıp «bu artış imkânsız» diye rapora güvenini yitiriyor.
+    stok_renk = NEG if tr.maliyet_eksik else _DARK
+    _tsatir(t, [_c("Stok" + (" ⚠" if tr.maliyet_eksik else ""), renk=stok_renk),
+                _c(tl(tr.stok), renk=stok_renk, sag=True)])
     _fit_height(t)
-    return _card("BİLANÇO ÖZETİ", _ic(t))
+    kart = _card("BİLANÇO ÖZETİ", _ic(t))
+    if tr.maliyet_eksik:
+        _uyari_ekle(kart, MALIYET_EKSIK_UYARI)
+    return kart
+
+
+def _uyari_ekle(kart: QFrame, metin: str) -> None:
+    """Kartın altına sarı şeritli uyarı ekler (kartın kendi düzenine)."""
+    lay = kart.layout()
+    if lay is None:
+        return
+    et = QLabel(metin)
+    et.setWordWrap(True)
+    et.setStyleSheet(
+        "background: #fff8e1; border: 1px solid #f0d48a; border-radius: 6px;"
+        "color: #7a5b00; font-size: 11px; padding: 7px 9px;")
+    lay.addWidget(et)
 
 
 def _trend_panel(tr: TrendRapor) -> QFrame:

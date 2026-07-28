@@ -147,5 +147,69 @@ class TestNegatifOzkaynak(unittest.TestCase):
         self.assertIsNotNone(self._oran(b, "oz_oran").deger)
 
 
+class TestMaliyetEksikStok(unittest.TestCase):
+    """
+    Satışın maliyeti işlenmemişse STOK da özkaynak da şişiktir — oran gösterilmez.
+
+    Eksik «621 SMM / 153 Ticari Mallar» fişinin iki ayağı var: 621 borçlanmayınca kâr,
+    153 alacaklanmayınca stok aynı tutarda şişer. Canlıda mizan stoğu 21,5 milyon TL
+    (459 bin USD) deyip «%52 arttı» gösteriyordu; işlenmemiş ~13,4 milyonluk maliyet
+    düşülünce gerçek stok ~8,1 milyon TL (174 bin USD), yani %42 AZALMIŞ çıkıyordu.
+    Kullanıcı «biz stoğa mal almıyoruz, bu artış imkânsız» derken haklıydı.
+    """
+
+    @staticmethod
+    def _bilanco(*, smm: float):
+        satirlar = [
+            {"hesap_kodu": "102", "borc": 100_000.0, "alacak": 0.0},
+            {"hesap_kodu": "153", "borc": 800_000.0, "alacak": 0.0},
+            {"hesap_kodu": "320", "borc": 0.0, "alacak": 300_000.0},
+            {"hesap_kodu": "500", "borc": 0.0, "alacak": 400_000.0},
+            {"hesap_kodu": "600", "borc": 0.0, "alacak": 1_000_000.0},
+        ]
+        if smm:
+            satirlar.append({"hesap_kodu": "621", "borc": smm, "alacak": 0.0})
+        return build_bilanco(satirlar, asof="2026-07-28")
+
+    def _oran(self, b, kod: str):
+        return next(o for o in build_finansal_oranlar(b)[0] if o.kod == kod)
+
+    def test_smm_yokken_stoga_dayanan_oranlar_bos(self) -> None:
+        b = self._bilanco(smm=0.0)
+        self.assertTrue(b.maliyet_eksik)
+        for kod in ("cari", "borc_oz", "oz_oran", "kv_oran", "donen_oran"):
+            self.assertIsNone(self._oran(b, kod).deger, kod)
+            self.assertEqual(self._oran(b, kod).metin(), "—", kod)
+
+    def test_asit_test_etkilenmez(self) -> None:
+        """(Dönen − stok) şişkinliği çıkarmada götürür; bu oranı elemek bilgi kaybı olurdu."""
+        b = self._bilanco(smm=0.0)
+        self.assertIsNotNone(self._oran(b, "asit").deger)
+        self.assertIsNotNone(self._oran(b, "nakit_oran").deger)
+
+    def test_smm_islenmisse_hepsi_hesaplanir(self) -> None:
+        b = self._bilanco(smm=700_000.0)
+        self.assertFalse(b.maliyet_eksik)
+        for kod in ("cari", "borc_oz", "oz_oran", "kv_oran", "donen_oran"):
+            self.assertIsNotNone(self._oran(b, kod).deger, kod)
+
+    def test_csv_stok_satirini_isaretler_ve_sebebini_yazar(self) -> None:
+        """Boş bırakılan oranın sebebi raporun içinde olmalı; kullanıcı tahmin etmesin."""
+        tr = build_trend(aylik=[], bilanco=self._bilanco(smm=0.0),
+                         bas="2026-01-01", bit="2026-07-28")
+        self.assertTrue(tr.maliyet_eksik)
+        csv = trend_csv(tr)
+        self.assertIn("BİLANÇO;Stok;", csv)
+        self.assertIn("ŞİŞİK", csv)
+        self.assertIn("621", csv)
+        self.assertIn("153", csv)
+
+    def test_smm_varsa_uyari_yok(self) -> None:
+        tr = build_trend(aylik=[], bilanco=self._bilanco(smm=700_000.0),
+                         bas="2026-01-01", bit="2026-07-28")
+        self.assertFalse(tr.maliyet_eksik)
+        self.assertNotIn("ŞİŞİK", trend_csv(tr))
+
+
 if __name__ == "__main__":
     unittest.main()

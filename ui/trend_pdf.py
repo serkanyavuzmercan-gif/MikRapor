@@ -10,7 +10,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
 from domain.mizan_bilanco import tl
-from domain.trend import TrendRapor
+from domain.trend import MALIYET_EKSIK_UYARI, TrendRapor
 from ui.mukayese_pdf import mukayese_notu, mukayese_tablosu
 from ui.pdf_ortak import (
     DARK,
@@ -25,6 +25,7 @@ from ui.pdf_ortak import (
     sty_kpi,
     sty_row,
     sty_sec,
+    sty_uyari,
 )
 
 
@@ -63,7 +64,7 @@ def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "",
         [Paragraph("Özkaynak", sty_row()), tl(tr.ozkaynak)],
         [Paragraph("Nakit", sty_row()), tl(tr.nakit)],
         [Paragraph("Alacak", sty_row()), tl(tr.alacak)],
-        [Paragraph("Stok", sty_row()), tl(tr.stok)],
+        [Paragraph("Stok" + (" ⚠" if tr.maliyet_eksik else ""), sty_row()), tl(tr.stok)],
     ]
     oz = Table(ozet, colWidths=[120 * mm, 50 * mm])
     oz.setStyle(TableStyle([
@@ -71,7 +72,12 @@ def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "",
         ("FONTNAME", (1, 0), (1, -1), FONT_B),
         ("LINEBELOW", (0, 0), (-1, -1), 0.3, LINE),
     ]))
-    elems.extend([oz, Spacer(1, 10)])
+    elems.extend([oz, Spacer(1, 4)])
+    # PDF çoğu zaman mali müşavire/bankaya gidiyor; şişik stoğun sebebi rakamın
+    # yanında yazmazsa okuyan onu gerçek sanar.
+    if tr.maliyet_eksik:
+        elems.append(Paragraph(MALIYET_EKSIK_UYARI, sty_uyari()))
+    elems.append(Spacer(1, 10))
 
     if tr.aylik:
         elems.append(Paragraph("AYLIK TREND", sty_sec()))

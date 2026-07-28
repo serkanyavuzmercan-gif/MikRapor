@@ -483,13 +483,28 @@ class TestKapanissizYil(unittest.TestCase):
                      "brut_marj", "faaliyet_marj", "net_marj", "roe", "roa"):
             self.assertIsNone(k.kalem(alan), alan)
 
-    def test_satis_ve_bakiye_etkilenmez(self) -> None:
-        """SMM'den bağımsız kalemler kapanış olmasa da doğrudur."""
+    def test_stok_ayagi_da_bos_doner(self) -> None:
+        """
+        Eksik «621 SMM / 153 Ticari Mallar» fişinin İKİ ayağı var.
+
+        Eskiden yalnız kâr ayağı eleniyordu; bu test de «stok etkilenmez» diyerek o
+        yanlışı sabitliyordu. Canlıda 2026 stoğu 21,5 milyon TL (459 bin USD) görünüp
+        «geçen yıla göre %52 arttı» dedi; işlenmemiş ~13,4 milyonluk maliyet düşülünce
+        gerçek stok ~8,1 milyon TL (174 bin USD), yani %42 AZALMIŞ çıktı. Yön bile ters.
+        """
+        k = self._yil(2026, eksik=True)
+        for alan in ("stok", "ozkaynak", "aktif_toplam",
+                     "stok_satis", "cari_oran", "borc_ozkaynak", "kredi_aktif"):
+            self.assertIsNone(k.kalem(alan), alan)
+
+    def test_smmden_bagimsiz_kalemler_etkilenmez(self) -> None:
+        """Nakit, alacak ve satış o fişten geçmez — onları elemek bilgi kaybı olurdu."""
         k = self._yil(2026, eksik=True)
         self.assertEqual(k.kalem("net_satis"), 10_000_000.0)
-        self.assertEqual(k.kalem("stok"), 2_000_000.0)
         self.assertEqual(k.kalem("alacak"), 3_000_000.0)
-        self.assertIsNotNone(k.kalem("cari_oran"))
+        self.assertEqual(k.kalem("kvyk"), 4_000_000.0)
+        # Asit-Test = (dönen − stok) / KVYK: şişkinlik çıkarmada gider, oran temiz kalır.
+        self.assertIsNotNone(k.kalem("asit_test"))
 
     def test_kapanis_varsa_kar_gorunur(self) -> None:
         k = self._yil(2025, eksik=False)

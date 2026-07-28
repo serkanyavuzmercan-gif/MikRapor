@@ -226,6 +226,16 @@ def sty_kpi() -> ParagraphStyle:
     return ParagraphStyle("kpi", fontName=FONT_B, fontSize=9, textColor=DARK, leading=12)
 
 
+def sty_uyari() -> ParagraphStyle:
+    """Rakamın neden güvenilmez olduğunu rakamın yanında söyleyen amber şerit."""
+    return ParagraphStyle(
+        "uyari", fontName=FONT, fontSize=7.6, leading=10,
+        textColor=colors.HexColor("#7a5b00"),
+        backColor=colors.HexColor("#fff8e1"),
+        borderColor=colors.HexColor("#f0d48a"), borderWidth=0.6,
+        borderPadding=5, spaceBefore=2, spaceAfter=2)
+
+
 def kurumsal_dipnot(
     *,
     belge: str = "",
