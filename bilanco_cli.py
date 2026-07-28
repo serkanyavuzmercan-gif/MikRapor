@@ -17,18 +17,28 @@ from datetime import date
 
 from domain.mizan_bilanco import bilanco_metni, build_bilanco, tl
 from infra.config import load_config
-from infra.mikro_api import MikroAPIError, MikroClient
+from infra.mikro_api import MikroAPIError
 from infra.mikro_fetch import fetch_mizan
+from infra.mukayese_fetch import yil_client
 
 
 def main() -> None:
-    asof = sys.argv[1] if len(sys.argv) > 1 else date.today().isoformat()
+    arg = [a for a in sys.argv[1:] if not a.startswith("--")]
+    asof = arg[0] if arg else date.today().isoformat()
+    try:
+        yil = date.fromisoformat(asof).year
+    except ValueError:
+        print(f"Geçersiz tarih: {asof} (YYYY-AA-GG bekleniyor)")
+        return
     cfg = load_config()
     if not cfg.is_complete():
         print("Ayarlar eksik:", cfg.eksik_alanlar())
         return
-    client = MikroClient(cfg)
-    print(f"Firma {cfg.firma_kodu}, çalışma yılı {cfg.calisma_yili}, tarih {asof}\n")
+    # Veritabanını FİRMA KODU seçer; hangi yılın nerede olduğunu katalog bilir.
+    # Seçili firmayla gitmek başka yılın defterini okuyup sıfır bilanço basıyordu.
+    client = yil_client(cfg, yil)
+    print(f"Firma {client.cfg.firma_kodu}, çalışma yılı {client.cfg.calisma_yili}, "
+          f"tarih {asof}\n")
 
     # ÖNCE ucuz teşhis: tek günün fişleri. Mizan sorgusu (alt tarih sınırı yok →
     # tüm tabloyu tarar) canlıda 120 sn zaman aşımına takılıyor; teşhisin ona

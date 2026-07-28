@@ -8,7 +8,6 @@ Cari bakiye teşhisi — Mikro cari modülüyle kıyas için.
 from __future__ import annotations
 
 import sys
-from dataclasses import replace
 from datetime import date
 
 from domain.gercek_durum import _bakiye_bilancodan, _bakiye_caridan
@@ -17,6 +16,7 @@ from domain.ortak import to_float as _f
 from infra.config import load_config
 from infra.mikro_api import MikroClient
 from infra.mikro_fetch import fetch_cari_bakiye, fetch_mizan
+from infra.mukayese_fetch import yil_client
 
 
 def _gl_102_bakiye(mizan_rows: list[dict]) -> dict[str, float]:
@@ -34,10 +34,12 @@ def _gl_102_bakiye(mizan_rows: list[dict]) -> dict[str, float]:
     return out
 
 
-def _asof_yili(asof: str) -> int | None:
+def _yil(tarih: str) -> int | None:
+    """Elle yazılan tarihi doğrular — typo traceback yerine tek satır uyarı versin."""
     try:
-        return date.fromisoformat(asof).year
+        return date.fromisoformat(tarih).year
     except ValueError:
+        print(f"Geçersiz tarih: {tarih} (YYYY-AA-GG bekleniyor)")
         return None
 
 
@@ -65,8 +67,13 @@ def main() -> None:
     if not cfg.is_complete():
         print("Ayarlar eksik:", cfg.eksik_alanlar())
         return
-    client = MikroClient(cfg)
-    print(f"Cari bakiye teşhisi — {asof} (firma {cfg.firma_kodu}, yıl {cfg.calisma_yili})\n")
+    # Veritabanını FİRMA KODU seçer; yıl→firma eşlemesi kataloğdan gelir.
+    yil = _yil(asof)
+    if yil is None:
+        return
+    client = yil_client(cfg, yil)
+    print(f"Cari bakiye teşhisi — {asof} "
+          f"(firma {client.cfg.firma_kodu}, yıl {client.cfg.calisma_yili})\n")
     rows = fetch_cari_bakiye(client, asof)
     if not rows:
         print("UYARI: 0 satır döndü — Mikro SQL sessiz hata veya bu tarihte hareket yok.")
@@ -81,30 +88,18 @@ def main() -> None:
     print(f"  Satıcı avans   {tl(oz['satici_avans']):>18}")
     print(f"  Hesap sayısı   {oz['cari_hesap_sayisi']:>18}")
 
-    asof_yil = _asof_yili(asof)
-    cfg_yil = cfg.calisma_yili or date.today().year
+    # Yıl↔çalışma yılı uyumsuzluğu artık elle uyarılmıyor: istemci zaten tarihin
+    # yılına göre kuruluyor, o yüzden ikinci bir "otomatik düzeltme" turu da yok.
     gl_102: dict[str, float] = {}
-    if asof_yil and asof_yil != cfg_yil:
-        print(
-            f"\n⚠ ÇALIŞMA YILI UYUMSUZ: tarih {asof_yil}, Mikro ayarı {cfg_yil}."
-            f"\n  GL mizan {cfg_yil} defterinden gelir — yeni yıl defteri boş veya eksik olabilir."
-            f"\n  {asof_yil} bakiyesi için Mikro Ayarları'nda çalışma yılını {asof_yil} yapın."
-        )
-
     try:
         gl_102, gl_102_top = _gl_karsilastir(
-            client, asof, oz, etiket=f"çalışma yılı {cfg_yil}",
+            client, asof, oz, etiket=f"firma {client.cfg.firma_kodu} / {asof[:4]}",
         )
-        if asof_yil and asof_yil != cfg_yil:
-            cfg_duz = replace(cfg.normalized(), calisma_yili=asof_yil)
-            gl_102, gl_102_top = _gl_karsilastir(
-                MikroClient(cfg_duz), asof, oz, etiket=f"tarih yılı {asof_yil} (otomatik)",
-            )
         if abs(oz["nakit_banka"] - gl_102_top) > 1000:
             print(
                 "\n  ⚠ Cari banka ile GL 102 arasında büyük fark."
-                "\n    • Çalışma yılı tarihle uyumlu mu kontrol edin."
-                "\n    • Uyumluysa cari hareketler muhasebeleşmemiş olabilir."
+                "\n    • Bu tarih için doğru veritabanı okundu mu (üstteki firma kodu)?"
+                "\n    • Okunduysa cari hareketler muhasebeleşmemiş olabilir."
             )
     except Exception as exc:  # noqa: BLE001
         print(f"\nGL karşılaştırma atlandı: {exc}")

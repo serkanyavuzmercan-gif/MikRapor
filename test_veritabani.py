@@ -198,6 +198,19 @@ class TestSekmelerYilaGore(unittest.TestCase):
                  if "MikroClient(cfg)" in y.read_text(encoding="utf-8")]
         self.assertEqual(suclu, [], "yil_client kullanılmalı: " + ", ".join(suclu))
 
+    def test_teshis_araclari_da_yil_client_kullanir(self) -> None:
+        """
+        CLI'lar da aynı yolu kullanmalı.
+
+        Canlıda `stok_diag_cli.py` seçili firmayla (20 → 2020-2025) bağlanıp 2026
+        dönemini sorguladı ve her rakamı 0,00 bastı. Teşhis aracı yanlış veritabanını
+        okuyorsa teşhisin kendisi yanıltıcı olur.
+        """
+        import pathlib as _p
+        suclu = [y.name for y in sorted(_p.Path(".").glob("*_cli.py"))
+                 if "MikroClient(cfg)" in y.read_text(encoding="utf-8")]
+        self.assertEqual(suclu, [], "yil_client kullanılmalı: " + ", ".join(suclu))
+
     def test_ilk_kod_secili_yila_ait_olmayabilir(self) -> None:
         """«20, 26» yazan kullanıcıda türetilen firma kodu 20'dir — 2026 raporu için yanlış."""
         cfg = MikroConfig(base_url="https://x", api_key="k", firma_kodlari="20, 26",

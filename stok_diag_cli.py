@@ -21,14 +21,14 @@ from datetime import date
 from domain.gercek_durum import _siniflandir_stok
 from domain.mizan_bilanco import tl
 from domain.ortak import to_float as _f
-from infra.config import load_config, load_gercek_durum_ayarlar
-from infra.mikro_api import MikroClient
+from infra.config import MikroConfig, load_config, load_gercek_durum_ayarlar
 from infra.mikro_fetch import (
     fetch_stok_evraktip_tepe,
     fetch_stok_evraktip_yillik,
     fetch_stok_ozet,
     fetch_tablo_kolonlari,
 )
+from infra.mukayese_fetch import donem_satirlari, yil_client
 
 _EVRAK_AD = {
     (0, 3): "alış faturası",
@@ -48,12 +48,14 @@ def _s(row: dict, ad: str) -> str:
     return "" if v is None else str(v)[:22]
 
 
-def _detay(client: MikroClient, bas: str, bit: str, tip: int, evraktip: int) -> None:
+def _detay(cfg: MikroConfig, bas: str, bit: str, tip: int, evraktip: int) -> None:
     """Tek bir hareket türünü aç: yıl yıl toplam + en büyük satırlar."""
     ad = _EVRAK_AD.get((tip, evraktip), "bilinmiyor")
     print(f"\nDETAY — tip={tip} evraktip={evraktip} ({ad})\n")
 
-    yillik = fetch_stok_evraktip_yillik(client, bas, bit, tip, evraktip)
+    yillik = donem_satirlari(
+        cfg, bas, bit,
+        lambda c, b, e: fetch_stok_evraktip_yillik(c, b, e, tip, evraktip))
     print(f"  {'yıl':>4} {'adet':>8} {'toplam tutar':>22} {'en büyük satır':>22} {'miktar':>16}")
     for r in yillik:
         print(f"  {int(_f(r.get('yil', r.get('YIL')))):>4} "
@@ -62,7 +64,12 @@ def _detay(client: MikroClient, bas: str, bit: str, tip: int, evraktip: int) -> 
               f"{tl(_f(r.get('azami', r.get('AZAMI')))):>22} "
               f"{_f(r.get('miktar', r.get('MIKTAR'))):>16,.2f}")
 
-    tepe = fetch_stok_evraktip_tepe(client, bas, bit, tip, evraktip)
+    # Her veritabanı kendi en büyüklerini verir; hepsini toplayıp yeniden sıralıyoruz
+    # ki liste dönemin GERÇEK tepesi olsun, veritabanı başına ilk 15 değil.
+    tepe = sorted(
+        donem_satirlari(cfg, bas, bit,
+                        lambda c, b, e: fetch_stok_evraktip_tepe(c, b, e, tip, evraktip)),
+        key=lambda r: -_f(r.get("sth_tutar", r.get("STH_TUTAR"))))[:15]
     toplam = sum(_f(r.get("tutar", r.get("TUTAR"))) for r in yillik)
     tepe_toplam = sum(_f(r.get("sth_tutar", r.get("STH_TUTAR"))) for r in tepe)
     print(f"\n  EN BÜYÜK {len(tepe)} SATIR "
@@ -126,32 +133,52 @@ def _kolonlari_dok(client, tablo: str) -> None:
 
 
 def main() -> None:
-    bas = sys.argv[1] if len(sys.argv) > 1 else f"{date.today().year}-01-01"
-    bit = sys.argv[2] if len(sys.argv) > 2 else date.today().isoformat()
+    # Bayrakları ayır: «--kolonlar» tarih sanılıp başlığa basılmasın.
+    arg = [a for a in sys.argv[1:] if not a.startswith("--")]
+    bas = arg[0] if arg else f"{date.today().year}-01-01"
+    bit = arg[1] if len(arg) > 1 else date.today().isoformat()
+    try:
+        yil = date.fromisoformat(bit).year
+        date.fromisoformat(bas)
+    except ValueError as exc:
+        print(f"Geçersiz tarih ({exc}) — YYYY-AA-GG bekleniyor.")
+        return
     cfg = load_config()
     if not cfg.is_complete():
         print("Ayarlar eksik:", cfg.eksik_alanlar())
         return
-    print(f"Stok teşhisi — {bas} → {bit} (firma {cfg.firma_kodu}, yıl {cfg.calisma_yili})\n")
+    # Veritabanını FİRMA KODU seçer. Seçili firmayla gitmek canlıda 2026'yı firma
+    # 20'de (2020-2025) aratıp her rakamı sıfır gösteriyordu — program hangi yılı
+    # nerede arayacağını kataloğdan bilir, teşhis aracı da aynı yolu kullanmalı.
+    client = yil_client(cfg, yil)
+    print(f"Stok teşhisi — {bas} → {bit} "
+          f"(firma {client.cfg.firma_kodu}, yıl {client.cfg.calisma_yili})\n")
     if "--kolonlar" in sys.argv:
-        _kolonlari_dok(MikroClient(cfg), "STOK_HAREKETLERI")
+        _kolonlari_dok(client, "STOK_HAREKETLERI")
         return
-    if len(sys.argv) > 4:
-        _detay(MikroClient(cfg), bas, bit, int(sys.argv[3]), int(sys.argv[4]))
+    if len(arg) > 3:
+        _detay(cfg, bas, bit, int(arg[2]), int(arg[3]))
         return
-    rows = fetch_stok_ozet(MikroClient(cfg), bas, bit)
+    rows = donem_satirlari(cfg, bas, bit, fetch_stok_ozet)
     if not rows:
         print("UYARI: 0 satır — dönemde hareket yok veya şema hatası.\n")
         return
 
+    # Dönem birden çok veritabanına yayıldıysa aynı evraktip her yıldan bir satır
+    # gelir; tablo tekrarlı görünmesin diye türe göre toplanır.
+    kirilim: dict[tuple[int, int], list[float]] = {}
+    for r in rows:
+        anahtar = (int(_f(r.get("sth_tip", r.get("STH_TIP")))),
+                   int(_f(r.get("sth_evraktip", r.get("STH_EVRAKTIP")))))
+        top = kirilim.setdefault(anahtar, [0.0, 0.0])
+        top[0] += _f(r.get("tutar", r.get("TUTAR")))
+        top[1] += _f(r.get("adet", r.get("ADET")))
+
     print("EVRAKTİP KIRILIMI (ham):")
     print(f"  {'tip':>3} {'evrak':>5}  {'adet':>8}  {'tutar':>22}  {'satır başı':>16}  açıklama")
     supheli: list[tuple[int, int]] = []
-    for r in sorted(rows, key=lambda x: -_f(x.get("tutar", x.get("TUTAR")))):
-        tip = int(_f(r.get("sth_tip", r.get("STH_TIP"))))
-        ev = int(_f(r.get("sth_evraktip", r.get("STH_EVRAKTIP"))))
-        tutar = _f(r.get("tutar", r.get("TUTAR")))
-        adet = int(_f(r.get("adet", r.get("ADET"))))
+    for (tip, ev), (tutar, adet_f) in sorted(kirilim.items(), key=lambda kv: -kv[1][0]):
+        adet = int(adet_f)
         ad = _EVRAK_AD.get((tip, ev), "?")
         # Satır başı ortalama: bir mal hareketi satırının makul büyüklüğü.
         birim = tutar / adet if adet else 0.0
