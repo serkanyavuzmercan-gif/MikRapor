@@ -519,6 +519,20 @@ def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+def fetch_tablo_kolonlari(client: MikroClient, tablo: str) -> list[dict[str, Any]]:
+    """
+    Bir tablonun kolon adları ve tipleri — şema keşfi için (VERİ OKUMAZ).
+
+    «SELECT TOP 1 *» de kolonları verirdi ama beraberinde gerçek bir kaydı da
+    ekrana taşırdı. INFORMATION_SCHEMA yalnız şemayı döndürür.
+    """
+    ad = "".join(ch for ch in str(tablo) if ch.isalnum() or ch == "_")
+    sql = ("SELECT COLUMN_NAME AS kolon, DATA_TYPE AS tip "
+           "FROM INFORMATION_SCHEMA.COLUMNS "
+           f"WHERE TABLE_NAME = '{ad}' ORDER BY ORDINAL_POSITION")
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=30, max_attempts=2))
+
+
 def fetch_yil_araligi(client: MikroClient) -> tuple[int, int]:
     """
     Bu veritabanının kapsadığı ilk/son muhasebe yılı. Kapsamıyorsa (0, 0).
