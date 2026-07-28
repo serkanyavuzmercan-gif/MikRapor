@@ -1,5 +1,5 @@
 """
-Trend & Oranlar — aylık operasyonel trend + bilanço oranları.
+Mukayese & Oranlar — aylık operasyonel trend + bilanço oranları.
 
 Aylık seri Nakit & Kârlılık motorunun AyTrend listesinden gelir; finansal oranlar
 TDHP bilançosundan (dönen/KVYK/özkaynak) hesaplanır. Saf fonksiyon — ağ/GUI yok.

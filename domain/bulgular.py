@@ -82,7 +82,7 @@ def gercek_durum_bulgulari(gd, *, en_fazla: int = 3) -> list[Bulgu]:
                 f"Aldığın malın {tl(gd.maliyet_koprusu)} tutarındaki kısmı satılmadı, "
                 f"stoğa eklendi. Fiili al-sat marjının resmi brüt marjdan düşük "
                 f"görünmesinin sebebi bu.",
-                "Yavaş dönen kalemleri ayıkla; stok devir hızını Trend & Oranlar'dan izle.",
+                "Yavaş dönen kalemleri ayıkla; stok devir hızını Mukayese & Oranlar'dan izle.",
             ))
         else:
             b.append(Bulgu(

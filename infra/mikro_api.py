@@ -51,6 +51,23 @@ class MikroIptalError(MikroAPIError):
     """Kullanıcı / worker iptali — retry edilmez, UI'ya hata olarak gösterilmez."""
 
 
+class MikroZamanAsimiError(MikroAPIError):
+    """
+    Sunucu süresinde yanıt vermedi.
+
+    Ayrı bir sınıf, çünkü kullanıcının yapacağı şey farklı: bağlantı hatasında ayarlara
+    bakılır, zaman aşımında tarih aralığı daraltılır. Eskiden ekrana ham soket metni
+    («Mikro bağlantı hatası: _ssl.c:1006: The handshake operation timed out») çıkıyordu;
+    kullanıcı raporun neden dakikalarca sürüp sonra düştüğünü anlamıyordu.
+    """
+
+
+def _zaman_asimi_mi(err: Exception) -> bool:
+    if isinstance(err, TimeoutError):
+        return True
+    return "timed out" in str(err).lower() or "timeout" in str(err).lower()
+
+
 def password_hash(sifre_gun: str, today: str | None = None) -> str:
     """
     Günlük rotasyonlu Mikro parolasını üretir. Hash girdisi: ``YYYY-MM-DD <şifre>``.
@@ -176,6 +193,16 @@ def _is_retryable(err: Exception) -> bool:
         return True
     msg = str(err).lower()
     return any(tok in msg for tok in ("timed out", "timeout", "reset", "socket", "tls", "refused", "eof"))
+
+
+def _baglanti_hatasi(err: Exception | None, timeout: float, deneme: int) -> MikroAPIError:
+    """Ağ hatasını kullanıcının anlayacağı ve NE YAPACAĞINI bilebileceği mesaja çevirir."""
+    if err is not None and _zaman_asimi_mi(err):
+        return MikroZamanAsimiError(
+            f"Mikro yanıt vermedi: sorgu {int(timeout)} saniyede tamamlanamadı "
+            f"({deneme} deneme yapıldı). Sunucu yoğun olabilir — tarih aralığını "
+            "daraltıp tekrar deneyin.")
+    return MikroAPIError(f"Mikro bağlantı hatası: {err}")
 
 
 def parse_sql_rows(res: Any) -> list[dict[str, Any]]:
@@ -308,8 +335,8 @@ class MikroClient:
                         _iptal_kontrol()
                         time.sleep(0.2)
                     continue
-                raise MikroAPIError(f"Mikro bağlantı hatası: {exc}") from exc
-        raise MikroAPIError(f"Mikro bağlantı hatası: {last_err}")
+                raise _baglanti_hatasi(exc, to, attempts) from exc
+        raise _baglanti_hatasi(last_err, to, attempts)
 
     @staticmethod
     def _extract_data(text: str) -> Any:

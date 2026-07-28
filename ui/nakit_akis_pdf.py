@@ -7,6 +7,7 @@ from pathlib import Path
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
+from domain.kdv import KdvKoprusu
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import (
     CIKIS_ETIKET,
@@ -31,7 +32,43 @@ from ui.pdf_ortak import (
 )
 
 
-def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "") -> Path:
+def _kdv_bolumu(elems: list, k: KdvKoprusu) -> None:
+    """
+    KDV nakit köprüsü — PDF mali müşavire/bankaya gidiyor, bu yük orada da görünmeli.
+
+    Ekrandaki panelin birebir aynısı; oran VARSAYILMAZ, dönemin kendi rakamından ölçülür.
+    """
+    satirlar = [
+        [Paragraph("Hesaplanan KDV (391 — satıştan)", sty_row()), tl(k.hesaplanan)],
+        [Paragraph("İndirilecek KDV (191 — alıştan)", sty_row()), tl(-k.indirilecek)],
+        [Paragraph("Devlete kalan net KDV", sty_kpi()), tl(k.net_kdv)],
+    ]
+    if k.oran is not None:
+        oran = f"%{k.oran:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        satirlar.append([Paragraph("Ölçülen efektif KDV oranı", sty_row()), oran])
+    if k.alacaktaki_kdv is not None:
+        satirlar.append([Paragraph("Tahsil edilmemiş alacaktaki KDV", sty_kpi()),
+                         tl(k.alacaktaki_kdv)])
+    if k.tahsil_gun is not None:
+        gun = f"{k.tahsil_gun:,.0f}".replace(",", ".")
+        satirlar.append([Paragraph("Alacağın ortalama tahsil süresi", sty_row()),
+                         f"{gun} gün"])
+    elems.extend([Spacer(1, 8), Paragraph("KDV NAKİT KÖPRÜSÜ", sty_sec()), Spacer(1, 3)])
+    tk = Table(satirlar, colWidths=[120 * mm, 50 * mm])
+    tk.setStyle(TableStyle([
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("FONTNAME", (0, 0), (-1, -1), FONT),
+        ("FONTNAME", (1, 0), (1, -1), FONT_B),
+        ("TEXTCOLOR", (1, 0), (1, -1), DARK),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.3, LINE),
+    ]))
+    elems.append(tk)
+    if k.sebep:
+        elems.append(Paragraph(k.sebep, sty_row()))
+
+
+def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "",
+                          kdv: KdvKoprusu | None = None) -> Path:
     out = Path(path)
     doc = pdf_doc(out, title="Nakit Akış", firma=firma)
     elems: list = []
@@ -82,6 +119,9 @@ def export_nakit_akis_pdf(na: NakitAkis, path: str | Path, firma: str = "") -> P
         tc = Table(cikis, colWidths=[120 * mm, 50 * mm])
         tc.setStyle(TableStyle([("ALIGN", (1, 0), (1, -1), "RIGHT"), ("FONTNAME", (0, 0), (-1, -1), FONT)]))
         elems.append(tc)
+
+    if kdv is not None and kdv.var:
+        _kdv_bolumu(elems, kdv)
 
     dipnot_ekle(
         elems,

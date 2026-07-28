@@ -1,4 +1,4 @@
-"""Trend & Oranlar — domain birim testleri."""
+"""Mukayese & Oranlar — domain birim testleri."""
 
 from __future__ import annotations
 

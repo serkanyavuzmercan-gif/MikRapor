@@ -1103,7 +1103,7 @@ def fetch_nakit_ozet_ve_aylik(
     """
     Nakit özeti + aylık kırılımı — Nakit Akış'la aynı GL kaynağından (tek doğru).
 
-    Nakit & Kârlılık ve Trend & Oranlar bunu ortak kullanır; böylece üç tabın nakit
+    Nakit & Kârlılık ve Mukayese & Oranlar bunu ortak kullanır; böylece üç tabın nakit
     rakamı birbiriyle çelişmez. GL okunamazsa eski cari kaynağa zarafetle düşülür.
     """
     try:
@@ -1244,6 +1244,35 @@ def fetch_nakit_delta_gl(client: MikroClient, bas: str, bit: str) -> float:
     if rows:
         return _f_local(get_row_value(rows[0], "delta", "DELTA"))
     return 0.0
+
+
+def fetch_kdv_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
+    """
+    Dönem içi KDV hareketleri — ay ve hesap (191 / 391) kırılımlı.
+
+    191 İndirilecek KDV alıştan doğar ve BORÇLANIR; 391 Hesaplanan KDV satıştan doğar
+    ve ALACAKLANIR. Ay sonu mahsup fişi (391 borç / 191 alacak / 360) bu iki tarafa
+    dokunmadığı için mükerrer sayım olmaz — build_kdv_koprusu her hesabın yalnız kendi
+    doğuş tarafını okur.
+
+    Hesap kodu LIKE önekiyle süzülür (LEFT(LTRIM(...)) indeks kullandırmaz → tam tarama);
+    GROUP BY'daki LEFT ifadesi süzmeyi etkilemez.
+    """
+    bas, bit = _aralik(bas, bit)
+    sql = (
+        "SELECT CONVERT(char(7), c.fis_tarih, 23) AS ay, "
+        "LEFT(c.fis_hesap_kod, 3) AS hesap, "
+        "SUM(CASE WHEN c.fis_meblag0 > 0 THEN c.fis_meblag0 ELSE 0 END) AS borc, "
+        "SUM(CASE WHEN c.fis_meblag0 < 0 THEN -c.fis_meblag0 ELSE 0 END) AS alacak "
+        "FROM MUHASEBE_FISLERI c WITH (NOLOCK) "
+        "WHERE c.fis_iptal = 0 AND c.fis_meblag0 <> 0 "
+        "AND (c.fis_hesap_kod LIKE '191%' OR c.fis_hesap_kod LIKE '391%') "
+        f"AND c.fis_tarih >= '{bas}' AND c.fis_tarih < '{_bit_son(bit)}' "
+        f"{_gl_devir_haric('c')}"
+        "GROUP BY CONVERT(char(7), c.fis_tarih, 23), LEFT(c.fis_hesap_kod, 3) "
+        "ORDER BY ay"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
 def fetch_doviz_ozet(client: MikroClient, bas: str, bit: str) -> dict[str, float]:

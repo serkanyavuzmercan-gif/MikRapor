@@ -1,7 +1,7 @@
 """
 Yıllar arası mukayese için yıl kapanışlarını çeker.
 
-İki sekme aynı tabloyu besler (Trend & Oranlar gösterir, Yapay Zekâ Yorumu modele
+İki sekme aynı tabloyu besler (Mukayese & Oranlar gösterir, Yapay Zekâ Yorumu modele
 gönderir), o yüzden çekme mantığı burada tektir — iki yerde ayrı yazılırsa rakamlar
 zamanla ayrışır.
 

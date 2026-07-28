@@ -1,5 +1,5 @@
 """
-Trend & Oranlar — yerel Qt görünümü.
+Mukayese & Oranlar — yerel Qt görünümü.
 
 Aylık satış/alış/brüt/nakit trend grafiği + bilançodan türetilen finansal oranlar.
 Grafik ek bağımlılık olmadan QPainter ile çizilir (Nakit & Kârlılık ile aynı dil).

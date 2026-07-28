@@ -8,6 +8,8 @@ from typing import Any
 
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
+from domain.gelir_tablosu import build_gelir_tablosu
+from domain.kdv import KdvKoprusu, build_kdv_koprusu, kdv_csv
 from domain.kredi import (
     KART_BORCU_VARSAYILAN_ODEME_YUZDE,
     kredi_karti_borclarini_derle,
@@ -24,6 +26,8 @@ from infra.mikro_fetch import (
     fetch_acik_kalemler,
     fetch_cari_bakiye,
     fetch_cari_vade_gun,
+    fetch_gelir_tablosu,
+    fetch_kdv_ozet,
     fetch_kredi_gl,
     fetch_kredi_karti_borclari,
     fetch_kredi_odemeleri_gl,
@@ -80,6 +84,7 @@ class NakitAkisTab(RaporTab):
     HERO_ASSET = "empty-nakit.png"
 
     _na: NakitAkis | None = None
+    _kdv: KdvKoprusu | None = None
 
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
         def is_fn(bildir) -> dict[str, Any]:
@@ -202,8 +207,26 @@ class NakitAkisTab(RaporTab):
                 )
             except MikroAPIError:
                 kart_borcu_takvimi = {}
+
+            # KDV KÖPRÜSÜ — satışın KDV'si bu ay çıkar, parası aylar sonra girer.
+            # Üç kaynak da SEÇİLİ ARALIKTAN: KDV hareketi ve net satış akıştır (yıllara
+            # bölünür), alacak bakiyesi bitiş gününün fotoğrafıdır.
+            kdv: KdvKoprusu | None = None
+            try:
+                bildir("KDV hareketleri okunuyor…")
+                kdv_rows = donem_satirlari(cfg, bas, bit, fetch_kdv_ozet,
+                                           ad="KDV hareketleri")
+                gt_rows = donem_satirlari(cfg, bas, bit, fetch_gelir_tablosu,
+                                          ad="gelir tablosu")
+                kdv = build_kdv_koprusu(
+                    kdv_rows,
+                    net_satis=build_gelir_tablosu(gt_rows).net_satislar,
+                    alacak=runway_ta.alacak_toplam if runway_ta else 0.0,
+                    bas=bas, bit=bit)
+            except (MikroAPIError, YilVeritabaniHatasi):
+                kdv = None
             return {
-                "na": na, "firma": firma_getir(cfg, client),
+                "na": na, "firma": firma_getir(cfg, client), "kdv": kdv,
                 "kredi_odemeleri": kredi_odemeleri,
                 "runway_na": runway_na, "runway_ta": runway_ta,
                 "runway_referans_bas": runway_bas, "taksitler": gelecek_taksitler,
@@ -216,8 +239,10 @@ class NakitAkisTab(RaporTab):
         na: NakitAkis = sonuc["na"]
         self._na = na
         self._firma = sonuc["firma"]
+        self._kdv = sonuc.get("kdv")
         self._icerik_koy(build_nakit_akis_widget(
             na, firma=self._firma, kredi_odemeleri=sonuc.get("kredi_odemeleri"),
+            kdv=self._kdv,
             runway_na=sonuc.get("runway_na"), runway_ta=sonuc.get("runway_ta"),
             runway_referans_bas=sonuc.get("runway_referans_bas", ""),
             kredi_taksitler=sonuc.get("taksitler"),
@@ -247,7 +272,7 @@ class NakitAkisTab(RaporTab):
         if not path:
             return
         try:
-            export_nakit_akis_pdf(self._na, path, firma=self._firma)
+            export_nakit_akis_pdf(self._na, path, firma=self._firma, kdv=self._kdv)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "PDF Hatası", str(exc))
             return
@@ -257,4 +282,8 @@ class NakitAkisTab(RaporTab):
         return f"{self._slug}_{self._na.bas}_{self._na.bit}.csv" if self._na else f"{self._slug}.csv"
 
     def _csv_icerik(self) -> str | None:
-        return nakit_akis_csv(self._na) if self._na else None
+        if not self._na:
+            return None
+        csv = nakit_akis_csv(self._na)
+        kdv = kdv_csv(self._kdv) if self._kdv else ""
+        return f"{csv}\r\n\r\nKDV NAKİT KÖPRÜSÜ\r\n{kdv}" if kdv else csv

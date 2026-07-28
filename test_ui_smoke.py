@@ -198,7 +198,7 @@ class TestUiSmoke(unittest.TestCase):
     def test_tum_sekmeler_gorunur(self) -> None:
         """Her sekme etiketi tam sığmalı — hiçbiri kırpılmamalı/taşmamalı.
 
-        Regresyon: 8. sekme eklenince «Reel Değer» ve «Trend & Oranlar» marka barına
+        Regresyon: 8. sekme eklenince «Reel Değer» ve «Mukayese & Oranlar» marka barına
         sığmayıp tamamen görünmez olmuştu (kullanıcı o iki rapora erişemiyordu).
         Yeni sekme eklenirse bu test dar pencerede de uyarır.
         """
@@ -226,6 +226,77 @@ class TestUiSmoke(unittest.TestCase):
                         f"{genislik}px pencerede «{etiket}» sekmesi taşıyor (görünmez)")
             finally:
                 w.close()
+
+    def test_mukayese_kutusu_takili_kalmaz(self) -> None:
+        """
+        «Geçmiş yılların aynı dönemiyle mukayese et» varsayılan KAPALI ve her koşudan
+        sonra kapanır.
+
+        Her geçmiş yıl ~5 sorgu demek. İşaret bir kez konulup unutulunca kullanıcı
+        istemediği hâlde her rapor dakikalarca sürüyordu; pahalı yol açıkça seçilmeli.
+        """
+        from infra.config import MikroConfig
+        from ui.donem import DonemDurumu
+        from ui.tabs.trend_tab import TrendTab
+        t = TrendTab(DonemDurumu())
+        try:
+            self.assertEqual(t.BASLIK, "Mukayese & Oranlar")
+            self.assertFalse(t._chk_gecen_yil.isChecked())
+            self.assertFalse(t._sp_yil.isEnabled())
+
+            t._chk_gecen_yil.setChecked(True)
+            self.assertTrue(t._sp_yil.isEnabled())
+            t._sp_yil.setValue(10)
+            t._is_hazirla(MikroConfig(), "2026-01-01", "2026-07-28")
+            self.assertFalse(t._chk_gecen_yil.isChecked())
+        finally:
+            t.deleteLater()
+
+    def test_yil_kutusuna_on_yil_geriye_sigar(self) -> None:
+        """«10 yıl geriye» yazısı kutuya sığmalı — 112 px sabitlenmişti, kırpıyordu."""
+        from ui.donem import DonemDurumu
+        from ui.tabs.trend_tab import TrendTab
+        t = TrendTab(DonemDurumu())
+        try:
+            t._sp_yil.setValue(t._sp_yil.maximum())
+            metin = f"{t._sp_yil.value()}{t._sp_yil.suffix()}"
+            gerekli = t._sp_yil.fontMetrics().horizontalAdvance(metin)
+            self.assertGreaterEqual(t._sp_yil.sizeHint().width(), gerekli)
+        finally:
+            t.deleteLater()
+
+    def test_kdv_paneli_nakit_akista_gorunur(self) -> None:
+        """KDV nakit akışın parçası: satışın KDV'si bu ay çıkar, parası aylar sonra girer."""
+        from domain.kdv import build_kdv_koprusu
+        from domain.nakit_akis import build_nakit_akis
+        from ui.nakit_akis_view import build_nakit_akis_widget
+        na = build_nakit_akis(
+            [{"ay": "2026-01", "tip": 0, "tutar": 500_000.0, "prefix": "120"}],
+            kapanis_nakit=300_000.0, bas="2026-01-01", bit="2026-03-31")
+        kdv = build_kdv_koprusu(
+            [{"ay": "2026-01", "hesap": "391", "borc": 0.0, "alacak": 200_000.0},
+             {"ay": "2026-01", "hesap": "191", "borc": 120_000.0, "alacak": 0.0}],
+            net_satis=1_000_000.0, alacak=1_200_000.0,
+            bas="2026-01-01", bit="2026-03-31")
+        w = build_nakit_akis_widget(na, firma="Test A.Ş.", kdv=kdv)
+        try:
+            metinler = " ".join(lbl.text() for lbl in w.findChildren(QLabel))
+            self.assertIn("KDV NAKİT KÖPRÜSÜ", metinler)
+            self.assertIn("finanse edilir", metinler)
+        finally:
+            w.deleteLater()
+
+    def test_kdv_okunamadiysa_panel_cizilmez(self) -> None:
+        """Boş kart «KDV yükünüz yok» diye okunurdu — okunamayan gösterilmez."""
+        from domain.nakit_akis import build_nakit_akis
+        from ui.nakit_akis_view import build_nakit_akis_widget
+        na = build_nakit_akis([], kapanis_nakit=0.0, bas="2026-01-01", bit="2026-03-31")
+        w = build_nakit_akis_widget(na, firma="Test A.Ş.", kdv=None)
+        try:
+            metinler = " ".join(lbl.text() for lbl in w.findChildren(QLabel))
+            self.assertNotIn("KDV NAKİT KÖPRÜSÜ", metinler)
+        finally:
+            w.deleteLater()
 
     def test_tahmin_tazelik_gostergesi(self) -> None:
         """Sağdaki raporun güncel mi bayat mı olduğu panelde yazmalı.
@@ -295,11 +366,16 @@ class TestUiSmoke(unittest.TestCase):
         self.assertIsNotNone(kart)
         agac = kart.findChild(QTreeWidget)
         _, bolumler = yillar_tablosu(ks)
-        beklenen = 1 + sum(1 + len(b.satirlar) if b.baslik else len(b.satirlar)
-                           for b in bolumler)
+        # Yıl başlığı ARTIK SATIR DEĞİL: gerçek header'a taşındı ki tablo aşağı
+        # kayarken ekranda kalsın (kullanıcı «başlıklar en üstte sabit kalsın» dedi).
+        beklenen = sum(1 + len(b.satirlar) if b.baslik else len(b.satirlar)
+                       for b in bolumler)
         self.assertEqual(agac.topLevelItemCount(), beklenen)
         self.assertEqual(agac.columnCount(), 1 + 3 + 1)   # kalem + 3 yıl + değişim
-        self.assertEqual(agac.topLevelItem(0).text(4), "2021→2025")
+        self.assertFalse(agac.isHeaderHidden())
+        basl = agac.headerItem()
+        self.assertEqual([basl.text(i) for i in range(1, 5)],
+                         ["2021", "2023", "2025", "2025 / önceki ort."])
 
     def test_mukayese_karti_tek_yilda_cizilmez(self) -> None:
         from domain.ai_yorum import YilKapanis
@@ -308,7 +384,7 @@ class TestUiSmoke(unittest.TestCase):
         self.assertIsNone(mukayese_karti([]))
 
     def test_mukayese_trend_sekmesinde(self) -> None:
-        """Tablo API anahtarı gerektirmemeli — Trend & Oranlar'da gösterilir."""
+        """Tablo API anahtarı gerektirmemeli — Mukayese & Oranlar'da gösterilir."""
         from domain.ai_yorum import YilKapanis
         from domain.gercek_durum import AyTrend
         from domain.mizan_bilanco import build_bilanco

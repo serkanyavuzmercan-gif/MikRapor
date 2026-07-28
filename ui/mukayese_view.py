@@ -1,7 +1,7 @@
 """
 Yıllar arası mukayese tablosu — paylaşılan görünüm.
 
-Trend & Oranlar sekmesi bunu doğrudan gösterir; Yapay Zekâ Yorumu ise aynı veriyi
+Mukayese & Oranlar sekmesi bunu doğrudan gösterir; Yapay Zekâ Yorumu ise aynı veriyi
 modele gönderir. Tablo API anahtarı gerektirmez — kullanıcı yorum almadan da yıllar
 arası gidişatı görebilmeli.
 """
@@ -9,9 +9,9 @@ arası gidişatı görebilmeli.
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
+from PyQt6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
-from domain.ai_yorum import YilKapanis, ortak_pencere, yillar_tablosu
+from domain.ai_yorum import YilKapanis, degisim_basligi, ortak_pencere, yillar_tablosu
 from domain.ortak import tr_buyuk
 from ui.gercek_durum_view import _agac, _c, _ic, _tsatir
 from ui.styles import BAD as NEG
@@ -26,7 +26,36 @@ _BASLIK_RENK = "#0f766e"
 _ETIKET_SUTUN = 246
 _YIL_SUTUN = 132   # «2025 (28.07–31.12)» sığmalı
 _YIL_SUTUN_DAR = 96   # ortak pencerede başlık yalnız yıl; 10 sütun sığsın
-_DEGISIM_SUTUN = 124   # «+310,89 puan» sığmalı
+_DEGISIM_SUTUN = 158   # «2026 / önceki ort.» ve «+310,89 puan» sığmalı
+
+# Yıl başlıkları GERÇEK header'a konur, normal satıra değil: tablo uzun (40+ satır) ve
+# aşağı inerken hangi sütunun hangi yıl olduğu görünmez oluyordu. Header sabit kalması
+# için tablonun KENDİSİ kaymalı — bu yüzden yükseklik ekrana göre sınırlanır ve taşan
+# kısım tablo içinde kaydırılır. Sınır ekrandan hesaplanır: sabit bir piksel değeri
+# dizüstünde tabloyu bir avuç satıra düşürür, büyük ekranda boş yere kaydırma yaptırır.
+_AZAMI_TABLO_YUKSEK = 560     # ekran okunamazsa (başsız test) makul varsayılan
+_KAYDIRMA_GENISLIK = 14       # dikey kaydırma çubuğu ölçülemezse
+
+_BASLIK_QSS = """
+QHeaderView::section {
+    background: #f1f5f9;
+    color: #475569;
+    padding: 7px 6px;
+    border: none;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #cbd5e1;
+    font-weight: 800;
+    font-size: 11px;
+}
+"""
+
+
+def _azami_yukseklik() -> int:
+    """Tablonun ekranda kaplayabileceği en fazla yükseklik."""
+    ekran = QApplication.primaryScreen()
+    if ekran is None:
+        return _AZAMI_TABLO_YUKSEK
+    return max(360, min(900, int(ekran.availableGeometry().height() * 0.62)))
 
 
 _AY_ADI = ("Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
@@ -70,11 +99,23 @@ def _sutun_basligi(kapanislar: list[YilKapanis], yil: int, ortak: str) -> str:
 
 def _pencere_notu(kapanislar: list[YilKapanis]) -> str:
     if ortak_pencere(kapanislar):
-        return ("Sütunların hepsi AYNI uzunlukta — satış ve kâr doğrudan "
-                "kıyaslanabilir.")
+        return ("Sütunların hepsi AYNI uzunlukta — satış ve kâr doğrudan mukayese "
+                "edilebilir.")
     return ("Her sütun, seçtiğiniz aralığın o yıla düşen parçasıdır — başlıktaki gün "
             "aralığı budur. Sütunlar farklı uzunlukta olabilir: akış kalemlerini "
-            "aylığa indirmeden kıyaslamayın.")
+            "aylığa indirmeden mukayese etmeyin.")
+
+
+def _degisim_notu(yillar: list[int]) -> str:
+    """
+    Son sütunun tabanı — dipnot satırına giren TEK parça.
+
+    Ayrı bir paragraf yazılmıyor: sütun başlığı zaten «2026 / önceki ort.» diyor,
+    burada yalnız hangi yılların ortalandığı açılıyor.
+    """
+    if len(yillar) < 3:
+        return ""
+    return f"son sütun: {yillar[0]}–{yillar[-2]} ortalamasına göre"
 
 
 def _kapanis_notu(kapanislar: list[YilKapanis]) -> list[tuple[str, str]]:
@@ -111,14 +152,24 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     sabit += [(i + 1, yil_sutun) for i in range(len(yillar))]
     sabit.append((kolon - 1, _DEGISIM_SUTUN))
     t = _agac(kolon, sabit, esnek=0, hucre_renkli=True)
-    t.header().setStretchLastSection(False)
+    hdr = t.header()
+    hdr.setStretchLastSection(False)
 
-    _tsatir(t, [_c("", renk=MUTED)]
-            # Sütun başlığı gerçek pencereyi yazar: «2025 (28.07–31.12)». Sütunlar farklı
-            # uzunlukta olabilir ve bunun görünmemesi akış kalemlerinde yanlış okumaya yol açar.
-            + [_c(_sutun_basligi(kapanislar, yil, ortak), renk=MUTED, kalin=True, sag=True)
-               for yil in yillar]
-            + [_c(f"{yillar[0]}→{yillar[-1]}", renk=MUTED, kalin=True, sag=True)])
+    # BAŞLIK SATIRI SABİT. Eskiden normal bir satırdı; tablo aşağı kaydıkça başlık ekrandan
+    # çıkıyor ve rakamın hangi yıla ait olduğu görünmüyordu. Sütun başlığı gerçek pencereyi
+    # yazar: «2025 (28.07–31.12)» — sütunlar farklı uzunlukta olabilir ve bunun görünmemesi
+    # akış kalemlerinde yanlış okumaya yol açar.
+    t.setHeaderHidden(False)
+    t.setHeaderLabels(
+        [""] + [_sutun_basligi(kapanislar, yil, ortak) for yil in yillar]
+        + [degisim_basligi(yillar)])
+    hdr.setSectionsClickable(False)
+    hdr.setSortIndicatorShown(False)
+    t.setStyleSheet(t.styleSheet() + _BASLIK_QSS)
+    basl_item = t.headerItem()
+    for i in range(1, kolon):
+        basl_item.setTextAlignment(
+            i, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
     for bolum in bolumler:
         if bolum.baslik:
@@ -134,8 +185,17 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
             _tsatir(t, hucreler)
 
     genislik = _ETIKET_SUTUN + yil_sutun * len(yillar) + _DEGISIM_SUTUN + 4
+    tam_yukseklik = (30 * t.topLevelItemCount() + 6
+                     + max(hdr.sizeHint().height(), 28))
+    azami = _azami_yukseklik()
+    if tam_yukseklik > azami:
+        # Taşan tablo KENDİ İÇİNDE kayar; sayfa kaydırılırsa başlık ekrandan çıkardı.
+        t.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        t.setFixedHeight(azami)
+        genislik += t.verticalScrollBar().sizeHint().width() or _KAYDIRMA_GENISLIK
+    else:
+        t.setFixedHeight(tam_yukseklik)
     t.setFixedWidth(genislik)
-    t.setFixedHeight(30 * t.topLevelItemCount() + 6)
 
     # ÜÇ NOT, DAHA FAZLASI DEĞİL. Altı paragraf uyarı tabloyu okunmaz yapıyordu; üstelik
     # biri YANLIŞTI: «Tutarlar TL'dir» notu, TL bölümü tablodan kaldırıldığında orada
@@ -144,8 +204,11 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     notlar = [(_pencere_notu(kapanislar), "")] if _pencere_eki(kapanislar) else []
     notlar += _kapanis_notu(kapanislar)
     # Not etiketleri DÜZ METİN (_ic düz QLabel kurar): «&nbsp;» harfi harfine basılır.
-    notlar += [("«—» hesaplanamadı  ·  hiç değişmeyen satırlar gizlendi  ·  "
-                "kaynak: stok hareketleri, cari, GL nakit", "")]
+    dipnot = ["«—» hesaplanamadı", "hiç değişmeyen satırlar gizlendi"]
+    if _degisim_notu(yillar):
+        dipnot.append(_degisim_notu(yillar))
+    dipnot.append("kaynak: stok hareketleri, cari, GL nakit")
+    notlar += [("  ·  ".join(dipnot), "")]
 
     card = QFrame()
     card.setObjectName("aiCard")

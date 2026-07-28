@@ -351,7 +351,7 @@ class AiYorumTab(RaporTab):
                 donem_delta=fetch_nakit_delta_gl(client, y_bas, y_bit),
                 bas=y_bas, bit=y_bit)))
 
-            # Mukayese, Trend & Oranlar sekmesiyle AYNI modülden gelir; iki yerde
+            # Mukayese, Mukayese & Oranlar sekmesiyle AYNI modülden gelir; iki yerde
             # ayrı çekilirse rakamlar zamanla ayrışır.
             kapanislar = yillari_cek(
                 cfg, bas, bit, odak_client=client, odak_ta=ta, bildir=bildir)

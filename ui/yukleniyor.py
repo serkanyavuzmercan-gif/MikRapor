@@ -30,6 +30,13 @@ _KART_GENISLIK = 420
 # Yanlış vaat "takıldı" hissi yaratıyor, o yüzden sekme kendi ipucunu verebilir.
 _VARSAYILAN_IPUCU = "Birkaç saniye sürebilir · «İptal» ile durdurabilirsin"
 
+# Bu süreden sonra ipucu değişir. Mikro sunucusu yoğunken sorgular dakikalarca sürüyor
+# ve ekranda tek canlılık işareti dönen göstergeydi; kullanıcı beklemekle bırakmak
+# arasında karar veremiyordu. Uyarı ancak İŞE YARIYORSA gösterilir: burada yapılabilecek
+# bir şey var — iptal edip tarih aralığını daraltmak.
+_UZUN_SURE_SN = 90
+_UZUN_SURE_IPUCU = "Mikro yavaş yanıt veriyor · «İptal» edip tarih aralığını daraltabilirsin"
+
 
 class _Spinner(QWidget):
     """Kendi çizilen dönen gösterge — 12 segment, baş açısı her tik döner."""
@@ -186,7 +193,9 @@ class YukleniyorEkrani(QWidget):
         self._gecen_sn += 1
         dk, sn = divmod(self._gecen_sn, 60)
         gecen = f"{dk}:{sn:02d}" if dk else f"{sn} sn"
-        self._ipucu.setText(f"{self._ipucu_metni} · Geçen süre {gecen}")
+        metin = (_UZUN_SURE_IPUCU if self._gecen_sn >= _UZUN_SURE_SN
+                 else self._ipucu_metni)
+        self._ipucu.setText(f"{metin} · Geçen süre {gecen}")
 
     def basla(self) -> None:
         self._aktif = True

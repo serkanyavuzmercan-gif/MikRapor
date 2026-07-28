@@ -42,13 +42,21 @@ sonuçtur; onun adına karar vermiyoruz.
 - Referans pencereler `max(bas, geri)` ile kırpılır — asla `min`.
 - Akış sorguları `donem_satirlari` / `donem_toplami` ile aralık içinde bölünür.
 - Bakiye/fotoğraf sorguları aralığın **bitiş** tarihinde okunur.
+- Mukayese tablosunun değişim sütunu, odak yılı **önceki yılların ORTALAMASINA**
+  oranlar (`kiyas_tabani`); başlık bunu yazar: `2026 / önceki ort.`. Eskiden yalnız
+  ilk yılla son yıl kıyaslanıyordu — başlık «2020→2026» derken aradaki beş yıl hiç
+  hesaba girmiyordu. İki sütun varsa ortalama zaten tek yıldır, başlık `2025→2026`.
 
 ### Tek istisna: kullanıcının açıkça istemesi
 
-Trend & Oranlar'daki **«Geçen yılın aynı dönemiyle karşılaştır»** kutusu işaretlenirse
-tablo, seçili dönemin bir yıl öncesini de getirir. Bu kuralı bozmaz: program kendi
-kafasına göre dışarı çıkmıyor, kullanıcı istediği için çıkıyor ve **ne geldiği sütun
-başlığında yazıyor** (`28.07.2024–28.07.2025`). Varsayılan kapalıdır.
+Mukayese & Oranlar'daki **«Geçmiş yılların aynı dönemiyle mukayese et»** kutusu
+işaretlenirse tablo, seçili dönemin bir yıl öncesini de getirir. Bu kuralı bozmaz:
+program kendi kafasına göre dışarı çıkmıyor, kullanıcı istediği için çıkıyor ve **ne
+geldiği sütun başlığında yazıyor** (`28.07.2024–28.07.2025`).
+
+**Varsayılan kapalıdır ve her koşudan sonra kendini kapatır.** Her geçmiş yıl ~5 sorgu
+demek; işaret bir kez konulup unutulunca kullanıcı istemediği hâlde her rapor
+dakikalarca sürüyordu. Pahalı yol her seferinde açıkça seçilir.
 
 Buna ihtiyaç var çünkü takvim yılına bölünmüş sütunlar farklı uzunlukta olabilir:
 canlıda 2025 sütunu 5 ay, 2026 sütunu 7 aydı ve tablo «%+4 büyüme» gösteriyordu —
@@ -68,7 +76,7 @@ CANLI/REEL veriye.**
 | Kaynak | Nereden | Hangi sekmeler |
 |---|---|---|
 | Resmi | mizan, GL 6xx | Bilanço, Gelir Tablosu |
-| Canlı | STOK_HAREKETLERI, cari hareketler, GL nakit hesapları | diğer hepsi |
+| Canlı | STOK_HAREKETLERI, cari hareketler, GL nakit ve KDV hesapları | diğer hepsi |
 
 Mukayese tablosu mizandan kurulduğu için, satışın maliyeti (62) işlenmemiş bir yılda
 kârlılığın tamamı boşalıyordu — oysa Nakit & Kârlılık aynı dönemin kârlılığını depodan
@@ -78,6 +86,18 @@ geçen maldan zaten hesaplıyordu. Tabloya 62'ye hiç dokunmayan canlı satırla
 Stok *seviyesi* canlı veriden hesaplanamaz: geçmişteki bütün hareketlerin toplamıdır,
 yani aralığın dışına çıkmayı gerektirir. Tek meşru kaynağı mizandır ve maliyet
 işlenmemişse şişiktir → `—`.
+
+### KDV bir gider değil, FİNANSMAN yüküdür
+
+100 TL'lik satışın 20 TL KDV'si fatura kesilince doğar ve ertesi ay beyanla devlete
+ödenir; o 100 TL ise müşteriden ortalama 90 günde tahsil edilir. Arada kalan sürede
+KDV'yi firma kendi kesesinden finanse eder ve bu, nakit akışta hiçbir kalemin altında
+görünmüyordu. Nakit Akış'taki **KDV NAKİT KÖPRÜSÜ** paneli bunu gösterir
+(`domain/kdv.py`): hesaplanan (391) − indirilecek (191) = devlete kalan net, ölçülen
+efektif oran, **tahsil edilmemiş alacağın içindeki KDV** ve kaç gün finanse edildiği.
+
+Alacak KDV DÂHİL doğduğu için içindeki KDV `alacak × oran/(100+oran)`; tahsil süresinin
+paydası da NET değil BRÜT satıştır.
 
 ---
 
@@ -124,8 +144,17 @@ dolar rakamlarını TL sandırıyordu.)
 
 ## 5. Aynı rapor, tek isim
 
-Sekme adı = PDF başlığı = sayfa başlığı. Sekmeler arasında veri tekrarı yok.
+Sekme adı = PDF başlığı = sayfa başlığı = dosya adı. Sekmeler arasında veri tekrarı yok.
 Her tabloda satır vurgusu (row hover) standarttır, ayrıca istenmesi gerekmez.
+
+**Aynı şeye tek kelime: «MUKAYESE».** «Kıyaslama» ve «karşılaştırma» eş anlamlıydı ve
+üçü birden kullanılıyordu; ekranda iki ayrı rapor varmış izlenimi veriyor. Sekmenin adı
+`Mukayese & Oranlar`. (Yalnız modele giden yönerge metni serbesttir; oradaki sözcük
+kullanıcıya doğrudan görünmez.)
+
+**Uzun tablo başlığı sabit kalır.** Yıl sütunları QTreeWidget'ın gerçek header'ındadır,
+normal satır değil; tablo ekrana sığmıyorsa kendi içinde kayar ki aşağı inerken hangi
+rakamın hangi yıl olduğu görünsün. PDF karşılığı `repeatRows=1`.
 
 ## 6. Bu program yalnız bize göre yazılmaz
 
@@ -141,6 +170,10 @@ kullanıcı onu kendi seçmediği için sorgulamaz.
 
 Ölçülen kurulum farkları: faturalaşma kopya satır yaratıyor mu, mal irsaliyeyle mi
 faturayla mı giriyor, `evraktip 12` gerçek alış mı depo transferi mi.
+
+**KDV oranı da varsayılmaz.** «%20'dir» demek yanlış olurdu: ürün karması %1/%10/%20
+karışık olabilir, ihracat satışında KDV hiç doğmaz. Efektif oran dönemin kendi
+rakamından ölçülür — hesaplanan KDV (391) ÷ net satış (60/61).
 
 **Arayüz %100 Türkçe, hesap planı TDHP.** İngilizce sürüm planı yok.
 

@@ -3,7 +3,7 @@ Nakit Akış — yerel Qt görünümü.
 
 Banka + kasa fiili hareketlerinden nakit akış tablosu: açılış → girişler → çıkışlar → kapanış,
 kategori kırılımları (tahsilat, satıcı ödemesi, kredi, vergi…) ve dönem kredi ödeme detayı.
-Kart/satır yardımcıları diğer sekmelerle paylaşılır. (Aylık trend: Trend & Oranlar sekmesinde.)
+Kart/satır yardımcıları diğer sekmelerle paylaşılır. (Aylık trend: Mukayese & Oranlar sekmesinde.)
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from domain.kdv import KdvKoprusu
 from domain.kredi import KART_BORCU_VARSAYILAN_ODEME_YUZDE, KrediOdeme, kredi_takvimi_ay
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis, hesap_kirilim_etiketi
@@ -277,11 +278,68 @@ def _donem_kredi_odeme_panel(odemeler: list[KrediOdeme], na: NakitAkis) -> QFram
     return _card("SEÇİLİ DÖNEM BANKA KREDİSİ ÖDEMELERİ", _ic(t, notlar))
 
 
+def _sayi(v: float | None, birim: str = "") -> str:
+    """Hesaplanamayan değer «—» — boş hücre açıklamasız bırakılmaz (bkz. panel notu)."""
+    if v is None:
+        return "—"
+    if birim == "%":
+        return f"%{v:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    if birim == "gün":
+        return f"{v:,.0f} gün".replace(",", ".")
+    return tl(v)
+
+
+def _kdv_panel(k: KdvKoprusu) -> QFrame:
+    """
+    KDV NAKİT KÖPRÜSÜ — KDV bir gider değil, finansman yüküdür.
+
+    Satışın KDV'si fatura kesilince doğar ve ertesi ay beyanla devlete ödenir; parası
+    ise alacak vadesi kadar sonra tahsil edilir. Bu fark hiçbir nakit kaleminin altında
+    görünmüyordu — kullanıcı «100 TL'lik malın 20 TL KDV'sini aynı ay ödüyoruz ama
+    parayı 90 günde alıyoruz, bu nakit akışta önemsiz bir şey mi?» diye sordu.
+
+    ORAN ÖLÇÜLÜR, VARSAYILMAZ: ürün karması %1/%10/%20 karışık olabilir, ihracatta KDV
+    hiç doğmaz. «%20'dir» demek başka bir kurulumda sessizce yanlış rakam demektir.
+    """
+    t = _agac(2, [(1, 150)])
+    _tsatir(t, [_c("Hesaplanan KDV (391 — satıştan)"),
+                _c(tl(k.hesaplanan), sag=True)])
+    _tsatir(t, [_c("İndirilecek KDV (191 — alıştan)"),
+                _c(tl(-k.indirilecek), renk=POZ, sag=True)])
+    _tsatir(t, [_c("Devlete kalan net KDV", kalin=True),
+                _c(tl(k.net_kdv), renk=NEG if k.net_kdv > 0 else POZ,
+                   kalin=True, sag=True)])
+    _tsatir(t, [_c("Ölçülen efektif KDV oranı", renk=SUBINK),
+                _c(_sayi(k.oran, "%"), renk=SUBINK, sag=True)])
+    _tsatir(t, [_c("Tahsil edilmemiş alacaktaki KDV", kalin=True),
+                _c(_sayi(k.alacaktaki_kdv), renk=ACCENT, kalin=True, sag=True)])
+    _tsatir(t, [_c("Alacağın ortalama tahsil süresi", renk=SUBINK),
+                _c(_sayi(k.tahsil_gun, "gün"), renk=SUBINK, sag=True)])
+    _fit_height(t)
+
+    notlar: list[tuple[str, str]] = []
+    kdv = k.alacaktaki_kdv
+    gun = k.tahsil_gun
+    if kdv is not None and gun is not None:
+        # Gün ayrı biçimlenir: tl() Türkçe ondalık (1.892.000,00) üretir, tüm cümlede
+        # virgül→nokta değiştirmek o rakamı bozardı.
+        gun_str = f"{gun:,.0f}".replace(",", ".")
+        notlar.append((
+            "Satışın KDV'si fatura kesilince doğar, ertesi ay beyanla ödenir; parası "
+            f"ortalama {gun_str} günde tahsil edilir. Alacağınızın içindeki "
+            f"{tl(kdv)} KDV bu süre boyunca sizin cebinizden finanse edilir.",
+            SUBINK))
+    if k.sebep:
+        notlar.append((k.sebep, "#8a5a00"))
+    return _card("KDV NAKİT KÖPRÜSÜ", _ic(t, notlar))
+
+
 def build_nakit_akis_widget(
     na: NakitAkis,
     firma: str = "",
     kredi_odemeleri: list[KrediOdeme] | None = None,
     *,
+    kdv: KdvKoprusu | None = None,
     runway_na: NakitAkis | None = None,
     runway_ta: TahsilatAlacak | None = None,
     runway_referans_bas: str = "",
@@ -371,6 +429,10 @@ def build_nakit_akis_widget(
     row2.setSpacing(20)
     row2.addWidget(_ozet_panel(na), 1)
     row2.addWidget(_kredi_panel(na), 1)
+    # KDV okunamadıysa panel HİÇ çizilmez: boş bir kart, olmayan bir bilgiyi varmış
+    # gibi gösterir. Okunup da hesaplanamayan hücreler «—» + sebebiyle görünür.
+    if kdv is not None and kdv.var:
+        row2.addWidget(_kdv_panel(kdv), 1)
     root.addLayout(row2)
 
     if kredi_odemeleri:

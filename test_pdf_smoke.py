@@ -138,5 +138,80 @@ class TestPdfSmoke(unittest.TestCase):
             _pdf_dogrula(self, out)
 
 
+@unittest.skipUnless(_REPORTLAB, "reportlab kurulu değil")
+class TestMukayesePdfSigar(unittest.TestCase):
+    """
+    Mukayese tablosu SAYFAYA SIĞMALI.
+
+    Kullanıcı «trend&oranlar pdf sığmıyor» dedi: on yıl istendiğinde sütun 11 mm'ye
+    düşüyor, «41,2 milyon» komşu hücrenin üstüne biniyordu. reportlab düz metin
+    hücresini kırpmaz, taşırır — yani bozukluk sessizdir. Bu test her hücrenin kendi
+    sütununa GERÇEKTEN sığdığını ölçer.
+    """
+
+    @staticmethod
+    def _kapanislar(n: int) -> list:
+        from domain.ai_yorum import YilKapanis
+        return [YilKapanis(
+            yil=y, net_satis=41_200_000.0, brut_kar=5_000_000.0, net_kar=1_000_000.0,
+            faaliyet_kari=2_000_000.0, smm=-36_000_000.0, stok=1_400_000.0,
+            alacak=11_000_000.0, alacak_gecikmis=7_600_000.0, borc=5_000_000.0,
+            donen=20_000_000.0, kvyk=16_000_000.0, uvyk=2_000_000.0,
+            ozkaynak=6_000_000.0, aktif_toplam=32_000_000.0,
+            banka_kredisi=2_400_000.0, finansman_gideri=-800_000.0,
+            faaliyet_gideri=-3_000_000.0, fiili_satis=40_000_000.0,
+            fiili_alis=35_000_000.0, fiili_var=True,
+            satis_usd=1_050_163.0 + y, kur_son=13.3 + (y - 2016), kur_ort=12.0 + (y - 2016),
+        ) for y in range(2026 - n, 2026)]
+
+    def _tasan(self, n_yil: int) -> list[str]:
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.units import mm
+        from reportlab.pdfbase import pdfmetrics
+
+        from ui.mukayese_pdf import _PADDING, _genislikler, yazi_boyu
+        from ui.pdf_ortak import FONT_B
+
+        en = landscape(A4)[0] - 36 * mm       # pdf_doc kenar boşlukları
+        genislik, yil_en = _genislikler(en, n_yil)
+        punto = yazi_boyu(yil_en)
+        tablo = _mukayese_data(self._kapanislar(n_yil))
+        tasan = []
+        for satir in tablo:
+            for i, hucre in enumerate(satir):
+                if not hucre:
+                    continue
+                # Kalın ölçülür: değişim ve başlık hücreleri kalın, en geniş hâli budur.
+                w = pdfmetrics.stringWidth(str(hucre), FONT_B, punto)
+                if w > genislik[i] - 2 * _PADDING:
+                    tasan.append(f"{n_yil} yıl · sütun {i}: {hucre!r} "
+                                 f"{w / mm:.1f}mm > {(genislik[i] - 2 * _PADDING) / mm:.1f}mm")
+        return tasan
+
+    def test_iki_yildan_on_yila_kadar_tasma_yok(self) -> None:
+        for n in (2, 3, 5, 8, 10):
+            with self.subTest(yil=n):
+                self.assertEqual(self._tasan(n), [])
+
+
+def _mukayese_data(kapanislar: list) -> list[list[str]]:
+    """mukayese_tablosu'nun ürettiği hücre matrisi (ölçüm için yeniden kurulur)."""
+    from domain.ai_yorum import degisim_basligi, ortak_pencere, yillar_tablosu
+    yillar, bolumler = yillar_tablosu(kapanislar)
+    ortak = ortak_pencere(kapanislar)
+
+    def _bas(yil: int) -> str:
+        if ortak:
+            return str(yil)
+        k = next((x for x in kapanislar if x.yil == yil), None)
+        return k.basligi() if k is not None else str(yil)
+
+    data = [[""] + [_bas(y) for y in yillar] + [degisim_basligi(yillar)]]
+    for bolum in bolumler:
+        for satir in bolum.satirlar:
+            data.append([satir.etiket, *satir.hucreler, satir.degisim])
+    return data
+
+
 if __name__ == "__main__":
     unittest.main()

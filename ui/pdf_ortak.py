@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
@@ -89,11 +89,18 @@ def tr_tarih(asof: str) -> str:
         return asof
 
 
-def pdf_doc(path: Path, *, title: str, firma: str = "") -> SimpleDocTemplate:
+def pdf_doc(path: Path, *, title: str, firma: str = "",
+            yatay: bool = False) -> SimpleDocTemplate:
+    """
+    Rapor belgesi. `yatay=True` → A4 yatay (297 mm).
+
+    Yatay yalnız GEREKİYORSA kullanılır: on yıl yan yana konan mukayese tablosu dikey
+    sayfaya sığmıyor, sütunlar 11 mm'ye düşüp «41,2 milyon» taşıyordu.
+    """
     # Üst/alt marj kurumsal header/footer bandına yer açacak şekilde geniş.
     return SimpleDocTemplate(
         str(path),
-        pagesize=A4,
+        pagesize=landscape(A4) if yatay else A4,
         leftMargin=18 * mm,
         rightMargin=18 * mm,
         topMargin=26 * mm,
@@ -125,7 +132,9 @@ _LOGO = _logo_yolu()
 def _ciz_header_footer(canvas, doc, *, baslik: str = "") -> None:
     """Her sayfaya kurumsal başlık ile sabit sorumluluk reddi / sayfa altlığını çizer."""
     canvas.saveState()
-    w, h = A4
+    # Sayfa boyu BELGEDEN okunur, A4 varsayılmaz: yatay sayfada header/footer sağ kenarı
+    # sayfanın dışında kalıyordu (297 mm sayfaya 210 mm'lik hesap).
+    w, h = doc.pagesize
     lm, rm = doc.leftMargin, doc.rightMargin
 
     # ---- HEADER ----
@@ -242,12 +251,14 @@ def kurumsal_dipnot(
     kaynak: str = "Mikro ERP kayıtları · Hesap planı: TDHP",
     ek: str = "",
     metin: str = "",
+    en: float = 174 * mm,
 ) -> list:
     """
     PDF içeriğindeki belgeye özgü kurumsal dipnot.
 
     metin verilirse tek paragraf olarak kullanılır; yoksa belge ve kaynak şablonu.
     Genel sorumluluk reddi, tüm sayfalarda ortak footer içinde çizilir.
+    `en`: içerik genişliği (yatay sayfada doc.width verilir).
     """
     sty = ParagraphStyle(
         "ft", fontName=FONT, fontSize=8, textColor=GRAY, leading=10.5, alignment=0,
@@ -267,7 +278,7 @@ def kurumsal_dipnot(
             [Paragraph(kaynak_satir, sty)],
         ]
 
-    t = Table(satirlar, colWidths=[174 * mm])
+    t = Table(satirlar, colWidths=[en])
     t.setStyle(TableStyle([
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
@@ -285,8 +296,9 @@ def dipnot_ekle(
     kaynak: str = "Mikro ERP kayıtları · Hesap planı: TDHP",
     ek: str = "",
     metin: str = "",
+    en: float = 174 * mm,
 ) -> None:
     """İçeriğin altına çizgi + kurumsal dipnot ekler."""
     elems.append(Spacer(1, 10))
     elems.append(HRFlowable(width="100%", thickness=0.4, color=LINE, spaceAfter=4))
-    elems.extend(kurumsal_dipnot(belge=belge, kaynak=kaynak, ek=ek, metin=metin))
+    elems.extend(kurumsal_dipnot(belge=belge, kaynak=kaynak, ek=ek, metin=metin, en=en))

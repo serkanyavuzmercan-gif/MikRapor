@@ -221,6 +221,46 @@ class TestMikroClient(unittest.TestCase):
             client.sql_veri_oku("SELECT 1")
 
 
+class TestZamanAsimiMesaji(unittest.TestCase):
+    """
+    Mikro yanıt vermeyince kullanıcı NE YAPACAĞINI bilmeli.
+
+    Kullanıcı «bazen çok uzun sürüyor, mikro cevap vermiyor olabilir; bu gibi durumda
+    hataları anlayıp hata verecek bir sistem lazım» dedi. Eskiden ekrana ham soket
+    metni («The read operation timed out») çıkıyordu — ne olduğu da ne yapılacağı da
+    belirsizdi.
+    """
+
+    def _client(self, hata: Exception) -> MikroClient:
+        def transport(url: str, body: str, timeout: float):
+            raise hata
+
+        cfg = MikroConfig(base_url="https://m.local", api_key="K", firma_kodu="26",
+                          calisma_yili=2026, kullanici_kodu="U", sifre_gun="S")
+        return MikroClient(cfg, transport=transport, max_attempts=1, timeout=180.0)
+
+    def test_zaman_asimi_ayri_sinif(self) -> None:
+        from infra.mikro_api import MikroZamanAsimiError
+        with self.assertRaises(MikroZamanAsimiError) as ctx:
+            self._client(TimeoutError("timed out")).sql_veri_oku("SELECT 1")
+        mesaj = str(ctx.exception)
+        self.assertIn("Mikro yanıt vermedi", mesaj)
+        self.assertIn("180", mesaj)                 # kaç saniye beklendi
+        self.assertIn("daraltıp", mesaj)            # ne yapılacağı
+
+    def test_zaman_asimi_da_mikro_hatasidir(self) -> None:
+        """Sekmelerdeki «except MikroAPIError» yolları bozulmamalı."""
+        with self.assertRaises(MikroAPIError):
+            self._client(TimeoutError("timed out")).sql_veri_oku("SELECT 1")
+
+    def test_diger_ag_hatasi_eski_mesajla_kalir(self) -> None:
+        from infra.mikro_api import MikroZamanAsimiError
+        with self.assertRaises(MikroAPIError) as ctx:
+            self._client(ConnectionRefusedError("refused")).sql_veri_oku("SELECT 1")
+        self.assertNotIsInstance(ctx.exception, MikroZamanAsimiError)
+        self.assertIn("bağlantı hatası", str(ctx.exception))
+
+
 class TestSqlParams(unittest.TestCase):
     def test_iso_tarih_ok(self) -> None:
         from infra.sql_params import iso_tarih
