@@ -401,6 +401,7 @@ class TestStokMaliyetTeshis(unittest.TestCase):
         sql = c.sorgular[0]
         grup = sql.split("GROUP BY")[1]
         self.assertIn("sth_tip", grup)
+        self.assertIn("CONVERT(char(7)", sql)
         self.assertIn("sth_evraktip", grup)
         self.assertIn("SUM(sth_tutar) AS tutar", sql)
         self.assertIn(">= '2026-01-01'", sql)

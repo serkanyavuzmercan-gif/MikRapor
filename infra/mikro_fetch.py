@@ -193,12 +193,13 @@ def fetch_stok_maliyet_teshis(
             f"SUM(CASE WHEN {k} <> 0 THEN 1 ELSE 0 END) AS {ad}_dolu"
         )
     sql = (
-        f"SELECT YEAR({tarih}) AS yil, sth_tip, sth_evraktip, COUNT(*) AS adet, "
-        "SUM(sth_tutar) AS tutar, SUM(sth_miktar) AS miktar, "
+        f"SELECT CONVERT(char(7), {tarih}, 126) AS ay, sth_tip, sth_evraktip, "
+        "COUNT(*) AS adet, SUM(sth_tutar) AS tutar, SUM(sth_miktar) AS miktar, "
         + ", ".join(kolonlar) +
         " FROM STOK_HAREKETLERI WITH (NOLOCK) "
         f"WHERE {tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}' "
-        f"GROUP BY YEAR({tarih}), sth_tip, sth_evraktip ORDER BY yil, sth_tip, sth_evraktip"
+        f"GROUP BY CONVERT(char(7), {tarih}, 126), sth_tip, sth_evraktip "
+        "ORDER BY ay, sth_tip, sth_evraktip"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
