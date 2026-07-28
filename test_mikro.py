@@ -299,5 +299,60 @@ class TestCancelToken(unittest.TestCase):
         self.assertIsNone(aktif_iptal())
 
 
+class _SqlYakala:
+    """sql_veri_oku'yu yakalayan sahte istemci — kurulan SQL doğrulanabilsin."""
+
+    def __init__(self) -> None:
+        self.sorgular: list[str] = []
+        self.cfg = MikroConfig(
+            base_url="https://ornek.local", api_key="k", firma_kodu="20",
+            calisma_yili=2025, kullanici_kodu="u", sifre_gun="s")
+
+    def sql_veri_oku(self, sql: str, **_kw) -> dict:
+        self.sorgular.append(sql)
+        return {"Data": []}
+
+
+class TestStokEvraktipTeshis(unittest.TestCase):
+    """
+    Şüpheli bir hareket türünü açan teşhis sorguları.
+
+    Canlıda tip=0/evraktip=12 satır başına ~238 milyon TL veriyordu; bu sorgular
+    o toplamın birkaç bozuk kayıttan mı yoksa alanın anlamından mı geldiğini ayırır.
+    """
+
+    def test_yillik_tip_ve_evraktipi_suzer(self) -> None:
+        from infra.mikro_fetch import fetch_stok_evraktip_yillik
+        c = _SqlYakala()
+        fetch_stok_evraktip_yillik(c, "2021-01-01", "2025-12-31", 0, 12)
+        sql = c.sorgular[0]
+        self.assertIn("sth_tip = 0 AND sth_evraktip = 12", sql)
+        self.assertIn("MAX(sth_tutar)", sql)          # aykırı satır görünsün
+        self.assertIn(">= '2021-01-01'", sql)
+        self.assertIn("< '2026-01-01'", sql)          # bitiş günü tam dahil
+
+    def test_tepe_satirlar_buyukten_kucuge(self) -> None:
+        from infra.mikro_fetch import fetch_stok_evraktip_tepe
+        c = _SqlYakala()
+        fetch_stok_evraktip_tepe(c, "2021-01-01", "2025-12-31", 1, 0, adet=5)
+        sql = c.sorgular[0]
+        self.assertIn("TOP 5", sql)
+        self.assertIn("ORDER BY sth_tutar DESC", sql)
+        self.assertIn("sth_tip = 1 AND sth_evraktip = 0", sql)
+
+    def test_tip_evraktip_sayiya_zorlanir(self) -> None:
+        """tip/evraktip SQL'e gömülüyor — metin geçirilirse enjeksiyon olurdu."""
+        from infra.mikro_fetch import fetch_stok_evraktip_yillik
+        c = _SqlYakala()
+        with self.assertRaises(ValueError):
+            fetch_stok_evraktip_yillik(c, "2021-01-01", "2025-12-31", "0; DROP TABLE x--", 12)
+
+    def test_tepe_adedi_sinirli(self) -> None:
+        from infra.mikro_fetch import fetch_stok_evraktip_tepe
+        c = _SqlYakala()
+        fetch_stok_evraktip_tepe(c, "2021-01-01", "2025-12-31", 0, 12, adet=10_000)
+        self.assertIn("TOP 100", c.sorgular[0])
+
+
 if __name__ == "__main__":
     unittest.main()
