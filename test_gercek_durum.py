@@ -252,5 +252,43 @@ class TestGercekDurum(unittest.TestCase):
         self.assertEqual(gd.trend, [])
 
 
+class TestAlisIrsaliyeMakul(unittest.TestCase):
+    """
+    Bilgi amaçlı gösterilen alış irsaliyesi tutarı gerçek mal olabilir mi?
+
+    Canlıda tek bir hatalı kayıt (2 adet mala 3,33 trilyon TL) bu satırı fatura
+    toplamının 25.000 katına çıkardı. Hesaba girmiyor ama ekranda durunca okuyan
+    haklı olarak tablonun tamamından şüphe ediyor.
+    """
+
+    @staticmethod
+    def _gd(alis_irsaliye: float):
+        return build_gercek_durum(stok_rows=[
+            {"sth_tip": 1, "sth_evraktip": 1, "tutar": 40000.0, "miktar": 100, "adet": 10},
+            {"sth_tip": 0, "sth_evraktip": 3, "tutar": 30000.0, "miktar": 90, "adet": 8},
+            {"sth_tip": 0, "sth_evraktip": 12, "tutar": alis_irsaliye, "miktar": 2, "adet": 1},
+        ])
+
+    def test_normal_irsaliye_gosterilir(self) -> None:
+        self.assertTrue(self._gd(20_000.0).alis_irsaliye_makul)
+
+    def test_faturanin_birkac_kati_hala_makul(self) -> None:
+        """İrsaliye ile fatura aynı malın iki yüzü; birkaç kat fark olağan."""
+        self.assertTrue(self._gd(90_000.0).alis_irsaliye_makul)
+
+    def test_bozuk_kayit_makul_degil(self) -> None:
+        self.assertFalse(self._gd(3_333_333_333_340.0).alis_irsaliye_makul)
+
+    def test_irsaliye_yoksa_uyari_yok(self) -> None:
+        self.assertTrue(self._gd(0.0).alis_irsaliye_makul)
+
+    def test_fatura_yokken_kiyas_yapilamaz(self) -> None:
+        """Faturasız irsaliye tek başına ölçülemez — makul sayılmaz, uyarı çıkar."""
+        gd = build_gercek_durum(stok_rows=[
+            {"sth_tip": 0, "sth_evraktip": 12, "tutar": 5_000_000.0, "miktar": 2, "adet": 1},
+        ])
+        self.assertFalse(gd.alis_irsaliye_makul)
+
+
 if __name__ == "__main__":
     unittest.main()

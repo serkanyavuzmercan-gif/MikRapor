@@ -69,11 +69,21 @@ def _detay(client: MikroClient, bas: str, bit: str, tip: int, evraktip: int) -> 
         print(f"  {_s(r, 'tarih')[:10]:>10} {evrak:>14} {_s(r, 'sth_stok_kod'):>22} "
               f"{_f(r.get('sth_miktar', r.get('STH_MIKTAR'))):>14,.2f} "
               f"{tl(_f(r.get('sth_tutar', r.get('STH_TUTAR')))):>22}")
-    if tepe_toplam > 0.5 * toplam and toplam > 0:
-        print("\n  → Toplamı bir avuç satır taşıyor: bozuk/aykırı KAYIT sorunu.")
+    satir_sayisi = sum(_f(r.get("adet", r.get("ADET"))) for r in yillik)
+    birim = toplam / satir_sayisi if satir_sayisi else 0.0
+    if toplam <= 0:
+        return
+    if tepe_toplam > 0.5 * toplam:
+        print(f"\n  → Toplamın %{tepe_toplam / toplam * 100:.1f}'ini yukarıdaki birkaç satır "
+              "taşıyor: BOZUK/AYKIRI KAYIT. Mikro'da o evrakı düzeltin.")
+    elif birim > _MAKUL_SATIR_TUTARI:
+        print(f"\n  → Tutar satırlara yayılmış ama satır başı {tl(birim)}: "
+              "sth_tutar bu evraktipte TL tutarı olmayabilir.")
     else:
-        print("\n  → Tutar tüm satırlara yayılmış: alanın anlamı sandığımız gibi değil "
-              "(sth_tutar bu evraktipte TL tutarı olmayabilir).")
+        print(f"\n  → Tutar {int(satir_sayisi):,} satıra yayılmış, satır başı {tl(birim)} — "
+              "rakamlar normal.".replace(",", "."))
+        print("     Yani bu gerçek ve sistematik bir hareket türü; sorun 'bozuk kayıt' değil,")
+        print("     bu evrak tipinin NE olduğu. Mikro'da yukarıdaki evrak no'lardan birini açın.")
 
 
 def main() -> None:
