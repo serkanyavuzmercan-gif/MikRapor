@@ -432,6 +432,81 @@ class TestFaturalasmaTeshis(unittest.TestCase):
         self.assertIn("sth_fat_uid", grup)                           # damga kırılımda
 
 
+class TestFaturaOrtakligi(unittest.TestCase):
+    """
+    Fatura satırları irsaliyelerin KOPYASI mı, ayrı satışlar mı?
+
+    Damgalama modeli anlaşıldıktan sonra kalan tek soru buydu: canlıda 262 fatura
+    satırı 1,1 milyon TL taşıyor (satışın %5,3'ü) — kopyaysa o kadarı iki kez
+    sayılıyor. Kesişimi JOIN'siz ölçüyoruz; self-join dev tabloyu taratabilirdi.
+    """
+
+    def test_kesisim_joinsiz_olculur(self) -> None:
+        from infra.mikro_fetch import fetch_stok_fatura_ortakligi
+        c = _SqlYakala()
+        fetch_stok_fatura_ortakligi(c, "2026-01-01", "2026-07-28")
+        sql = c.sorgular[0]
+        self.assertNotIn("JOIN", sql.upper())
+        self.assertIn("AS irsaliye_fatura", sql)
+        self.assertIn("AS fatura_fatura", sql)
+        self.assertIn("AS birlesik_fatura", sql)
+        self.assertIn("sth_evraktip IN (1, 4)", sql)
+
+
+class TestMaliyetHukmu(unittest.TestCase):
+    """
+    Hüküm mantığı — canlı rakamlarla.
+
+    İki tuzak vardı: (1) boşluk her aya dağılmışken «maliyet güncellemesi geç kaldı»
+    demek, (2) aykırı bir kolonun (canlıda «orjinal» 5,2 milyon) gerçek mutabakatı
+    (ana 11,7M · alternatif 12,1M) gizlemesi ve alt sınırı aşağı çekmesi.
+    """
+
+    _OLCUM = [("ana", "satır toplamı", 11_698_209.18, 42.9),
+              ("alternatif", "birim × miktar", 12_119_498.15, 40.8),
+              ("orjinal", "satır toplamı", 5_177_027.23, 74.7)]
+
+    def test_aykiri_kolon_mutabakati_bozmaz(self) -> None:
+        from stok_diag_cli import _uyusan_kume
+        kume = _uyusan_kume(self._OLCUM)
+        self.assertEqual([k[0] for k in kume], ["ana", "alternatif"])
+        self.assertEqual(min(o[2] for o in kume), 11_698_209.18)   # alt sınır aykırıdan değil
+
+    def test_tek_basina_kalan_kolon_mutabakat_saymaz(self) -> None:
+        from stok_diag_cli import _uyusan_kume
+        self.assertEqual(len(_uyusan_kume([self._OLCUM[2]])), 1)
+
+    def test_dagilmis_bosluk_zamanlama_sorunu_sayilmaz(self) -> None:
+        import contextlib
+        import io
+
+        from stok_diag_cli import _maliyet_hukmu
+        aylik = {"2026-01": [2411, 1980], "2026-02": [2100, 1910], "2026-03": [2748, 2501],
+                 "2026-04": [2706, 2448], "2026-05": [2366, 2110], "2026-06": [3260, 2981],
+                 "2026-07": [2585, 2328]}
+        cikti = io.StringIO()
+        with contextlib.redirect_stdout(cikti):
+            _maliyet_hukmu(aylik, self._OLCUM, 20_481_407.46, 18176)
+        metin = cikti.getvalue()
+        self.assertIn("HER AYA dağılmış", metin)
+        self.assertNotIn("Maliyet Güncelleme", metin)     # sebep zamanlama DEĞİL
+        self.assertIn("MUTABAKAT", metin)
+        self.assertIn("11.698.209,18", metin)             # alt sınır uyuşan kümeden
+
+    def test_son_aylarda_toplanan_bosluk_zamanlama_sorunudur(self) -> None:
+        import contextlib
+        import io
+
+        from stok_diag_cli import _maliyet_hukmu
+        aylik = {"2026-01": [1000, 1000], "2026-02": [1000, 1000], "2026-03": [1000, 1000],
+                 "2026-04": [1000, 1000], "2026-05": [1000, 990], "2026-06": [1000, 200],
+                 "2026-07": [1000, 0]}
+        cikti = io.StringIO()
+        with contextlib.redirect_stdout(cikti):
+            _maliyet_hukmu(aylik, self._OLCUM, 20_481_407.46, 7000)
+        self.assertIn("Maliyet Güncelleme", cikti.getvalue())
+
+
 class TestKrediKartiSorgusu(unittest.TestCase):
     """
     Açık kart borcu sorgusu — dev fiş tablosunu taramamalı.

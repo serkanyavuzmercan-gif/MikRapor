@@ -246,6 +246,36 @@ def fetch_stok_faturalasma(
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+def fetch_stok_fatura_ortakligi(
+    client: MikroClient, bas: str, bit: str,
+) -> list[dict[str, Any]]:
+    """
+    Fatura satırları irsaliyelerin KOPYASI mı, yoksa ayrı satışlar mı? — teşhis içindir.
+
+    Damgalama modeli anlaşıldıktan sonra geriye tek soru kalıyor: evraktip 4 satırları,
+    evraktip 1 satırlarıyla AYNI faturaya mı ait? Aynıysa o fatura hem irsaliyeden hem
+    fatura satırından sayılır (kısmi mükerrerlik); ayrıysa irsaliyesiz doğrudan
+    satışlardır ve toplama girmeleri gerekir.
+
+    Kesişimi JOIN'siz ölçüyoruz: ayrı ayrı sayılan tekil fatura kimliklerinin toplamı
+    birleşik sayıya eşitse kümeler AYRIKTIR. Self-join `sth_fat_uid` indeksli değilse
+    dev tabloyu taratıp dakikalarca sürebilirdi (kredi kartı sorgusunda yaşandı).
+    """
+    bas, bit = _aralik(bas, bit)
+    tarih = _stok_tarih_sql()
+    sql = (
+        "SELECT "
+        "COUNT(DISTINCT CASE WHEN sth_evraktip = 1 THEN sth_fat_uid END) AS irsaliye_fatura, "
+        "COUNT(DISTINCT CASE WHEN sth_evraktip = 4 THEN sth_fat_uid END) AS fatura_fatura, "
+        "COUNT(DISTINCT sth_fat_uid) AS birlesik_fatura "
+        "FROM STOK_HAREKETLERI WITH (NOLOCK) "
+        f"WHERE {tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}' "
+        "AND sth_tip = 1 AND sth_evraktip IN (1, 4) "
+        f"AND sth_fat_uid IS NOT NULL AND CONVERT(char(36), sth_fat_uid) <> {_BOS_UID}"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
 def fetch_stok_evraktip_yillik(
     client: MikroClient, bas: str, bit: str, tip: int, evraktip: int,
 ) -> list[dict[str, Any]]:
