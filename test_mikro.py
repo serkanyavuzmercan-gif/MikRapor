@@ -651,3 +651,68 @@ class TestMizanSorgusu(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTeshisHukumEsikleri(unittest.TestCase):
+    """
+    Hüküm eşikleri — canlı rakamlarla. İkisi de gerçek hataydı.
+
+    (1) Satışta 5.494 faturadan 1'i çakışıyordu; «ortak > 0» eşiği «Yalnız Fatura'ya
+        geç» diyordu. O ayar satışı 20,5 milyondan 1,1 milyona düşürürdü — teşhis
+        aracının verebileceği en pahalı yanlış tavsiye.
+    (2) Alışta girişlerin %100'ü depo transferiydi ve teşhis bunu kendi bastığı hâlde
+        «açıklanamıyor» dedi: koşul sırası, dışarıdan gelen malın alış faturasına
+        YAKIN olmasını arıyordu, sıfır olmasını değil.
+    """
+
+    @staticmethod
+    def _cikti(fn, *a, **kw) -> str:
+        import contextlib
+        import io
+        c = io.StringIO()
+        with contextlib.redirect_stdout(c):
+            fn(*a, **kw)
+        return c.getvalue()
+
+    def test_tek_cakisma_ayar_degistirtmez(self) -> None:
+        from unittest.mock import patch
+
+        import stok_diag_cli as sd
+        with patch.object(sd, "donem_satirlari", return_value=[{
+                "irsaliye_fatura": 5413, "fatura_fatura": 82, "birlesik_fatura": 5494}]):
+            m = self._cikti(sd._fatura_ortakligi, None, "2026-01-01", "2026-07-28", 1.0)
+        self.assertIn("AYRIK", m)
+        self.assertIn("ihmal edilebilir", m)
+        self.assertNotIn("Yalnız Fatura", m)
+
+    def test_gercek_mukerrerlik_uyarir(self) -> None:
+        from unittest.mock import patch
+
+        import stok_diag_cli as sd
+        # Faturaların yarısı hem irsaliye hem fatura satırı taşıyor → gerçek sorun.
+        with patch.object(sd, "donem_satirlari", return_value=[{
+                "irsaliye_fatura": 1000, "fatura_fatura": 1000, "birlesik_fatura": 1500}]):
+            m = self._cikti(sd._fatura_ortakligi, None, "2026-01-01", "2026-07-28", 1.0)
+        self.assertIn("Yalnız Fatura", m)
+
+    def test_tamami_transfer_ise_alis_dogru_sayiliyor(self) -> None:
+        from unittest.mock import patch
+
+        import stok_diag_cli as sd
+        kova = {(12, 0): [6592.0, 22_594_651.34], (3, 1): [2492.0, 14_665_701.10]}
+        with patch.object(sd, "donem_satirlari", return_value=[
+                {"transfer": 1, "tutar": 22_594_651.34, "adet": 6592}]):
+            m = self._cikti(sd._alis_teshisi, None, "2026-01-01", "2026-07-28", kova)
+        self.assertIn("TAMAMI depolar arası transfer", m)
+        self.assertIn("DOĞRU", m)
+        self.assertNotIn("açıklanmıyor", m)
+
+    def test_disaridan_gelen_mal_varsa_transfer_hukmu_verilmez(self) -> None:
+        from unittest.mock import patch
+
+        import stok_diag_cli as sd
+        kova = {(12, 0): [100.0, 20_000_000.0], (3, 1): [50.0, 14_000_000.0]}
+        with patch.object(sd, "donem_satirlari", return_value=[
+                {"transfer": 0, "tutar": 20_000_000.0, "adet": 100}]):
+            m = self._cikti(sd._alis_teshisi, None, "2026-01-01", "2026-07-28", kova)
+        self.assertNotIn("TAMAMI depolar arası transfer", m)
