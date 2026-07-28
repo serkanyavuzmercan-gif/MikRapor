@@ -123,6 +123,19 @@ def _cha_tl_sql(alias: str = "c") -> str:
     )
 
 
+def _stok_tarih_sql() -> str:
+    """Belge tarihi doluysa onu, değilse hareket tarihini kullanan tarih ifadesi."""
+    return (
+        "CASE WHEN sth_belge_tarih IS NOT NULL AND sth_belge_tarih >= '2000-01-01' "
+        "THEN sth_belge_tarih ELSE sth_tarih END"
+    )
+
+
+def _tip_evrak(tip: int, evraktip: int) -> str:
+    """tip/evraktip SQL'e gömülür; int'e zorlayarak enjeksiyona kapatır."""
+    return f"sth_tip = {int(tip)} AND sth_evraktip = {int(evraktip)}"
+
+
 def fetch_stok_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
     """
     Dönem (bas..bit) için STOK_HAREKETLERI özeti: hareket türü başına tutar/miktar/adet.
@@ -136,10 +149,7 @@ def fetch_stok_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, A
     Sınıflandırma analizöre (gercek_durum) bırakılır; burada yalnız ham kırılım döner.
     """
     bas, bit = _aralik(bas, bit)
-    tarih = (
-        "CASE WHEN sth_belge_tarih IS NOT NULL AND sth_belge_tarih >= '2000-01-01' "
-        "THEN sth_belge_tarih ELSE sth_tarih END"
-    )
+    tarih = _stok_tarih_sql()
     sql = (
         "SELECT sth_tip, sth_evraktip, "
         "SUM(sth_tutar) AS tutar, SUM(sth_miktar) AS miktar, COUNT(*) AS adet "
@@ -150,13 +160,51 @@ def fetch_stok_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, A
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+def fetch_stok_evraktip_yillik(
+    client: MikroClient, bas: str, bit: str, tip: int, evraktip: int,
+) -> list[dict[str, Any]]:
+    """
+    Tek bir (tip, evraktip) hareketinin YIL YIL dökümü — teşhis içindir.
+
+    Toplam saçma çıktığında (canlıda evraktip 12 için 3,3 trilyon TL) sorunun tüm
+    yıllara yayılmış sistematik bir şey mi, yoksa birkaç bozuk satır mı olduğu
+    ancak azami satır tutarıyla birlikte görülür.
+    """
+    bas, bit = _aralik(bas, bit)
+    tarih = _stok_tarih_sql()
+    sql = (
+        f"SELECT YEAR({tarih}) AS yil, COUNT(*) AS adet, SUM(sth_tutar) AS tutar, "
+        "MAX(sth_tutar) AS azami, SUM(sth_miktar) AS miktar "
+        "FROM STOK_HAREKETLERI WITH (NOLOCK) "
+        f"WHERE {tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}' "
+        f"AND {_tip_evrak(tip, evraktip)} "
+        f"GROUP BY YEAR({tarih}) ORDER BY yil"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
+def fetch_stok_evraktip_tepe(
+    client: MikroClient, bas: str, bit: str, tip: int, evraktip: int, adet: int = 15,
+) -> list[dict[str, Any]]:
+    """Aynı hareketin EN BÜYÜK `adet` satırı — tutarı şişiren kayıt tek tek görünsün."""
+    bas, bit = _aralik(bas, bit)
+    tarih = _stok_tarih_sql()
+    n = max(1, min(int(adet), 100))
+    sql = (
+        f"SELECT TOP {n} {tarih} AS tarih, sth_evrakno_seri, sth_evrakno_sira, "
+        "sth_belge_no, sth_stok_kod, sth_cari_kodu, sth_miktar, sth_tutar "
+        "FROM STOK_HAREKETLERI WITH (NOLOCK) "
+        f"WHERE {tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}' "
+        f"AND {_tip_evrak(tip, evraktip)} "
+        "ORDER BY sth_tutar DESC"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
 def fetch_stok_aylik(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
     """Dönem içi STOK_HAREKETLERI'nin AYLIK kırılımı (trend için): ay × tip × evraktip → tutar."""
     bas, bit = _aralik(bas, bit)
-    tarih = (
-        "CASE WHEN sth_belge_tarih IS NOT NULL AND sth_belge_tarih >= '2000-01-01' "
-        "THEN sth_belge_tarih ELSE sth_tarih END"
-    )
+    tarih = _stok_tarih_sql()
     sql = (
         f"SELECT CONVERT(char(7), {tarih}, 126) AS ay, sth_tip, sth_evraktip, "
         "SUM(sth_tutar) AS tutar "
