@@ -43,8 +43,41 @@ sonuçtur; onun adına karar vermiyoruz.
 - Akış sorguları `donem_satirlari` / `donem_toplami` ile aralık içinde bölünür.
 - Bakiye/fotoğraf sorguları aralığın **bitiş** tarihinde okunur.
 
+### Tek istisna: kullanıcının açıkça istemesi
+
+Trend & Oranlar'daki **«Geçen yılın aynı dönemiyle karşılaştır»** kutusu işaretlenirse
+tablo, seçili dönemin bir yıl öncesini de getirir. Bu kuralı bozmaz: program kendi
+kafasına göre dışarı çıkmıyor, kullanıcı istediği için çıkıyor ve **ne geldiği sütun
+başlığında yazıyor** (`28.07.2024–28.07.2025`). Varsayılan kapalıdır.
+
+Buna ihtiyaç var çünkü takvim yılına bölünmüş sütunlar farklı uzunlukta olabilir:
+canlıda 2025 sütunu 5 ay, 2026 sütunu 7 aydı ve tablo «%+4 büyüme» gösteriyordu —
+aylığa indirilince satış **%25 düşmüştü**. Eşit uzunlukta iki pencere olmadan akış
+kalemleri (satış, kâr) kıyaslanamaz. Bakiye kalemleri etkilenmez.
+
 İhlali engelleyen testler: `test_mukayese_fetch.TestSecilenAralikKutsal`,
-`TestYardimciPencereKirpma`.
+`TestYardimciPencereKirpma`, `TestGecenYilAyniDonem`.
+
+---
+
+## 1b. HANGİ SEKME HANGİ KAYNAKTAN
+
+**İlk iki sekme (Bilanço, Gelir Tablosu) RESMİ kayda dayanır; diğer hepsi
+CANLI/REEL veriye.**
+
+| Kaynak | Nereden | Hangi sekmeler |
+|---|---|---|
+| Resmi | mizan, GL 6xx | Bilanço, Gelir Tablosu |
+| Canlı | STOK_HAREKETLERI, cari hareketler, GL nakit hesapları | diğer hepsi |
+
+Mukayese tablosu mizandan kurulduğu için, satışın maliyeti (62) işlenmemiş bir yılda
+kârlılığın tamamı boşalıyordu — oysa Nakit & Kârlılık aynı dönemin kârlılığını depodan
+geçen maldan zaten hesaplıyordu. Tabloya 62'ye hiç dokunmayan canlı satırlar eklendi:
+**Fiili Satış · Fiili Alış · Fiili Al-Sat Farkı · Fiili Al-Sat Marjı.**
+
+Stok *seviyesi* canlı veriden hesaplanamaz: geçmişteki bütün hareketlerin toplamıdır,
+yani aralığın dışına çıkmayı gerektirir. Tek meşru kaynağı mizandır ve maliyet
+işlenmemişse şişiktir → `—`.
 
 ---
 

@@ -217,7 +217,15 @@ class YilKapanis:
         return f"{self.bas[8:10]}.{self.bas[5:7]}–{self.bit[8:10]}.{self.bit[5:7]}"
 
     def basligi(self) -> str:
-        """Sütun başlığı: «2025» ya da «2025 (28.07–31.12)»."""
+        """
+        Sütun başlığı: «2025», «2025 (28.07–31.12)» ya da «28.07.2024–28.07.2025».
+
+        Dönem iki takvim yılına yayılıyorsa (geçen yılın aynı dönemi sütunu) yıl tek
+        başına yanıltır — o yüzden başlıkta iki tarih de yılıyla birlikte yazılır.
+        """
+        if len(self.bas) == 10 and len(self.bit) == 10 and self.bas[:4] != self.bit[:4]:
+            return (f"{self.bas[8:10]}.{self.bas[5:7]}.{self.bas[:4]}–"
+                    f"{self.bit[8:10]}.{self.bit[5:7]}.{self.bit[:4]}")
         p = self.pencere()
         return f"{self.yil} ({p})" if p else str(self.yil)
 

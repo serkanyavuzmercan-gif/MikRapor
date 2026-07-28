@@ -241,6 +241,63 @@ def yil_kapanisi(client: MikroClient, yil: int, *, bas: str | None = None,
         ta=ta, nakit_gl=_dene(lambda: fetch_nakit_bakiye_gl(client, son)))
 
 
+def _bir_yil_geri(gun: str) -> str:
+    """Aynı ay-gün, bir önceki yıl. 29 Şubat → 28 Şubat (o yıl yoksa)."""
+    d = date.fromisoformat(gun)
+    try:
+        return d.replace(year=d.year - 1).isoformat()
+    except ValueError:                       # 29 Şubat, önceki yıl artık değil
+        return d.replace(year=d.year - 1, day=28).isoformat()
+
+
+def onceki_donem(bas: str, bit: str) -> tuple[str, str]:
+    """Seçili dönemin bir yıl öncesi — AYNI UZUNLUKTA, aynı ay-günlerde."""
+    return _bir_yil_geri(bas), _bir_yil_geri(bit)
+
+
+def donem_kapanisi(
+    cfg: MikroConfig, bas: str, bit: str,
+    *, client: MikroClient | None = None,
+    ta: TahsilatAlacak | None = None,
+    bildir: Callable[[str], None] | None = None,
+) -> YilKapanis | None:
+    """
+    TEK BİR DÖNEMİN karşılaştırma sütunu — dönem yıl sınırını aşsa bile.
+
+    `yil_kapanisi` tek takvim yılı içindir; bu ise «28.07.2024–28.07.2025» gibi keyfi
+    bir aralığı okur. Akışlar dönemin bütün veritabanlarından toplanır, bakiyeler
+    bitişin veritabanından okunur — kural her yerde aynı.
+
+    «Geçen yılın aynı dönemi» sütunu bunun üzerine kurulur: iki sütun da AYNI
+    UZUNLUKTA olduğu için satış ve kâr gerçekten kıyaslanabilir. Takvim yılına bölünmüş
+    sütunlar (5 ay vs 7 ay) bunu yapamıyordu — canlıda «%+4 büyüme» görünen rakam
+    aylığa indirilince %25 düşüştü.
+    """
+    if bildir:
+        bildir(f"{bas} – {bit} dönemi çekiliyor…")
+    son_yil = int(bit[:4])
+    c = client or yil_client(cfg, son_yil)
+    b = _dene(lambda: build_bilanco(fetch_mizan(c, bit), asof=bit))
+    if b is None:
+        return None
+    gt = build_gelir_tablosu(
+        donem_satirlari(cfg, bas, bit, fetch_gelir_tablosu), bas=bas, bit=bit)
+    if ta is None:
+        ta = _dene(lambda: build_tahsilat_alacak(
+            fetch_acik_kalemler(c, bit, bas, bit),
+            vade_gun_map=_dene(lambda: fetch_cari_vade_gun(c), {}) or {},
+            bas=bas, bit=bit, top_n=1))
+    ayarlar = load_gercek_durum_ayarlar()
+    stok = _dene(lambda: _siniflandir_stok(
+        donem_satirlari(cfg, bas, bit, fetch_stok_ozet),
+        ayarlar.satis_bazi, ayarlar.alis_bazi))
+    k = kapanis_kur(
+        son_yil, tam=tam_yil(bas, bit), bas=bas, bit=bit, b=b, gt=gt, stok=stok,
+        doviz=_dene(lambda: fetch_doviz_ozet(c, bas, bit), {}),
+        ta=ta, nakit_gl=_dene(lambda: fetch_nakit_bakiye_gl(c, bit)))
+    return k if k.dolu else None
+
+
 def pencere_kirp(bas: str, bit: str, ufuk_bas: str) -> str:
     """
     Bir yardımcı pencerenin başlangıcını seçili aralığın DIŞINA taşmayacak şekilde kırpar.

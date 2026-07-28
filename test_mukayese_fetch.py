@@ -205,6 +205,70 @@ class TestSecilenAralikKutsal(unittest.TestCase):
             YilKapanis(yil=2024, bas="2024-01-01", bit="2024-12-31").basligi(), "2024")
 
 
+class TestGecenYilAyniDonem(unittest.TestCase):
+    """
+    Kullanıcı AÇIKÇA isterse geçen yılın aynı dönemi gelir — kural bozulmadan.
+
+    Takvim yılına bölünmüş sütunlar farklı uzunlukta olabiliyor: canlıda 2025 sütunu
+    5 ay, 2026 sütunu 7 aydı ve tablo «%+4 büyüme» gösteriyordu. Aylığa indirilince
+    satış %25 DÜŞMÜŞTÜ. Eşit uzunlukta iki pencere olmadan akış kalemleri kıyaslanamaz.
+
+    Fark şurada: program kendi kafasına göre aralık dışına çıkmıyor, kullanıcı istediği
+    için çıkıyor ve ne geldiği sütun başlığında yazıyor.
+    """
+
+    def test_donem_aynen_bir_yil_geri_kayar(self) -> None:
+        from infra.mukayese_fetch import onceki_donem
+        self.assertEqual(onceki_donem("2025-07-28", "2026-07-28"),
+                         ("2024-07-28", "2025-07-28"))
+
+    def test_iki_pencere_esit_uzunlukta(self) -> None:
+        from datetime import date
+
+        from infra.mukayese_fetch import onceki_donem
+        bas, bit = "2025-07-28", "2026-07-28"
+        o_bas, o_bit = onceki_donem(bas, bit)
+        gun = (date.fromisoformat(bit) - date.fromisoformat(bas)).days
+        o_gun = (date.fromisoformat(o_bit) - date.fromisoformat(o_bas)).days
+        self.assertLessEqual(abs(gun - o_gun), 1)   # yalnız artık gün farkı
+
+    def test_29_subat_gecerli_tarihe_iner(self) -> None:
+        from infra.mukayese_fetch import onceki_donem
+        self.assertEqual(onceki_donem("2024-02-29", "2024-06-30"),
+                         ("2023-02-28", "2023-06-30"))
+
+    def test_yila_yayilan_sutun_basliginda_yil_da_yazar(self) -> None:
+        """«28.07–28.07» iki farklı yılı gösteremez; başlık tam tarih yazmalı."""
+        from domain.ai_yorum import YilKapanis
+        k = YilKapanis(yil=2026, bas="2025-07-28", bit="2026-07-28", tam=False)
+        self.assertEqual(k.basligi(), "28.07.2025–28.07.2026")
+
+    def test_donem_kapanisi_akisi_boler_bakiyeyi_bolmez(self) -> None:
+        """Dönem iki veritabanına yayılsa da akış birleşir, bakiye bitişten okunur."""
+        from infra.mukayese_fetch import donem_kapanisi
+        akis_pencereleri: list[tuple[str, str]] = []
+        mizan_gunleri: list[str] = []
+
+        def gelir(client, b, e):
+            akis_pencereleri.append((b, e))
+            return []
+
+        with patch("infra.mukayese_fetch.yil_client", side_effect=lambda _c, y: f"c{y}"), \
+                patch("infra.mukayese_fetch.fetch_gelir_tablosu", side_effect=gelir), \
+                patch("infra.mukayese_fetch.fetch_stok_ozet", return_value=[]), \
+                patch("infra.mukayese_fetch.fetch_mizan",
+                      side_effect=lambda c, g: mizan_gunleri.append(g) or []), \
+                patch("infra.mukayese_fetch.fetch_acik_kalemler", return_value=[]), \
+                patch("infra.mukayese_fetch.fetch_cari_vade_gun", return_value={}), \
+                patch("infra.mukayese_fetch.fetch_doviz_ozet", return_value={}), \
+                patch("infra.mukayese_fetch.fetch_nakit_bakiye_gl", return_value=0.0):
+            donem_kapanisi(_CFG, "2024-07-28", "2025-07-28")
+
+        self.assertEqual(akis_pencereleri,                       # akış: iki parça
+                         [("2024-07-28", "2024-12-31"), ("2025-01-01", "2025-07-28")])
+        self.assertEqual(mizan_gunleri, ["2025-07-28"])          # bakiye: tek gün
+
+
 class TestYardimciPencereKirpma(unittest.TestCase):
     """«Son 12 ay» / «son 90 gün» gibi referans pencereler de aralığın dışına çıkamaz."""
 
