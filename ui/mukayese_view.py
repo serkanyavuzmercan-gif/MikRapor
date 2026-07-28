@@ -12,6 +12,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
 from domain.ai_yorum import YilKapanis, degisim_basligi, ortak_pencere, yillar_tablosu
+from domain.mizan_bilanco import tl
 from domain.ortak import tr_buyuk
 from ui.gercek_durum_view import _agac, _c, _ic, _tsatir
 from ui.styles import BAD as NEG
@@ -118,6 +119,24 @@ def _degisim_notu(yillar: list[int]) -> str:
     return f"son sütun: {yillar[0]}–{yillar[-2]} ortalamasına göre"
 
 
+def _aykiri_notu(kapanislar: list[YilKapanis]) -> list[tuple[str, str]]:
+    """
+    Toplama girmeyen bozuk stok satırları — elenen SESSİZCE atılmaz.
+
+    Canlıda 2023'te tek bir kayıt 2 adet mala 3,3 trilyon TL yazmıştı; elenmese o yılın
+    Fiili Alış'ı trilyonla çıkardı, elendiği söylenmese kullanıcı eksik rakama bakardı.
+    """
+    var = [k for k in kapanislar if k.aykiri_adet]
+    if not var:
+        return []
+    adet = sum(k.aykiri_adet for k in var)
+    tutar = sum(k.aykiri_tutar for k in var)
+    yillar = ", ".join(str(k.yil) for k in var)
+    return [(f"{yillar}: {adet} bozuk stok kaydı toplamdan çıkarıldı ({tl(tutar)}) — "
+             "satır başına tutar mal hareketi olamayacak kadar büyük, Mikro'da "
+             "düzeltilmeli.", "#8a5a00")]
+
+
 def _kapanis_notu(kapanislar: list[YilKapanis]) -> list[tuple[str, str]]:
     """Maliyet kapanışı yapılmamış yıl varsa kâr hücrelerinin neden boş olduğunu söyle."""
     eksik = [str(k.yil) for k in kapanislar if k.maliyet_eksik]
@@ -202,6 +221,7 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     # unutulmuştu. Tablo dolar; 434.366'yı TL sanmak 47 kat yanlış okumaktır. Birim
     # zaten «DOLAR BAZINDA (USD)» başlığında yazıyor, notta tekrarına gerek yok.
     notlar = [(_pencere_notu(kapanislar), "")] if _pencere_eki(kapanislar) else []
+    notlar += _aykiri_notu(kapanislar)
     notlar += _kapanis_notu(kapanislar)
     # Not etiketleri DÜZ METİN (_ic düz QLabel kurar): «&nbsp;» harfi harfine basılır.
     dipnot = ["«—» hesaplanamadı", "hiç değişmeyen satırlar gizlendi"]

@@ -190,6 +190,8 @@ def kapanis_kur(yil: int, *, tam: bool, b: Bilanco, gt: GelirTablosu,
         faaliyet_gideri=gt.faaliyet_gideri, finansman_gideri=gt.finansman_gideri,
         satis_usd=d.get("satis_usd", 0.0), kur_son=d.get("kur_son", 0.0),
         kur_ort=d.get("kur_ortalama", 0.0),
+        aykiri_adet=int((stok or {}).get("aykiri_adet", 0.0)),
+        aykiri_tutar=(stok or {}).get("aykiri_tutar", 0.0),
         fiili_satis=(stok or {}).get("satis", 0.0),
         fiili_alis=(stok or {}).get("alis", 0.0),
         fiili_var=stok is not None)

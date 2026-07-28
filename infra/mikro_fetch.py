@@ -123,12 +123,20 @@ def _cha_tl_sql(alias: str = "c") -> str:
     )
 
 
-def _stok_tarih_sql() -> str:
+def _stok_tarih_sql(on: str = "") -> str:
     """Belge tarihi doluysa onu, değilse hareket tarihini kullanan tarih ifadesi."""
     return (
-        "CASE WHEN sth_belge_tarih IS NOT NULL AND sth_belge_tarih >= '2000-01-01' "
-        "THEN sth_belge_tarih ELSE sth_tarih END"
+        f"CASE WHEN {on}sth_belge_tarih IS NOT NULL AND {on}sth_belge_tarih >= '2000-01-01' "
+        f"THEN {on}sth_belge_tarih ELSE {on}sth_tarih END"
     )
+
+
+# Bir stok hareketi SATIRI, dönemdeki ORTALAMA satırın bu katından büyükse mal hareketi
+# olamaz. MUTLAK bir TL sınırı (ör. «2 milyon») kurulum bağımlıdır ve bu program Mikro
+# kullanan HER firmaya satılacak: küçük firmada hiçbir şeyi yakalamaz, büyük firmada
+# gerçek faturayı eler. Ölçü verinin kendisinden çıkar (bkz. CLAUDE.md kural 6).
+# Kat bilinçli olarak çok geniş — canlıdaki bozuk kayıt ortalamanın ~3 MİLYAR katıydı.
+AYKIRI_KAT = 10_000.0
 
 
 def _tip_evrak(tip: int, evraktip: int) -> str:
@@ -150,12 +158,27 @@ def fetch_stok_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, A
     """
     bas, bit = _aralik(bas, bit)
     tarih = _stok_tarih_sql()
+    pencere = f"{tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}'"
+    # Aykırı satırlar AYRI toplanır — «tutar» temiz, «aykiri_tutar» elenen.
+    # Eşik dönemin kendi ortalamasından ölçülür (bkz. AYKIRI_KAT). Ortalama okunamazsa
+    # eşik pratikte sonsuzdur: hiçbir satır elenmez, eski davranışa düşülür.
+    esik = (
+        "SELECT ISNULL(NULLIF(AVG(ABS(sth_tutar)), 0) * "
+        f"{AYKIRI_KAT:.1f}, 1E30) AS esik "
+        f"FROM STOK_HAREKETLERI WITH (NOLOCK) WHERE {pencere}"
+    )
+    temiz = "ABS(h.sth_tutar) <= e.esik"
     sql = (
-        "SELECT sth_tip, sth_evraktip, "
-        "SUM(sth_tutar) AS tutar, SUM(sth_miktar) AS miktar, COUNT(*) AS adet "
-        "FROM STOK_HAREKETLERI WITH (NOLOCK) "
-        f"WHERE {tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}' "
-        "GROUP BY sth_tip, sth_evraktip"
+        "SELECT h.sth_tip, h.sth_evraktip, "
+        f"SUM(CASE WHEN {temiz} THEN h.sth_tutar ELSE 0 END) AS tutar, "
+        f"SUM(CASE WHEN {temiz} THEN h.sth_miktar ELSE 0 END) AS miktar, "
+        f"SUM(CASE WHEN {temiz} THEN 1 ELSE 0 END) AS adet, "
+        f"SUM(CASE WHEN {temiz} THEN 0 ELSE 1 END) AS aykiri_adet, "
+        f"SUM(CASE WHEN {temiz} THEN 0 ELSE h.sth_tutar END) AS aykiri_tutar "
+        "FROM STOK_HAREKETLERI h WITH (NOLOCK) "
+        f"CROSS JOIN ({esik}) e "
+        f"WHERE {pencere.replace(tarih, _stok_tarih_sql('h.'))} "
+        "GROUP BY h.sth_tip, h.sth_evraktip"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 

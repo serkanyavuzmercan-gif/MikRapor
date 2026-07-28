@@ -171,6 +171,13 @@ kullanıcı onu kendi seçmediği için sorgulamaz.
 Ölçülen kurulum farkları: faturalaşma kopya satır yaratıyor mu, mal irsaliyeyle mi
 faturayla mı giriyor, `evraktip 12` gerçek alış mı depo transferi mi.
 
+**AYKIRI KAYIT EŞİĞİ DE VARSAYILMAZ.** «Satır başına 2 milyon TL'yi aşan kayıt bozuktur»
+demek küçük firmada hiçbir şey yakalamaz, büyük firmada gerçek faturayı bozuk ilan eder.
+Eşik dönemin KENDİ ortalama satırından ölçülür (`infra/mikro_fetch.py: AYKIRI_KAT`);
+aykırı satırlar rapor toplamlarına girmez ama **elenen sessizce atılmaz** — kaç satır ve
+ne kadar tutar çıkarıldığı rakamın yanında yazar. Canlıda 13 böyle satır vardı; biri
+2 adet mala 3,3 TRİLYON TL yazıyordu ve 2023'ü içeren her raporu zehirliyordu.
+
 **KDV oranı da varsayılmaz.** «%20'dir» demek yanlış olurdu: ürün karması %1/%10/%20
 karışık olabilir, ihracat satışında KDV hiç doğmaz. Efektif oran dönemin kendi
 rakamından ölçülür — hesaplanan KDV (391) ÷ net satış (60/61).

@@ -710,8 +710,13 @@ class TestStokBakiyeHukmu(unittest.TestCase):
                 "dolu_satir": 5, "dolu_miktar": 100.0, "dolu_maliyet": 2_954.0}]
         metin = self._tek_veritabani(yon)
         self.assertIn("tip 7 (?)", metin)
-        self.assertEqual(metin.count("çıkış"), 1)
-        self.assertIn("net düzeltme hesaplanamıyor", metin)
+        # Tabloda tek bir «çıkış» SATIRI olmalı; bilinmeyen tip çıkış diye sayılmaz.
+        satirlar = [s for s in metin.splitlines() if s.strip().startswith("çıkış")]
+        self.assertEqual(len(satirlar), 1)
+        # GİZLEMİYORUZ: bilinen yönlerden düzeltme hesaplanır, bilinmeyen pay
+        # ölçülmüş bir sınır olarak ayrıca yazılır (CLAUDE.md kural 3).
+        self.assertIn("Ölçülen net düzeltme", metin)
+        self.assertIn("Yönü bilinmeyen pay", metin)
 
     def test_gecmis_hareket_eksikse_uyarir(self) -> None:
         """Katalog 2020 diyor ama en erken hareket 2025 ise kümülatif eksik olabilir."""

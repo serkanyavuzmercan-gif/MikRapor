@@ -199,6 +199,9 @@ class YilKapanis:
     fiili_satis: float = 0.0       # depodan çıkan mal (irsaliye + fatura)
     fiili_alis: float = 0.0        # depoya giren mal (fatura)
     fiili_var: bool = False        # stok hareketi okunabildi mi
+    # Toplama girmeyen aykırı satırlar — rakamın yanında sebebiyle yazılır.
+    aykiri_adet: int = 0
+    aykiri_tutar: float = 0.0
 
     @property
     def fiili_fark(self) -> float | None:

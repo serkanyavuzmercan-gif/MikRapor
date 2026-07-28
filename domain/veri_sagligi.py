@@ -38,8 +38,6 @@ _ONEM_SIRA = {KRITIK: 0, UYARI: 1, BILGI: 2}
 
 # Bir mal hareketi satırının makul üst sınırı. Canlıda tek bir kayıt (2 adet mala
 # 3,3 trilyon TL) bütün 2023 raporunu zehirliyordu.
-_MAKUL_SATIR_TUTARI = 2_000_000.0
-
 # Aktif ile pasif bu orandan fazla ayrışıyorsa mizan kendi içinde tutarsızdır.
 # Bilinçli olarak GENİŞ: mizan sorgusu kapanış/açılış fişlerini eliyor, bu da küçük
 # bir sapma bırakabiliyor. Dar tolerans her kullanıcıya sahte «kritik» gösterirdi.
@@ -144,33 +142,29 @@ def _mizan_dengesi(b: Bilanco) -> Bulgu | None:
 
 def _bozuk_stok_kaydi(stok_rows: list[dict]) -> Bulgu | None:
     """
-    Satır başı tutarı mal olamayacak kadar büyük bir hareket türü.
+    Mal olamayacak kadar büyük stok hareketi satırı.
 
-    Canlıda tek bir kayıt (07.12.2023, yevmiye 731) 3,3 trilyon TL taşıyordu ve o
-    yılı içeren her rapor bundan zehirleniyordu.
+    Canlıda 13 böyle satır vardı; biri (07.12.2023, yevmiye 731) 2 adet mala 3,3
+    TRİLYON TL taşıyordu ve o yılı içeren her rapor bundan zehirleniyordu.
+
+    EŞİK BURADA DEĞİL, SORGUDA VE ÖLÇÜLEREK belirlenir (infra.mikro_fetch.AYKIRI_KAT):
+    satır, dönemin ORTALAMA satırının on binlerce katıysa aykırıdır. Eskiden burada
+    mutlak bir sınır vardı («satır başına 2 milyon TL») — bu program Mikro kullanan HER
+    firmaya satılacak ve mutlak sınır küçük firmada hiçbir şey yakalamaz, büyük firmada
+    gerçek faturayı bozuk ilan ederdi.
     """
-    supheli: list[tuple[float, int, int]] = []
-    for r in stok_rows or []:
-        adet = _f(r.get("adet", r.get("ADET")))
-        tutar = _f(r.get("tutar", r.get("TUTAR")))
-        if adet <= 0:
-            continue
-        birim = tutar / adet
-        if birim > _MAKUL_SATIR_TUTARI:
-            supheli.append((birim, int(_f(r.get("sth_tip", r.get("STH_TIP")))),
-                            int(_f(r.get("sth_evraktip", r.get("STH_EVRAKTIP"))))))
-    if not supheli:
+    adet = sum(_f(r.get("aykiri_adet", r.get("AYKIRI_ADET"))) for r in stok_rows or [])
+    tutar = sum(_f(r.get("aykiri_tutar", r.get("AYKIRI_TUTAR"))) for r in stok_rows or [])
+    if adet < 1:
         return None
-    supheli.sort(reverse=True)
-    birim, _tip, _ev = supheli[0]
     return Bulgu(
         kod="bozuk_stok", onem=KRITIK,
-        baslik="Stok hareketlerinde hatalı bir kayıt var",
-        etkisi=("Satış ya da alış toplamınız gerçekte olmadığı kadar büyük görünüyor; "
-                "kârlılık ve stok rakamları bu tek kayıt yüzünden anlamsızlaşıyor."),
-        ne_yapmali=("Mikro'da bu evrak tipindeki en büyük kaydı bulup düzeltin — "
-                    "tek bir hatalı satır bütün dönemi bozuyor."),
-        olcum=f"Satır başına ortalama {tl(birim)} — bir mal hareketi bu kadar olamaz")
+        baslik="Stok hareketlerinde hatalı kayıt var",
+        etkisi=("Bu satırlar rapor toplamlarına ALINMADI — alınsaydı satış, alış ve "
+                "kârlılık rakamlarınız gerçekte olmadığı kadar büyük görünürdü."),
+        ne_yapmali=("Mikro'da bu kayıtları bulup düzeltin; düzeltilene kadar o dönemin "
+                    "stok değeri hesaplanamaz."),
+        olcum=f"{int(adet)} satır, toplam {tl(tutar)} — bir mal hareketi bu kadar olamaz")
 
 
 def _tanimsiz_evrak(stok_rows: list[dict]) -> Bulgu | None:

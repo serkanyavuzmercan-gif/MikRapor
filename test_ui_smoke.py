@@ -377,6 +377,20 @@ class TestUiSmoke(unittest.TestCase):
         self.assertEqual([basl.text(i) for i in range(1, 5)],
                          ["2021", "2023", "2025", "2025 / önceki ort."])
 
+    def test_elenen_bozuk_kayit_kartta_yazar(self) -> None:
+        """Sessizce atılan rakam, yanlış rakamdan iyi değildir — sebebi ekranda."""
+        from domain.ai_yorum import YilKapanis
+        from ui.mukayese_view import mukayese_karti
+        ks = [YilKapanis(yil=y, net_satis=1e6 * y, aktif_toplam=5e5, alacak=2e5,
+                         aykiri_adet=2 if y == 2023 else 0,
+                         aykiri_tutar=3_333_333_333_340.0 if y == 2023 else 0.0)
+              for y in (2023, 2025)]
+        kart = mukayese_karti(ks)
+        metinler = " ".join(lbl.text() for lbl in kart.findChildren(QLabel))
+        self.assertIn("2023", metinler)
+        self.assertIn("bozuk stok kaydı toplamdan çıkarıldı", metinler)
+        self.assertIn("3.333.333.333.340,00", metinler)
+
     def test_mukayese_karti_tek_yilda_cizilmez(self) -> None:
         from domain.ai_yorum import YilKapanis
         from ui.mukayese_view import mukayese_karti

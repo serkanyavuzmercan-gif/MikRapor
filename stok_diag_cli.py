@@ -59,9 +59,11 @@ _EVRAK_AD = {
     (1, 16): "sarf fişi",
 }
 
-# Satır başına ortalama tutar bunun üzerindeyse rakam mal hareketi olamaz —
-# canlıda evraktip 12 satır başına ~238 milyon TL çıkıyordu.
-_MAKUL_SATIR_TUTARI = 2_000_000.0
+# Bir evrak türünün satır başı ortalaması, GENEL satır başı ortalamanın bu katından
+# büyükse şüphelidir. Mutlak TL sınırı («2 milyon») kurulum bağımlıdır: küçük firmada
+# hiçbir şey yakalamaz, büyük firmada gerçek faturayı bozuk ilan eder. Canlıda evraktip
+# 12'nin satır başı ~238 milyon TL, geneli ~1.100 TL idi — yaklaşık 216 bin kat.
+_AYKIRI_GRUP_KAT = 100.0
 
 SATIS_TIP = 1                      # sth_tip: 0 = giriş/alış, 1 = çıkış/satış
 _SATIS_EVRAKTIP = {1, 4}           # satış irsaliyesi, satış faturası (sarf fişi değil)
@@ -135,7 +137,7 @@ def _detay(cfg: MikroConfig, bas: str, bit: str, tip: int, evraktip: int) -> Non
     if tepe_toplam > 0.5 * toplam:
         print(f"\n  → Toplamın %{tepe_toplam / toplam * 100:.1f}'ini yukarıdaki birkaç satır "
               "taşıyor: BOZUK/AYKIRI KAYIT. Mikro'da o evrakı düzeltin.")
-    elif birim > _MAKUL_SATIR_TUTARI:
+    elif satir_sayisi and birim > toplam / satir_sayisi * _AYKIRI_GRUP_KAT:
         print(f"\n  → Tutar satırlara yayılmış ama satır başı {tl(birim)}: "
               "sth_tutar bu evraktipte TL tutarı olmayabilir.")
     else:
@@ -468,26 +470,33 @@ def _yon_dok(birikim: dict[int, list[float]]) -> float | None:
     print(f"  {'yön':>10}  {'boş satır':>10}  {'boş miktar':>14}  {'birim maliyet':>16}"
           f"  {'eksik TL (tahmin)':>20}")
     duzeltme = 0.0
+    belirsiz = 0.0          # yönü bilinmeyen satırların TL karşılığı — işareti bilinmez
     olculebilir = True
     for tip in sorted(birikim):
         bos_satir, bos_miktar, dolu_miktar, dolu_maliyet = birikim[tip]
         ad = _YON_AD.get(tip, f"tip {tip} (?)")
         birim = dolu_maliyet / dolu_miktar if dolu_miktar else 0.0
         eksik = bos_miktar * birim
-        if bos_satir and (not birim or tip not in _YON_AD):
+        if bos_satir and not birim:
             olculebilir = False
-        duzeltme += eksik if tip == 0 else -eksik
+        if tip in _YON_AD:
+            duzeltme += eksik if tip == 0 else -eksik
+        else:
+            belirsiz += abs(eksik)
         # Sayılar önce biçimlenir; tl() çıktısını toplu replace bozardı.
         satir_no = f"{int(bos_satir):,}".replace(",", ".")
         miktar_s = f"{bos_miktar:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         print(f"  {ad:>10}  {satir_no:>10}  {miktar_s:>14}"
               f"  {tl(birim):>16}  {tl(eksik):>20}")
     if not olculebilir:
-        print("\n  Yönü bilinmeyen ya da birim maliyeti çıkmayan satır var —")
-        print("  net düzeltme hesaplanamıyor.")
+        print("\n  Birim maliyeti çıkmayan satır var — net düzeltme hesaplanamıyor.")
         return None
     print(f"\n  Ölçülen net düzeltme  {tl(duzeltme):>18}"
           "   (eksik giriş − eksik çıkış)")
+    if belirsiz > _SIFIR_TL:
+        # GİZLEMİYORUZ: yönü bilinmeyen kısım hesaplanamaz ama ÖLÇÜLMÜŞ bir sınırı var.
+        print(f"  Yönü bilinmeyen pay   ± {tl(belirsiz):>16}   (işareti bilinmediği için"
+              " düzeltmeye girmedi)")
     return duzeltme
 
 
@@ -550,7 +559,7 @@ def _bakiye_teshisi(client, cfg: MikroConfig, bit: str) -> None:
     # virgül→nokta değiştirmek o rakamı bozardı (canlıda «2.000.000.00» çıktı).
     sayi = f"{aykiri_satir:,}".replace(",", ".")
     print(f"\n  Aykırı satır (>{tl(AYKIRI_SATIR_MALIYETI)}/satır)  {sayi:>8}")
-    print(f"  Aykırıların net etkisi{tl(toplam['aykiri_maliyet']):>18}")
+    print(f"  {'Aykırıların net etkisi':<22}{tl(toplam['aykiri_maliyet']):>18}")
     print(f"  Temiz net maliyet     {tl(temiz):>18}   ← stok değeri adayı")
 
     print("\nEKSİK MALİYETİN YÖNÜ  (aykırılar birim maliyete girmez)\n")
@@ -726,18 +735,23 @@ def main() -> None:
 
     print("EVRAKTİP KIRILIMI (ham):")
     print(f"  {'tip':>3} {'evrak':>5}  {'adet':>8}  {'tutar':>22}  {'satır başı':>16}  açıklama")
+    # Ölçü verinin kendisinden: genel satır başı ortalama.
+    genel_tutar = sum(v[0] for v in kirilim.values())
+    genel_adet = sum(v[1] for v in kirilim.values())
+    esik = (genel_tutar / genel_adet * _AYKIRI_GRUP_KAT) if genel_adet else 0.0
     supheli: list[tuple[int, int]] = []
     for (tip, ev), (tutar, adet_f) in sorted(kirilim.items(), key=lambda kv: -kv[1][0]):
         adet = int(adet_f)
         ad = _EVRAK_AD.get((tip, ev), "?")
         # Satır başı ortalama: bir mal hareketi satırının makul büyüklüğü.
         birim = tutar / adet if adet else 0.0
-        if birim > _MAKUL_SATIR_TUTARI:
+        if esik > 0 and birim > esik:
             ad += "  ← ŞÜPHELİ"
             supheli.append((tip, ev))
         print(f"  {tip:>3} {ev:>5}  {adet:>8}  {tl(tutar):>22}  {tl(birim):>16}  {ad}")
     for tip, ev in supheli:
-        print(f"\nUYARI: tip={tip}/evraktip={ev} satır başına {tl(_MAKUL_SATIR_TUTARI)} üstü —")
+        print(f"\nUYARI: tip={tip}/evraktip={ev} satır başı ortalaması genelin "
+              f"{_AYKIRI_GRUP_KAT:.0f} katından fazla ({tl(esik)} üstü) —")
         print(f"       bu bir mal tutarı olamaz. Aç:  stok_diag_cli.py {bas} {bit} {tip} {ev}")
 
     for baz in ("sevk", "fatura"):

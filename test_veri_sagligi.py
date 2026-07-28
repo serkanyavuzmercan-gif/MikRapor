@@ -56,30 +56,45 @@ class TestMaliyetKapanisi(unittest.TestCase):
 
 class TestBozukStokKaydi(unittest.TestCase):
     """
-    Canlıda 2 adet mala 3,3 trilyon TL yazan tek kayıt vardı (07.12.2023, yevmiye 731).
+    Canlıda 13 aykırı satır vardı; biri 2 adet mala 3,3 TRİLYON TL yazıyordu
+    (07.12.2023, yevmiye 731). O yılı içeren her rapor bundan zehirleniyordu.
 
-    O yılı içeren her rapor bundan zehirleniyordu ve bulmak için elle teşhis gerekti.
+    EŞİK BURADA DEĞİL, SORGUDA ÖLÇÜLÜR (infra.mikro_fetch.AYKIRI_KAT): satır, dönemin
+    ortalama satırının on binlerce katıysa aykırıdır. Eskiden mutlak bir sınır vardı
+    («satır başına 2 milyon TL»); bu program Mikro kullanan HER firmaya satılacak ve
+    mutlak sınır küçük firmada hiçbir şey yakalamaz, büyükte gerçek faturayı bozuk ilan
+    ederdi. Sorgu aykırıyı toplamdan çıkarıp ayrı sütunda döndürür.
     """
 
-    _BOZUK = {"sth_tip": 0, "sth_evraktip": 12, "tutar": 3_333_333_333_340.0, "adet": 2}
-    _NORMAL = {"sth_tip": 1, "sth_evraktip": 1, "tutar": 19_386_234.0, "adet": 17_914}
+    _NORMAL = {"sth_tip": 1, "sth_evraktip": 1, "tutar": 19_386_234.0, "adet": 17_914,
+               "aykiri_adet": 0, "aykiri_tutar": 0.0}
+    _AYKIRILI = {"sth_tip": 0, "sth_evraktip": 12, "tutar": 22_594_651.34, "adet": 6_592,
+                 "aykiri_adet": 1, "aykiri_tutar": 3_333_333_333_340.0}
 
-    def test_aykiri_satir_yakalanir(self) -> None:
-        vs = build_veri_sagligi(stok_rows=[self._NORMAL, self._BOZUK])
-        self.assertIn("bozuk_stok", _kodlar(vs))
+    def test_elenen_satir_bulgu_uretir(self) -> None:
+        vs = build_veri_sagligi(stok_rows=[self._NORMAL, self._AYKIRILI])
         b = next(x for x in vs.bulgular if x.kod == "bozuk_stok")
         self.assertEqual(b.onem, KRITIK)
+        self.assertIn("1 satır", b.olcum)
         # CLI komutu YOK: satılan üründe kullanıcıya terminal komutu verilmez.
         self.assertNotIn("stok_diag_cli", b.ne_yapmali)
         self.assertIn("Mikro", b.ne_yapmali)
+
+    def test_elenen_tutar_rakamin_yaninda_yazar(self) -> None:
+        """Sessizce atılan rakam, yanlış rakamdan iyi değildir."""
+        vs = build_veri_sagligi(stok_rows=[self._AYKIRILI])
+        b = next(x for x in vs.bulgular if x.kod == "bozuk_stok")
+        self.assertIn("3.333.333.333.340,00", b.olcum)
+        self.assertIn("ALINMADI", b.etkisi)
 
     def test_normal_hareket_bulgu_uretmez(self) -> None:
         vs = build_veri_sagligi(stok_rows=[self._NORMAL])
         self.assertNotIn("bozuk_stok", _kodlar(vs))
 
-    def test_sifir_adet_bolme_hatasi_vermez(self) -> None:
-        vs = build_veri_sagligi(stok_rows=[{"sth_tip": 1, "sth_evraktip": 1,
-                                            "tutar": 5.0, "adet": 0}])
+    def test_aykiri_sutunu_olmayan_satir_cokmez(self) -> None:
+        """Eski/kısmi sorgu çıktısı gelirse bulgu uydurulmaz."""
+        vs = build_veri_sagligi(stok_rows=[
+            {"sth_tip": 1, "sth_evraktip": 1, "tutar": 5.0, "adet": 0}])
         self.assertNotIn("bozuk_stok", _kodlar(vs))
 
 
