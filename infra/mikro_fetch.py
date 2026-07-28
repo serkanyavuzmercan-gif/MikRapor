@@ -204,6 +204,48 @@ def fetch_stok_maliyet_teshis(
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+_BOS_UID = "'00000000-0000-0000-0000-000000000000'"
+
+
+def fetch_stok_faturalasma(
+    client: MikroClient, bas: str, bit: str,
+) -> list[dict[str, Any]]:
+    """
+    İrsaliye + fatura TOPLANIRSA satış iki kez sayılır mı? — teşhis içindir.
+
+    Kullanıcının iş akışı: önce irsaliye kesiliyor, sonra carinin bekleyen
+    irsaliyeleri toplu hâlde faturalaştırılıyor. İrsaliye kaydı silinmiyor; Mikro
+    yalnız «faturalandı» bilgisini işliyor. Soru şu: faturalaştırma AYRI bir stok
+    hareketi mi yaratıyor (o zaman irsaliye+fatura toplamı mükerrer), yoksa mevcut
+    irsaliye satırını damgalayıp mı geçiyor (o zaman toplam doğru)?
+
+    `sth_fat_uid` o damgadır. Bu sorgu satırları evrak tipine VE damganın dolu olup
+    olmadığına göre böler; iki desen birbirinden kesin ayrılır:
+
+      • Faturalanmış irsaliye satırları var + fatura satırı çok az → damgalama modeli,
+        MÜKERRERLİK YOK (canlıda 17.914 irsaliyeye karşı 262 fatura satırı bunu
+        işaret ediyor ama sayı tahmini kanıt değil, damga kanıttır).
+      • İrsaliye ve fatura satırları birbirine yakın + ikisi de dolu → kopyalama
+        modeli, toplamak satışı ~2 kat şişirir.
+    """
+    bas, bit = _aralik(bas, bit)
+    tarih = _stok_tarih_sql()
+    sql = (
+        "SELECT sth_tip, sth_evraktip, "
+        f"CASE WHEN sth_fat_uid IS NULL OR CONVERT(char(36), sth_fat_uid) = {_BOS_UID} "
+        "THEN 0 ELSE 1 END AS faturalandi, "
+        "COUNT(*) AS adet, SUM(sth_tutar) AS tutar, "
+        "COUNT(DISTINCT sth_fat_uid) AS fatura_sayisi "
+        "FROM STOK_HAREKETLERI WITH (NOLOCK) "
+        f"WHERE {tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}' "
+        "GROUP BY sth_tip, sth_evraktip, "
+        f"CASE WHEN sth_fat_uid IS NULL OR CONVERT(char(36), sth_fat_uid) = {_BOS_UID} "
+        "THEN 0 ELSE 1 END "
+        "ORDER BY sth_tip, sth_evraktip, faturalandi"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
 def fetch_stok_evraktip_yillik(
     client: MikroClient, bas: str, bit: str, tip: int, evraktip: int,
 ) -> list[dict[str, Any]]:
