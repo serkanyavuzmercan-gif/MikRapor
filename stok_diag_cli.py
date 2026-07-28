@@ -7,6 +7,10 @@ Bir hareket türünün toplamı akla yatmıyorsa (canlıda tip=0/evraktip=12 iç
 3,3 trilyon TL) o türü yıl yıl ve en büyük satırlarıyla açar:
 
     .\\.venv\\Scripts\\python.exe stok_diag_cli.py 2021-01-01 2025-12-31 0 12
+
+Stok hareketinde maliyet kolonu var mı (kapanış beklemeden brüt kâr çıkar mı)?
+
+    .\\.venv\\Scripts\\python.exe stok_diag_cli.py --kolonlar
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from infra.mikro_fetch import (
     fetch_stok_evraktip_tepe,
     fetch_stok_evraktip_yillik,
     fetch_stok_ozet,
+    fetch_tablo_kolonlari,
 )
 
 _EVRAK_AD = {
@@ -86,6 +91,40 @@ def _detay(client: MikroClient, bas: str, bit: str, tip: int, evraktip: int) -> 
         print("     bu evrak tipinin NE olduğu. Mikro'da yukarıdaki evrak no'lardan birini açın.")
 
 
+# Maliyet/fiyat taşıyabilecek kolon adlarında geçen parçalar. Amaç: kapanış
+# beklemeden brüt kâr hesaplanabilir mi, onu görmek.
+_MALIYET_IPUCU = ("maliyet", "fiyat", "tutar", "iskonto", "vergi", "doviz", "kur", "miktar")
+
+
+def _kolonlari_dok(client, tablo: str) -> None:
+    """Tablonun şemasını döker; maliyet/fiyat taşıyabilecek kolonları işaretler."""
+    print(f"\n{tablo} — kolonlar\n")
+    try:
+        kolonlar = fetch_tablo_kolonlari(client, tablo)
+    except Exception as exc:  # noqa: BLE001 — teşhis aracı, sebebi yazıp geç
+        print(f"   okunamadı: {exc}")
+        return
+    if not kolonlar:
+        print("   kolon bulunamadı (tablo adı yanlış olabilir).")
+        return
+
+    ilgili = []
+    for r in kolonlar:
+        ad = str(r.get("kolon", r.get("KOLON", "")) or "")
+        tip = str(r.get("tip", r.get("TIP", "")) or "")
+        if any(ip in ad.lower() for ip in _MALIYET_IPUCU):
+            ilgili.append((ad, tip))
+    print(f"   toplam {len(kolonlar)} kolon; maliyet/fiyat olabilecekler:")
+    for ad, tip in ilgili:
+        print(f"      {ad:<34} {tip}")
+    if not ilgili:
+        print("      — yok —")
+    print("\n   TÜM KOLONLAR:")
+    adlar = [str(r.get("kolon", r.get("KOLON", "")) or "") for r in kolonlar]
+    for i in range(0, len(adlar), 3):
+        print("      " + "  ".join(f"{a:<32}" for a in adlar[i:i + 3]))
+
+
 def main() -> None:
     bas = sys.argv[1] if len(sys.argv) > 1 else f"{date.today().year}-01-01"
     bit = sys.argv[2] if len(sys.argv) > 2 else date.today().isoformat()
@@ -94,6 +133,9 @@ def main() -> None:
         print("Ayarlar eksik:", cfg.eksik_alanlar())
         return
     print(f"Stok teşhisi — {bas} → {bit} (firma {cfg.firma_kodu}, yıl {cfg.calisma_yili})\n")
+    if "--kolonlar" in sys.argv:
+        _kolonlari_dok(MikroClient(cfg), "STOK_HAREKETLERI")
+        return
     if len(sys.argv) > 4:
         _detay(MikroClient(cfg), bas, bit, int(sys.argv[3]), int(sys.argv[4]))
         return
