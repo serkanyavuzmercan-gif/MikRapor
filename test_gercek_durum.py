@@ -82,7 +82,7 @@ class TestGercekDurum(unittest.TestCase):
         self.assertAlmostEqual(gd.borc, 168401.18, places=2)
 
     def test_resmi_karsilastirma(self):
-        # Resmi GL: net satış 40000, SMM 35200 → brüt 4800 (%12); gerçek %23.8 → fark pozitif
+        # Resmi GL: net satış 40000, SMM 35200 → brüt 4800 (%12); gerçek %23.8
         gl_rows = [
             {"hesap_kodu": "600.01", "borc": 0, "alacak": 40000},
             {"hesap_kodu": "621.01", "borc": 35200, "alacak": 0},
@@ -92,9 +92,56 @@ class TestGercekDurum(unittest.TestCase):
         self.assertIsNotNone(gd.resmi_brut_marj)
         self.assertAlmostEqual(gd.resmi_brut_marj, 12.0, places=1)
         self.assertGreater(gd.gercek_brut_marj, gd.resmi_brut_marj)
-        self.assertIsNotNone(gd.marj_farki)
-        self.assertGreater(gd.marj_farki, 0)
-        self.assertIsNotNone(gd.gizlenen_brut)
+
+
+class TestResmiFiiliKoprusu(unittest.TestCase):
+    """
+    Resmi kâr ile fiili al-sat farkı arasındaki köprü.
+
+    Bu ikisi aynı şeyin iki ölçümü değil; yan yana "fark" diye konunca kullanıcı
+    haklı olarak "mali müşavir kârı fazla mı göstermiş?" diye sordu. Köprü iki
+    kalemle farkın tamamını kapatmalı — kapatmıyorsa tablo yine yalan söyler.
+    """
+
+    @staticmethod
+    def _gd(net_satis: float, smm: float):
+        gt = build_gelir_tablosu([
+            {"hesap_kodu": "600.01", "borc": 0, "alacak": net_satis},
+            {"hesap_kodu": "621.01", "borc": smm, "alacak": 0},
+        ])
+        return build_gercek_durum(
+            stok_rows=_stok_ozet(), gelir_tablosu=gt, satis_bazi="sevk")
+
+    def test_kopru_kurusu_kurusuna_kapanir(self) -> None:
+        gd = self._gd(40_000.0, 35_200.0)
+        self.assertAlmostEqual(
+            gd.resmi_brut_kar - gd.satis_koprusu - gd.maliyet_koprusu,
+            gd.gercek_brut_kar, places=2)
+
+    def test_stok_arttiysa_maliyet_koprusu_pozitif(self) -> None:
+        """Alınan mal 30.000, satılanın maliyeti 20.000 → 10.000 depoda kaldı."""
+        gd = self._gd(40_000.0, 20_000.0)
+        self.assertAlmostEqual(gd.maliyet_koprusu, 10_000.0, places=2)
+
+    def test_stok_azaldiysa_maliyet_koprusu_negatif(self) -> None:
+        gd = self._gd(40_000.0, 38_000.0)
+        self.assertAlmostEqual(gd.maliyet_koprusu, -8_000.0, places=2)
+
+    def test_satis_koprusu_resmi_ile_depo_farki(self) -> None:
+        """Resmi net satış 45.000, depodan çıkan 42.000 → 3.000 (602, iade vb.)."""
+        gd = self._gd(45_000.0, 35_200.0)
+        self.assertAlmostEqual(gd.satis_koprusu, 3_000.0, places=2)
+
+    def test_resmi_yoksa_kopru_kurulmaz(self) -> None:
+        gd = build_gercek_durum(stok_rows=_stok_ozet(), satis_bazi="sevk")
+        self.assertIsNone(gd.satis_koprusu)
+        self.assertIsNone(gd.maliyet_koprusu)
+
+    def test_csv_kopru_satirlarini_tasir(self) -> None:
+        csv = gercek_durum_csv(self._gd(40_000.0, 35_200.0))
+        self.assertIn("KÖPRÜ;Resmi Brüt Kâr", csv)
+        self.assertIn("KÖPRÜ;Fiili Al-Sat Farkı", csv)
+        self.assertNotIn("Marj Farkı", csv)          # yanıltan eski satır
 
     def test_trend_aylik(self):
         stok_aylik = [

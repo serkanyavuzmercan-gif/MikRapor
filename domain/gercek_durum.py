@@ -130,6 +130,33 @@ class GercekDurum:
 
     trend: list[AyTrend] = field(default_factory=list)
 
+    # --- Resmi → fiili köprüsü ------------------------------------------------
+    #
+    # Bu ikisi AYNI ŞEYİN İKİ ÖLÇÜMÜ DEĞİL, iki farklı büyüklük:
+    #   Resmi brüt kâr      = satış − SATILAN malın maliyeti
+    #   Fiili al-sat farkı  = depodan çıkan mal − dönemde ALINAN malın tamamı
+    # Yan yana "Resmi / Fiili / Fark" diye koyunca fark bir tutarsızlık gibi okunuyor;
+    # oysa aradaki iki kalem toplamı kuruşu kuruşuna kapatır (bkz. koprü kalemleri).
+
+    @property
+    def satis_koprusu(self) -> float | None:
+        """Resmi net satış − depodan çıkan mal (602 diğer gelirler, iade zamanlaması)."""
+        if self.resmi_net_satis is None:
+            return None
+        return self.resmi_net_satis - self.gercek_satis
+
+    @property
+    def maliyet_koprusu(self) -> float | None:
+        """
+        Alınan mal − satılan malın maliyeti = dönem STOK DEĞİŞİMİ (+623 gibi ek maliyet).
+
+        Pozitif: alıp satmadığın mal depoda birikti → fiili marj olduğundan düşük görünür.
+        Negatif: stoktan erittin → fiili marj olduğundan yüksek görünür.
+        """
+        if self.resmi_smm is None:
+            return None
+        return self.gercek_alis - self.resmi_smm
+
     @property
     def smm_stok_farki(self) -> float | None:
         """Resmi SMM − stok alışı ≈ 623 + stok değişimi + maliyet kapanışı farkı."""
@@ -182,19 +209,9 @@ class GercekDurum:
             self.gercek_satis == 0 and self.tum_cikis > 0
         )
 
-    # --- Resmi ile fark (mutabakat) ---
-    @property
-    def marj_farki(self) -> float | None:
-        if self.resmi_brut_marj is None:
-            return None
-        return self.gercek_brut_marj - self.resmi_brut_marj
-
-    @property
-    def gizlenen_brut(self) -> float | None:
-        """Fiili marj resmi net satışa uygulanınca ortaya çıkan ek brüt kâr (yaklaşık)."""
-        if self.resmi_brut_marj is None or self.resmi_net_satis is None:
-            return None
-        return (self.gercek_brut_marj - self.resmi_brut_marj) / 100 * self.resmi_net_satis
+    # «marj_farki» ve «gizlenen_brut» kaldırıldı: iki farklı büyüklüğün farkını tek
+    # rakama indirip "gizlenen kâr" diye sunmak, muhasebe zamanlamasını usulsüzlük
+    # gibi okutuyordu. Yerine köprü kalemleri (satis_koprusu / maliyet_koprusu) var.
 
 
 def _siniflandir_stok(
@@ -606,11 +623,15 @@ def gercek_durum_csv(gd: GercekDurum) -> str:
     out.append(f"BAKİYE;Alacaklar (müşteri);{s(gd.alacak)}")
     out.append(f"BAKİYE;Borçlar (satıcı);{s(gd.borc)}")
     out.append(f"BAKİYE;Net İşletme Sermayesi;{s(gd.net_isletme_sermayesi)}")
-    if gd.resmi_brut_marj is not None:
-        out.append(f"KARŞILAŞTIRMA;Resmi Brüt Marj;{yuzde(gd.resmi_brut_marj)}")
-        out.append(f"KARŞILAŞTIRMA;Fiili Brüt Marj;{yuzde(gd.gercek_brut_marj)}")
-        if gd.marj_farki is not None:
-            out.append(f"KARŞILAŞTIRMA;Marj Farkı;{yuzde(gd.marj_farki)}")
-        if gd.gizlenen_brut is not None:
-            out.append(f"KARŞILAŞTIRMA;Fiili − Resmi Brüt Farkı (yaklaşık);{s(gd.gizlenen_brut)}")
+    # Köprü: resmi kâr → fiili al-sat farkı. İki kalem farkın tamamını kapatır.
+    if gd.resmi_brut_kar is not None and gd.satis_koprusu is not None \
+            and gd.maliyet_koprusu is not None:
+        out.append(f"KÖPRÜ;Resmi Brüt Kâr (satılan malın maliyetiyle);{s(gd.resmi_brut_kar)}")
+        out.append(f"KÖPRÜ;Satış farkı (602 diğer gelirler, iade);{s(-gd.satis_koprusu)}")
+        etiket = "Stok artışı (alınıp satılmayan mal)" if gd.maliyet_koprusu >= 0 \
+            else "Stok azalışı (önceki dönemlerden satılan mal)"
+        out.append(f"KÖPRÜ;{etiket};{s(-gd.maliyet_koprusu)}")
+        out.append(f"KÖPRÜ;Fiili Al-Sat Farkı (alınan malın tamamıyla);{s(gd.gercek_brut_kar)}")
+        out.append("KÖPRÜ;NOT;Bu iki rakam aynı şeyin iki ölçümü değildir - "
+                   "resmi kâr yalnız SATILAN malın maliyetini düşer.")
     return "\r\n".join(out)

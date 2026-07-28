@@ -16,7 +16,7 @@ from domain.ortak import tl, yuzde
 
 # Eşikler — tek yerde, ayarlanabilir.
 MARJ_DUSUK_ESIK = 10.0        # al-sat marjı bu %'in altındaysa "düşük"
-MARJ_FARK_ESIK = 10.0         # resmi vs fiili marj farkı bu puanı aşarsa dikkat
+STOK_BAGLANMA_ORANI = 0.05    # stoğa bağlanan para satışın bu oranını aşarsa haber
 BORC_ALACAK_KAT = 1.5         # borç, alacağın bu katını aşarsa uyarı
 
 # Şiddet → sıralama önceliği (küçük = daha kritik, önce gösterilir).
@@ -60,7 +60,10 @@ def gercek_durum_bulgulari(gd, *, en_fazla: int = 3) -> list[Bulgu]:
         ))
 
     # 3) Al-sat marjı düşük mü?
-    if gd.gercek_satis > 0.005 and gd.gercek_brut_marj < MARJ_DUSUK_ESIK:
+    #    Resmi brüt marj sağlıklıysa fiili marjın düşük görünmesinin sebebi fiyatlama
+    #    değil stok değişimidir; "marjın düşük" demek yanlış alarm olur (4. kural anlatır).
+    resmi_saglikli = gd.resmi_brut_marj is not None and gd.resmi_brut_marj >= MARJ_DUSUK_ESIK
+    if gd.gercek_satis > 0.005 and gd.gercek_brut_marj < MARJ_DUSUK_ESIK and not resmi_saglikli:
         b.append(Bulgu(
             "uyari", "Al-sat marjın düşük",
             f"Satış−alış marjın yalnızca {yuzde(gd.gercek_brut_marj)}. "
@@ -68,14 +71,26 @@ def gercek_durum_bulgulari(gd, *, en_fazla: int = 3) -> list[Bulgu]:
             "Satış fiyatı/iskonto ve alış maliyetlerini gözden geçir.",
         ))
 
-    # 4) Resmi ile fiili marj çok mu ayrışıyor? (mutabakat sinyali)
-    if gd.marj_farki is not None and abs(gd.marj_farki) >= MARJ_FARK_ESIK:
-        b.append(Bulgu(
-            "uyari", "Resmi ve fiili marj ayrışıyor",
-            f"Fiili al-sat marjı ile resmi brüt marj arasında "
-            f"{yuzde(abs(gd.marj_farki))} puan fark var.",
-            "Maliyet kapanışı ve stok değişimini kontrol et; kâr yanıltıcı olabilir.",
-        ))
+    # 4) Dönemde para stoğa mı bağlandı? (resmi ile fiili marjı ayıran asıl kalem)
+    #    Eskiden "resmi ve fiili marj ayrışıyor, kâr yanıltıcı olabilir" diyordu; bu
+    #    normal bir muhasebe farkını usulsüzlük gibi okutuyordu. Asıl haber stok.
+    if gd.maliyet_koprusu is not None and gd.gercek_satis > 0.005 \
+            and abs(gd.maliyet_koprusu) >= gd.gercek_satis * STOK_BAGLANMA_ORANI:
+        if gd.maliyet_koprusu > 0:
+            b.append(Bulgu(
+                "uyari", "Para stoğa bağlandı",
+                f"Aldığın malın {tl(gd.maliyet_koprusu)} tutarındaki kısmı satılmadı, "
+                f"stoğa eklendi. Fiili al-sat marjının resmi brüt marjdan düşük "
+                f"görünmesinin sebebi bu.",
+                "Yavaş dönen kalemleri ayıkla; stok devir hızını Trend & Oranlar'dan izle.",
+            ))
+        else:
+            b.append(Bulgu(
+                "bilgi", "Stoktan satış yapıldı",
+                f"Sattığın malın {tl(-gd.maliyet_koprusu)} tutarındaki kısmı önceki "
+                f"dönemlerden geldi; bu dönem o kadar mal almadın.",
+                "",
+            ))
 
     # 5) Borç, alacağı belirgin aşıyor mu?
     if gd.borc > 0.005 and gd.borc > gd.alacak * BORC_ALACAK_KAT:
