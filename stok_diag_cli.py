@@ -11,6 +11,10 @@ Bir hareket türünün toplamı akla yatmıyorsa (canlıda tip=0/evraktip=12 iç
 Stok hareketinde maliyet kolonu var mı (kapanış beklemeden brüt kâr çıkar mı)?
 
     .\\.venv\\Scripts\\python.exe stok_diag_cli.py --kolonlar
+
+Kolon VAR; peki dolu mu ve birim mi satır toplamı mı? (asıl karar bu)
+
+    .\\.venv\\Scripts\\python.exe stok_diag_cli.py 2026-01-01 2026-07-28 --maliyet
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from infra.config import MikroConfig, load_config, load_gercek_durum_ayarlar
 from infra.mikro_fetch import (
     fetch_stok_evraktip_tepe,
     fetch_stok_evraktip_yillik,
+    fetch_stok_maliyet_teshis,
     fetch_stok_ozet,
     fetch_tablo_kolonlari,
 )
@@ -41,6 +46,15 @@ _EVRAK_AD = {
 # Satır başına ortalama tutar bunun üzerindeyse rakam mal hareketi olamaz —
 # canlıda evraktip 12 satır başına ~238 milyon TL çıkıyordu.
 _MAKUL_SATIR_TUTARI = 2_000_000.0
+
+SATIS_TIP = 1                      # sth_tip: 0 = giriş/alış, 1 = çıkış/satış
+_MALIYET_KOLON = ("ana", "alternatif", "orjinal")
+# Maliyet güncellemesi çalıştırılmamışsa kolon 0'dır; 0'ı maliyet sanmak brüt marjı
+# %100 gösterir. Satırların bu kadarı dolu değilse kolon kullanılmaz.
+_ASGARI_DOLULUK = 90.0
+# Ticaret firmasında brüt marj bu aralığın dışına çıkıyorsa yorum yanlıştır:
+# eksi marj «maliyet satış tutarını aşıyor», %90 üstü «maliyet neredeyse sıfır» demek.
+_MAKUL_MARJ = (0.0, 90.0)
 
 
 def _s(row: dict, ad: str) -> str:
@@ -132,6 +146,71 @@ def _kolonlari_dok(client, tablo: str) -> None:
         print("      " + "  ".join(f"{a:<32}" for a in adlar[i:i + 3]))
 
 
+def _maliyet_teshisi(cfg: MikroConfig, bas: str, bit: str) -> None:
+    """
+    Maliyet kolonu brüt kâr için kullanılabilir mi? — canlı veriye sorar.
+
+    Kapanış fişi işlenmeden brüt kâr göstermek istiyoruz; şart, satış satırının
+    kendi maliyetini taşıması. İki soru: kolon dolu mu, ve birim mi satır toplamı mı.
+    """
+    rows = donem_satirlari(cfg, bas, bit, fetch_stok_maliyet_teshis)
+    satis = [r for r in rows if int(_f(r.get("sth_tip", r.get("STH_TIP")))) == SATIS_TIP]
+    if not satis:
+        print("\nMALİYET TEŞHİSİ: dönemde satış hareketi yok — daha geniş bir aralık verin.")
+        return
+
+    print(f"\nMALİYET TEŞHİSİ — satış satırları ({bas} → {bit})\n")
+    print(f"  {'yıl':>4} {'satır':>8} {'satış tutarı':>20} "
+          f"{'kolon':>12} {'dolu %':>7} {'SUM(mal.)':>20} {'SUM(mal.×mik.)':>20}")
+
+    toplam: dict[str, list[float]] = {k: [0.0, 0.0, 0.0] for k in _MALIYET_KOLON}
+    satis_toplam = adet_toplam = 0.0
+    for r in sorted(satis, key=lambda x: _f(x.get("yil", x.get("YIL")))):
+        yil = int(_f(r.get("yil", r.get("YIL"))))
+        adet = _f(r.get("adet", r.get("ADET")))
+        tutar = _f(r.get("tutar", r.get("TUTAR")))
+        satis_toplam += tutar
+        adet_toplam += adet
+        for i, kolon in enumerate(_MALIYET_KOLON):
+            duz = _f(r.get(f"{kolon}_duz", r.get(f"{kolon.upper()}_DUZ")))
+            carpim = _f(r.get(f"{kolon}_carpim", r.get(f"{kolon.upper()}_CARPIM")))
+            dolu = _f(r.get(f"{kolon}_dolu", r.get(f"{kolon.upper()}_DOLU")))
+            t = toplam[kolon]
+            t[0] += duz
+            t[1] += carpim
+            t[2] += dolu
+            bas_sutun = f"  {yil:>4} {int(adet):>8} {tl(tutar):>20} " if i == 0 else " " * 36
+            print(f"{bas_sutun}{kolon:>12} {dolu / adet * 100 if adet else 0:>6.1f}% "
+                  f"{tl(duz):>20} {tl(carpim):>20}")
+
+    print(f"\n  Dönem satışı {tl(satis_toplam)} · {int(adet_toplam):,} satır".replace(",", "."))
+    print("\n  YORUM (satış tutarına göre brüt marj):")
+    aday: list[tuple[float, str, str, float]] = []
+    for kolon in _MALIYET_KOLON:
+        duz, carpim, dolu = toplam[kolon]
+        oran = dolu / adet_toplam * 100 if adet_toplam else 0.0
+        if oran < _ASGARI_DOLULUK:
+            print(f"    {kolon:<12} satırların yalnız %{oran:.1f}'i dolu → KULLANILAMAZ")
+            continue
+        for etiket, mal in (("satır toplamı", duz), ("birim × miktar", carpim)):
+            marj = (satis_toplam - mal) / satis_toplam * 100 if satis_toplam else 0.0
+            makul = "  ← MAKUL" if _MAKUL_MARJ[0] <= marj <= _MAKUL_MARJ[1] else ""
+            print(f"    {kolon:<12} {etiket:<15} SMM {tl(mal):>20}  brüt marj %{marj:>6.1f}{makul}")
+            if makul:
+                aday.append((abs(marj - 25.0), kolon, etiket, marj))
+
+    print()
+    if not aday:
+        print("  → Hiçbir yorum makul bir marj vermiyor. Maliyet kolonu bu kurulumda")
+        print("    güvenilir değil; brüt kâr canlı veriden hesaplanmamalı.")
+        return
+    aday.sort()
+    _, kolon, etiket, marj = aday[0]
+    print(f"  → KULLANILABİLİR: {kolon}, «{etiket}» olarak okunmalı (brüt marj %{marj:.1f}).")
+    print("    Bunu bildirin; Nakit & Kârlılık ve mukayese tablosu kapanış fişi beklemeden")
+    print("    gerçek brüt kârı gösterecek şekilde bağlanacak.")
+
+
 def main() -> None:
     # Bayrakları ayır: «--kolonlar» tarih sanılıp başlığa basılmasın.
     arg = [a for a in sys.argv[1:] if not a.startswith("--")]
@@ -155,6 +234,9 @@ def main() -> None:
           f"(firma {client.cfg.firma_kodu}, yıl {client.cfg.calisma_yili})\n")
     if "--kolonlar" in sys.argv:
         _kolonlari_dok(client, "STOK_HAREKETLERI")
+        return
+    if "--maliyet" in sys.argv:
+        _maliyet_teshisi(cfg, bas, bit)
         return
     if len(arg) > 3:
         _detay(cfg, bas, bit, int(arg[2]), int(arg[3]))
