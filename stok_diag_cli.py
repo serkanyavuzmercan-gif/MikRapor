@@ -190,34 +190,57 @@ def _maliyet_teshisi(cfg: MikroConfig, bas: str, bit: str) -> None:
 
     print(f"\n  Satış irsaliyesi + faturası: {tl(satis_toplam)} · "
           f"{int(adet_toplam):,} satır".replace(",", "."))
+
+    # 3) Boşluk AY AY nerede? Belirleyici soru bu. Mikro'da sth_maliyet_* kolonlarını
+    #    «Maliyet Güncelleme» toplu işi doldurur. Boşluk son aylarda toplanıyorsa kolon
+    #    sağlamdır, yalnız iş en son o tarihte çalıştırılmıştır — kapanmış aylar
+    #    kullanılabilir. Boşluk her aya dağılmışsa kolonun kendisi güvenilmezdir.
+    aylik: dict[str, list[float]] = {}
+    for r in sec:
+        ay = str(r.get("ay", r.get("AY")) or "")[:7]
+        t = aylik.setdefault(ay, [0.0, 0.0])
+        t[0] += al(r, "adet")
+        t[1] += al(r, "ana_dolu")
+    print("\n  AY AY DOLULUK (satış irsaliyesi + faturası):")
+    print(f"    {'ay':>7} {'satır':>8} {'dolu':>8} {'dolu %':>8}")
+    for ay in sorted(aylik):
+        adet, dolu = aylik[ay]
+        oran = dolu / adet * 100 if adet else 0.0
+        isaret = "  ← boş" if oran < _ASGARI_DOLULUK else ""
+        print(f"    {ay:>7} {int(adet):>8} {int(dolu):>8} {oran:>7.1f}%{isaret}")
+
     print("\n  YORUM (satış tutarına göre brüt marj):")
-    aday: list[tuple[float, str, str, float]] = []
+    yeterli = []
     for kolon in _MALIYET_KOLON:
         duz = sum(al(r, f"{kolon}_duz") for r in sec)
         carpim = sum(al(r, f"{kolon}_carpim") for r in sec)
         dolu = sum(al(r, f"{kolon}_dolu") for r in sec)
         oran = dolu / adet_toplam * 100 if adet_toplam else 0.0
-        if oran < _ASGARI_DOLULUK:
-            print(f"    {kolon:<12} satış satırlarının %{oran:.1f}'i dolu → KULLANILAMAZ")
-            continue
+        # Doluluk yetersiz olsa bile rakamı GÖSTERİYORUZ: «birim mi satır toplamı mı»
+        # sorusunun cevabı doluluktan bağımsızdır ve bu tabloda okunur.
         for etiket, mal in (("satır toplamı", duz), ("birim × miktar", carpim)):
             marj = (satis_toplam - mal) / satis_toplam * 100 if satis_toplam else 0.0
-            makul = "  ← MAKUL" if _MAKUL_MARJ[0] <= marj <= _MAKUL_MARJ[1] else ""
+            makul = "  ← makul" if _MAKUL_MARJ[0] <= marj <= _MAKUL_MARJ[1] else ""
             print(f"    {kolon:<12} %{oran:>5.1f} dolu  {etiket:<15} "
                   f"SMM {tl(mal):>18}  brüt marj %{marj:>6.1f}{makul}")
-            if makul:
-                aday.append((abs(marj - 25.0), kolon, etiket, marj))
+            if makul and oran >= _ASGARI_DOLULUK:
+                yeterli.append((abs(marj - 25.0), kolon, etiket, marj))
+        print()
 
-    print()
-    if not aday:
-        print("  → Hiçbir yorum makul bir marj vermiyor. Maliyet kolonu bu kurulumda")
-        print("    güvenilir değil; brüt kâr canlı veriden hesaplanmamalı.")
+    if yeterli:
+        yeterli.sort()
+        _, kolon, etiket, marj = yeterli[0]
+        print(f"  → KULLANILABİLİR: {kolon}, «{etiket}» olarak okunmalı "
+              f"(brüt marj %{marj:.1f}).")
+        print("    Nakit & Kârlılık ve mukayese tablosu kapanış fişi beklemeden gerçek")
+        print("    brüt kârı ve GERÇEK STOĞU gösterecek şekilde bağlanabilir.")
         return
-    aday.sort()
-    _, kolon, etiket, marj = aday[0]
-    print(f"  → KULLANILABİLİR: {kolon}, «{etiket}» olarak okunmalı (brüt marj %{marj:.1f}).")
-    print("    Bunu bildirin; Nakit & Kârlılık ve mukayese tablosu kapanış fişi beklemeden")
-    print("    gerçek brüt kârı ve GERÇEK STOĞU gösterecek şekilde bağlanacak.")
+
+    print(f"  → Doluluk %{_ASGARI_DOLULUK:.0f} eşiğinin altında; kolon OLDUĞU GİBİ bağlanamaz.")
+    print("    Ama yukarıdaki ay tablosuna bakın: boşluk SON aylarda toplanıyorsa kolon")
+    print("    sağlamdır, yalnız Mikro'da «Maliyet Güncelleme» o tarihten beri")
+    print("    çalıştırılmamıştır — çalıştırıldığında bu rapor kullanılabilir hâle gelir.")
+    print("    Boşluk her aya dağılmışsa maliyet kolonu bu kurulumda güvenilir değildir.")
 
 
 def main() -> None:
