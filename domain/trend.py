@@ -102,6 +102,17 @@ def build_finansal_oranlar(b: Bilanco) -> tuple[list[FinansalOran], dict[str, fl
         r = oran(pay, payda)
         return None if r is None else r * 100.0
 
+    def oz_orani(pay: float) -> float | None:
+        """
+        Özkaynağa BÖLEN oran; özkaynak eksiyken hesaplanmaz.
+
+        Eksi paydada sonuç da eksi çıkar ve «borcum az» gibi okunur — oysa tam tersi,
+        özkaynak tükenmiştir. Canlıda «Borç / Özkaynak -21,78» yazıyordu; aynı raporun
+        mukayese tablosu ise doğru davranıp «—» diyordu. İki yerde iki farklı kural,
+        aynı sayfada çelişki. Kural artık tek: özkaynak pozitif değilse bu oran yok.
+        """
+        return oran(pay, ozkaynak) if ozkaynak > 0.005 else None
+
     # Açıklamalar formül tekrarı değil, sade dilde (bkz. domain.terimler).
     oranlar = [
         FinansalOran("cari", "Cari Oran", oran(donen, kvyk), "x", sade_oran("cari")),
@@ -109,7 +120,7 @@ def build_finansal_oranlar(b: Bilanco) -> tuple[list[FinansalOran], dict[str, fl
                      sade_oran("asit")),
         FinansalOran("nakit_oran", "Nakit Oranı", oran(nakit, kvyk), "x",
                      sade_oran("nakit_oran")),
-        FinansalOran("borc_oz", "Borç / Özkaynak", oran(yabanci, ozkaynak), "x",
+        FinansalOran("borc_oz", "Borç / Özkaynak", oz_orani(yabanci), "x",
                      sade_oran("borc_oz")),
         FinansalOran("oz_oran", "Özkaynak Oranı", yuz(ozkaynak, aktif), "%",
                      sade_oran("oz_oran")),

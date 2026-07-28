@@ -84,5 +84,43 @@ class TestTrendGrafikYardimcilari(unittest.TestCase):
             self.assertIn(round(mantis, 3), (1.0, 2.0, 2.5, 5.0, 10.0))
 
 
+class TestNegatifOzkaynak(unittest.TestCase):
+    """
+    Özkaynak eksiyken Borç/Özkaynak hesaplanmamalı.
+
+    Canlı PDF'te FİNANSAL ORANLAR paneli «-21,78» yazarken aynı raporun mukayese
+    tablosu «—» diyordu: aynı oran, aynı veri, iki farklı cevap. Eksi paydada sonuç
+    da eksi çıkar ve «borcum az» gibi okunur; oysa özkaynak tükenmiştir.
+    """
+
+    @staticmethod
+    def _bilanco(ozkaynak_alacak: float):
+        return build_bilanco([
+            {"hesap_kodu": "102", "borc": 50_000.0, "alacak": 0},
+            {"hesap_kodu": "153", "borc": 150_000.0, "alacak": 0},
+            {"hesap_kodu": "320", "borc": 0, "alacak": 180_000.0},
+            {"hesap_kodu": "500", "borc": 0, "alacak": ozkaynak_alacak},
+        ], asof="2025-12-31")
+
+    @staticmethod
+    def _oran(b, kod: str):
+        return next(o for o in build_finansal_oranlar(b)[0] if o.kod == kod)
+
+    def test_eksi_ozkaynakta_borc_oz_hesaplanmaz(self) -> None:
+        b = self._bilanco(-40_000.0)          # alacak eksi → özkaynak eksi
+        self.assertLess(build_finansal_oranlar(b)[1]["ozkaynak"], 0)
+        self.assertIsNone(self._oran(b, "borc_oz").deger)
+        self.assertEqual(self._oran(b, "borc_oz").metin(), "—")
+
+    def test_pozitif_ozkaynakta_hesaplanir(self) -> None:
+        b = self._bilanco(20_000.0)
+        self.assertIsNotNone(self._oran(b, "borc_oz").deger)
+
+    def test_ozkaynak_orani_eksi_kalabilir(self) -> None:
+        """Bu oran eksiyken de bilgi taşır: borçlar varlıkları aşmış demektir."""
+        b = self._bilanco(-40_000.0)
+        self.assertIsNotNone(self._oran(b, "oz_oran").deger)
+
+
 if __name__ == "__main__":
     unittest.main()
