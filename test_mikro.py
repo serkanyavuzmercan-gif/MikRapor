@@ -367,6 +367,38 @@ class TestStokEvraktipTeshis(unittest.TestCase):
         self.assertIn("TOP 100", c.sorgular[0])
 
 
+class TestStokMaliyetTeshis(unittest.TestCase):
+    """
+    Maliyet kolonu kullanılabilir mi? — kolon VAR demek yeterli değil.
+
+    Kapanış fişi işlenmeden brüt kâr göstermek için satış satırının kendi maliyetini
+    taşıması gerekiyor. İki şey ölçülmeden kolon bağlanamaz: dolu mu (maliyet
+    güncellemesi çalışmamışsa 0'dır, 0'ı maliyet sanmak marjı %100 gösterir) ve
+    birim maliyet mi satır toplamı mı (yanlış yorum brüt kârı miktar katı şişirir).
+    """
+
+    def test_uc_kolon_da_iki_yorumla_olculur(self) -> None:
+        from infra.mikro_fetch import fetch_stok_maliyet_teshis
+        c = _SqlYakala()
+        fetch_stok_maliyet_teshis(c, "2026-01-01", "2026-07-28")
+        sql = c.sorgular[0]
+        for ad in ("ana", "alternatif", "orjinal"):
+            self.assertIn(f"SUM(sth_maliyet_{ad}) AS {ad}_duz", sql)
+            self.assertIn(f"SUM(sth_maliyet_{ad} * sth_miktar) AS {ad}_carpim", sql)
+            self.assertIn(f"WHEN sth_maliyet_{ad} <> 0", sql)   # doluluk sayımı
+
+    def test_satis_ve_alis_ayri_yil_yil_doner(self) -> None:
+        """Satışın maliyeti alışınkiyle karışmamalı; yıl kırılımı tutarlılığı gösterir."""
+        from infra.mikro_fetch import fetch_stok_maliyet_teshis
+        c = _SqlYakala()
+        fetch_stok_maliyet_teshis(c, "2026-01-01", "2026-07-28")
+        sql = c.sorgular[0]
+        self.assertIn("sth_tip", sql.split("GROUP BY")[1])
+        self.assertIn("SUM(sth_tutar) AS tutar", sql)
+        self.assertIn(">= '2026-01-01'", sql)
+        self.assertIn("< '2026-07-29'", sql)          # bitiş günü tam dahil
+
+
 class TestKrediKartiSorgusu(unittest.TestCase):
     """
     Açık kart borcu sorgusu — dev fiş tablosunu taramamalı.

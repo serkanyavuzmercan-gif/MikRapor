@@ -160,6 +160,44 @@ def fetch_stok_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, A
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+def fetch_stok_maliyet_teshis(
+    client: MikroClient, bas: str, bit: str,
+) -> list[dict[str, Any]]:
+    """
+    STOK_HAREKETLERI'nin maliyet kolonları KULLANILABİLİR mi? — teşhis içindir.
+
+    Mikro satır başına üç maliyet tutar (ana / alternatif / orjinal = firmanın
+    tanımladığı üç maliyet yöntemi). Doluysa satılan malın maliyeti kapanış fişi
+    beklenmeden okunabilir: brüt kâr resmi gelir tablosundan bağımsız çıkar.
+
+    İKİ ŞEYİ AYNI ANDA ÖLÇER, çünkü ikisini de bilmeden kolon kullanılamaz:
+
+    1) DOLULUK — sıfırdan farklı satır oranı. Maliyet güncellemesi çalıştırılmamış
+       kurulumlarda bu kolonlar 0'dır; 0'ı maliyet sanmak brüt marjı %100 gösterir.
+    2) BİRİM Mİ SATIR TOPLAMI MI — `SUM(maliyet)` ve `SUM(maliyet × miktar)` yan yana
+       döner. Satışta hangisi tutara yakınsa doğru yorum odur; yanlış seçim brüt kârı
+       miktar katı şişirir ya da eritir. Tahmin etmiyoruz, canlı veriye soruyoruz.
+    """
+    bas, bit = _aralik(bas, bit)
+    tarih = _stok_tarih_sql()
+    kolonlar = []
+    for ad in ("ana", "alternatif", "orjinal"):
+        k = f"sth_maliyet_{ad}"
+        kolonlar.append(
+            f"SUM({k}) AS {ad}_duz, SUM({k} * sth_miktar) AS {ad}_carpim, "
+            f"SUM(CASE WHEN {k} <> 0 THEN 1 ELSE 0 END) AS {ad}_dolu"
+        )
+    sql = (
+        f"SELECT YEAR({tarih}) AS yil, sth_tip, COUNT(*) AS adet, "
+        "SUM(sth_tutar) AS tutar, SUM(sth_miktar) AS miktar, "
+        + ", ".join(kolonlar) +
+        " FROM STOK_HAREKETLERI WITH (NOLOCK) "
+        f"WHERE {tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}' "
+        f"GROUP BY YEAR({tarih}), sth_tip ORDER BY yil, sth_tip"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
+
+
 def fetch_stok_evraktip_yillik(
     client: MikroClient, bas: str, bit: str, tip: int, evraktip: int,
 ) -> list[dict[str, Any]]:
