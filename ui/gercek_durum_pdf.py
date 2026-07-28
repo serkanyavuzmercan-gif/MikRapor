@@ -49,12 +49,19 @@ def export_gercek_durum_pdf(gd: GercekDurum, path: str | Path, firma: str = "") 
          tl(-(gd.borc - gd.satici_avans))],
         [Paragraph("Net işletme sermayesi", sty_kpi()), tl(gd.net_isletme_sermayesi)],
     ]
-    if gd.resmi_brut_marj is not None:
+    if gd.resmi_brut_kar is not None and gd.satis_koprusu is not None \
+            and gd.maliyet_koprusu is not None:
+        stok = "− Stok artışı (alınıp satılmayan mal)" if gd.maliyet_koprusu >= 0 \
+            else "+ Stok azalışı (önceki dönemlerden satılan mal)"
         data += [
-            [Paragraph("RESMİ vs FİİLİ  (mutabakat)", sty_sec()), ""],
-            [Paragraph("Resmi brüt marj", sty_row()), _yuz(gd.resmi_brut_marj)],
-            [Paragraph("Fiili brüt marj", sty_row()), _yuz(gd.gercek_brut_marj)],
-            [Paragraph("Marj farkı (fiili − resmi)", sty_kpi()), _yuz(gd.marj_farki or 0)],
+            [Paragraph("RESMİ &#8594; FİİLİ KÖPRÜSÜ  (mutabakat)", sty_sec()), ""],
+            [Paragraph("Resmi brüt kâr (satılan malın maliyetiyle)", sty_row()),
+             tl(gd.resmi_brut_kar)],
+            [Paragraph("− Satış farkı (602 diğer gelirler, iade)", sty_row()),
+             tl(-gd.satis_koprusu)],
+            [Paragraph(stok, sty_row()), tl(-gd.maliyet_koprusu)],
+            [Paragraph("Fiili al-sat farkı (alınan malın tamamıyla)", sty_kpi()),
+             tl(gd.gercek_brut_kar)],
         ]
 
     t = Table(data, colWidths=[120 * mm, 50 * mm])

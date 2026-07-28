@@ -2,9 +2,10 @@
 Nakit & Kârlılık — yerel Qt görünümü.
 
 İşletmenin fiili kârlılık ve nakit performansını gösterir: stok hareketinden fiili brüt marj,
-banka hareketinden nakit akışı, 10x/12x/32x bakiyelerinden nakit/alacak/borç. "RESMİ vs FİİLİ"
-paneli, resmi gelir tablosu ile fiili operasyonu yan yana koyup farkın mutabakatını yapar
-(SMM zamanlaması, 623 vb.). Aylık trend grafiği ek bağımlılık olmadan QPainter ile çizilir.
+banka hareketinden nakit akışı, 10x/12x/32x bakiyelerinden nakit/alacak/borç.
+"RESMİ → FİİLİ KÖPRÜSÜ" paneli ikisini KIYASLAMAZ — resmi brüt kârdan başlayıp satış farkı
+ve stok değişimiyle fiili al-sat farkına iner (iki büyüklük aynı şeyin iki ölçümü değildir).
+Aylık trend grafiği ek bağımlılık olmadan QPainter ile çizilir.
 """
 
 from __future__ import annotations
@@ -161,7 +162,7 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
             _tsatir(t, [_c("      alış irsaliyesi (dahil değil)", renk=_MID),
                         _c(tl(gd.alis_irsaliye), renk=_MID, sag=True)])
         else:
-            _tsatir(t, [_c("      alış irsaliyesi (hatalı kayıt — gösterilmiyor)", renk=WARN),
+            _tsatir(t, [_c("      alış irsaliyesi (hatalı kayıt)", renk=WARN),
                         _c("—", renk=WARN, sag=True)])
     if gd.siniflandirilmayan_giris > 0.005:
         _tsatir(t, [_c("      diğer giriş (tanınmayan)", renk=_MID),
@@ -172,50 +173,54 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
                 _c(yuzde(gd.gercek_brut_marj), renk=_renk(gd.gercek_brut_marj), kalin=True, sag=True)])
     _fit_height(t)
 
-    notlar: list[tuple[str, str]] = []
-    if gd.resmi_smm is not None and gd.smm_stok_farki is not None:
-        notlar.append((
-            f"Resmi SMM (GL 62xx) {tl(gd.resmi_smm)} − stok alış {tl(gd.gercek_alis)} "
-            f"= {tl(gd.smm_stok_farki)} fark (623, stok değişimi, maliyet kapanışı).", MUTED))
-    return _card("OPERASYONEL KÂRLILIK  (stok hareketinden)", _ic(t, notlar))
+    # Resmi SMM ile stok alışı arasındaki farkı artık köprü paneli anlatıyor —
+    # burada tekrar etmek aynı rakamı iki kez okutuyordu.
+    return _card("OPERASYONEL KÂRLILIK  (stok hareketinden)", _ic(t))
+
+
+def _stok_koprusu_etiketi(v: float) -> str:
+    """Köprünün stok kalemi: işarete göre ne olduğu değişir."""
+    if v >= 0:
+        return "− Stok artışı  ·  alınıp satılmayan mal"
+    return "+ Stok azalışı  ·  önceki dönemlerden satılan mal"
 
 
 def _karsilastirma_panel(gd: GercekDurum) -> QFrame:
-    t = _agac(4, [(1, 118), (2, 132), (3, 128)])
-    _tsatir(t, [_c(""), _c("Resmi", renk=MUTED, kalin=True, sag=True),
-                _c("Fiili", renk=MUTED, kalin=True, sag=True),
-                _c("Fark", renk=MUTED, kalin=True, sag=True)])
+    """
+    Resmi kâr ile fiili al-sat farkı arasında KÖPRÜ — kıyas değil.
 
-    if gd.resmi_brut_marj is None:
-        _tsatir(t, [_c("Resmi gelir tablosu yüklenemedi.", renk=_MID), _c(""), _c(""), _c("")])
+    Eskiden «Resmi | Fiili | Fark» diye üç sütundu; iki farklı büyüklüğü aynı şeyin
+    iki ölçümü gibi gösterip aradaki muhasebe zamanlamasını usulsüzlük gibi okutuyordu
+    (kullanıcı haklı olarak "mali müşavir kârı fazla mı göstermiş?" diye sordu).
+    Şelale hâlinde iki kalem farkın tamamını kuruşu kuruşuna kapatıyor.
+    """
+    t = _agac(2, [(1, 150)])
+    if gd.resmi_brut_kar is None or gd.satis_koprusu is None or gd.maliyet_koprusu is None:
+        _tsatir(t, [_c("Resmi gelir tablosu yüklenemedi.", renk=_MID), _c("")])
         _fit_height(t)
-        return _card("RESMİ vs FİİLİ", _ic(t))
+        return _card("RESMİ → FİİLİ KÖPRÜSÜ", _ic(t))
 
-    mf = gd.marj_farki or 0.0
-    _tsatir(t, [_c("Brüt Marj", kalin=True), _c(yuzde(gd.resmi_brut_marj), sag=True),
-                _c(yuzde(gd.gercek_brut_marj), kalin=True, sag=True),
-                _c(("+" if mf >= 0 else "") + yuzde(mf), renk=_renk(mf), kalin=True, sag=True)])
-    if gd.resmi_brut_kar is not None:
-        bk = gd.gercek_brut_kar - gd.resmi_brut_kar
-        _tsatir(t, [_c("Brüt Kâr", kalin=True), _c(tl(gd.resmi_brut_kar), sag=True),
-                    _c(tl(gd.gercek_brut_kar), kalin=True, sag=True),
-                    _c(("+" if bk >= 0 else "") + tl(bk), renk=_renk(bk), kalin=True, sag=True)])
-    if gd.resmi_smm is not None:
-        sf = gd.smm_stok_farki or 0.0
-        _tsatir(t, [_c("Maliyet (SMM / Stok Alış)", kalin=True), _c(tl(gd.resmi_smm), sag=True),
-                    _c(tl(gd.gercek_alis), kalin=True, sag=True),
-                    _c(("+" if sf >= 0 else "") + tl(sf), renk=_renk(-sf), kalin=True, sag=True)])
-    if gd.gizlenen_brut is not None:
-        _tsatir(t, [_c("Fiili − resmi fark (yaklaşık)", kalin=True), _c(""), _c(""),
-                    _c(("+" if gd.gizlenen_brut >= 0 else "") + tl(gd.gizlenen_brut),
-                       renk=_renk(gd.gizlenen_brut), kalin=True, sag=True)])
+    _tsatir(t, [_c("Resmi Brüt Kâr  ·  satılan malın maliyetiyle", kalin=True),
+                _c(tl(gd.resmi_brut_kar), kalin=True, sag=True)])
+    _tsatir(t, [_c("− Satış farkı  ·  602 diğer gelirler, iade", renk=_MID),
+                _c(tl(-gd.satis_koprusu), renk=_MID, sag=True)])
+    _tsatir(t, [_c(_stok_koprusu_etiketi(gd.maliyet_koprusu), renk=_MID),
+                _c(tl(-gd.maliyet_koprusu), renk=_MID, sag=True)])
+    _tsatir(t, [_c("Fiili Al-Sat Farkı  ·  alınan malın tamamıyla", kalin=True),
+                _c(tl(gd.gercek_brut_kar), renk=_renk(gd.gercek_brut_kar),
+                   kalin=True, sag=True)])
     _fit_height(t)
 
     notlar = [(
-        "Fiili marj = depodan çıkan − giren mal. Resmi SMM ek olarak 623 (navlun/gümrük vb.) ve "
-        "dönem stok değişimini içerir; iki rakam bu yüzden farklı çıkar. Fark muhasebe "
-        "zamanlamasıdır, bir tutarsızlık değildir.", MUTED)]
-    return _card("RESMİ vs FİİLİ  (mutabakat)", _ic(t, notlar))
+        "Bu iki rakam aynı şeyin iki ölçümü DEĞİL. Resmi kâr yalnız <b>satılan</b> malın "
+        "maliyetini düşer; fiili al-sat farkı ise dönemde <b>alınan</b> malın tamamını düşer. "
+        "Depoya giren mal aradaki farkı açar — muhasebe zamanlamasıdır, tutarsızlık değildir.",
+        MUTED)]
+    if gd.maliyet_koprusu > 0.005:
+        notlar.append((
+            f"Bu dönemde {tl(gd.maliyet_koprusu)} tutarında mal alınıp satılmadı, stoğa eklendi. "
+            "Fiili marjın resmi marjdan düşük görünmesinin sebebi budur.", MUTED))
+    return _card("RESMİ → FİİLİ KÖPRÜSÜ  (mutabakat)", _ic(t, notlar))
 
 
 def _isletme_sermayesi_panel(gd: GercekDurum) -> QFrame:
