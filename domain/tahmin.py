@@ -24,10 +24,15 @@ def ogrenme_penceresi_bas(bas: str, bit: str, *, ay: int = 12) -> str:
     """
     Varsayım öğrenme penceresinin başlangıç tarihi (YYYY-MM-DD).
 
-    Seçili dönem kısa/yeni olabilir (ör. çeyreğin başı) → marj/ciro tek çeyreğe göre
-    yanıltıcı çıkar (stoktan yenilen ayda %49, normalde %25 gibi). Bu yüzden varsayımlar
-    seçili başlangıç ile "bit'ten `ay` ay geri"nin ERKENİNDEN öğrenilir: kullanıcı daha
-    geniş dönem seçtiyse korunur, dar seçtiyse son `ay` aya (varsayılan 12) genişletilir.
+    SEÇİLEN TARİH ARALIĞININ DIŞINA ÇIKMAZ. Pencere «bit'ten `ay` ay geri»dir, ama
+    asla `bas`tan öncesine gitmez.
+
+    Eskiden ikisinin ERKENİ alınıyordu: dar dönem seçen kullanıcı için pencere geriye
+    doğru 12 aya genişletiliyordu. Gerekçesi vardı (tek çeyrekte marj %49 çıkıp 12 ayda
+    ~%25'e oturuyor), ama kullanıcının seçimini eziyordu — seçmediği günlerin verisi
+    rapora giriyordu. Kullanıcı bunu açıkça reddetti: «tarih aralığı kutsal, her şeyi o
+    belirliyor». Pencere kısalıyorsa kısalsın; dar dönemin dalgalı çıkması kullanıcının
+    bilerek aldığı sonuçtur.
     """
     try:
         y, m, d = int(bit[:4]), int(bit[5:7]), int(bit[8:10])
@@ -39,7 +44,7 @@ def ogrenme_penceresi_bas(bas: str, bit: str, *, ay: int = 12) -> str:
     except ValueError:
         geri = date(yil_geri, ay_idx + 1, 28)  # 31/29 gün taşması
     g = geri.isoformat()
-    return min(bas, g) if bas else g
+    return max(bas, g) if bas else g
 
 
 def _ay_ekle(yyyymm: str, k: int) -> str:

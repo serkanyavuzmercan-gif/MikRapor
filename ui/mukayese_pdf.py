@@ -24,7 +24,13 @@ def mukayese_tablosu(kapanislar: list[YilKapanis]) -> Table | None:
     if not yillar:
         return None
 
-    data = [[""] + [str(yil) for yil in yillar] + [f"{yillar[0]}→{yillar[-1]}"]]
+    # Başlık gerçek pencereyi yazar: «2025 (28.07–31.12)». Sütunlar farklı uzunlukta
+    # olabilir; PDF bankaya/müşavire gittiğinde bunun görünmemesi yanlış okumaya yol açar.
+    def _bas(yil: int) -> str:
+        k = next((x for x in kapanislar if x.yil == yil), None)
+        return k.basligi() if k is not None else str(yil)
+
+    data = [[""] + [_bas(yil) for yil in yillar] + [f"{yillar[0]}→{yillar[-1]}"]]
     cmds = [("FONTNAME", (0, 0), (-1, 0), FONT_B), ("TEXTCOLOR", (0, 0), (-1, 0), GRAY),
             ("LINEBELOW", (0, 0), (-1, 0), 0.8, LINE)]
     r = 1
@@ -67,8 +73,8 @@ def mukayese_tablosu(kapanislar: list[YilKapanis]) -> Table | None:
 def mukayese_notu() -> Paragraph:
     """Tablo altı açıklama."""
     stil = ParagraphStyle("mk_not", fontName=FONT, fontSize=7.4, textColor=GRAY, leading=10)
+    # «Tutarlar TL'dir» YANLIŞTI: TL bölümü tablodan kaldırılınca not orada unutulmuştu.
+    # Tablo dolar; birim «DOLAR BAZINDA (USD)» başlığında yazıyor, notta tekrarlanmıyor.
     return Paragraph(
-        "Yıllar boyunca hiç değişmeyen kalemler gösterilmez (karşılaştırma değeri yok). "
-        "Alacak, borç ve nakit ilgili sekmelerin canlı kaynağından gelir; stok, özkaynak "
-        "ve aktif mizandan. Tutarlar TL'dir; büyük rakamlar «bin / milyon / milyar» diye "
-        "kısaltılmıştır. «—» o yıl için hesaplanamadı.", stil)
+        "«—» hesaplanamadı &nbsp;·&nbsp; hiç değişmeyen satırlar gizlendi "
+        "&nbsp;·&nbsp; kaynak: cari hareketler, GL nakit, mizan", stil)

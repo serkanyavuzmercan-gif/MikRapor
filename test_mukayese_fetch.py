@@ -57,17 +57,18 @@ class TestYillariCek(unittest.TestCase):
         self.addCleanup(v.stop)
 
     def test_her_yil_kendi_veritabanindan(self) -> None:
-        yillari_cek(_CFG, [2021, 2022, 2023])
+        yillari_cek(_CFG, "2021-01-01", "2023-12-31")
         self.assertEqual(self.sorgulanan, [2021, 2022, 2023])
 
     def test_odak_yil_verilen_istemciyi_kullanir(self) -> None:
         """Odak yılın verisi zaten çekilmiş olur; yeniden bağlanmak israf."""
         odak = yil_client(_CFG, 2025)
-        yillari_cek(_CFG, [2024, 2025], odak_client=odak)
+        yillari_cek(_CFG, "2024-01-01", "2025-12-31", odak_client=odak)
         self.assertEqual(self.sorgulanan, [2024, 2025])
 
     def test_bos_yil_listesi(self) -> None:
-        self.assertEqual(yillari_cek(_CFG, []), [])
+        with self.assertRaises(ValueError):
+            yillari_cek(_CFG, "2026-12-31", "2026-01-01")
 
     def test_katalog_kurulamazsa_secili_firmayla_devam(self) -> None:
         """
@@ -91,7 +92,7 @@ class TestYillariCek(unittest.TestCase):
         with patch("infra.veritabani.fetch_yil_araligi",
                    side_effect=MikroAPIError("yoklama düştü")), \
                 patch("infra.mukayese_fetch.yil_kapanisi", side_effect=kapanis):
-            out = yillari_cek(_CFG, [2024, 2025])
+            out = yillari_cek(_CFG, "2024-01-01", "2025-12-31")
         self.yama.start()
 
         self.assertEqual([k.yil for k in out], [2024, 2025])   # tablo kurulabildi
@@ -107,7 +108,7 @@ class TestYillariCek(unittest.TestCase):
 
         self.yama.stop()
         with patch("infra.mukayese_fetch.yil_kapanisi", side_effect=hepsi_var):
-            yillari_cek(_CFG, [2023, 2024, 2025])
+            yillari_cek(_CFG, "2023-01-01", "2025-12-31")
         self.yama.start()
         self.assertEqual(denenen, [2023, 2024, 2025])   # yedek hiç denenmedi
 
@@ -122,7 +123,7 @@ class TestYillariCek(unittest.TestCase):
 
         self.yama.stop()
         with patch("infra.mukayese_fetch.yil_kapanisi", side_effect=bazen_patla):
-            out = yillari_cek(_CFG, [2021, 2022, 2023])
+            out = yillari_cek(_CFG, "2021-01-01", "2023-12-31")
         self.assertEqual([k.yil for k in out], [2021, 2023])
         self.yama.start()
 
@@ -137,51 +138,96 @@ class TestYillariCek(unittest.TestCase):
 
         self.yama.stop()
         with patch("infra.mukayese_fetch.yil_kapanisi", side_effect=bos_2022):
-            out = yillari_cek(_CFG, [2021, 2022, 2023])
+            out = yillari_cek(_CFG, "2021-01-01", "2023-12-31")
         self.assertEqual([k.yil for k in out], [2021, 2023])
         self.yama.start()
 
 
-class TestAyniGunePencere(unittest.TestCase):
+class TestSecilenAralikKutsal(unittest.TestCase):
     """
-    Devam eden yılla kıyas AYNI PENCEREDEN yapılmalı.
+    SEÇİLEN TARİH ARALIĞININ DIŞINDAN TEK GÜN OKUNMAZ.
 
-    Canlıda 27.07.2025–28.07.2026 seçilmişken 2025 sütunu 12 aylık, 2026 sütunu
-    7 aylıktı; ciro «%59 düştü» görünüyordu. Kullanıcı haklı olarak "1,1 milyon USD
-    ciroyu ilk 7 ayda yapmış olamayız" dedi — gerçekten de o rakam tam 2025'ti.
+    Önce her yıl 1 Ocak'tan okunuyordu; gerekçe «yıl kıyası aynı pencereden yapılmalı»
+    idi ve kendi içinde tutarlıydı. Ama kullanıcının seçimini eziyordu: 28.07.2025
+    seçilmişken tabloya 01.01.2025 verisi giriyordu. Kullanıcı bunu net biçimde
+    reddetti — «tarih aralığı kutsal, her şeyi o belirliyor». Sütun artık o yılın
+    seçili aralıkla KESİŞİMİDİR; hesaplanamayan hücre «—» kalır.
     """
 
-    def test_odak_yil_surerken_gecmis_yil_ayni_gune_kirpilir(self) -> None:
-        from infra.mukayese_fetch import ayni_gune_kirp
-        self.assertEqual(ayni_gune_kirp(2025, "2026-07-28"), ("2025-07-28", False))
-
-    def test_odak_yil_tamsa_hepsi_tam_yil(self) -> None:
-        from infra.mukayese_fetch import ayni_gune_kirp
-        self.assertEqual(ayni_gune_kirp(2024, "2025-12-31"), ("2024-12-31", True))
-
-    def test_odak_bit_yoksa_tam_yil(self) -> None:
-        from infra.mukayese_fetch import ayni_gune_kirp
-        self.assertEqual(ayni_gune_kirp(2024, ""), ("2024-12-31", True))
-
-    def test_29_subat_olmayan_yila_kirpilir(self) -> None:
-        """2028 artık yıl, 2027 değil — geçersiz tarih üretilmemeli."""
-        from infra.mukayese_fetch import ayni_gune_kirp
-        self.assertEqual(ayni_gune_kirp(2027, "2028-02-29"), ("2027-02-28", False))
-
-    def test_gecmis_yil_kirpilmis_pencereden_okunur(self) -> None:
+    @staticmethod
+    def _pencereler(bas: str, bit: str) -> list[tuple[int, str, str]]:
+        from domain.ai_yorum import YilKapanis
         from infra.mukayese_fetch import yillari_cek
-        pencere: list[tuple[int, str, bool]] = []
+        gorulen: list[tuple[int, str, str]] = []
 
         def sahte(client, yil, **kw):
-            from domain.ai_yorum import YilKapanis
-            pencere.append((yil, kw.get("bit") or "", kw.get("tam", True)))
+            gorulen.append((yil, kw.get("bas") or "", kw.get("bit") or ""))
             return YilKapanis(yil=yil, net_satis=1_000_000.0)
 
         with patch("infra.mukayese_fetch.yil_kapanisi", side_effect=sahte), \
                 patch("infra.mukayese_fetch.fetch_cari_vade_gun", return_value={}):
-            yillari_cek(_CFG, [2025, 2026], odak_bit="2026-07-28", odak_tam=False)
-        self.assertEqual(pencere[0], (2025, "2025-07-28", False))    # geçmiş yıl
-        self.assertEqual(pencere[-1][:2], (2026, "2026-07-28"))      # odak yıl
+            yillari_cek(_CFG, bas, bit)
+        return gorulen
+
+    def test_her_sutun_araligin_kendi_parcasidir(self) -> None:
+        """28.07.2025–28.07.2026 → 2025 sütunu 28.07–31.12, 2026 sütunu 01.01–28.07."""
+        self.assertEqual(
+            self._pencereler("2025-07-28", "2026-07-28"),
+            [(2025, "2025-07-28", "2025-12-31"),
+             (2026, "2026-01-01", "2026-07-28")],
+        )
+
+    def test_aralik_disina_tek_gun_tasilmaz(self) -> None:
+        for yil, p_bas, p_bit in self._pencereler("2025-07-28", "2026-07-28"):
+            self.assertGreaterEqual(p_bas, "2025-07-28", yil)
+            self.assertLessEqual(p_bit, "2026-07-28", yil)
+
+    def test_tam_yillar_tam_isaretlenir(self) -> None:
+        """Aralık yılın tamamını kapsıyorsa sütun «tam» sayılır, başlıkta gün yazmaz."""
+        self.assertEqual(
+            self._pencereler("2024-01-01", "2025-12-31"),
+            [(2024, "2024-01-01", "2024-12-31"),
+             (2025, "2025-01-01", "2025-12-31")],
+        )
+
+    def test_tam_bayragi_pencereden_turetilir(self) -> None:
+        """«tam» elle verilmez, pencereden türer: 01.01–31.12 ise tam, değilse kısmi."""
+        from infra.mukayese_fetch import tam_yil
+        self.assertTrue(tam_yil("2025-01-01", "2025-12-31"))
+        self.assertFalse(tam_yil("2025-07-28", "2025-12-31"))
+        self.assertFalse(tam_yil("2026-01-01", "2026-07-28"))
+
+    def test_sutun_basligi_gercek_pencereyi_gosterir(self) -> None:
+        from domain.ai_yorum import YilKapanis
+        kismi = YilKapanis(yil=2025, bas="2025-07-28", bit="2025-12-31", tam=False)
+        self.assertEqual(kismi.basligi(), "2025 (28.07–31.12)")
+        self.assertEqual(
+            YilKapanis(yil=2024, bas="2024-01-01", bit="2024-12-31").basligi(), "2024")
+
+
+class TestYardimciPencereKirpma(unittest.TestCase):
+    """«Son 12 ay» / «son 90 gün» gibi referans pencereler de aralığın dışına çıkamaz."""
+
+    def test_ogrenme_penceresi_bastan_geriye_gitmez(self) -> None:
+        from domain.tahmin import ogrenme_penceresi_bas
+        # 3 aylık dönem seçildi: pencere 12 aya GENİŞLETİLMEZ, seçimde kalır.
+        self.assertEqual(ogrenme_penceresi_bas("2026-07-01", "2026-09-30"), "2026-07-01")
+
+    def test_genis_donemde_son_12_ay_kullanilir(self) -> None:
+        """Aralık genişse pencere yine son 12 ay: seçim dışına çıkılmıyor, kısaltılıyor."""
+        from domain.tahmin import ogrenme_penceresi_bas
+        self.assertEqual(ogrenme_penceresi_bas("2024-01-01", "2026-09-30"), "2025-09-30")
+
+    def test_runway_penceresi_bastan_geriye_gitmez(self) -> None:
+        from ui.tabs.nakit_akis_tab import _runway_referans_bas
+        self.assertEqual(_runway_referans_bas("2026-07-01", "2026-07-28"), "2026-07-01")
+        # Aralık 90 günden genişse pencere yine 90 gün.
+        self.assertEqual(_runway_referans_bas("2025-01-01", "2026-07-28"), "2026-04-30")
+
+    def test_pencere_kirp_yardimcisi(self) -> None:
+        from infra.mukayese_fetch import pencere_kirp
+        self.assertEqual(pencere_kirp("2026-01-01", "2026-07-28", "2025-08-01"), "2026-01-01")
+        self.assertEqual(pencere_kirp("2025-01-01", "2026-07-28", "2025-08-01"), "2025-08-01")
 
 
 class TestDonemParcalama(unittest.TestCase):

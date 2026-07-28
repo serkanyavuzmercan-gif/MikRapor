@@ -72,7 +72,7 @@ from infra.mikro_fetch import (
     fetch_stok_aylik,
     fetch_stok_ozet,
 )
-from infra.mukayese_fetch import yil_client, yillari_cek
+from infra.mukayese_fetch import yil_client, yil_donemleri, yillari_cek
 from ui.ai_yorum_pdf import export_ai_yorum_pdf
 from ui.ai_yorum_view import build_ai_yorum_widget
 from ui.bilesenler import soru_evet_hayir, varsayilan_kayit_yolu
@@ -274,14 +274,20 @@ class AiYorumTab(RaporTab):
         yillar, _ = yil_araligi(bas, bit)
         yil = yillar[-1] if yillar else int((bit or bas or "")[:4] or 0)
         yillar = yillar or [yil]
-        # Odak yılın bitişi BUGÜNÜ AŞMAZ: yıl sürerken 31 Aralık'a kadar veri istemek,
-        # modele yılın bittiğini düşündürüyordu («2026'yı 19,5M ile kapattı» — canlıda görüldü).
+        # HAM DETAY DA SEÇİLİ ARALIKTAN. Eskiden odak yılın 1 Ocak'ından okunuyordu:
+        # kullanıcı 28.07.2025–28.07.2026 seçtiğinde modele 01.01.2026'dan itibaren veri
+        # gidiyordu. «Tarih aralığı kutsal, her şeyi o belirliyor» — pencere, odak yılın
+        # seçili aralıkla kesişimidir. Bitiş ayrıca BUGÜNÜ AŞMAZ: yıl sürerken 31 Aralık'a
+        # kadar veri istemek modele yılın bittiğini düşündürüyordu («2026'yı 19,5M ile
+        # kapattı» — canlıda görüldü).
         bugun = date.today()
+        parcalar = yil_donemleri(bas, bit)
+        odak_bas, odak_bit = (parcalar[-1][1], parcalar[-1][2]) if parcalar else (bas, bit)
+        y_bas = odak_bas
+        y_bit = min(odak_bit, bugun.isoformat())
         yil_sonu = date(yil, 12, 31)
-        y_son = min(yil_sonu, bugun)
-        y_bas, y_bit = f"{yil}-01-01", y_son.isoformat()
-        tamamlandi = yil_sonu <= bugun
-        ay_sayisi = 12 if tamamlandi else y_son.month
+        tamamlandi = yil_sonu <= bugun and odak_bit >= yil_sonu.isoformat()
+        ay_sayisi = max(1, ay_farki(y_bas, y_bit) + 1)
         # Geçmiş bir yıl seçilmişse veri bugüne göre eskidir — model bugüne çekilmeli.
         gecikme_ay = ay_farki(y_bit, bugun.isoformat())
         # MUKAYESE YALNIZCA SEÇİLEN ARALIKTAN: eskiden tek yıl seçilse bile geriye doğru
@@ -348,8 +354,7 @@ class AiYorumTab(RaporTab):
             # Mukayese, Trend & Oranlar sekmesiyle AYNI modülden gelir; iki yerde
             # ayrı çekilirse rakamlar zamanla ayrışır.
             kapanislar = yillari_cek(
-                cfg, yillar, odak_client=client, odak_bit=y_bit,
-                odak_tam=tamamlandi, odak_ta=ta, bildir=bildir)
+                cfg, bas, bit, odak_client=client, odak_ta=ta, bildir=bildir)
             if len(kapanislar) > 1:
                 ekle("YILLAR ARASI KARŞILAŞTIRMA", lambda: yillar_arasi_csv(kapanislar))
 

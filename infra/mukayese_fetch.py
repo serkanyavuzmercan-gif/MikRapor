@@ -27,7 +27,6 @@ tabloyu komple düşürmüştü — iki yıl seçilmesine rağmen mukayese çık
 
 from __future__ import annotations
 
-from calendar import monthrange
 from collections.abc import Callable, Iterator
 from dataclasses import replace
 from datetime import date
@@ -168,7 +167,7 @@ def _banka_kredisi(b: Bilanco) -> float:
 
 
 def kapanis_kur(yil: int, *, tam: bool, b: Bilanco, gt: GelirTablosu,
-                bit: str = "",
+                bas: str = "", bit: str = "",
                 doviz: dict[str, float] | None = None,
                 ta: TahsilatAlacak | None = None,
                 nakit_gl: float | None = None) -> YilKapanis:
@@ -176,7 +175,7 @@ def kapanis_kur(yil: int, *, tam: bool, b: Bilanco, gt: GelirTablosu,
     _, ozet = build_finansal_oranlar(b)
     d = doviz or {}
     return YilKapanis(
-        yil=yil, tam=tam, bit=bit,
+        yil=yil, tam=tam, bas=bas, bit=bit,
         net_satis=gt.net_satislar, brut_kar=gt.brut_kar,
         faaliyet_kari=gt.faaliyet_kari, net_kar=gt.net_kar,
         nakit=ozet["nakit"] if nakit_gl is None else nakit_gl,
@@ -199,17 +198,27 @@ def _dene(fn, varsayilan=None):
         return varsayilan
 
 
-def yil_kapanisi(client: MikroClient, yil: int, *, bit: str | None = None,
-                 tam: bool = True, vade_gun: dict | None = None,
+def tam_yil(bas: str, bit: str) -> bool:
+    """Pencere yılın tamamını kapsıyor mu — sütun başlığında gün yazılıp yazılmayacağı."""
+    return bas[5:] == "01-01" and bit[5:] == "12-31"
+
+
+def yil_kapanisi(client: MikroClient, yil: int, *, bas: str | None = None,
+                 bit: str | None = None,
+                 tam: bool | None = None, vade_gun: dict | None = None,
                  ta: TahsilatAlacak | None = None) -> YilKapanis:
     """
-    Tek bir yılın kapanış fotoğrafı.
+    Bir yılın SEÇİLİ ARALIĞA DÜŞEN parçasının fotoğrafı.
 
-    `bit` verilmezse 31 Aralık kullanılır (kapanmış yıl). `ta` verilirse yeniden
-    çekilmez — odak yılda Alacak & Borç zaten çekilmiş olur.
+    `bas`/`bit` verilmezse yılın tamamı okunur. Verildiğinde aralık dışına tek gün
+    taşılmaz: akışlar o pencerede toplanır, bakiyeler pencerenin son gününde okunur.
+    `ta` verilirse yeniden çekilmez — odak yılda Alacak & Borç zaten çekilmiş olur.
     """
-    bas = f"{yil}-01-01"
+    ilk = bas or f"{yil}-01-01"
     son = bit or f"{yil}-12-31"
+    if tam is None:
+        tam = tam_yil(ilk, son)
+    bas = ilk
     b = build_bilanco(fetch_mizan(client, son), asof=son)
     gt = build_gelir_tablosu(fetch_gelir_tablosu(client, bas, son), bas=bas, bit=son)
     if ta is None:
@@ -217,25 +226,21 @@ def yil_kapanisi(client: MikroClient, yil: int, *, bit: str | None = None,
             fetch_acik_kalemler(client, son, bas, son),
             vade_gun_map=vade_gun or {}, bas=bas, bit=son, top_n=1))
     return kapanis_kur(
-        yil, tam=tam, bit=son, b=b, gt=gt,
+        yil, tam=tam, bas=bas, bit=son, b=b, gt=gt,
         doviz=_dene(lambda: fetch_doviz_ozet(client, bas, son), {}),
         ta=ta, nakit_gl=_dene(lambda: fetch_nakit_bakiye_gl(client, son)))
 
 
-def ayni_gune_kirp(yil: int, odak_bit: str) -> tuple[str, bool]:
+def pencere_kirp(bas: str, bit: str, ufuk_bas: str) -> str:
     """
-    Geçmiş yılı, odak yılın bittiği AY-GÜNE kırpar. Dönüş: (bitiş, yıl tam mı).
+    Bir yardımcı pencerenin başlangıcını seçili aralığın DIŞINA taşmayacak şekilde kırpar.
 
-    Odak yıl devam ederken geçmiş yılı TAM okumak elmayla armut kıyaslamaktır: canlıda
-    27.07.2025-28.07.2026 seçilmişken 2025 sütunu 12 aylık, 2026 sütunu 7 aylıktı ve
-    ciro «%59 düştü» görünüyordu. Aynı güne kırpınca kıyas yıldan yıla aynı pencereyi
-    kullanır. Odak yıl tamamlanmışsa (31 Aralık) hepsi tam yıl kalır.
+    SEÇİLEN TARİH ARALIĞI KUTSAL: «son 12 ay», «son 90 gün» gibi referans pencereler
+    kullanıcının seçmediği günleri okuyordu. Kullanıcı bunu açıkça reddetti — seçtiği
+    aralığın bir gün öncesi bile rapora girmemeli. Pencere kısalıyorsa kısalsın.
     """
-    if not odak_bit or odak_bit.endswith("-12-31"):
-        return f"{yil}-12-31", True
-    ay, gun = int(odak_bit[5:7]), int(odak_bit[8:10])
-    gun = min(gun, monthrange(yil, ay)[1])      # 29 Şubat her yıl yok
-    return f"{yil}-{ay:02d}-{gun:02d}", False
+    del bit
+    return max(ufuk_bas, bas)
 
 
 def yil_client(cfg: MikroConfig, yil: int) -> MikroClient:
@@ -273,53 +278,43 @@ def yil_client(cfg: MikroConfig, yil: int) -> MikroClient:
 
 def yillari_cek(
     cfg: MikroConfig,
-    yillar: list[int],
+    bas: str,
+    bit: str,
     *,
     odak_client: MikroClient | None = None,
-    odak_bit: str = "",
-    odak_tam: bool = True,
     odak_ta: TahsilatAlacak | None = None,
     bildir: Callable[[str], None] | None = None,
 ) -> list[YilKapanis]:
     """
-    Verilen yılların kapanışlarını çeker; veritabanında olmayan yıllar sessizce düşer.
+    SEÇİLİ ARALIĞI yıllara böler; her sütun o yılın aralıkla KESİŞİMİDİR.
 
-    Her yıl KENDİ çalışma yılıyla sorgulanır (bkz. modül başlığı). Listenin SONU odak
-    yıldır: bitişi bugünle sınırlı olabilir (devam eden yıl), Alacak & Borç verisi zaten
-    çekilmiş olabilir ve çağıran kendi istemcisini verebilir.
+    28.07.2025–28.07.2026 seçiliyken 2025 sütunu 28.07–31.12, 2026 sütunu 01.01–28.07
+    okunur. Aralık dışından tek gün bile alınmaz.
+
+    ÖNCEDEN HER YIL 1 OCAK'TAN OKUNUYORDU. Gerekçe «yıl kıyası aynı pencereden
+    yapılmalı» idi ve kendi içinde tutarlıydı, ama kullanıcının seçimini eziyordu:
+    28.07.2025 seçilmişken tabloya 01.01.2025 verisi giriyordu. Kullanıcı bunu açıkça
+    reddetti — «tarih aralığı kutsal, her şeyi o belirliyor». Sütunlar artık farklı
+    uzunlukta olabilir; bu, başlıkta gün aralığı yazılarak görünür kılınır.
+
+    Veritabanında olmayan ya da boş dönen yıl sessizce düşer. Her yıl KENDİ firma
+    veritabanından okunur (bkz. modül başlığı).
     """
-    if not yillar:
+    parcalar = yil_donemleri(bas, bit)
+    if not parcalar:
         return []
-    odak = max(yillar)
+    odak_yil = parcalar[-1][0]
     out: list[YilKapanis] = []
-    gecmis = [y for y in sorted(yillar) if y != odak]
 
-    for sira, y in enumerate(gecmis, 1):
-        if bildir:
-            bildir(f"{y} yılı mukayese için çekiliyor… ({sira}/{len(gecmis)})")
-        k = _gecmis_yil(cfg, y, odak_bit)
+    for sira, (yil, p_bas, p_bit) in enumerate(parcalar, 1):
+        if bildir and len(parcalar) > 1:
+            bildir(f"{yil} mukayese için çekiliyor… ({sira}/{len(parcalar)})")
+        odak = yil == odak_yil
+        c = (odak_client or yil_client(cfg, yil)) if odak else yil_client(cfg, yil)
+        k = _dene(lambda c=c, yil=yil, p_bas=p_bas, p_bit=p_bit, odak=odak: yil_kapanisi(
+            c, yil, bas=p_bas, bit=p_bit,
+            vade_gun=_dene(lambda c=c: fetch_cari_vade_gun(c), {}) or {},
+            ta=odak_ta if odak else None))
         if k is not None and k.dolu:   # boş yıl sıfır satırı olarak tabloya girmesin
             out.append(k)
-
-    if bildir and gecmis:
-        bildir(f"{odak} yılı mukayeseye ekleniyor…")
-    client = odak_client or yil_client(cfg, odak)
-    odak_k = _dene(lambda: yil_kapanisi(
-        client, odak, bit=odak_bit or None, tam=odak_tam,
-        vade_gun=_dene(lambda: fetch_cari_vade_gun(client), {}) or {}, ta=odak_ta))
-    if odak_k is not None:
-        out.append(odak_k)
     return out
-
-
-def _gecmis_yil(cfg: MikroConfig, yil: int, odak_bit: str = "") -> YilKapanis | None:
-    """
-    Geçmiş yıl yalnız kendi kapsamı doğrulanmış veritabanından okunur. Bitiş, odak
-    yılın bittiği ay-güne kırpılır — kıyas aynı pencereden yapılsın.
-    """
-    son, tam = ayni_gune_kirp(yil, odak_bit)
-    c = yil_client(cfg, yil)
-    k = _dene(lambda: yil_kapanisi(
-        c, yil, bit=son, tam=tam,
-        vade_gun=_dene(lambda: fetch_cari_vade_gun(c), {}) or {}))
-    return k if k is not None and k.dolu else None

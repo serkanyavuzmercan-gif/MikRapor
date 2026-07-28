@@ -22,9 +22,9 @@ _DARK = "#1f2937"
 _BASLIK_RENK = "#0f766e"
 
 # Sabit sütun genişlikleri: tablo pencereye yayılmaz, blok olarak ortalanır.
-# «41,2 milyon» en uzun hücre; 100px ona göre seçildi.
+# «2025 (28.07–31.12)» en uzun hücre; sütun genişliği ona göre.
 _ETIKET_SUTUN = 246
-_YIL_SUTUN = 100
+_YIL_SUTUN = 132   # «2025 (28.07–31.12)» sığmalı
 _DEGISIM_SUTUN = 124   # «+310,89 puan» sığmalı
 
 
@@ -32,25 +32,39 @@ _AY_ADI = ("Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
            "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık")
 
 
-def _kismi_bit(kapanislar: list[YilKapanis]) -> str:
-    """Yıllar tam okunmadıysa ortak bitiş günü («07-28»); tamsa boş."""
-    kismi = [k for k in kapanislar if not k.tam and len(k.bit) == 10]
-    return kismi[-1].bit[5:] if kismi else ""
+def _kismi_var(kapanislar: list[YilKapanis]) -> bool:
+    """Sütunlardan biri yılın tamamını kapsamıyorsa pencereler başlıkta yazılır."""
+    return any(not k.tam for k in kapanislar)
 
 
 def _pencere_eki(kapanislar: list[YilKapanis]) -> str:
-    """Başlığa eklenen dönem eki — kısmi yılda «· 1 Ocak – 28 Temmuz»."""
-    ag = _kismi_bit(kapanislar)
-    if not ag:
+    """
+    Başlığa eklenen dönem eki — seçili aralığın kendisi.
+
+    Eskiden «1 Ocak – 28 Temmuz» yazıyordu; üstteki tarih seçici 28.07.2025 derken
+    başlıkta 1 Ocak görmek çelişkiydi ve zaten rapor gerçekten de aralık dışını
+    okuyordu. Artık başlık seçilen aralığı, sütun başlıkları da her yılın o aralıktan
+    aldığı parçayı gösterir.
+    """
+    if not _kismi_var(kapanislar):
         return ""
-    return f" &nbsp;·&nbsp; 1 Ocak – {int(ag[3:5])} {_AY_ADI[int(ag[:2]) - 1]}"
+    ilk = min((k.bas for k in kapanislar if len(k.bas) == 10), default="")
+    son = max((k.bit for k in kapanislar if len(k.bit) == 10), default="")
+    if not ilk or not son:
+        return ""
+    return (f" &nbsp;·&nbsp; {ilk[8:10]} {_AY_ADI[int(ilk[5:7]) - 1]} {ilk[:4]}"
+            f" – {son[8:10]} {_AY_ADI[int(son[5:7]) - 1]} {son[:4]}")
+
+
+def _sutun_basligi(kapanislar: list[YilKapanis], yil: int) -> str:
+    k = next((x for x in kapanislar if x.yil == yil), None)
+    return k.basligi() if k is not None else str(yil)
 
 
 def _pencere_notu(kapanislar: list[YilKapanis]) -> str:
-    ag = _kismi_bit(kapanislar)
-    gun = f"{int(ag[3:5])} {_AY_ADI[int(ag[:2]) - 1]}"
-    return (f"Yıl sürüyor: her yıl 1 Ocak – {gun} penceresinden okundu. Geçmiş yılı "
-            "tam okuyup bu yılı yarım okumak kıyası bozardı.")
+    del kapanislar
+    return ("Her sütun, seçtiğiniz aralığın o yıla düşen parçasıdır — başlıktaki gün "
+            "aralığı budur. Aralık dışından tek gün okunmaz.")
 
 
 def _kapanis_notu(kapanislar: list[YilKapanis]) -> list[tuple[str, str]]:
@@ -58,9 +72,9 @@ def _kapanis_notu(kapanislar: list[YilKapanis]) -> list[tuple[str, str]]:
     eksik = [str(k.yil) for k in kapanislar if k.maliyet_eksik]
     if not eksik:
         return []
-    return [(f"<b>{', '.join(eksik)}</b> için satışların maliyeti (62) henüz işlenmemiş. "
-             "Kâr ve marj satırları o yıl «—» kalır: kapanış öncesi rakam gerçekte "
-             "olduğundan yüksek çıkar, kıyaslamak yanıltır.", "")]
+    # «Kâr ve marj» demek artık eksik: eksik fişin 153 ayağı stoğu da şişiriyor.
+    return [(f"<b>{', '.join(eksik)}</b> için satışların maliyeti (62) işlenmemiş: "
+             "kâr da stok da aynı tutarda şişik, o hücreler boş.", "")]
 
 
 def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
@@ -87,7 +101,10 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     t.header().setStretchLastSection(False)
 
     _tsatir(t, [_c("", renk=MUTED)]
-            + [_c(str(yil), renk=MUTED, kalin=True, sag=True) for yil in yillar]
+            # Sütun başlığı gerçek pencereyi yazar: «2025 (28.07–31.12)». Sütunlar farklı
+            # uzunlukta olabilir ve bunun görünmemesi akış kalemlerinde yanlış okumaya yol açar.
+            + [_c(_sutun_basligi(kapanislar, yil), renk=MUTED, kalin=True, sag=True)
+               for yil in yillar]
             + [_c(f"{yillar[0]}→{yillar[-1]}", renk=MUTED, kalin=True, sag=True)])
 
     for bolum in bolumler:
@@ -107,16 +124,14 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     t.setFixedWidth(genislik)
     t.setFixedHeight(30 * t.topLevelItemCount() + 6)
 
+    # ÜÇ NOT, DAHA FAZLASI DEĞİL. Altı paragraf uyarı tabloyu okunmaz yapıyordu; üstelik
+    # biri YANLIŞTI: «Tutarlar TL'dir» notu, TL bölümü tablodan kaldırıldığında orada
+    # unutulmuştu. Tablo dolar; 434.366'yı TL sanmak 47 kat yanlış okumaktır. Birim
+    # zaten «DOLAR BAZINDA (USD)» başlığında yazıyor, notta tekrarına gerek yok.
     notlar = [(_pencere_notu(kapanislar), "")] if _pencere_eki(kapanislar) else []
     notlar += _kapanis_notu(kapanislar)
-    notlar += [("Yıllar boyunca hiç değişmeyen kalemler tabloda GÖSTERİLMEZ — "
-               "karşılaştırma değeri taşımazlar.", ""),
-              ("Alacak, borç ve nakit ilgili sekmelerin canlı kaynağından gelir "
-               "(cari hareketler / GL nakit hesapları); stok, özkaynak ve aktif mizandan.", ""),
-              ("Tutarlar TL'dir; büyük rakamlar «bin / milyon / milyar» diye kısaltılmıştır. "
-               "Dolar karşılıkları Mikro'nun kendi kur kaydından hesaplanır.", ""),
-              ("«—» o yıl için hesaplanamadı: payda sıfır, maliyet girilmemiş ya da "
-               "özkaynak negatif.", "")]
+    notlar += [("«—» hesaplanamadı &nbsp;·&nbsp; hiç değişmeyen satırlar gizlendi "
+                "&nbsp;·&nbsp; kaynak: cari hareketler, GL nakit, mizan", "")]
 
     card = QFrame()
     card.setObjectName("aiCard")

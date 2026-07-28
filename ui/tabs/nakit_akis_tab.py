@@ -50,12 +50,19 @@ from ui.worker import IsFonksiyonu
 _RUNWAY_REFERANS_GUN = 90
 
 
-def _runway_referans_bas(bit: str) -> str:
-    """Runway için rapor başlangıcından bağımsız, bitişe göre sabit 90 günlük pencere."""
+def _runway_referans_bas(bas: str, bit: str) -> str:
+    """
+    Runway'in referans penceresi: bitişten 90 gün geri, ama SEÇİLİ ARALIĞIN DIŞINA ÇIKMADAN.
+
+    Eskiden rapor başlangıcından bağımsızdı; kullanıcı 30 günlük bir aralık seçtiğinde
+    pencere 60 gün geriye, seçilmemiş günlere uzanıyordu. «Tarih aralığı kutsal»:
+    pencere kısalıyorsa kısalsın.
+    """
     try:
-        return (date.fromisoformat(bit) - timedelta(days=_RUNWAY_REFERANS_GUN - 1)).isoformat()
+        geri = (date.fromisoformat(bit) - timedelta(days=_RUNWAY_REFERANS_GUN - 1)).isoformat()
     except ValueError:
         return bit
+    return max(bas, geri) if bas else geri
 
 
 class NakitAkisTab(RaporTab):
@@ -112,10 +119,9 @@ class NakitAkisTab(RaporTab):
                     hareket_rows, bakiye_kapanis_rows=kapanis_rows,
                     donem_delta=donem_delta, bas=bas, bit=bit)
 
-            # Runway, ekrandaki rapor başlangıcına göre değil; bitiş tarihindeki son 90 günlük
-            # sabit pencereye göre hesaplanır. Böylece kullanıcı aynı "as of" tarihi için
-            # rapor aralığını değiştirince ileriye dönük hız değişmez.
-            runway_bas = _runway_referans_bas(bit)
+            # Runway hızı bitişten geriye 90 günlük pencereden okunur, ama seçili
+            # aralığın dışına taşmadan (bkz. _runway_referans_bas).
+            runway_bas = _runway_referans_bas(bas, bit)
             runway_na: NakitAkis | None = None
             try:
                 # 90 günlük pencere yıl sınırını aşabilir (ör. 18.11.2025 – 15.02.2026).
