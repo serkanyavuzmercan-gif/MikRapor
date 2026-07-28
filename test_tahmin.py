@@ -14,17 +14,30 @@ from domain.tahmin import (
 
 
 class TestOgrenmePenceresi(unittest.TestCase):
-    def test_dar_donem_12_aya_genisler(self):
-        # Q3 seçilse bile öğrenme 'bit'ten 12 ay geriye uzar.
-        self.assertEqual(ogrenme_penceresi_bas("2026-07-01", "2026-09-30"), "2025-09-30")
+    """
+    Öğrenme penceresi SEÇİLEN ARALIĞIN DIŞINA ÇIKAMAZ.
 
-    def test_genis_donem_korunur(self):
-        # Kullanıcı 12 aydan daha geniş seçtiyse onun başlangıcı korunur (erken olan).
-        self.assertEqual(ogrenme_penceresi_bas("2024-01-01", "2026-09-30"), "2024-01-01")
+    Eskiden dar dönem seçildiğinde pencere geriye doğru 12 aya genişletiliyordu ve bu
+    testler o davranışı sabitliyordu. Gerekçesi vardı (tek çeyrekte marj %49 çıkıp 12
+    ayda ~%25'e oturuyor), ama kullanıcının seçmediği günlerin verisi rapora giriyordu.
+    Kullanıcı bunu reddetti: «tarih aralığı kutsal, her şeyi o belirliyor».
+    """
+
+    def test_dar_donem_genisletilmez(self):
+        """Q3 seçildiyse öğrenme de Q3'te kalır — 12 aya uzatılmaz."""
+        self.assertEqual(ogrenme_penceresi_bas("2026-07-01", "2026-09-30"), "2026-07-01")
+
+    def test_genis_donemde_son_12_ay(self):
+        """Aralık 12 aydan genişse pencere son 12 ay: seçim dışına çıkmadan kısaltılır."""
+        self.assertEqual(ogrenme_penceresi_bas("2024-01-01", "2026-09-30"), "2025-09-30")
+
+    def test_tek_gunluk_donem(self):
+        """Tek gün seçilirse pencere de o gün — 12 ay geriye kaçmaz."""
+        self.assertEqual(ogrenme_penceresi_bas("2024-02-29", "2024-02-29"), "2024-02-29")
 
     def test_subat_29_tasmasi(self):
-        # 12 ay geride 29 Şubat yoksa 28'e iner (geçerli tarih).
-        self.assertEqual(ogrenme_penceresi_bas("2024-02-29", "2024-02-29"), "2023-02-28")
+        """12 ay geri hesabı geçerli tarih üretmeli (29 Şubat olmayan yıl → 28)."""
+        self.assertEqual(ogrenme_penceresi_bas("2020-01-01", "2024-02-29"), "2023-02-28")
 
     def test_bozuk_tarih_bas_dondurur(self):
         self.assertEqual(ogrenme_penceresi_bas("2026-07-01", "abc"), "2026-07-01")

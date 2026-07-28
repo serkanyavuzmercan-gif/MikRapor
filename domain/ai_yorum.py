@@ -152,8 +152,13 @@ class YilKapanis:
     """Bir yılın kapanış fotoğrafı — yıllar arası karşılaştırma için, ham kırılım yok."""
 
     yil: int
-    tam: bool = True               # yıl tamamlandı mı (devam eden yıl kıyası bozar)
-    bit: str = ""                  # okunan pencerenin bitişi; kısmi yılda «1 Oca–28 Tem»
+    # SEÇİLEN TARİH ARALIĞI KUTSAL. Sütun, o yılın seçili aralıkla KESİŞİMİDİR:
+    # 28.07.2025–28.07.2026 seçiliyken 2025 sütunu 28.07–31.12, 2026 sütunu 01.01–28.07.
+    # Eskiden her yıl 1 Ocak'tan okunuyordu; kullanıcı «seçtiğim aralığın bir gün öncesi
+    # bile bu tabloda olmamalı» diyerek bunu reddetti — haklıydı, seçim onun.
+    bas: str = ""                  # okunan pencerenin başlangıcı
+    bit: str = ""                  # okunan pencerenin bitişi
+    tam: bool = True               # pencere yılın tamamını kapsıyor mu
     net_satis: float = 0.0
     brut_kar: float = 0.0
     faaliyet_kari: float = 0.0
@@ -180,6 +185,17 @@ class YilKapanis:
     satis_usd: float = 0.0         # Mikro'nun kendi kaydından, tarihî kurlarla
     kur_son: float = 0.0           # dönem sonu ima edilen TL/USD; 0 = güvenilir kur yok
     kur_ort: float = 0.0           # dönem ortalama kuru — AKIŞ kalemleri için
+
+    def pencere(self) -> str:
+        """«28.07–31.12» — sütunun gerçekte hangi günleri kapsadığı. Tam yılda boş."""
+        if self.tam or len(self.bas) != 10 or len(self.bit) != 10:
+            return ""
+        return f"{self.bas[8:10]}.{self.bas[5:7]}–{self.bit[8:10]}.{self.bit[5:7]}"
+
+    def basligi(self) -> str:
+        """Sütun başlığı: «2025» ya da «2025 (28.07–31.12)»."""
+        p = self.pencere()
+        return f"{self.yil} ({p})" if p else str(self.yil)
 
     @property
     def dolu(self) -> bool:
@@ -573,16 +589,11 @@ def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
         return ""
     sirali = sorted(kapanislar, key=lambda k: k.yil)
 
-    def baslik(k: YilKapanis) -> str:
-        """CSV'de yarım yılın tam yıl sanılmasını önler."""
-        if k.tam or len(k.bit) != 10:
-            return str(k.yil)
-        return f"{k.yil} (01.01–{k.bit[8:10]}.{k.bit[5:7]})"
-
-    out = ["Kalem;" + ";".join(baslik(k) for k in sirali)]
+    out = ["Kalem;" + ";".join(k.basligi() for k in sirali)]
     out.append(
-        "NOT;Bu bölüm aylık trendin devamı değildir: her sütun kendi yılının "
-        "1 Ocak–bitiş tarihi muhasebe penceresidir."
+        "NOT;Her sütun, SEÇİLEN TARİH ARALIĞININ o yıla düşen parçasıdır — başlıktaki "
+        "gün aralığı budur. Aralık dışından tek gün bile okunmaz. Sütunlar farklı "
+        "uzunlukta olabilir; akış kalemlerini (satış, kâr) kıyaslarken bunu hesaba kat."
     )
     out.append(
         "KAYNAK;Yıllık Net Satışlar = muhasebe gelir tablosu (GL 60/61). "

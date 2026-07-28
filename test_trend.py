@@ -26,13 +26,24 @@ class TestTrend(unittest.TestCase):
         with self.assertRaises(ValueError):
             yil_donemleri("2026-01-01", "2025-12-31")
 
-    def test_kismi_yil_csv_notu_ayni_ytd_kiyasini_aciklar(self) -> None:
+    def test_sutun_basligi_gercek_pencereyi_yazar(self) -> None:
+        """
+        Başlık, sütunun GERÇEKTE hangi günleri kapsadığını söylemeli.
+
+        28.07.2025–28.07.2026 seçiliyken sütunlar 28.07–31.12 ve 01.01–28.07 olur;
+        ikisi farklı uzunlukta ve bu başlıkta görünmek zorunda. Eskiden her sütun
+        «01.01–28.07» yazıyordu çünkü her yıl 1 Ocak'tan okunuyordu — kullanıcının
+        seçtiği aralığın dışı.
+        """
         csv = yillar_arasi_csv([
-            YilKapanis(yil=2025, bit="2025-07-28", tam=False, net_satis=100),
-            YilKapanis(yil=2026, bit="2026-07-28", tam=False, net_satis=120),
+            YilKapanis(yil=2025, bas="2025-07-28", bit="2025-12-31", tam=False,
+                       net_satis=100),
+            YilKapanis(yil=2026, bas="2026-01-01", bit="2026-07-28", tam=False,
+                       net_satis=120),
         ])
-        self.assertIn("2025 (01.01–28.07)", csv)
-        self.assertIn("aynı tarih penceresiyle hazırlanmış diğer YTD", csv)
+        self.assertIn("2025 (28.07–31.12)", csv)
+        self.assertIn("2026 (01.01–28.07)", csv)
+        self.assertIn("Aralık dışından tek gün bile okunmaz", csv)
 
     def test_oranlar_bilanco(self) -> None:
         b = build_bilanco([

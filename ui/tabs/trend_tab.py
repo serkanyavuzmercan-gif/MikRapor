@@ -7,18 +7,16 @@ from typing import Any
 
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
-from domain.ai_yorum import YilKapanis, yil_araligi, yillar_arasi_csv
+from domain.ai_yorum import YilKapanis, yillar_arasi_csv
 from domain.gercek_durum import build_gercek_durum
 from domain.mizan_bilanco import build_bilanco, tl
-from domain.tahmin import ogrenme_penceresi_bas
 from domain.trend import TrendRapor, build_trend, trend_csv
 from infra.config import MikroConfig, load_gercek_durum_ayarlar
-from infra.mikro_api import MikroAPIError
 from infra.mikro_fetch import fetch_mizan
 from infra.mukayese_fetch import (
-    YilVeritabaniHatasi,
     donem_hareketleri,
     yil_client,
+    yil_donemleri,
     yillari_cek,
 )
 from ui.bilesenler import varsayilan_kayit_yolu
@@ -67,37 +65,19 @@ class TrendTab(RaporTab):
                 nakit_rows=nakit_rows, nakit_aylik=nakit_aylik,
                 bas=bas, bit=bit, ayarlar=ayarlar,
             )
-            # Grafik için daha uzun pencere: 3 aylık dönemde 3 çubuk "trend" sayılmaz.
-            # KPI'lar seçili dönemden (gd.trend) gelmeye devam eder — çelişki olmaz.
-            gecmis: list = []
-            g_bas = ogrenme_penceresi_bas(bas, bit)
-            if g_bas < bas:
-                try:
-                    bildir("Uzun dönem trendi çekiliyor (son 12 ay)…")
-                    g_stok_rows, g_stok_aylik, g_nakit_rows, g_nakit_aylik = donem_hareketleri(
-                        cfg, g_bas, bit, bildir=bildir)
-                    gecmis = build_gercek_durum(
-                        stok_rows=g_stok_rows, stok_aylik=g_stok_aylik,
-                        nakit_rows=g_nakit_rows, nakit_aylik=g_nakit_aylik,
-                        bas=g_bas, bit=bit, ayarlar=ayarlar,
-                    ).trend
-                except (MikroAPIError, YilVeritabaniHatasi):
-                    gecmis = []
+            # GRAFİK DE SEÇİLİ DÖNEMİ GÖSTERİR. Eskiden kısa dönemde grafik 12 aya
+            # genişletiliyordu («3 aylık dönemde 3 çubuk trend sayılmaz» diye); ama bu,
+            # kullanıcının seçmediği ayları ekrana koyuyordu. Seçim kutsal: dönem üç
+            # aysa grafik üç ay gösterir.
             bilanco = build_bilanco(mizan_rows, asof=bit)
-            tr = build_trend(aylik=gd.trend, aylik_gecmis=gecmis,
-                             bilanco=bilanco, bas=bas, bit=bit)
+            tr = build_trend(aylik=gd.trend, bilanco=bilanco, bas=bas, bit=bit)
 
-            # Mukayese YALNIZ seçilen yılları kapsar; geriye doğru tamamlanmaz.
-            # AiYorumTab'da tamamlanıyor çünkü orada bekleme zaten modelin yazmasıyla
-            # geçiyor (dakikalar); burada rapor ~10 saniye sürüyor ve istenmeyen 4 yıl
-            # bunu dört katına çıkarıyordu. Tarih aralığı ne diyorsa o.
-            yillar, _ = yil_araligi(bas, bit)
+            # Mukayese SEÇİLEN ARALIĞIN yıllara bölünmüş hâlidir; her sütun o yılın
+            # aralıkla kesişimi kadar okunur, aralık dışından tek gün alınmaz.
             kapanislar: list[YilKapanis] = []
-            if len(yillar) > 1:
-                odak = yillar[-1]
+            if len(yil_donemleri(bas, bit)) > 1:
                 kapanislar = yillari_cek(
-                    cfg, yillar, odak_client=bit_client, odak_bit=bit,
-                    odak_tam=bit >= f"{odak}-12-31", bildir=bildir)
+                    cfg, bas, bit, odak_client=bit_client, bildir=bildir)
 
             return {"tr": tr, "firma": firma_getir(cfg, bit_client),
                     "kapanislar": kapanislar}
