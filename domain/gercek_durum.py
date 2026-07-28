@@ -138,6 +138,19 @@ class GercekDurum:
         return self.resmi_smm - self.gercek_alis
 
     @property
+    def alis_irsaliye_makul(self) -> bool:
+        """
+        Bilgi amaçlı gösterilen alış irsaliyesi tutarı gerçek mal olabilir mi?
+
+        İrsaliye ile fatura aynı malın iki yüzüdür; toplamı fatura toplamının birkaç
+        katını geçemez. Canlıda tek bir hatalı kayıt (2 adet mala 3,33 trilyon TL)
+        bu satırı 25.000 katına çıkardı — hesaba girmese de ekranda okuyanı korkutuyor.
+        """
+        if self.alis_irsaliye <= 0.005:
+            return True
+        return self.alis_fatura > 0.005 and self.alis_irsaliye <= 10 * self.alis_fatura
+
+    @property
     def stok_degisim_etkisi(self) -> float | None:
         """Operasyonel brüt − resmi brüt (≈ smm_stok_farki, satışlar uyumluysa)."""
         if self.resmi_brut_kar is None:

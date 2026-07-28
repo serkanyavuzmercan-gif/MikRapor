@@ -36,7 +36,7 @@ from ui.bilanco_view import (
     _fit_height,
 )
 from ui.styles import BAD as NEG
-from ui.styles import BORDER, PANEL_BG
+from ui.styles import BORDER, PANEL_BG, WARN
 from ui.styles import OK as POZ
 
 # Tablo yazı hiyerarşisi: ana satır koyu, alt kalem okunur gri (FAINT değil).
@@ -155,8 +155,14 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
     _tsatir(t, [_c("      alış faturası (toplam alış)", renk=_MID),
                 _c(tl(gd.alis_fatura), renk=_MID, sag=True)])
     if gd.alis_irsaliye > 0.005 and gd.gercek_alis != gd.alis_irsaliye:
-        _tsatir(t, [_c("      alış irsaliyesi (dahil değil)", renk=_MID),
-                    _c(tl(gd.alis_irsaliye), renk=_MID, sag=True)])
+        # Rakam mal olamayacak kadar büyükse (bozuk kayıt) yazmıyoruz — hesaba zaten
+        # girmiyor, ama ekranda durunca okuyan haklı olarak tüm tabloya güvenmiyor.
+        if gd.alis_irsaliye_makul:
+            _tsatir(t, [_c("      alış irsaliyesi (dahil değil)", renk=_MID),
+                        _c(tl(gd.alis_irsaliye), renk=_MID, sag=True)])
+        else:
+            _tsatir(t, [_c("      alış irsaliyesi (hatalı kayıt — gösterilmiyor)", renk=WARN),
+                        _c("—", renk=WARN, sag=True)])
     if gd.siniflandirilmayan_giris > 0.005:
         _tsatir(t, [_c("      diğer giriş (tanınmayan)", renk=_MID),
                     _c(tl(gd.siniflandirilmayan_giris), renk=_MID, sag=True)])
