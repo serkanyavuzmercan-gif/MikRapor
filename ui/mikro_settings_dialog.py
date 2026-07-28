@@ -183,8 +183,13 @@ class MikroAyarlarDialog(QDialog):
             ozet = " · ".join(
                 f"{k.firma_kodu}: {k.ilk_yil}–{k.son_yil}" for k in kapsamlar
             )
-            self._katalog_sonuc.setText(f"Bulunan yıl eşlemesi: {ozet}")
-            self._katalog_sonuc.setStyleSheet("color: #81c784; font-size: 11px;")
+            bulunan = {k.firma_kodu for k in kapsamlar}
+            okunamayan = [k for k in kodlar if k not in bulunan]
+            ek = (f" | Yıl kapsamı okunamadı, raporda kullanılmayacak: {', '.join(okunamayan)}"
+                  if okunamayan else "")
+            renk = "#ffb74d" if okunamayan else "#81c784"
+            self._katalog_sonuc.setText(f"Bulunan yıl eşlemesi: {ozet}{ek}")
+            self._katalog_sonuc.setStyleSheet(f"color: {renk}; font-size: 11px;")
 
         def on_err(mesaj: str) -> None:
             self._katalog_sonuc.setText(f"Tarama başarısız: {mesaj}")

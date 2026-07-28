@@ -155,15 +155,14 @@ class TestYilClientEntegrasyonu(unittest.TestCase):
         self.assertEqual(c.cfg.firma_kodu, "20")
         self.assertEqual(c.cfg.calisma_yili, 2023)
 
-    def test_katalog_yoksa_eski_davranis_surer(self) -> None:
-        """Tek veritabanlı kurulum: firma değişmez, yalnız çalışma yılı."""
-        from infra.mukayese_fetch import yil_client
+    def test_yil_kapsami_yoksa_rapor_durur(self) -> None:
+        """Başka firmaya sessizce düşmek yerine kullanıcıya açık hata verilmelidir."""
+        from infra.mukayese_fetch import YilVeritabaniHatasi, yil_client
         cfg = MikroConfig(base_url="https://x", api_key="k", firma_kodu="20",
                           calisma_yili=2025, kullanici_kodu="u", sifre_gun="s")
         with patch("infra.veritabani.fetch_yil_araligi", return_value=(0, 0)):
-            c = yil_client(cfg, 2021)
-        self.assertEqual(c.cfg.firma_kodu, "20")
-        self.assertEqual(c.cfg.calisma_yili, 2021)
+            with self.assertRaises(YilVeritabaniHatasi):
+                yil_client(cfg, 2021)
 
 
 if __name__ == "__main__":

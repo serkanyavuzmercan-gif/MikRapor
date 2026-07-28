@@ -57,6 +57,10 @@ _OKUMA_HATALARI = (MikroAPIError, ValueError, KeyError, TypeError)
 _KREDI_ANA = {"300", "303", "400"}
 
 
+class YilVeritabaniHatasi(ValueError):
+    """İstenen yıl için kapsamı Mikro'dan doğrulanmış veritabanı yok."""
+
+
 def yil_donemleri(bas: str, bit: str) -> list[tuple[int, str, str]]:
     """Tarih aralığını, her biri tek bir takvim yılında kalan parçalara ayırır.
 
@@ -159,17 +163,23 @@ def yil_client(cfg: MikroConfig, yil: int) -> MikroClient:
     O yılın verisini taşıyan veritabanına bağlanan istemci.
 
     Veritabanını asıl seçen FİRMA KODUDUR; `calisma_yili` yalnız auth gövdesinde gider.
-    Ayarlarda birden çok firma kodu tanımlıysa (canlıda 20 → 2020-2025, 26 → 2026+)
-    yıl hangi veritabanındaysa oraya bağlanılır. Katalog yoksa ya da yıl hiçbir kapsama
-    girmiyorsa eski davranış sürer: aynı firma, CalismaYili yılın kendisi.
+    Ayarlardaki her kodun yıl kapsamı Mikro'dan okunur; istenen yıl bu kapsamlardan
+    birinde değilse rapor DURUR. Başka bir veritabanına sessizce düşmek yanlış rakam
+    üretir ve kesinlikle yapılmaz.
     """
     temel = replace(cfg.normalized(), calisma_yili=yil)
-    try:
-        kod = yil_icin_firma(katalog(cfg), yil)
-    except _OKUMA_HATALARI:
-        kod = ""
-    if kod and kod != temel.firma_kodu:
-        temel = replace(temel, firma_kodu=kod)
+    kapsamlar = katalog(cfg)
+    kod = yil_icin_firma(kapsamlar, yil)
+    if not kod:
+        bulunan = ", ".join(
+            f"{k.firma_kodu} ({k.ilk_yil}–{k.son_yil})" for k in kapsamlar
+        ) or "doğrulanmış veritabanı yok"
+        raise YilVeritabaniHatasi(
+            f"{yil} yılı için kapsamı doğrulanmış veritabanı bulunamadı. "
+            f"Bulunan kapsamlar: {bulunan}. Mikro Ayarları'ndan kodları kontrol edip "
+            "‘Yılları Tara’ ile yeniden doğrulayın."
+        )
+    temel = replace(temel, firma_kodu=kod)
     return MikroClient(temel)
 
 
@@ -196,11 +206,10 @@ def yillari_cek(
     out: list[YilKapanis] = []
     gecmis = [y for y in sorted(yillar) if y != odak]
 
-    yedek = odak_client or MikroClient(cfg)
     for sira, y in enumerate(gecmis, 1):
         if bildir:
             bildir(f"{y} yılı mukayese için çekiliyor… ({sira}/{len(gecmis)})")
-        k = _gecmis_yil(cfg, y, yedek, odak_bit)
+        k = _gecmis_yil(cfg, y, odak_bit)
         if k is not None and k.dolu:   # boş yıl sıfır satırı olarak tabloya girmesin
             out.append(k)
 
@@ -215,20 +224,14 @@ def yillari_cek(
     return out
 
 
-def _gecmis_yil(cfg: MikroConfig, yil: int, yedek: MikroClient,
-                odak_bit: str = "") -> YilKapanis | None:
+def _gecmis_yil(cfg: MikroConfig, yil: int, odak_bit: str = "") -> YilKapanis | None:
     """
-    Geçmiş yıl: ÖNCE o yılın veritabanı, olmazsa seçili firma/çalışma yılı.
-
-    Yıl bazlı veritabanı olan kurulumda doğru rakam gelir; tek veritabanında birkaç
-    yıl tutan kurulumda ise yedek yol devreye girer ve tablo düşmez. Bitiş, odak yılın
-    bittiği ay-güne kırpılır — kıyas aynı pencereden yapılsın.
+    Geçmiş yıl yalnız kendi kapsamı doğrulanmış veritabanından okunur. Bitiş, odak
+    yılın bittiği ay-güne kırpılır — kıyas aynı pencereden yapılsın.
     """
     son, tam = ayni_gune_kirp(yil, odak_bit)
-    for c in (yil_client(cfg, yil), yedek):
-        k = _dene(lambda c=c: yil_kapanisi(
-            c, yil, bit=son, tam=tam,
-            vade_gun=_dene(lambda c=c: fetch_cari_vade_gun(c), {}) or {}))
-        if k is not None and k.dolu:
-            return k
-    return None
+    c = yil_client(cfg, yil)
+    k = _dene(lambda: yil_kapanisi(
+        c, yil, bit=son, tam=tam,
+        vade_gun=_dene(lambda: fetch_cari_vade_gun(c), {}) or {}))
+    return k if k is not None and k.dolu else None
