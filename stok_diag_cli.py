@@ -581,8 +581,7 @@ def _bakiye_teshisi(client, cfg: MikroConfig, bit: str) -> None:
     if aykiri_satir:
         print(f"  → HAYIR: {aykiri_satir} aykırı satır var (net etkisi "
               f"{tl(toplam['aykiri_maliyet'])}).")
-        print("    Bunlar Mikro'da düzeltilmeden hiçbir stok rakamı güvenilir değil;")
-        print("    «Veri Sağlığı» penceresi bu kayıtları listeler.")
+        print("    Bunlar Mikro'da düzeltilmeden hiçbir stok rakamı güvenilir değil.")
         return
     oran = dolu / adet * 100 if adet else 0.0
     if oran < _ASGARI_DOLULUK:
