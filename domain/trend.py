@@ -192,4 +192,12 @@ def trend_csv(t: TrendRapor) -> str:
         out.append(f"AYLIK;{a.ay} Alış;{s(a.alis)}")
         out.append(f"AYLIK;{a.ay} Brüt;{s(a.brut)}")
         out.append(f"AYLIK;{a.ay} Nakit net;{s(a.nakit_net)}")
+    out.append(
+        "KAYNAK;Aylık Satış / Alış / Brüt = STOK_HAREKETLERİ operasyonel hareketleri. "
+        "Nakit net = banka/kasa hareketleri."
+    )
+    out.append(
+        f"NOT;Aylık bölüm yalnız seçili pencereyi kapsar: {t.bas}–{t.bit}. "
+        "İlk ve son ay kısmi olabilir; bu satırları tam ay gibi kıyaslamayın."
+    )
     return "\n".join(out) + "\n"

@@ -555,7 +555,23 @@ def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
     yillar, bolumler = yillar_tablosu(kapanislar)
     if not yillar:
         return ""
-    out = ["Kalem;" + ";".join(str(y) for y in yillar)]
+    sirali = sorted(kapanislar, key=lambda k: k.yil)
+
+    def baslik(k: YilKapanis) -> str:
+        """CSV'de yarım yılın tam yıl sanılmasını önler."""
+        if k.tam or len(k.bit) != 10:
+            return str(k.yil)
+        return f"{k.yil} (01.01–{k.bit[8:10]}.{k.bit[5:7]})"
+
+    out = ["Kalem;" + ";".join(baslik(k) for k in sirali)]
+    out.append(
+        "NOT;Bu bölüm aylık trendin devamı değildir: her sütun kendi yılının "
+        "1 Ocak–bitiş tarihi muhasebe penceresidir."
+    )
+    out.append(
+        "KAYNAK;Yıllık Net Satışlar = muhasebe gelir tablosu (GL 60/61). "
+        "Aylık Satış satırlarıyla aynı kaynak değildir."
+    )
     for bolum in bolumler:
         if bolum.baslik:
             out.append("")
@@ -573,7 +589,7 @@ def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
     out.append("NOT;Yıllar boyunca hiç değişmeyen kalemler tablodan ÇIKARILMIŞTIR "
                "(karşılaştırma değeri yok). Görmediğin bir kalem hakkında çıkarım yapma.")
 
-    for k in sorted(kapanislar, key=lambda x: x.yil):
+    for k in sirali:
         if not k.tam:
             out.append(f"NOT;{k.yil} yılı TAMAMLANMADI — rakamlar yılın tamamını "
                        "kapsamaz, önceki yıllarla doğrudan kıyaslanamaz.")

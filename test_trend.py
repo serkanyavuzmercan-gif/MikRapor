@@ -76,6 +76,8 @@ class TestTrend(unittest.TestCase):
         csv = trend_csv(tr)
         self.assertIn("ORAN;", csv)
         self.assertIn("AYLIK;2026-01 Satış;", csv)
+        self.assertIn("KAYNAK;Aylık Satış / Alış / Brüt", csv)
+        self.assertIn("İlk ve son ay kısmi olabilir", csv)
 
     def test_gecmis_penceresi_kpi_toplamlarini_bozmaz(self) -> None:
         """Grafik son 12 ayı gösterse de KPI toplamları SEÇİLİ dönemden gelmeli."""
