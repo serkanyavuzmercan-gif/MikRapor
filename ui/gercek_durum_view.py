@@ -171,11 +171,35 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
                 _c(tl(gd.gercek_brut_kar), renk=_renk(gd.gercek_brut_kar), kalin=True, sag=True)])
     _tsatir(t, [_c("Fiili Al-Sat Marjı", kalin=True),
                 _c(yuzde(gd.gercek_brut_marj), renk=_renk(gd.gercek_brut_marj), kalin=True, sag=True)])
+
+    # BRÜTTE DURMUYORUZ. Muhasebeci satışın maliyetini (62) yıl sonunda topluca
+    # işlediği için resmi gelir tablosu yılın on bir ayı kullanılamıyor; oysa yönetim
+    # her ay karar vermek zorunda. 63 ve 66 o kapanıştan bağımsız, normal işleniyor —
+    # brüt ayağı depodan koyunca alt taraf da kuruluyor.
+    fk, nk = gd.yonetim_faaliyet_kari, gd.yonetim_net_kar
+    if gd.faaliyet_gideri is not None:
+        _tsatir(t, [_c("Faaliyet Gideri (63)", renk=_MID),
+                    _c(tl(gd.faaliyet_gideri), renk=_MID, sag=True)])
+        _tsatir(t, [_c("Fiili Faaliyet Kârı", kalin=True),
+                    _c(tl(fk), renk=_renk(fk or 0.0), kalin=True, sag=True)])
+    if gd.finansman_gideri is not None:
+        _tsatir(t, [_c("Finansman Gideri (66)", renk=_MID),
+                    _c(tl(gd.finansman_gideri), renk=_MID, sag=True)])
+    if nk is not None:
+        _tsatir(t, [_c("Fiili Net Kâr  (vergi öncesi)", kalin=True),
+                    _c(tl(nk), renk=_renk(nk), kalin=True, sag=True)])
+        _tsatir(t, [_c("Fiili Net Marj", kalin=True),
+                    _c(yuzde(gd.yonetim_net_marj), renk=_renk(nk), kalin=True, sag=True)])
     _fit_height(t)
 
-    # Resmi SMM ile stok alışı arasındaki farkı artık köprü paneli anlatıyor —
-    # burada tekrar etmek aynı rakamı iki kez okutuyordu.
-    return _card("OPERASYONEL KÂRLILIK  (stok hareketinden)", _ic(t))
+    notlar = []
+    if nk is not None:
+        notlar.append(
+            ("Bu şelale muhasebenin kapanışını beklemez: satış ve alış depodan, "
+             "faaliyet ve finansman gideri muhasebeden gelir. Vergi dâhil değildir. "
+             "Brüt ayak «satılan malın maliyeti» değil «alınan malın tamamı»dır — "
+             "stok biriktiren dönemde marjı düşük gösterir.", ""))
+    return _card("YÖNETİM GELİR TABLOSU  (kapanış beklemeden)", _ic(t, notlar))
 
 
 def _stok_koprusu_etiketi(v: float) -> str:

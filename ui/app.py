@@ -46,6 +46,7 @@ from ui.tabs.reel_deger_tab import ReelDegerTab
 from ui.tabs.tahmin_tab import TahminTab
 from ui.tabs.tahsilat_alacak_tab import TahsilatAlacakTab
 from ui.tabs.trend_tab import TrendTab
+from ui.tabs.veri_sagligi_tab import VeriSagligiTab
 from ui.worker import RaporWorker
 
 INSTANCE_KEY = "MercanSoftware.MikRapor.SingleInstance"
@@ -331,6 +332,7 @@ class MikRaporWindow(QMainWindow):
             ReelDegerTab,
             TrendTab,
             AiYorumTab,   # final: dışarıya veri gönderen tek sekme
+            VeriSagligiTab,   # rapor değil araç: rakamları bozan kayıt sorunları
         )
         for cls in sekme_siniflari:
             w = cls(self._donem)

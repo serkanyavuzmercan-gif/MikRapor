@@ -127,6 +127,10 @@ class GercekDurum:
     resmi_net_satis: float | None = None
     resmi_brut_kar: float | None = None
     resmi_smm: float | None = None   # |62xx| toplam (GL satışların maliyeti)
+    # 63 ve 66 SMM'den BAĞIMSIZDIR: maliyet kapanışı yapılmasa da normal işlenirler.
+    # Yönetim gelir tablosunun brüt altı ayağı bunlardan kurulur (işaretli, negatif).
+    faaliyet_gideri: float | None = None   # 63
+    finansman_gideri: float | None = None  # 66
 
     trend: list[AyTrend] = field(default_factory=list)
 
@@ -137,6 +141,59 @@ class GercekDurum:
     #   Fiili al-sat farkı  = depodan çıkan mal − dönemde ALINAN malın tamamı
     # Yan yana "Resmi / Fiili / Fark" diye koyunca fark bir tutarsızlık gibi okunuyor;
     # oysa aradaki iki kalem toplamı kuruşu kuruşuna kapatır (bkz. koprü kalemleri).
+
+    # --- Yönetim gelir tablosu -------------------------------------------------
+    #
+    # Muhasebeci satışın maliyetini (62) çoğu zaman yıl sonunda topluca işler; yani
+    # RESMİ gelir tablosu yılın on bir ayı kullanılamaz. Oysa yönetimin her ay karar
+    # vermesi gerekir. Bu şelale o boşluğu kapatır:
+    #
+    #     Fiili Satış        depodan çıkan mal          ← stok hareketi
+    #   − Fiili Alış         dönemde alınan mal         ← stok hareketi
+    #   = Al-Sat Farkı       brüt ayak
+    #   − Faaliyet Gideri    63                         ← GL, 62'den bağımsız
+    #   = Faaliyet Kârı
+    #   − Finansman Gideri   66                         ← GL, 62'den bağımsız
+    #   = Net Kâr (vergi öncesi)
+    #
+    # VERGİ DÂHİL DEĞİL: 691/692 ara dönemde her kurulumda işlenmiyor, uydurmuyoruz.
+    # Brüt ayak «satılan malın maliyeti» değil «alınan malın tamamı»dır — stok
+    # biriktiren dönemde marjı düşük, stok eriten dönemde yüksek gösterir. Farkı
+    # kapatan kalem resmi→fiili köprüsündeki stok değişimidir.
+
+    @property
+    def yonetim_brut(self) -> float:
+        return self.gercek_satis - self.gercek_alis
+
+    @property
+    def yonetim_faaliyet_kari(self) -> float | None:
+        if self.faaliyet_gideri is None:
+            return None
+        return self.yonetim_brut + self.faaliyet_gideri     # 63 işaretli negatif
+
+    @property
+    def yonetim_net_kar(self) -> float | None:
+        f = self.yonetim_faaliyet_kari
+        if f is None or self.finansman_gideri is None:
+            return None
+        return f + self.finansman_gideri                    # 66 işaretli negatif
+
+    def _yonetim_marj(self, tutar: float | None) -> float | None:
+        if tutar is None or self.gercek_satis <= 0.005:
+            return None
+        return tutar / self.gercek_satis * 100.0
+
+    @property
+    def yonetim_brut_marj(self) -> float | None:
+        return self._yonetim_marj(self.yonetim_brut)
+
+    @property
+    def yonetim_faaliyet_marj(self) -> float | None:
+        return self._yonetim_marj(self.yonetim_faaliyet_kari)
+
+    @property
+    def yonetim_net_marj(self) -> float | None:
+        return self._yonetim_marj(self.yonetim_net_kar)
 
     @property
     def satis_koprusu(self) -> float | None:
@@ -598,6 +655,8 @@ def build_gercek_durum(
         gd.resmi_net_satis = gelir_tablosu.net_satislar
         gd.resmi_brut_kar = gelir_tablosu.brut_kar
         gd.resmi_smm = abs(gelir_tablosu.smm)
+        gd.faaliyet_gideri = gelir_tablosu.faaliyet_gideri
+        gd.finansman_gideri = gelir_tablosu.finansman_gideri
 
     gd.trend = _aylik_trend(stok_aylik or [], nakit_aylik or [], satis_bazi, alis_bazi)
     return gd
