@@ -253,7 +253,12 @@ anahtarı **ve** açık onay kutusu birlikte olmadan hiçbir ağ çağrısı yap
 ```
 python3 -m unittest discover -s . -p "test_*.py" -q     # test (pytest YOK)
 ruff check . --fix                                      # lint
+/plan-elestirmen <plan>                                 # planı koda+kurallara karşı parçala
 ```
+
+**Kayda değer bir plan koda dönmeden önce `/plan-elestirmen`'e verilir**
+(`.claude/skills/plan-elestirmen/`). Eleştirmen kuralların kopyasını taşımaz, bu dosyayı
+okur — iki kural kopyası ayrışır ve yanlış olan sessizce yönlendirmeye devam eder.
 
 Teşhis araçları: `stok_diag_cli.py` (`--kolonlar`, `--maliyet`, `--fatura`),
 `bilanco_cli.py --teshis`, `cari_diag_cli.py`.
