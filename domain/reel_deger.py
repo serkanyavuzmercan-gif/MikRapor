@@ -55,9 +55,14 @@ class ReelDegerAnalizi:
     varsayim: ReelDegerVarsayim = field(default_factory=ReelDegerVarsayim)
     alacak: DegerOzet = field(default_factory=DegerOzet)
     borc: DegerOzet = field(default_factory=DegerOzet)
-    # Vade günleri Mikro'da vade kolonu boşsa evrak tarihinden türetiliyor; o hâlde
-    # gün rakamları tahminîdir ve makas gösterilmez (kural 2).
-    vade_kaynagi: str = "vade"
+    # Başabaş fark artık «vadeye kalan» değil ÖLÇÜLMÜŞ TAHSİL SÜRESİNE (DSO) çapalanır.
+    # Kalan gün, tahsilat iyileştikçe düşer (FIFO en eski faturayı kapatır, açık kalanlar
+    # en yeni faturalardır) — 90 gün vadeyle çalışan firmada %70 tahsilatta 20 güne
+    # iniyordu ve başabaş tavsiyesini 5,5 kat eksik veriyordu.
+    dso: float | None = None
+    donem_gun: int = 0
+    # Vadesi geçmiş tutar «bugün tahsil edilir» sayılıyor; erime bu yüzden ALT SINIRDIR.
+    gecikmis_alacak: float = 0.0
     top_alacak_erime: list[CariErime] = field(default_factory=list)
     top_borc_erime: list[CariErime] = field(default_factory=list)
 
@@ -74,41 +79,42 @@ class ReelDegerAnalizi:
         """Vade nedeniyle net ekonomik pozisyondaki değişim (reel − nominal)."""
         return self.reel_net_pozisyon - self.nominal_net_pozisyon
 
-    # ---- Vade makası ----------------------------------------------------------
-    @property
-    def gun_olculdu(self) -> bool:
-        """Vade günleri gerçek vade kaydından mı geliyor (yoksa makas gösterilmez)."""
-        return self.vade_kaynagi in ("vade", "plan")
+    # ---- Başabaş için dayanak: DSO ---------------------------------------------
+    # VADE MAKASI PANELİ KALDIRILDI. «Kaç gün kendi kesenden finanse ediyorsun» sorusunu
+    # Alacak & Borç sekmesi ZATEN doğru yöntemle cevaplıyor (TahsilatAlacak.dso/.dpo,
+    # «Nakit döngüsü: tahsilat Xg, ödeme Yg»). Buradaki makas iki «vadeye kalan gün»
+    # ortalamasının farkıydı: canlıda 17−18 = 1 gün çıkıyor, işareti de o sekmenin
+    # tersineydi. İki sekme aynı soruya çelişen cevap verince ikisine de güven gider
+    # (kural 5: veri tekrarı yok; kural 3c).
 
     @property
-    def makas_gun(self) -> float:
-        """Tahsil gününden ödeme günü çıkarılınca kendi kesenden finanse edilen gün."""
-        return self.alacak.agirlikli_gun - self.borc.agirlikli_gun
+    def basabas_olculdu(self) -> bool:
+        """Tahsilat süresi ölçülebildi mi (satış yoksa ya da pencere kısaysa hayır)."""
+        return self.dso is not None and self.donem_gun > 0 and self.dso <= self.donem_gun
 
     @property
-    def makas_var(self) -> bool:
-        # İKİ TARAF ŞARTI YOK. «Hem alacak hem borç olsun» demek, tedarikçi kredisi
-        # olmayan firmayı (yazılım/hizmet: müşteriye 60 gün vade, maliyeti peşin maaş)
-        # tam da en geniş makasa sahipken ekrandan siliyordu.
-        return (self.gun_olculdu and abs(self.makas_gun) >= 0.5
-                and (self.alacak.nominal > 0.005 or self.borc.nominal > 0.005))
+    def basabas_alt_sinir(self) -> bool:
+        """
+        DSO pencereden uzun: pencere ölçmeye yetmiyor, ancak «en az» denebilir.
+
+        Kural 3: hesaplanamıyorsa tahmin edilmez, ölçülmüş tek yönlü sınır varsa o yazılır.
+        """
+        return (self.dso is not None and self.donem_gun > 0
+                and self.dso > self.donem_gun)
 
     @property
-    def tedarikci_kredisi_yok(self) -> bool:
-        """Ödeme vadesi ~0: makasın tamamı firmanın kendi finansmanı."""
-        return self.alacak.nominal > 0.005 and self.borc.agirlikli_gun < 0.5
-
-    @property
-    def makas_lehte(self) -> bool:
-        """Tedarikçi bizi finanse ediyorsa (ödeme günü tahsil gününden uzunsa) lehte."""
-        return self.makas_gun < 0
+    def basabas_dayanak_gun(self) -> float:
+        """Başabaş farkının çapalandığı gün — pencere yetmiyorsa pencerenin kendisi."""
+        if self.basabas_alt_sinir:
+            return float(self.donem_gun)
+        return float(self.dso or 0.0)
 
     # ---- Başabaş vade farkı ---------------------------------------------------
     @property
     def basabas_kendi_vaden(self) -> float:
-        """Kendi ağırlıklı vadesinde başabaş kalmak için gereken fiyat farkı (%)."""
+        """Ölçülen tahsil süresinde başabaş kalmak için gereken fiyat farkı (%)."""
         return basabas_vade_farki(
-            self.alacak.agirlikli_gun, self.varsayim.yillik_iskonto_yuzde)
+            self.basabas_dayanak_gun, self.varsayim.yillik_iskonto_yuzde)
 
     @property
     def basabas_merdiven(self) -> list[tuple[int, float]]:
@@ -195,7 +201,9 @@ def build_reel_deger_analizi(ta: TahsilatAlacak, v: ReelDegerVarsayim) -> ReelDe
         varsayim=v,
         alacak=_deger_ozeti(parcalar, "customer", o),
         borc=_deger_ozeti(parcalar, "supplier", o),
-        vade_kaynagi=getattr(ta, "vade_kaynagi", "vade") or "vade",
+        dso=getattr(ta, "dso", None),
+        donem_gun=getattr(ta, "donem_gun", 0) or 0,
+        gecikmis_alacak=getattr(ta, "alacak_gecikmis", 0.0) or 0.0,
         top_alacak_erime=_cari_erimeleri(parcalar, "customer", o),
         top_borc_erime=_cari_erimeleri(parcalar, "supplier", o),
     )
@@ -218,16 +226,16 @@ def reel_deger_csv(a: ReelDegerAnalizi) -> str:
         f"NET;Reel pozisyon;{s(a.reel_net_pozisyon)}",
         f"NET;Vade etkisi;{s(a.net_vade_etkisi)}",
     ])
-    if a.makas_var:
-        out.extend([
-            f"VADE MAKASI;Müşteriden tahsil (gün);{s(a.alacak.agirlikli_gun)}",
-            f"VADE MAKASI;Tedarikçiye ödeme (gün);{s(a.borc.agirlikli_gun)}",
-            f"VADE MAKASI;Makas (gün);{s(a.makas_gun)}",
-            f"VADE MAKASI;Yön;{'lehte' if a.makas_lehte else 'aleyhte'}",
-        ])
-    elif not a.gun_olculdu:
-        out.append("VADE MAKASI;Ölçülemedi;Mikro'da vade kaydı yok, günler tahminî")
-    out.append(f"BAŞABAŞ VADE FARKI;Kendi ağırlıklı vadende (%);{s(a.basabas_kendi_vaden)}")
+    if a.gecikmis_alacak > 0.005:
+        out.append(f"ALACAK;Vade maliyeti alt sınır sebebi (vadesi geçmiş);{s(a.gecikmis_alacak)}")
+    if a.basabas_olculdu:
+        out.append(f"BAŞABAŞ VADE FARKI;Tahsil süresi (DSO, gün);{s(a.dso or 0.0)}")
+        out.append(f"BAŞABAŞ VADE FARKI;Kendi tahsil sürende (%);{s(a.basabas_kendi_vaden)}")
+    elif a.basabas_alt_sinir:
+        out.append(f"BAŞABAŞ VADE FARKI;Tahsil süresi en az (gün);{s(float(a.donem_gun))}")
+        out.append(f"BAŞABAŞ VADE FARKI;Kendi tahsil sürende en az (%);{s(a.basabas_kendi_vaden)}")
+    else:
+        out.append("BAŞABAŞ VADE FARKI;Tahsil süresi ölçülemedi;dönemde kredili satış yok")
     out.extend(f"BAŞABAŞ VADE FARKI;{g} gün (%);{s(y)}" for g, y in a.basabas_merdiven)
     out.extend(
         f"EN ÇOK ERİTEN MÜŞTERİ;{c.unvan};{s(c.vade_etkisi)}" for c in a.top_alacak_erime)

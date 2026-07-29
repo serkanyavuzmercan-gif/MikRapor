@@ -175,9 +175,24 @@ Reel Değer'deki cari listesi bu yüzden **ERİMEYE göre sıralanır, bakiyeye 
 bakiye sırası Alacak & Borç'taki «en çok alacak»ın tekrarı olurdu. Erime = tutar ×
 bekleme, o yüzden sıra gerçekten farklı çıkar — 1M'lik 15 günlük müşteri, 500K'lık
 120 günlük müşteriden AZ eritir. Liste, «vade maliyeti 3,5M» rakamının arkasını
-gösterir (kural 3c). Vade makası ise `vade_kaynagi == "tarih"` iken (Mikro'da vade
-kaydı yok, günler evrak tarihinden türetilmiş) `—` gösterir; tahminî günden makas
-üretmek kural 2 ihlalidir.
+gösterir (kural 3c).
+
+**«Kaç gün kendi kesenden finanse ediyorsun» sorusu YALNIZ Alacak & Borç'ta cevaplanır**
+(`TahsilatAlacak.dso/.dpo` → «Nakit döngüsü: tahsilat Xg, ödeme Yg»). Reel Değer'e
+eklenen ikinci bir «vade makası» paneli kaldırıldı: iki *vadeye kalan gün* ortalamasının
+farkıydı, canlıda 17−18 = **1 gün** çıkıyordu ve işareti de o sekmenin tersiydi. İki
+sekme aynı soruya çelişen cevap verince ikisine de güven gider.
+
+**`AcikVadeParcasi.vade_gun` VADEYE KALAN gündür, tahsil süresi DEĞİL.** Vadesi geçmiş
+kalem 0 sayılır, ayrıca FIFO en eski faturayı kapattığı için açık kalanlar en yeni
+faturalardır — yani tahsilat iyileştikçe bu rakam DÜŞER. 90 gün vadeyle çalışan firmada
+%70 tahsilatta 20 güne iniyordu. Bu yüzden başabaş vade farkı **ölçülen DSO'ya**
+çapalanır; kalan güne çapalanınca canlıda %1,7 diyordu, doğrusu %9,6 — bir fiyat
+tavsiyesinde **5,5 kat** sapma. Pencere DSO'yu ölçmeye yetmiyorsa (`dso > donem_gun`)
+kural 3'ün tek yönlü sınırı yazılır: «en az X gün».
+
+Alacağın vade maliyeti bir **ALT SINIRDIR** ve bu ekranda yazar: vadesi geçmiş tutar
+«bugün tahsil edilir» sayıldığı için o paranın bekleyeceği süre hesaba girmez.
 Her tabloda satır vurgusu (row hover) standarttır, ayrıca istenmesi gerekmez.
 
 **Aynı şeye tek kelime: «MUKAYESE».** «Kıyaslama» ve «karşılaştırma» eş anlamlıydı ve
@@ -256,9 +271,15 @@ ruff check . --fix                                      # lint
 /plan-elestirmen <plan>                                 # planı koda+kurallara karşı parçala
 ```
 
-**Kayda değer bir plan koda dönmeden önce `/plan-elestirmen`'e verilir**
-(`.claude/skills/plan-elestirmen/`). Eleştirmen kuralların kopyasını taşımaz, bu dosyayı
-okur — iki kural kopyası ayrışır ve yanlış olan sessizce yönlendirmeye devam eder.
+**Kayda değer bir plan koda dönmeden önce `/plan-elestirmen`'e verilir — kullanıcıya
+sorulmadan, otomatik.** (`.claude/skills/plan-elestirmen/`) Eleştirmen kuralların
+kopyasını taşımaz, bu dosyayı okur — iki kural kopyası ayrışır ve yanlış olan sessizce
+yönlendirmeye devam eder.
+
+Kullanıcının kararı: *«bana sorma artık, her yaptığın önemli şeyi sor eleştirmene.»*
+Gerekçesi ölçülü: eleştirmen ilk üç koşuşunda üç gerçek kusur buldu — biri canlıda
+177.753 TL'lik yükü 1.089 TL gösteren bir hesap, biri ekranda kendi altındaki rakamla
+çelişen bir uyarı, biri ölçülmemiş kazanç için sezgisele bağımlılık.
 
 Teşhis araçları: `stok_diag_cli.py` (`--kolonlar`, `--maliyet`, `--fatura`),
 `bilanco_cli.py --teshis`, `cari_diag_cli.py`.

@@ -444,7 +444,7 @@ class TestUiSmoke(unittest.TestCase):
         a = build_reel_deger_analizi(ta, ReelDegerVarsayim(yillik_iskonto_yuzde=45))
         self.assertIsNotNone(build_reel_deger_widget(a, bas=ta.bas, bit=ta.bit, firma="Test A.Ş."))
 
-    def test_reel_deger_view_makas_basabas_ve_cari_tablolari(self) -> None:
+    def test_reel_deger_view_basabas_ve_cari_tablolari(self) -> None:
         """Sekmenin boş kalan alt yarısına eklenen bloklar kurulabiliyor mu."""
         from domain.reel_deger import ReelDegerVarsayim, build_reel_deger_analizi
         from domain.tahsilat_alacak import AcikVadeParcasi, TahsilatAlacak
@@ -457,15 +457,20 @@ class TestUiSmoke(unittest.TestCase):
                 AcikVadeParcasi("supplier", 30, 700_000, "S1", "TEDARİKÇİ"),
             ],
         )
-        ta.vade_kaynagi = "vade"
+        # DSO ölçülmüş hâl: başabaş buna çapalanır
+        ta.alacak_toplam, ta.donem_satis, ta.donem_gun = 90.0, 180.0, 180
+        ta.alacak_gecikmis = 400_000.0
         a = build_reel_deger_analizi(ta, ReelDegerVarsayim(yillik_iskonto_yuzde=45))
-        self.assertTrue(a.makas_var)
+        self.assertTrue(a.basabas_olculdu)
         self.assertTrue(a.top_alacak_erime)
-        self.assertIsNotNone(build_reel_deger_widget(a, bas=ta.bas, bit=ta.bit, firma="Test A.Ş."))
-        # Vade ölçülemediğinde de çökmeden kurulmalı (makas «—» olur)
-        ta.vade_kaynagi = "tarih"
+        w = build_reel_deger_widget(a, bas=ta.bas, bit=ta.bit, firma="Test A.Ş.")
+        self.assertIsNotNone(w)
+        metin = " ".join(lb.text() or "" for lb in w.findChildren(QLabel))
+        self.assertIn("alt sınır", metin, "gecikmiş alacak alt sınır notu yok")
+        # DSO ölçülemeyen hâlde de çökmeden kurulmalı
+        ta.donem_satis, ta.donem_gun = 0.0, 0
         a2 = build_reel_deger_analizi(ta, ReelDegerVarsayim(yillik_iskonto_yuzde=45))
-        self.assertFalse(a2.makas_var)
+        self.assertFalse(a2.basabas_olculdu)
         self.assertIsNotNone(build_reel_deger_widget(a2, bas=ta.bas, bit=ta.bit))
 
     def test_trend_view(self) -> None:

@@ -44,12 +44,12 @@ def _ozet_tablo(a: ReelDegerAnalizi) -> Table:
         [Paragraph("Nominal tutar", sty_row()), tl(a.alacak.nominal)],
         [Paragraph("Bugünkü ekonomik değer", sty_kpi()), tl(a.alacak.bugunku_deger)],
         [Paragraph("Vade maliyeti", sty_row()), tl(a.alacak.vade_etkisi)],
-        [Paragraph("Ağırlıklı vade", sty_row()), _gun(a.alacak.agirlikli_gun)],
+        [Paragraph("Vadeye kalan (ortalama)", sty_row()), _gun(a.alacak.agirlikli_gun)],
         [Paragraph("BORÇ", sty_sec()), ""],
         [Paragraph("Nominal tutar", sty_row()), tl(a.borc.nominal)],
         [Paragraph("Bugünkü ekonomik değer", sty_kpi()), tl(a.borc.bugunku_deger)],
         [Paragraph("Vade avantajı", sty_row()), tl(a.borc.vade_etkisi)],
-        [Paragraph("Ağırlıklı vade", sty_row()), _gun(a.borc.agirlikli_gun)],
+        [Paragraph("Vadeye kalan (ortalama)", sty_row()), _gun(a.borc.agirlikli_gun)],
         [Paragraph("NET POZİSYON", sty_sec()), ""],
         [Paragraph("Nominal", sty_row()), tl(a.nominal_net_pozisyon)],
         [Paragraph("Reel", sty_kpi()), tl(a.reel_net_pozisyon)],
@@ -66,41 +66,6 @@ def _ozet_tablo(a: ReelDegerAnalizi) -> Table:
     return t
 
 
-def _makas_bloku(a: ReelDegerAnalizi, elems: list) -> None:
-    elems.extend([Spacer(1, 10), Paragraph("VADE MAKASI", sty_sec()), Spacer(1, 4)])
-    satirlar = [
-        [Paragraph("Müşteriden tahsil (ağırlıklı)", sty_row()), _gun(a.alacak.agirlikli_gun)],
-        [Paragraph("Tedarikçiye ödeme (ağırlıklı)", sty_row()), _gun(a.borc.agirlikli_gun)],
-    ]
-    if a.makas_var:
-        satirlar.extend([
-            [Paragraph("Makas", sty_kpi()), _gun(abs(a.makas_gun))],
-            [Paragraph("Yön", sty_row()), "lehte" if a.makas_lehte else "aleyhte"],
-        ])
-    else:
-        satirlar.append([Paragraph("Makas", sty_row()), "—"])
-    t = Table(satirlar, colWidths=[120 * mm, 50 * mm])
-    t.setStyle(TableStyle([
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("FONTNAME", (1, 0), (1, -1), FONT_B),
-        ("TEXTCOLOR", (1, 0), (1, -1), DARK),
-        ("LINEBELOW", (0, 0), (-1, -1), 0.3, LINE),
-        ("FONTNAME", (0, 0), (0, -1), FONT),
-    ]))
-    elems.append(t)
-    if not a.gun_olculdu:
-        elems.extend([Spacer(1, 3), Paragraph(
-            "Mikro'da vade kaydı bulunmadığı için gün rakamları evrak tarihinden türetildi; "
-            "makas bu veriyle güvenilir olmadığı için gösterilmiyor.", sty_row())])
-    elif a.makas_var and not a.makas_lehte:
-        ek = (" Tedarikçi kredisi bulunmadığı için sürenin tamamı firma tarafından "
-              "finanse edilmektedir." if a.tedarikci_kredisi_yok else "")
-        elems.extend([Spacer(1, 3), Paragraph(
-            f"Bu {_gun(a.makas_gun)} boyunca ticaret kendi kaynaklarınızdan finanse "
-            f"ediliyor.{ek} Parasal karşılığı yukarıdaki vade maliyeti / vade etkisi "
-            "satırlarındadır.", sty_row())])
-
-
 def _basabas_bloku(a: ReelDegerAnalizi, elems: list) -> None:
     elems.extend([Spacer(1, 10),
                   Paragraph("VADELİ SATIŞTA BAŞABAŞ FİYAT FARKI", sty_sec()), Spacer(1, 4)])
@@ -115,11 +80,18 @@ def _basabas_bloku(a: ReelDegerAnalizi, elems: list) -> None:
         ("LINEBELOW", (0, 0), (-1, 0), 0.8, LINE),
     ]))
     elems.append(t)
-    if a.alacak.agirlikli_gun >= 0.5 and a.basabas_kendi_vaden > 0.005:
+    # Çapa DSO'dur, «vadeye kalan» değil: kalan gün tahsilat iyileştikçe düşüyor ve
+    # başabaş tavsiyesini canlıda 5,5 kat eksik veriyordu.
+    if a.basabas_olculdu:
         elems.extend([Spacer(1, 3), Paragraph(
-            f"Ağırlıklı vadeniz {_gun(a.alacak.agirlikli_gun)}: vadeli fiyat peşin fiyatın "
+            f"Ölçülen tahsil süreniz {_gun(a.dso or 0.0)}: vadeli fiyat peşin fiyatın "
             f"{_yuzde(a.basabas_kendi_vaden)} üstünde değilse vade farkını firma kendi "
             "kaynaklarından karşılamaktadır.", sty_row())])
+    elif a.basabas_alt_sinir:
+        elems.extend([Spacer(1, 3), Paragraph(
+            f"Seçili dönem tahsil süresini ölçmeye yetmemektedir: tahsil süresi en az "
+            f"{_gun(float(a.donem_gun))}, gereken fiyat farkı en az "
+            f"{_yuzde(a.basabas_kendi_vaden)}.", sty_row())])
 
 
 def _erime_bloku(kayitlar: list, elems: list, *, alacak: bool) -> None:
@@ -156,7 +128,11 @@ def export_reel_deger_pdf(a: ReelDegerAnalizi, path: str | Path, *,
     elems: list = []
     letterhead_sade(elems, firma=firma, donem=f"{bit} itibarıyla · Tutarlar: TL")
     elems.append(_ozet_tablo(a))
-    _makas_bloku(a, elems)
+    if a.gecikmis_alacak > 0.005:
+        elems.extend([Spacer(1, 3), Paragraph(
+            f"Vade maliyeti bir ALT SINIRDIR: vadesi geçmiş {tl(a.gecikmis_alacak)} bugün "
+            "tahsil edilebilir kabul edilmiş, o tutarın bekleme süresi hesaba girmemiştir.",
+            sty_row())])
     _basabas_bloku(a, elems)
     _erime_bloku(a.top_alacak_erime, elems, alacak=True)
     _erime_bloku(a.top_borc_erime, elems, alacak=False)

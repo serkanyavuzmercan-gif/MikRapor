@@ -17,71 +17,36 @@ def _gun(v: float) -> str:
     return "—" if v < 0.05 else f"{v:.0f} gün"
 
 
-def _deger_panel(baslik: str, o: DegerOzet, *, alacak: bool) -> QFrame:
+def _deger_panel(baslik: str, o: DegerOzet, *, alacak: bool,
+                 gecikmis: float = 0.0) -> QFrame:
     t = _agac(2, [(1, 145)])
     _tsatir(t, [_c("Nominal tutar"), _c(tl(o.nominal), kalin=True, sag=True)])
     _tsatir(t, [_c("Bugünkü ekonomik değer"), _c(tl(o.bugunku_deger), renk=ACCENT, kalin=True, sag=True)])
     etiket = "Vade maliyeti" if alacak else "Vade avantajı"
     renk = NEG if alacak else POZ
     _tsatir(t, [_c(etiket, kalin=True), _c(tl(o.vade_etkisi), renk=renk, kalin=True, sag=True)])
-    _tsatir(t, [_c("Ağırlıklı vade"), _c(_gun(o.agirlikli_gun), sag=True)])
+    # ADI DÜZELTİLDİ: bu «vade süresi» değil, açık kalemlerin VADESİNE KALAN ortalama
+    # gün — ve bugünkü değer hesabının girdisi. Tahsil süresi sanılıyordu; vadesi geçmiş
+    # kalem 0 sayıldığı için geç ödeme rakamı DÜŞÜRÜYOR (sezginin tersi).
+    _tsatir(t, [_c("Vadeye kalan (ortalama)"), _c(_gun(o.agirlikli_gun), sag=True)])
     _fit_height(t)
-    aciklama = (
+    notlar = [((
         "Tahsilat bekledikçe, aynı nominal alacağın bugünkü ekonomik değeri azalır."
         if alacak else
         "Ödeme vadesi uzadıkça, aynı nominal borcun bugünkü ekonomik yükü azalır."
-    )
-    return _card(baslik, _ic(t, [(aciklama, FAINT)]))
+    ), FAINT)]
+    # Kural 3: ölçülmüş tek yönlü sınır varsa yazılır. Vadesi geçmiş kalem «bugün tahsil
+    # edilir» sayıldığı için erimesi hiç sayılmıyor → gerçek maliyet bundan AZ OLAMAZ.
+    # Eşik yok: tutar varsa koşulsuz yazılır (kural 6, «önemliyse» ölçülmemiş eşiktir).
+    if alacak and gecikmis > 0.005:
+        notlar.append((
+            f"Vade maliyeti bir <b>alt sınırdır</b>: vadesi geçmiş {tl(gecikmis)} bugün "
+            "tahsil edilebilir sayıldı, o paranın bekleyeceği süre hesaba girmedi.", NEG))
+    return _card(baslik, _ic(t, notlar))
 
 
 def _yuzde(v: float) -> str:
     return f"%{tr_sayi(v, 1)}"
-
-
-def _makas_panel(a: ReelDegerAnalizi) -> QFrame:
-    """
-    VADE MAKASI — sahibin en çok işine yarayan tek rakam.
-
-    Alacak ve borç toplamlarına bakıp «pozisyonum artı» diyen firma, aradaki GÜN
-    makası yüzünden nakitte boğuluyor olabilir: 78 günde tahsil edip 31 günde ödüyorsan
-    aradaki 47 günü kendi kesenden finanse ediyorsun. İki ağırlıklı vade zaten
-    hesaplanıyordu, yan yana konmuyordu.
-    """
-    t = _agac(2, [(1, 145)])
-    _tsatir(t, [_c("Müşteriden tahsil (ağırlıklı)"), _c(_gun(a.alacak.agirlikli_gun), sag=True)])
-    _tsatir(t, [_c("Tedarikçiye ödeme (ağırlıklı)"), _c(_gun(a.borc.agirlikli_gun), sag=True)])
-    if a.makas_var:
-        renk = POZ if a.makas_lehte else NEG
-        _tsatir(t, [_c("Makas", kalin=True),
-                    _c(_gun(abs(a.makas_gun)), renk=renk, kalin=True, sag=True)])
-    else:
-        _tsatir(t, [_c("Makas", kalin=True), _c("—", renk=FAINT, kalin=True, sag=True)])
-    _fit_height(t)
-
-    # Makasın PARASAL karşılığı burada ayrıca hesaplanmaz: ① ve ② panelleri ile
-    # üstteki «vade etkisi» rakamı zaten onu veriyor. İkinci bir yöntemle aynı şeyi
-    # hesaplamak «özet şunu, döküm bunu diyor» hâline yol açar (kural 3c).
-    if not a.gun_olculdu:
-        # Kural 2: güvenilmez veri gösterilmez, sebebi rakamın yanında söylenir.
-        notlar = [("Mikro'da vade kaydı bulunmadığı için gün rakamları evrak tarihinden "
-                   "türetildi — makas bu veriyle güvenilir değil, gösterilmiyor.", FAINT)]
-    elif not a.makas_var:
-        notlar = [("Açık vadeli alacak ya da borç yok: peşin çalışıyorsun, vade riski "
-                   "taşımıyorsun.", FAINT)]
-    elif a.makas_lehte:
-        notlar = [(f"Tedarikçin seni <b>{_gun(abs(a.makas_gun))}</b> finanse ediyor: malın "
-                   "parasını ödemeden önce tahsil ediyorsun. Bu, işletme sermayesi "
-                   "ihtiyacını düşüren bir avantaj.", POZ)]
-    elif a.tedarikci_kredisi_yok:
-        notlar = [(f"Tedarikçi kredin yok — <b>{_gun(a.makas_gun)}</b>ün tamamını sen "
-                   "finanse ediyorsun. Maliyetin peşin (maaş, hizmet) ama müşterin vadeli "
-                   f"ödüyorsa yük buradadır; parasal karşılığı ① panelinde "
-                   f"<b>{tl(a.alacak.vade_etkisi)}</b>.", NEG)]
-    else:
-        notlar = [(f"Bu <b>{_gun(a.makas_gun)}</b> boyunca ticareti kendi kesenden finanse "
-                   "ediyorsun. Tahsilatı öne çekmek ya da satıcı vadesini uzatmak doğrudan "
-                   "bu günü kısaltır.", NEG)]
-    return _card("③ VADE MAKASI  ·  kaç gün kendi kesenden finanse ediyorsun", _ic(t, notlar))
 
 
 def _basabas_panel(a: ReelDegerAnalizi) -> QFrame:
@@ -90,20 +55,31 @@ def _basabas_panel(a: ReelDegerAnalizi) -> QFrame:
 
     «%45» rakamı sahibe bir şey söylemiyor. Somut hâli: 90 gün vadeli satıyorsan peşin
     fiyatın %9,6 üstüne çıkmazsan farkı kendi cebinden ödüyorsun.
+
+    ÇAPA DSO'DUR, «vadeye kalan» DEĞİL. Kalan gün tahsilat iyileştikçe düşüyor (FIFO en
+    eski faturayı kapatır, açık kalanlar en yeni faturalardır): 90 gün vadeyle çalışan
+    firmada canlıda 17 gün çıkıp %1,7 diyordu — doğrusu %9,6, yani 5,5 kat eksik bir
+    FİYAT TAVSİYESİ.
     """
     t = _agac(2, [(1, 145)])
     for g, y in a.basabas_merdiven:
         _tsatir(t, [_c(f"{g} gün vadeli satış"), _c(_yuzde(y), kalin=True, sag=True)])
     _fit_height(t)
-    kendi = a.basabas_kendi_vaden
-    if a.alacak.agirlikli_gun >= 0.5 and kendi > 0.005:
-        notlar = [(f"Senin ağırlıklı vaden <b>{_gun(a.alacak.agirlikli_gun)}</b> — vadeli "
-                   f"fiyatın peşin fiyatın <b>{_yuzde(kendi)}</b> üstünde değilse, vadeyi "
-                   "sen finanse ediyorsun.", NEG)]
+
+    if a.basabas_olculdu:
+        notlar = [(f"Ölçülen tahsil süren <b>{_gun(a.dso or 0.0)}</b> (Alacak & Borç'taki "
+                   f"DSO) — vadeli fiyatın peşin fiyatın <b>{_yuzde(a.basabas_kendi_vaden)}</b> "
+                   "üstünde değilse vadeyi sen finanse ediyorsun.", NEG)]
+    elif a.basabas_alt_sinir:
+        # Kural 3: ölçülmüş tek yönlü sınır varsa o yazılır.
+        notlar = [(f"Seçili dönem tahsil süresini ölçmeye yetmiyor: tahsil süren "
+                   f"<b>en az {_gun(float(a.donem_gun))}</b>, yani gereken fark "
+                   f"<b>en az {_yuzde(a.basabas_kendi_vaden)}</b>. Daha uzun bir dönem "
+                   "seçersen kesin rakam çıkar.", NEG)]
     else:
-        notlar = [("Açık vadeli alacak olmadığı için kendi vadene göre bir eşik "
-                   "hesaplanmadı.", FAINT)]
-    return _card("④ VADELİ SATIŞTA BAŞABAŞ FİYAT FARKI", _ic(t, notlar))
+        notlar = [("Dönemde kredili satış olmadığı için tahsil süresi ölçülemedi; "
+                   "yukarıdaki merdiven genel eşikleri gösterir.", FAINT)]
+    return _card("③ VADELİ SATIŞTA BAŞABAŞ FİYAT FARKI", _ic(t, notlar))
 
 
 def _erime_tablo(kayitlar: list, *, alacak: bool) -> QFrame:
@@ -117,7 +93,7 @@ def _erime_tablo(kayitlar: list, *, alacak: bool) -> QFrame:
     t = _agac(4, [(1, 118), (2, 78), (3, 118)])
     _tsatir(t, [_c("Cari", renk=MUTED, kalin=True),
                 _c("Nominal", renk=MUTED, kalin=True, sag=True),
-                _c("Vade", renk=MUTED, kalin=True, sag=True),
+                _c("Vadeye kalan", renk=MUTED, kalin=True, sag=True),
                 _c("Vade maliyeti" if alacak else "Vade avantajı",
                    renk=MUTED, kalin=True, sag=True)])
     for c in kayitlar:
@@ -133,8 +109,8 @@ def _erime_tablo(kayitlar: list, *, alacak: bool) -> QFrame:
         if alacak else
         "Uzun vadeli satıcı lehine çalışır: ödemeyi geciktikçe borcun bugünkü yükü azalır."
     )
-    baslik = ("⑤ VADE MALİYETİNİ EN ÇOK BÜYÜTEN MÜŞTERİLER" if alacak
-              else "⑥ EN ÇOK VADE AVANTAJI SAĞLAYAN SATICILAR")
+    baslik = ("④ VADE MALİYETİNİ EN ÇOK BÜYÜTEN MÜŞTERİLER" if alacak
+              else "⑤ EN ÇOK VADE AVANTAJI SAĞLAYAN SATICILAR")
     return _card(baslik, _ic(t, [(aciklama, FAINT)]))
 
 
@@ -212,15 +188,12 @@ def build_reel_deger_widget(a: ReelDegerAnalizi, *, bas: str, bit: str, firma: s
 
     row = QHBoxLayout()
     row.setSpacing(20)
-    row.addWidget(_deger_panel("① ALACAKLARIN REEL DEĞERİ", a.alacak, alacak=True), 1)
+    row.addWidget(_deger_panel("① ALACAKLARIN REEL DEĞERİ", a.alacak, alacak=True,
+                               gecikmis=a.gecikmis_alacak), 1)
     row.addWidget(_deger_panel("② BORÇLARIN REEL DEĞERİ", a.borc, alacak=False), 1)
     root.addLayout(row)
 
-    row2 = QHBoxLayout()
-    row2.setSpacing(20)
-    row2.addWidget(_makas_panel(a), 1)
-    row2.addWidget(_basabas_panel(a), 1)
-    root.addLayout(row2)
+    root.addWidget(_basabas_panel(a))
 
     if a.top_alacak_erime:
         root.addWidget(_erime_tablo(a.top_alacak_erime, alacak=True))

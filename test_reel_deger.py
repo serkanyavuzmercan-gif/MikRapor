@@ -47,59 +47,66 @@ class TestReelDeger(unittest.TestCase):
         self.assertIn("NET;Vade etkisi", csv)
 
 
-def _analiz(parcalar, *, oran=45.0, vade_kaynagi="vade"):
+def _analiz(parcalar, *, oran=45.0, dso=None, donem_gun=0, gecikmis=0.0):
     ta = TahsilatAlacak(acik_vade_parcalari=parcalar)
-    ta.vade_kaynagi = vade_kaynagi
+    ta.donem_gun = donem_gun
+    ta.alacak_gecikmis = gecikmis
+    if dso is not None:                      # dso bir property; akıştan türet
+        ta.alacak_toplam = dso
+        ta.donem_satis = float(donem_gun)
+        ta.donem_gun = donem_gun
     return build_reel_deger_analizi(ta, ReelDegerVarsayim(yillik_iskonto_yuzde=oran))
 
 
-class TestVadeMakasi(unittest.TestCase):
-    """Tahsil günü ile ödeme günü arasındaki makas, kendi kesenden finanse edilen süredir."""
+class TestBasabasDsoyaCapalanir(unittest.TestCase):
+    """
+    Başabaş fark ÖLÇÜLEN TAHSİL SÜRESİNE (DSO) çapalanır, «vadeye kalan»a değil.
 
-    def test_makas_aleyhte_hesaplanir(self):
-        a = _analiz([AcikVadeParcasi("customer", 90, 1_000_000, "M1", "MUSTERI"),
-                     AcikVadeParcasi("supplier", 30, 600_000, "S1", "SATICI")])
-        self.assertAlmostEqual(a.makas_gun, 60.0, places=1)
-        self.assertTrue(a.makas_var)
-        self.assertFalse(a.makas_lehte)
+    Vade makası paneli KALDIRILDI: aynı soruyu Alacak & Borç sekmesi zaten dso/dpo ile
+    doğru cevaplıyordu (kural 5, veri tekrarı yok) ve buradaki hesap iki «vadeye kalan»
+    ortalamasının farkıydı — canlıda 17−18 = 1 gün, işareti de o sekmenin tersi.
 
-    def test_makas_lehte_olabilir(self):
-        """Tedarikçiye geç ödeyip müşteriden erken tahsil eden firma finanse EDİLİYOR."""
-        a = _analiz([AcikVadeParcasi("customer", 15, 800_000, "M1", "MUSTERI"),
-                     AcikVadeParcasi("supplier", 75, 800_000, "S1", "SATICI")])
-        self.assertLess(a.makas_gun, 0.0)
-        self.assertTrue(a.makas_lehte)
+    «Vadeye kalan» çapa olarak yanlıştı çünkü FIFO en eski faturayı kapatıyor: açık
+    kalanlar en yeni faturalar oluyor ve tahsilat iyileştikçe rakam düşüyor. 90 gün
+    vadeyle çalışan firmada %70 tahsilatta 20 güne iniyordu → %1,7 diyordu, doğrusu %9,6.
+    """
 
-    def test_vade_kaydi_yoksa_makas_gosterilmez(self):
-        """Kural 2: günler evrak tarihinden türetildiyse makas güvenilmez → gösterilmez."""
-        a = _analiz([AcikVadeParcasi("customer", 90, 1_000_000, "M1", "MUSTERI"),
-                     AcikVadeParcasi("supplier", 30, 600_000, "S1", "SATICI")],
-                    vade_kaynagi="tarih")
-        self.assertFalse(a.gun_olculdu)
-        self.assertFalse(a.makas_var)
+    def test_dso_olculduyse_ona_capalanir(self):
+        a = _analiz([AcikVadeParcasi("customer", 5, 1_000_000, "M1", "M")],
+                    dso=90.0, donem_gun=180)
+        self.assertTrue(a.basabas_olculdu)
+        self.assertFalse(a.basabas_alt_sinir)
+        self.assertAlmostEqual(a.basabas_dayanak_gun, 90.0, places=1)
+        self.assertAlmostEqual(a.basabas_kendi_vaden, 9.59, places=1)
 
-    def test_tedarikci_kredisi_olmayan_firma_makasi_gorur(self):
-        """
-        Yazılım/hizmet firması: müşteriye 60 gün vade, maliyeti peşin maaş, cari borç yok.
+    def test_vadeye_kalan_capa_olarak_kullanilmaz(self):
+        """Kalan gün 5, DSO 90 → tavsiye 90'a göre olmalı (5'e göre %0,6 çıkardı)."""
+        a = _analiz([AcikVadeParcasi("customer", 5, 1_000_000, "M1", "M")],
+                    dso=90.0, donem_gun=180)
+        self.assertAlmostEqual(a.alacak.agirlikli_gun, 5.0, places=1)
+        self.assertGreater(a.basabas_kendi_vaden, 5.0,
+                           "başabaş hâlâ «vadeye kalan»a çapalanmış")
 
-        «Hem alacak hem borç olsun» şartı bu firmayı tam da en geniş makasa sahipken
-        ekrandan siliyordu; makasın parasal karşılığı da min(alacak,borç) ile
-        hesaplanınca 3M'lik yükü 20 bin TL'lik kırtasiye faturasına indiriyordu.
-        """
-        a = _analiz([AcikVadeParcasi("customer", 60, 3_000_000, "K1", "KURUMSAL"),
-                     AcikVadeParcasi("supplier", 0, 0.0, "S1", "YOK")])
-        self.assertTrue(a.makas_var, "tedarikçi kredisi olmayan firmada makas gizlenmiş")
-        self.assertTrue(a.tedarikci_kredisi_yok)
-        self.assertAlmostEqual(a.makas_gun, 60.0, places=1)
-        # Gerçek yük alacak tarafındaki erimededir; makas ayrı bir tutar uydurmaz.
-        self.assertGreater(a.alacak.vade_etkisi, 100_000)
+    def test_pencere_kisaysa_tek_yonlu_sinir(self):
+        """Kural 3: DSO pencereden uzunsa ölçülemez ama «en az» denebilir."""
+        a = _analiz([AcikVadeParcasi("customer", 5, 1_000_000, "M1", "M")],
+                    dso=211.0, donem_gun=180)
+        self.assertFalse(a.basabas_olculdu)
+        self.assertTrue(a.basabas_alt_sinir)
+        self.assertAlmostEqual(a.basabas_dayanak_gun, 180.0, places=1)
 
-    def test_pesin_calisan_firmada_makas_gosterilmez(self):
-        """Peşin alıp peşin satan firma (market/lokanta): vade riski yok, makas «—»."""
-        a = _analiz([AcikVadeParcasi("customer", 0, 500_000, "M1", "PESIN MUSTERI"),
-                     AcikVadeParcasi("supplier", 0, 300_000, "S1", "PESIN SATICI")])
-        self.assertFalse(a.makas_var)
-        self.assertAlmostEqual(a.makas_gun, 0.0, places=1)
+    def test_satis_yoksa_capa_yok(self):
+        a = _analiz([AcikVadeParcasi("customer", 5, 1_000_000, "M1", "M")],
+                    dso=None, donem_gun=180)
+        self.assertFalse(a.basabas_olculdu)
+        self.assertFalse(a.basabas_alt_sinir)
+
+    def test_makas_ozellikleri_kaldirildi(self):
+        """Alacak & Borç'taki dso/dpo ile çelişen ikinci bir makas bir daha eklenmesin."""
+        a = _analiz([AcikVadeParcasi("customer", 5, 1_000_000, "M1", "M")])
+        for ad in ("makas_gun", "makas_var", "makas_lehte", "makas_maliyeti",
+                   "makas_finanse_edilen", "tedarikci_kredisi_yok"):
+            self.assertFalse(hasattr(a, ad), f"{ad} geri gelmiş — kural 5 ihlali")
 
 
 class TestBasabasVadeFarki(unittest.TestCase):
@@ -173,17 +180,20 @@ class TestCsvYeniBolumler(unittest.TestCase):
         a = _analiz([AcikVadeParcasi("customer", 90, 1_000_000, "M1", "MUSTERI A"),
                      AcikVadeParcasi("supplier", 30, 600_000, "S1", "SATICI B")])
         csv = reel_deger_csv(a)
-        self.assertIn("VADE MAKASI;Makas (gün)", csv)
-        self.assertIn("VADE MAKASI;Yön;aleyhte", csv)
+        self.assertIn("BAŞABAŞ VADE FARKI;90 gün (%)", csv)
         self.assertIn("BAŞABAŞ VADE FARKI;90 gün (%)", csv)
         self.assertIn("EN ÇOK ERİTEN MÜŞTERİ;MUSTERI A", csv)
         self.assertIn("EN ÇOK KAZANDIRAN SATICI;SATICI B", csv)
 
-    def test_vade_olculmediyse_csv_sebebini_yazar(self):
+    def test_dso_olculmediyse_csv_sebebini_yazar(self):
         a = _analiz([AcikVadeParcasi("customer", 90, 1_000_000, "M1", "M"),
-                     AcikVadeParcasi("supplier", 30, 600_000, "S1", "S")],
-                    vade_kaynagi="tarih")
-        self.assertIn("VADE MAKASI;Ölçülemedi", reel_deger_csv(a))
+                     AcikVadeParcasi("supplier", 30, 600_000, "S1", "S")])
+        self.assertIn("BAŞABAŞ VADE FARKI;Tahsil süresi ölçülemedi", reel_deger_csv(a))
+
+    def test_gecikmis_alacak_csvde_alt_sinir_sebebi(self):
+        a = _analiz([AcikVadeParcasi("customer", 0, 500_000, "M1", "M")],
+                    gecikmis=500_000.0)
+        self.assertIn("Vade maliyeti alt sınır sebebi", reel_deger_csv(a))
 
 
 if __name__ == "__main__":
