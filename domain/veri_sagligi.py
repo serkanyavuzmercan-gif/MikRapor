@@ -158,11 +158,19 @@ def _aykiri_satir_metni(r: dict) -> str:
     evrak = f"{seri}{sira}" if (seri or sira) else str(al("sth_belge_no")).strip() or "?"
     stok = str(al("sth_stok_kod")) or "?"
     tip, ev = int(_f(al("sth_tip"))), int(_f(al("sth_evraktip")))
+    # HANGİ ALAN aykırı, açıkça yazar. Canlıda «150 adet · 8.250 TL» satırı listeye
+    # girdi (maliyet kolonu aykırıydı) ve bakan kişi haklı olarak «bunun nesi bozuk»
+    # dedi. İşaretlenen alan söylenmeden liste güvenilirliğini kaybediyor.
+    aykiri = [ad for ad, anahtar in (("tutar", "tutar_aykiri"),
+                                     ("maliyet", "maliyet_aykiri"))
+              if _f(al(anahtar)) >= 1]
+    isaret = f"  ←  {' + '.join(aykiri)} aykırı" if aykiri else ""
     # Sayılar TEK TEK biçimlenir; cümlenin tamamında virgül→nokta değişimi
     # tl() çıktısını bozardı (bkz. domain.ortak.tr_sayi).
     return (f"{tarih}  ·  evrak {evrak}  ·  {stok}  ·  "
-            f"{tr_sayi(_f(al('sth_miktar')))} adet  ·  {tl(_f(al('sth_tutar')))}  "
-            f"(tip {tip}/evrak {ev})")
+            f"{tr_sayi(_f(al('sth_miktar')))} adet  ·  tutar {tl(_f(al('sth_tutar')))}"
+            f"  ·  maliyet {tl(_f(al('sth_maliyet_ana')))}  "
+            f"(tip {tip}/evrak {ev}){isaret}")
 
 
 def _bozuk_stok_kaydi(stok_rows: list[dict],

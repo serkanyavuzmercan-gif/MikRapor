@@ -516,10 +516,15 @@ def fetch_stok_aykiri_satirlar(
             f"FROM STOK_HAREKETLERI WITH (NOLOCK) WHERE {pencere}"
         )
 
+    # HANGİ ÖLÇÜ aykırı, satırda yazsın: canlıda «150 adet · 8.250 TL» gibi bakınca
+    # gayet normal görünen bir satır listeye girdi (maliyet kolonu aykırıydı, tutar
+    # değil) ve muhasebeci haklı olarak «bunun nesi bozuk» diye sordu.
     sql = (
         f"SELECT TOP {n} {_stok_tarih_sql('h.')} AS tarih, "
         "h.sth_evrakno_seri, h.sth_evrakno_sira, h.sth_belge_no, h.sth_stok_kod, "
-        "h.sth_tip, h.sth_evraktip, h.sth_miktar, h.sth_tutar, h.sth_maliyet_ana "
+        "h.sth_tip, h.sth_evraktip, h.sth_miktar, h.sth_tutar, h.sth_maliyet_ana, "
+        "CASE WHEN ABS(h.sth_tutar) >= et.esik THEN 1 ELSE 0 END AS tutar_aykiri, "
+        "CASE WHEN ABS(h.sth_maliyet_ana) >= em.esik THEN 1 ELSE 0 END AS maliyet_aykiri "
         "FROM STOK_HAREKETLERI h WITH (NOLOCK) "
         f"CROSS JOIN ({_esik('sth_tutar')}) et "
         f"CROSS JOIN ({_esik('sth_maliyet_ana')}) em "

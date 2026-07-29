@@ -183,6 +183,27 @@ class TestSqlParsing(unittest.TestCase):
         self.assertEqual(parse_sql_rows([]), [])
         self.assertIsNone(parse_sql_first_row([]))
 
+    def test_bos_sonuc_hayalet_satir_uretmez(self) -> None:
+        """
+        Sıfır satır dönen sorgu, ZARFI veri satırı sanmamalı.
+
+        Eskiden `a.get(x) or a.get(y) or …` zinciri kullanılıyordu; boş liste falsy
+        olduğu için zincir sonuna düşüyor ve zarfın kendisi satır gibi dönüyordu.
+        Canlıda Veri Sağlığı 8 yıl tarayınca aykırı kaydı olmayan 5 yıl için birer
+        HAYALET satır üretti — tarihi ve tutarı boş kayıtlar «bozuk kayıt» diye
+        listelendi ve sayıya girdi. Sıfır satır dönebilen HER sorgu bu hataya açıktı.
+        """
+        for zarf in ({"SQLResult1": []}, {"SQLResult": []}, {"Data": []},
+                     {"Rows": []}):
+            with self.subTest(zarf=zarf):
+                self.assertEqual(parse_sql_rows([zarf]), [])
+                self.assertEqual(parse_sql_rows(zarf), [])
+                self.assertIsNone(parse_sql_first_row([zarf]))
+
+    def test_bos_liste_dolu_anahtari_golgelemez(self) -> None:
+        """İlk anahtar boşsa sonraki anahtara BAKILMAZ: şekil ilk eşleşenden belli."""
+        self.assertEqual(parse_sql_rows([{"SQLResult1": [], "Data": [{"a": 1}]}]), [])
+
     def test_get_row_value_case_insensitive(self) -> None:
         row = {"STO_KOD": "A.001"}
         self.assertEqual(get_row_value(row, "sto_kod"), "A.001")
