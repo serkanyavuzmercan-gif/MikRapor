@@ -345,11 +345,12 @@ class TestUiSmoke(unittest.TestCase):
                  FirmaKapsami("20", 2019, 2025), FirmaKapsami("26", 2026, 2026)]), \
              patch.object(vsd, "yil_client", return_value=None), \
              patch.object(vsd, "fetch_mizan", return_value=[]), \
+             patch.object(vsd, "fetch_firma_adi", return_value="Test A.Ş."), \
              patch.object(vsd, "donem_satirlari", side_effect=sahte_satirlar), \
              patch.object(vsd, "RaporWorker") as sahte_worker:
             d = vsd.VeriSagligiDialog()
             try:
-                vs = sahte_worker.call_args[0][0](lambda _m: None)
+                vs, _firma = sahte_worker.call_args[0][0](lambda _m: None)
             finally:
                 d.deleteLater()
 
@@ -370,11 +371,12 @@ class TestUiSmoke(unittest.TestCase):
              patch.object(vsd, "katalog", return_value=[]), \
              patch.object(vsd, "yil_client", return_value=None), \
              patch.object(vsd, "fetch_mizan", return_value=[]), \
+             patch.object(vsd, "fetch_firma_adi", return_value="Test A.Ş."), \
              patch.object(vsd, "donem_satirlari", return_value=[]), \
              patch.object(vsd, "RaporWorker") as sahte_worker:
             d = vsd.VeriSagligiDialog()
             try:
-                vs = sahte_worker.call_args[0][0](lambda _m: None)
+                vs, _firma = sahte_worker.call_args[0][0](lambda _m: None)
             finally:
                 d.deleteLater()
         self.assertTrue(any("katalo" in x.lower() for x in vs.okunamayan))

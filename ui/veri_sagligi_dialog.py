@@ -17,13 +17,16 @@ sırayla okunur.
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFrame,
     QLabel,
+    QMessageBox,
     QScrollArea,
     QVBoxLayout,
     QWidget,
@@ -31,13 +34,26 @@ from PyQt6.QtWidgets import (
 
 from domain.mizan_bilanco import build_bilanco
 from domain.ortak import to_float as _f
-from domain.veri_sagligi import KRITIK, Bulgu, VeriSagligi, build_veri_sagligi
+from domain.veri_sagligi import (
+    KRITIK,
+    Bulgu,
+    VeriSagligi,
+    build_veri_sagligi,
+    veri_sagligi_csv,
+)
 from infra.config import load_config
 from infra.mikro_api import MikroAPIError
-from infra.mikro_fetch import fetch_mizan, fetch_stok_aykiri_satirlar, fetch_stok_ozet
+from infra.mikro_fetch import (
+    fetch_firma_adi,
+    fetch_mizan,
+    fetch_stok_aykiri_satirlar,
+    fetch_stok_ozet,
+)
 from infra.mukayese_fetch import YilVeritabaniHatasi, donem_satirlari, yil_client
 from infra.veritabani import katalog
+from ui.bilesenler import csv_kaydet, varsayilan_kayit_yolu
 from ui.styles import MUTED, NAVY, SURFACE
+from ui.veri_sagligi_pdf import export_veri_sagligi_pdf
 from ui.worker import RaporWorker
 
 _RENK = {KRITIK: ("#b91c1c", "#fef2f2", "#fecaca")}
@@ -58,6 +74,8 @@ class VeriSagligiDialog(QDialog):
         self.setObjectName("vsDialog")
         self.setMinimumSize(620, 420)
         self._worker: RaporWorker | None = None
+        self._vs: VeriSagligi | None = None
+        self._firma = ""
         self._build()
         self._basla()
 
@@ -97,7 +115,16 @@ class VeriSagligiDialog(QDialog):
         kaydir.setWidget(self._govde)
         root.addWidget(kaydir, 1)
 
+        # PDF/CSV: bu raporun asıl gideceği yer MALİ MÜŞAVİR. «Şu kayıtları düzeltir
+        # misin» diye gönderilecekse ekrandan okuyup elle yazdırmak anlamsız.
         butonlar = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        self._btn_pdf = butonlar.addButton("PDF", QDialogButtonBox.ButtonRole.ActionRole)
+        self._btn_csv = butonlar.addButton("CSV", QDialogButtonBox.ButtonRole.ActionRole)
+        self._btn_pdf.clicked.connect(self._on_pdf)
+        self._btn_csv.clicked.connect(self._on_csv)
+        # Sonuç gelmeden dışa aktarılacak bir şey yok.
+        self._btn_pdf.setEnabled(False)
+        self._btn_csv.setEnabled(False)
         butonlar.rejected.connect(self.reject)
         butonlar.setContentsMargins(18, 0, 18, 14)
         root.addWidget(butonlar)
@@ -115,7 +142,7 @@ class VeriSagligiDialog(QDialog):
             return
         bit = date.today().isoformat()
 
-        def is_fn(bildir) -> VeriSagligi:
+        def is_fn(bildir) -> tuple[VeriSagligi, str]:
             client = yil_client(cfg, int(bit[:4]))
             okunamayan: list[str] = []
             # Kapsam katalogtan: bozuk kayıt hangi yılda olursa olsun bulunmalı.
@@ -156,9 +183,17 @@ class VeriSagligiDialog(QDialog):
             except (MikroAPIError, YilVeritabaniHatasi):
                 if stok_rows is None:
                     okunamayan.append("Stok hareketleri")
+            # Firma ünvanı PDF başlığına girer; müşavire giden belge kime ait olduğunu
+            # yazmalı. Okunamazsa boş kalır, rapor yine üretilir.
+            firma = (cfg.firma_adi or "").strip()
+            if not firma:
+                try:
+                    firma = fetch_firma_adi(client)
+                except (MikroAPIError, YilVeritabaniHatasi):
+                    firma = ""
             return build_veri_sagligi(bas=bas, bit=bit, bilanco=bilanco,
                                       stok_rows=stok_rows, aykiri_rows=aykiri_rows,
-                                      okunamayan=okunamayan)
+                                      okunamayan=okunamayan), firma
 
         worker = RaporWorker(is_fn, parent=self)
         self._worker = worker
@@ -174,9 +209,40 @@ class VeriSagligiDialog(QDialog):
         worker.start()
 
     # ---------------------------------------------------------------- gösterim
-    def _goster(self, sonuc: object) -> None:
-        if not isinstance(sonuc, VeriSagligi):
+    def _dosya_adi(self, uzanti: str) -> str:
+        return f"veri_sagligi_{self._vs.bas}_{self._vs.bit}.{uzanti}" if self._vs \
+            else f"veri_sagligi.{uzanti}"
+
+    def _on_pdf(self) -> None:
+        if self._vs is None:
             return
+        yol, _ = QFileDialog.getSaveFileName(
+            self, "PDF Kaydet", varsayilan_kayit_yolu(self._dosya_adi("pdf")),
+            "PDF (*.pdf)")
+        if not yol:
+            return
+        try:
+            export_veri_sagligi_pdf(self._vs, yol, firma=self._firma)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "PDF Hatası", str(exc))
+            return
+        self._not(f"PDF kaydedildi: {Path(yol).name}")
+
+    def _on_csv(self) -> None:
+        if self._vs is None:
+            return
+        yol = csv_kaydet(self, None, self._dosya_adi("csv"), veri_sagligi_csv(self._vs))
+        if yol:
+            self._not(f"CSV kaydedildi: {Path(yol).name}")
+
+    def _goster(self, sonuc: object) -> None:
+        if not (isinstance(sonuc, tuple) and len(sonuc) == 2
+                and isinstance(sonuc[0], VeriSagligi)):
+            return
+        sonuc, self._firma = sonuc
+        self._vs = sonuc
+        self._btn_pdf.setEnabled(True)
+        self._btn_csv.setEnabled(True)
         self._ozet.setText(sonuc.ozet())
         # Hangi dönemin tarandığı YAZAR: «temiz» sonucu, neye bakıldığı bilinmeden
         # sahte bir güven verir.

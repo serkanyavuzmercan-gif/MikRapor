@@ -139,6 +139,56 @@ class TestPdfSmoke(unittest.TestCase):
 
 
 @unittest.skipUnless(_REPORTLAB, "reportlab kurulu değil")
+class TestVeriSagligiPdf(unittest.TestCase):
+    """
+    Bu PDF MALİ MÜŞAVİRE gidiyor: «şu kayıtları düzeltir misin» diye.
+
+    O yüzden iki şey şart — düzeltilecek kayıtların TAMAMI (ekranda ilk 12 gösteriliyor,
+    burada kırpma yok) ve neyin tarandığı (kapsam yazmazsa «temiz» sonucu sahte güven
+    verir).
+    """
+
+    @staticmethod
+    def _vs(kayit_adet: int = 30):
+        from domain.veri_sagligi import build_veri_sagligi
+        return build_veri_sagligi(
+            bas="2019-01-01", bit="2026-07-28",
+            stok_rows=[{"sth_tip": 0, "sth_evraktip": 12, "tutar": 2e7, "adet": 6_592,
+                        "aykiri_adet": kayit_adet, "aykiri_tutar": 3_333_333_333_340.0}],
+            aykiri_rows=[{"tarih": "2023-12-07T00:00:00", "sth_evrakno_seri": "A",
+                          "sth_evrakno_sira": 700 + i, "sth_stok_kod": f"MAL.{i:03d}",
+                          "sth_tip": 0, "sth_evraktip": 12, "sth_miktar": 2.0,
+                          "sth_tutar": 3_333_333_333_340.0}
+                         for i in range(kayit_adet)])
+
+    def test_pdf_uretilir(self) -> None:
+        from ui.veri_sagligi_pdf import export_veri_sagligi_pdf
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "veri_sagligi.pdf"
+            export_veri_sagligi_pdf(self._vs(), out, firma="Test Ticaret A.Ş.")
+            _pdf_dogrula(self, out)
+
+    def test_temiz_veride_de_uretilir(self) -> None:
+        """Bulgu yoksa da belge çıkmalı: «kontrol edildi, temiz» de bir sonuçtur."""
+        from domain.veri_sagligi import build_veri_sagligi
+        from ui.veri_sagligi_pdf import export_veri_sagligi_pdf
+        vs = build_veri_sagligi(bas="2026-01-01", bit="2026-07-28", stok_rows=[])
+        self.assertTrue(vs.temiz)
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "temiz.pdf"
+            export_veri_sagligi_pdf(vs, out)
+            _pdf_dogrula(self, out)
+
+    def test_kayitlar_kirpilmadan_girer(self) -> None:
+        """Ekran ilk 12'yi gösteriyor; müşavire eksik liste gönderilemez."""
+        from ui.veri_sagligi_pdf import _kayit_tablosu
+        bulgu = next(b for b in self._vs(30).bulgular if b.kod == "bozuk_stok")
+        self.assertEqual(len(bulgu.kayitlar), 30)
+        t = _kayit_tablosu(bulgu.kayitlar)
+        self.assertEqual(len(t._cellvalues), 31)      # 1 başlık + 30 kayıt
+
+
+@unittest.skipUnless(_REPORTLAB, "reportlab kurulu değil")
 class TestMukayesePdfSigar(unittest.TestCase):
     """
     Mukayese tablosu SAYFAYA SIĞMALI.
