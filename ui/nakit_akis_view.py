@@ -8,6 +8,8 @@ Kart/satır yardımcıları diğer sekmelerle paylaşılır. (Aylık trend: Muka
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
@@ -86,6 +88,7 @@ def _kategori_panel(
     toplam: float,
     renk: str,
     kirilimlar: dict[str, list] | None = None,
+    detay: Callable[[str, float], None] | None = None,
 ) -> QFrame:
     # Hesap kırılımları kod + ad ile gösterilir. İlk sütunu esnek bırakarak
     # uzun hesap adlarının kesilmeden okunmasını sağlarız; gösterge ve tutar
@@ -97,15 +100,32 @@ def _kategori_panel(
         return _card(baslik, _ic(t))
 
     enb = max(kategori.values(), default=0.0) or 1.0
+    # KANIT BİR TIK UZAKTA. Satırın tamamı tıklanabilir; ayrı bir «detay» düğmesi
+    # eklenmedi (kural 4). Bir uzman «bu rakam gerçek mi» dediğinde arkasındaki fişleri
+    # gösterememek, ürünün en pahalı eksiğiydi.
+    tiklanabilir: dict[int, tuple[str, float]] = {}
     for ad, tutar in kategori.items():
         it = _tsatir(t, [_c(ad), _c(""), _c(tl(tutar), renk=renk, kalin=True, sag=True)])
         t.setItemWidget(it, 1, _oran_bar(tutar / enb, renk))
+        if detay is not None:
+            tiklanabilir[t.indexOfTopLevelItem(it)] = (ad, tutar)
         # Büyük/heterojen kalemlerin karşı hesap kırılımını satır altında görünür tut.
         for prefix, kt in (kirilimlar or {}).get(ad, []):
             _tsatir(t, [_c(f"      ◦ {hesap_kirilim_etiketi(prefix)}", renk=FAINT), _c(""),
                         _c(tl(kt), renk=FAINT, sag=True)])
     _tsatir(t, [_c("Toplam", kalin=True), _c(""), _c(tl(toplam), kalin=True, sag=True)])
     _fit_height(t)
+    if detay is not None and tiklanabilir:
+        t.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        def _tik(item, _sutun, _t=t, _harita=tiklanabilir):
+            kayit = _harita.get(_t.indexOfTopLevelItem(item))
+            if kayit:
+                detay(*kayit)
+
+        t.itemClicked.connect(_tik)
+        return _card(baslik, _ic(t, [("Bir satıra tıklayınca arkasındaki fişler açılır.",
+                                      FAINT)]))
     return _card(baslik, _ic(t))
 
 
@@ -358,6 +378,8 @@ def build_nakit_akis_widget(
     kredi_odemeleri: list[KrediOdeme] | None = None,
     *,
     kdv: KdvKoprusu | None = None,
+    detay_giris: Callable[[str, float], None] | None = None,
+    detay_cikis: Callable[[str, float], None] | None = None,
     runway_na: NakitAkis | None = None,
     runway_ta: TahsilatAlacak | None = None,
     runway_referans_bas: str = "",
@@ -439,6 +461,7 @@ def build_nakit_akis_widget(
             "Diğer girişler": na.diger_giris_kirilim,
             "Gider iadesi": na.gider_giris_kirilim,
         },
+        detay=detay_giris,
     ), 1)
     row1.addWidget(_kategori_panel(
         "GERÇEKLEŞEN ÇIKIŞLAR" + _donem_eki(na.bas, na.bit, na.cikis_adet),
@@ -447,6 +470,7 @@ def build_nakit_akis_widget(
             "Diğer çıkışlar": na.diger_cikis_kirilim,
             "Genel giderler": na.gider_cikis_kirilim,
         },
+        detay=detay_cikis,
     ), 1)
     root.addLayout(row1)
 

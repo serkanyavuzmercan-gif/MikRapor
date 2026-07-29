@@ -65,6 +65,17 @@ def _kategori(prefix: str) -> str:
     return _PREFIX_KATEGORI.get(p, _PREFIX_KATEGORI.get(p[:3], "diger"))
 
 
+def kategori_etiketi(prefix: str, tip: int) -> str:
+    """
+    Bir karşı hesap önekinin ekranda göründüğü kategori adı («Müşteri tahsilatı»).
+
+    Detay penceresi fişleri buna göre süzer. Özetle AYNI `_kategori` fonksiyonunu
+    kullanır — ayrı bir eşleme yazılsaydı detay ile toplam sessizce ayrışırdı.
+    """
+    kat = _kategori(prefix)
+    return (GIRIS_ETIKET if tip == 0 else CIKIS_ETIKET).get(kat, kat)
+
+
 def hesap_kirilim_etiketi(prefix: str) -> str:
     """Karşı hesap kırılımını yönetici için kod + TDHP adıyla gösterir."""
     kod = str(prefix or "").strip()

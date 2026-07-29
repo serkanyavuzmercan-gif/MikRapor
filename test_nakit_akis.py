@@ -201,3 +201,57 @@ class TestKrediGLYedek(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDetayOzetleAyniKaynak(unittest.TestCase):
+    """
+    Kanıt penceresinin TEK işi var: paneldeki rakamı doğrulamak.
+
+    Detay ayrı bir sorgu olarak yazılsaydı er ya da geç toplamdan ayrışırdı — «özet
+    3M diyor, döküm 2,8M» durumu hiç detay olmamasından kötüdür. Bu yüzden iki sorgu
+    aynı SQL gövdesini paylaşıyor ve sınıflama aynı fonksiyonla yapılıyor.
+    """
+
+    def _sql(self, cek) -> str:
+        class Sahte:
+            class cfg:
+                firma_kodu = "26"
+
+            def sql_veri_oku(self, sql, **_kw):
+                self.son = sql
+                return []
+
+        s = Sahte()
+        cek(s)
+        return s.son
+
+    def test_ayni_alt_sorgu(self) -> None:
+        from infra.mikro_fetch import fetch_nakit_akis_detay, fetch_nakit_akis_gl
+        ozet = self._sql(lambda c: fetch_nakit_akis_gl(c, "2026-01-01", "2026-07-29"))
+        detay = self._sql(
+            lambda c: fetch_nakit_akis_detay(c, "2026-01-01", "2026-07-29", 0))
+        govde = ozet[ozet.index("FROM ("):].split(" GROUP BY")[0]
+        self.assertIn(govde, detay)
+
+    def test_siniflama_ayni_fonksiyondan(self) -> None:
+        """Detay penceresi kategoriyi kendi eşlemesiyle değil, özetinkiyle bulur."""
+        from domain.nakit_akis import GIRIS_ETIKET, kategori_etiketi
+        self.assertEqual(kategori_etiketi("120", 0), GIRIS_ETIKET["musteri"])
+        self.assertEqual(kategori_etiketi("320", 1), "Satıcı ödemesi")
+        self.assertEqual(kategori_etiketi("KKT", 1), "Kredi kartı ödemeleri")
+        # Tanınmayan önek iki tarafta da «diğer» kovasına düşer.
+        self.assertEqual(kategori_etiketi("999", 0), GIRIS_ETIKET["diger"])
+
+    def test_detay_toplami_kategori_toplamini_verir(self) -> None:
+        """Aynı ham satırlardan özet ve döküm aynı rakamı üretmeli."""
+        from domain.nakit_akis import build_nakit_akis, kategori_etiketi
+        ham = [{"ay": "2026-01", "tip": 0, "prefix": "120", "tutar": 5000.0},
+               {"ay": "2026-02", "tip": 0, "prefix": "121", "tutar": 7000.0},
+               {"ay": "2026-03", "tip": 0, "prefix": "320", "tutar": 900.0}]
+        na = build_nakit_akis(ham, kapanis_nakit=0.0, bas="2026-01-01", bit="2026-07-29")
+        etiket = kategori_etiketi("120", 0)
+        panel = na.giris_kategori[etiket]
+        dokum = sum(r["tutar"] for r in ham
+                    if kategori_etiketi(r["prefix"], r["tip"]) == etiket)
+        self.assertAlmostEqual(panel, dokum)
+        self.assertAlmostEqual(panel, 12000.0)

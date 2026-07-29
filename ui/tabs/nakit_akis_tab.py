@@ -85,8 +85,12 @@ class NakitAkisTab(RaporTab):
 
     _na: NakitAkis | None = None
     _kdv: KdvKoprusu | None = None
+    _cfg: MikroConfig | None = None
 
     def _is_hazirla(self, cfg: MikroConfig, bas: str, bit: str) -> IsFonksiyonu:
+        # Detay penceresi kendi sorgusunu atacak; ayarlar GUI iş parçacığında saklanır.
+        self._cfg = cfg
+
         def is_fn(bildir) -> dict[str, Any]:
             # Veritabanını firma kodu seçer: dönemin bittiği yıl hangi
             # veritabanındaysa oraya bağlanılır (bkz. infra/veritabani.py).
@@ -243,6 +247,8 @@ class NakitAkisTab(RaporTab):
         self._icerik_koy(build_nakit_akis_widget(
             na, firma=self._firma, kredi_odemeleri=sonuc.get("kredi_odemeleri"),
             kdv=self._kdv,
+            detay_giris=lambda ad, tutar: self._detay(0, ad, tutar),
+            detay_cikis=lambda ad, tutar: self._detay(1, ad, tutar),
             runway_na=sonuc.get("runway_na"), runway_ta=sonuc.get("runway_ta"),
             runway_referans_bas=sonuc.get("runway_referans_bas", ""),
             kredi_taksitler=sonuc.get("taksitler"),
@@ -262,6 +268,14 @@ class NakitAkisTab(RaporTab):
             " · ".join(parts),
             "uyari" if na.hareket_sayisi == 0 else ("iyi" if na.net_akis >= 0 else "hata"),
         )
+
+    def _detay(self, tip: int, etiket: str, tutar: float) -> None:
+        """Kategori satırına tıklanınca arkasındaki fişleri açar."""
+        if self._cfg is None or self._na is None:
+            return
+        from ui.nakit_detay_dialog import NakitDetayDialog
+        NakitDetayDialog(self._cfg, bas=self._na.bas, bit=self._na.bit, tip=tip,
+                         etiket=etiket, beklenen=tutar, parent=self).exec()
 
     def _on_pdf(self) -> None:
         if not self._na:

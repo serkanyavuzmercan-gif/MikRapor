@@ -142,6 +142,24 @@ görünmüyordu; oysa o kayıtlar 2023'ü kapsayan HER raporu zehirliyor.
 tarih, evrak no, stok kodu, miktar, tutar. 390 bin satır içinde 13 kaydı aratmak tavsiye
 değildir.
 
+## 3c. Rakamın arkası bir tık uzakta olmalı
+
+Canlı bir demoda mali müşavir «müşteri tahsilatı 3M — bu yapıldı mı?» diye sordu.
+Rakam DOĞRUYDU (muhasebe yevmiyesine işlenmiş yüzlerce fişin toplamı) ama gösterilecek
+bir şey yoktu ve savunulamadı. Bir uzman rakamına itiraz ettiğinde elinde kanıt yoksa
+tartışmayı kaybedersin.
+
+- Nakit Akış'ta kategori satırına tıklayınca arkasındaki fişler açılır
+  (`ui/nakit_detay_dialog.py`): tarih, yevmiye no, karşı hesap, tutar.
+- **Detay ve özet AYNI SQL gövdesini paylaşır** (`_gl_nakit_kirilim`), sınıflama aynı
+  fonksiyondan gelir (`kategori_etiketi`). Ayrı yazılmış iki sorgu er ya da geç ayrışır;
+  «özet 3M diyor, döküm 2,8M» durumu hiç detay olmamasından KÖTÜDÜR.
+- Pencere altta detay toplamı ile panel toplamını kıyaslar ve **tutmuyorsa söyler.**
+
+Ayrıca «gerçekleşen» ile «öngörü» ekranda ayrışır: panel başlıkları `GERÇEKLEŞEN
+GİRİŞLER · 01.01–29.07 · 412 hareket`, runway ise `PROJEKSİYON — HENÜZ GERÇEKLEŞMEDİ`.
+Hareket sayısı, rakamın tek bir işlem değil dönem toplamı olduğunu sorulmadan söyler.
+
 ## 4. LESS IS MORE
 
 Kısa ve öz. Etiket, uyarı ve not şişkinliği yok. Tablo altına altı paragraf uyarı
@@ -190,6 +208,12 @@ karışık olabilir, ihracat satışında KDV hiç doğmaz. Efektif oran dönemi
 rakamından ölçülür — hesaplanan KDV (391) ÷ net satış (60/61).
 
 **Arayüz %100 Türkçe, hesap planı TDHP.** İngilizce sürüm planı yok.
+
+**Sekme sırası sahibe göre**, muhasebeciye göre değil: Alacak & Borç → Nakit Akış →
+… → *ayraç* → Bilanço, Gelir Tablosu → *ayraç* → Yapay Zekâ. Program Bilanço ile
+açılıyordu; demo, şirket sahibini en az ilgilendiren tablodan başlayınca ürün «bir
+muhasebe programı daha» gibi duruyor. Kural 1b'deki resmî/canlı ayrımı korunuyor,
+yalnız sıralama tersine döndü.
 
 ## 7. Veri dışarı çıkmaz
 

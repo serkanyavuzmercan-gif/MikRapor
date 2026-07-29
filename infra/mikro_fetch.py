@@ -1272,6 +1272,39 @@ def fetch_nakit_ozet_ve_aylik(
     return fetch_nakit_ozet(client, bas, bit), fetch_nakit_aylik(client, bas, bit)
 
 
+# 0 = giriş, 1 = çıkış. İki sorguda da AYNI ifade kullanılır.
+_GL_TIP = "CASE WHEN c.net_nakit > 0 THEN 0 ELSE 1 END"
+
+
+def _gl_nakit_kirilim(bas: str, bit_son: str) -> str:
+    """
+    Nakit fişleri + karşı hesap dağıtımı — özet ve detay sorgusunun ORTAK gövdesi.
+
+    Tek yerde durması şart: özet «Müşteri tahsilatı 3M» derken detay 47 fiş gösterip
+    2,8M çıkarsa program kendi rakamını doğrulayamıyor demektir. Ayrı yazılmış iki
+    sorgu er ya da geç ayrışır; bu yüzden metin paylaşılıyor, kopyalanmıyor.
+    """
+    return (
+        "FROM ("
+        + _gl_nakit_fis_neti(bas, bit_son, having="ABS(SUM(c0.fis_meblag0)) >= 0.005") +
+        ") c "
+        "CROSS APPLY ("
+        "SELECT CASE WHEN EXISTS ("
+        "SELECT 1 FROM MUHASEBE_HESAP_PLANI hp WITH (NOLOCK) "
+        "WHERE hp.muh_hesap_kod IN (k.fis_hesap_kod, LEFT(k.fis_hesap_kod, 6)) "
+        "AND UPPER(ISNULL(hp.muh_hesap_isim1, '')) LIKE '%KRED%KART%') "
+        "THEN 'KKT' ELSE LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) END AS prefix, "
+        "LTRIM(ISNULL(k.fis_hesap_kod, '')) AS hesap, "
+        "ABS(k.fis_meblag0) / SUM(ABS(k.fis_meblag0)) OVER () AS pay "
+        "FROM MUHASEBE_FISLERI k WITH (NOLOCK) "
+        "WHERE k.fis_iptal = 0 AND k.fis_tarih = c.fis_tarih "
+        "AND k.fis_yevmiye_no = c.fis_yevmiye_no "
+        "AND SIGN(k.fis_meblag0) = -SIGN(c.net_nakit) "
+        f"AND LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) NOT IN {_NAKIT_GL_ONEK}"
+        ") karsi"
+    )
+
+
 def fetch_nakit_akis_gl(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
     """
     Nakit Akış'ı MUHASEBEDEN kurar: nakit hesap (100/101/102/108) yevmiye satırları;
@@ -1295,30 +1328,40 @@ def fetch_nakit_akis_gl(client: MikroClient, bas: str, bit: str) -> list[dict[st
     ay/tip/prefix/tutar (tip: 0=giriş, 1=çıkış).
     """
     bas, bit = _aralik(bas, bit)
-    bit_son = _bit_son(bit)
     sql = (
         "SELECT CONVERT(char(7), c.fis_tarih, 23) AS ay, "
-        "CASE WHEN c.net_nakit > 0 THEN 0 ELSE 1 END AS tip, "
+        f"{_GL_TIP} AS tip, "
         "karsi.prefix AS prefix, SUM(ABS(c.net_nakit) * karsi.pay) AS tutar "
-        "FROM ("
-        + _gl_nakit_fis_neti(bas, bit_son, having="ABS(SUM(c0.fis_meblag0)) >= 0.005") +
-        ") c "
-        "CROSS APPLY ("
-        "SELECT CASE WHEN EXISTS ("
-        "SELECT 1 FROM MUHASEBE_HESAP_PLANI hp WITH (NOLOCK) "
-        "WHERE hp.muh_hesap_kod IN (k.fis_hesap_kod, LEFT(k.fis_hesap_kod, 6)) "
-        "AND UPPER(ISNULL(hp.muh_hesap_isim1, '')) LIKE '%KRED%KART%') "
-        "THEN 'KKT' ELSE LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) END AS prefix, "
-        "ABS(k.fis_meblag0) / SUM(ABS(k.fis_meblag0)) OVER () AS pay "
-        "FROM MUHASEBE_FISLERI k WITH (NOLOCK) "
-        "WHERE k.fis_iptal = 0 AND k.fis_tarih = c.fis_tarih "
-        "AND k.fis_yevmiye_no = c.fis_yevmiye_no "
-        "AND SIGN(k.fis_meblag0) = -SIGN(c.net_nakit) "
-        f"AND LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) NOT IN {_NAKIT_GL_ONEK}"
-        ") karsi "
-        "GROUP BY CONVERT(char(7), c.fis_tarih, 23), "
-        "CASE WHEN c.net_nakit > 0 THEN 0 ELSE 1 END, karsi.prefix "
+        f"{_gl_nakit_kirilim(bas, _bit_son(bit))} "
+        f"GROUP BY CONVERT(char(7), c.fis_tarih, 23), {_GL_TIP}, karsi.prefix "
         "HAVING SUM(ABS(c.net_nakit) * karsi.pay) >= 0.005"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
+def fetch_nakit_akis_detay(
+    client: MikroClient, bas: str, bit: str, tip: int, adet: int = 2000,
+) -> list[dict[str, Any]]:
+    """
+    Nakit akış özetinin ARKASINDAKİ fişler — kategori toplamının kanıtı.
+
+    AYNI ALT SORGUYU KULLANIR (`_gl_nakit_kirilim`). Bu, bu fonksiyonun en önemli
+    özelliği: detay ayrı yazılsaydı toplamı tutmaz ve durum hiç detay olmamasından
+    KÖTÜ olurdu — «kendi rakamını kendi doğrulayamıyor» demek. Tek fark GROUP BY'ın
+    olmaması; sınıflama (kategori) Python'da, özetle aynı fonksiyonla yapılır.
+
+    Canlıda bir mali müşavir «müşteri tahsilatı 3M — bu yapıldı mı?» diye sordu ve
+    gösterilecek bir şey yoktu; o rakam yüzlerce fişin toplamıydı.
+    """
+    bas, bit = _aralik(bas, bit)
+    n = max(1, min(int(adet), 5000))
+    sql = (
+        f"SELECT TOP {n} c.fis_tarih AS tarih, c.fis_yevmiye_no AS yevmiye, "
+        "karsi.hesap AS hesap, karsi.prefix AS prefix, "
+        "ABS(c.net_nakit) * karsi.pay AS tutar "
+        f"{_gl_nakit_kirilim(bas, _bit_son(bit))} "
+        f"WHERE {_GL_TIP} = {int(tip)} AND ABS(c.net_nakit) * karsi.pay >= 0.005 "
+        "ORDER BY ABS(c.net_nakit) * karsi.pay DESC"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 

@@ -136,6 +136,60 @@ class TestUiSmoke(unittest.TestCase):
         finally:
             w.deleteLater()
 
+    def test_kategori_satiri_detay_acar(self) -> None:
+        """Kanıt bir tık uzakta: satıra tıklayınca arkasındaki fişler istenir."""
+        from domain.nakit_akis import build_nakit_akis
+        from ui.nakit_akis_view import build_nakit_akis_widget
+        na = build_nakit_akis(
+            [{"ay": "2026-01", "tip": 0, "prefix": "120", "tutar": 5000.0},
+             {"ay": "2026-01", "tip": 1, "prefix": "320", "tutar": 2000.0}],
+            kapanis_nakit=3000.0, bas="2026-01-01", bit="2026-07-29")
+        cagri: list[tuple[str, float]] = []
+        w = build_nakit_akis_widget(
+            na, firma="Test A.Ş.",
+            detay_giris=lambda ad, tutar: cagri.append((ad, tutar)))
+        try:
+            metinler = " ".join(lbl.text() for lbl in w.findChildren(QLabel))
+            self.assertIn("arkasındaki fişler açılır", metinler)
+            agac = next(a for a in w.findChildren(QTreeWidget)
+                        if a.topLevelItem(0)
+                        and a.topLevelItem(0).text(0) == "Müşteri tahsilatı")
+            agac.itemClicked.emit(agac.topLevelItem(0), 0)
+            self.assertEqual(cagri, [("Müşteri tahsilatı", 5000.0)])
+            # «Toplam» satırı tıklanınca hiçbir şey açılmaz.
+            son = agac.topLevelItem(agac.topLevelItemCount() - 1)
+            agac.itemClicked.emit(son, 0)
+            self.assertEqual(len(cagri), 1)
+        finally:
+            w.deleteLater()
+
+    def test_detay_penceresi_mutabakati_yazar(self) -> None:
+        """
+        Kanıt penceresi kendi rakamını doğrulayamıyorsa hiç olmamasından kötüdür.
+
+        Döküm toplamı panelde yazanla tutmuyorsa bunu SÖYLER; gizlemez.
+        Kapanışta çalışan sorgu iptal edilip beklenir — yoksa Qt süreci öldürür.
+        """
+        from infra.config import MikroConfig
+        from ui.nakit_detay_dialog import NakitDetayDialog
+        cfg = MikroConfig(base_url="https://m.local", api_key="K", firma_kodu="26",
+                          calisma_yili=2026, kullanici_kodu="U", sifre_gun="S")
+        satir = [{"tarih": "2026-03-04", "yevmiye": 1201, "hesap": "120.01.0007",
+                  "prefix": "120", "tutar": 2_950_000.0}]
+
+        for beklenen, beklenen_metin in ((2_950_000.0, "birebir aynı"),
+                                         (3_000_000.0, "fark var")):
+            d = NakitDetayDialog(cfg, bas="2026-01-01", bit="2026-07-29", tip=0,
+                                 etiket="Müşteri tahsilatı", beklenen=beklenen)
+            try:
+                d._goster(satir)
+                metinler = " ".join(lbl.text() for lbl in d.findChildren(QLabel))
+                self.assertIn(beklenen_metin, metinler)
+                self.assertIn("1 hareket", metinler)
+                self.assertIn("2.950.000,00", metinler)   # biçim bozulmamalı
+            finally:
+                d.reject()      # çalışan worker'la kapanış: çökmemeli
+
     def test_sekme_sirasi_sahip_odakli(self) -> None:
         """
         İlk sekme demoyu belirler; Bilanço ile açılmak ürünü muhasebe programı gibi
