@@ -7,7 +7,7 @@ from typing import Any
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QAbstractSpinBox,
+    QApplication,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QStackedWidget,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -79,8 +80,15 @@ from ui.yukleniyor import YukleniyorEkrani
 # kendi kart faizini yazar. Kart borcu YOKSA bu alan hiç görünmez (kural 6).
 _KART_AYLIK_FAIZ_VARSAYILAN = 4.0
 
-_PANEL_GENISLIK = 272
+# 240px'te TL alanına kalan yer, alanın istediği genişliğin TAM kendisiydi (210px) —
+# sıfır pay. Biraz daha geniş çizen bir sistem fontunda yatayda kırpılırdı.
+_PANEL_GENISLIK = 256
 _RAIL_GENISLIK = 36
+
+
+def _kaydirma_genisligi() -> int:
+    """Dikey kaydırma çubuğunun kapladığı genişlik — stilden ölçülür, varsayılmaz."""
+    return QApplication.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
 
 
 class TahminTab(RaporTab):
@@ -134,13 +142,7 @@ class TahminTab(RaporTab):
             self._sp_buyume, self._sp_marj, self._sp_kart_oran, self._sp_kart_faiz,
             self._sp_ufuk,
         ):
-            # Yukarı/aşağı ok yerine değer yazarak ya da «Geçmişten Doldur» ile
-            # giriliyor — oklar dar panelde yer çalıyordu, kaldırıldı.
-            sp.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-            # Qt'nin kendi ölçtüğü genişlik (yazı tipi/DPI'a göre değişir) taban
-            # alınır — sabit bir piksel varsayımı laptopta farklı fontla rakamları
-            # kırpıyordu (kural: ölçülür, varsayılmaz — burada da geçerli).
-            sp.setMinimumWidth(sp.sizeHint().width())
+            sp.setMinimumWidth(0)
             sp.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             # Rakam değişince sağ taraf bayatlar; hesaplama anlık olduğu için
             # "yükleniyor" göstergesi yanıp söner — bunun yerine tazelik durumu
@@ -446,7 +448,10 @@ class _SenaryoSolPanel(QFrame):
 
         self._govde = QFrame()
         self._govde.setObjectName("tahminSolPanel")
-        self._govde.setFixedWidth(_PANEL_GENISLIK)
+        # Dikey kaydırma çubuğu alanlardan yatayda yer çalar; genişliği platforma
+        # ve temaya göre değişir, o yüzden VARSAYILMAZ, Qt'den ölçülüp panele
+        # eklenir (kural 6). Yoksa çubuk çıktığı an rakamlar yatayda kırpılırdı.
+        self._govde.setFixedWidth(_PANEL_GENISLIK + _kaydirma_genisligi())
         self._govde.setVisible(True)
         gl = QVBoxLayout(self._govde)
         gl.setContentsMargins(0, 0, 0, 0)
@@ -485,8 +490,9 @@ class _SenaryoSolPanel(QFrame):
         gl.addWidget(baslik_wrap)
 
         govde_ic = QWidget()
+        govde_ic.setObjectName("tahminSolAlanlar")
         gi = QVBoxLayout(govde_ic)
-        gi.setContentsMargins(14, 12, 14, 14)
+        gi.setContentsMargins(14, 12, 14, 12)
         gi.setSpacing(8)
 
         for etiket, w in alanlar:
@@ -498,11 +504,32 @@ class _SenaryoSolPanel(QFrame):
 
         gi.addStretch(1)
 
+        # Dokuz alan + başlık + buton dikeyde ~680px istiyor; küçük laptop
+        # ekranında panele bu kadar yer düşmüyor ve Qt alanları kendi minimumunun
+        # ALTINA sıkıştırıyordu — kutular kısalıp rakamların alt yarısı kesiliyordu
+        # ("0 TL" → "∩ Tl", "12 ay" → "12 av", virgül tamamen kayboluyordu).
+        # Sıkıştırmak yerine kaydırıyoruz: alan yüksekliği hiç bozulmuyor.
+        alan_kaydir = QScrollArea()
+        alan_kaydir.setWidgetResizable(True)
+        alan_kaydir.setFrameShape(QFrame.Shape.NoFrame)
+        alan_kaydir.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        alan_kaydir.setWidget(govde_ic)
+        gl.addWidget(alan_kaydir, 1)
+
+        # «Hesapla» ve tazelik durumu kaydırma alanının DIŞINDA, dipte sabit:
+        # ekran kısa olduğunda aşağı inmeden basılabilsin (eskiden buton panelin
+        # altından taşıp yarısı görünmüyordu).
+        alt = QWidget()
+        alt.setObjectName("tahminSolAlt")
+        al = QVBoxLayout(alt)
+        al.setContentsMargins(14, 8, 14, 12)
+        al.setSpacing(6)
+
         self.btn_projekte = QPushButton("Hesapla")
         self.btn_projekte.setObjectName("primaryBtn")
         self.btn_projekte.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_projekte.setMinimumHeight(36)
-        gi.addWidget(self.btn_projekte)
+        al.addWidget(self.btn_projekte)
 
         # Sağdaki raporun bu rakamlarla mı üretildiğini söyler. Hesaplama anlık
         # olduğundan "yükleniyor" göstergesi yanıp söner ve hiçbir şey anlatmaz;
@@ -511,8 +538,8 @@ class _SenaryoSolPanel(QFrame):
         self.lbl_tazelik.setObjectName("tahminTazelik")
         self.lbl_tazelik.setWordWrap(True)
         self.lbl_tazelik.setVisible(False)
-        gi.addWidget(self.lbl_tazelik)
-        gl.addWidget(govde_ic, 1)
+        al.addWidget(self.lbl_tazelik)
+        gl.addWidget(alt, 0)
 
         host.addWidget(self._govde)
 

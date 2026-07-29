@@ -763,6 +763,83 @@ class TestUiSmoke(unittest.TestCase):
 
 
 @unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+class TestSenaryoPaneliKisaEkran(unittest.TestCase):
+    """
+    Sol senaryo paneli KISA ekranda alanları sıkıştırmamalı.
+
+    Dokuz alan + başlık + buton dikeyde ~680px istiyordu; küçük laptop ekranında
+    panele o kadar yer düşmeyince Qt alanları kendi minimumunun altına sıkıştırıyor,
+    kutular kısalıp rakamların ALT yarısı kesiliyordu — canlıda "0 TL" → "∩ Tl",
+    "12 ay" → "12 av", ondalık virgül tamamen kayboluyordu. Sıkıştırmak yerine
+    kaydırılmalı; «Hesapla» da panelin dışına taşmamalı.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def _panel(self):
+        from PyQt6.QtWidgets import QSizePolicy
+
+        from ui.bilesenler import para_spin
+        from ui.tabs.tahmin_tab import _SenaryoSolPanel
+
+        self._spinler = []
+        alanlar = []
+        for i in range(9):
+            sp = para_spin()
+            sp.setMinimumWidth(0)
+            sp.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            self._spinler.append(sp)
+            alanlar.append((f"Alan {i}", sp))
+        panel = _SenaryoSolPanel(tuple(alanlar))
+        panel.show()
+        return panel
+
+    def test_panel_sabit_yukseklik_dayatmaz(self) -> None:
+        """Panel «bana 680px ver» demezse pencere kısaldığında içerik bozulmaz."""
+        panel = self._panel()
+        self.assertLess(
+            panel.minimumSizeHint().height(), 400,
+            "panel dikeyde sabit bir yükseklik dayatıyor — kısa ekranda içerik sıkışır")
+
+    def test_kisa_ekranda_alanlar_sikismaz(self) -> None:
+        panel = self._panel()
+        gereken = self._spinler[0].sizeHint().height()
+        for h in (620, 460, 400, 340):
+            panel.resize(panel.width(), h)
+            panel.layout().activate()
+            self.app.processEvents()
+            for sp in self._spinler:
+                self.assertGreaterEqual(
+                    sp.height(), gereken,
+                    f"panel {h}px iken alan {sp.height()}px'e sıkıştı "
+                    f"(gereken {gereken}px) — rakamlar dikeyde kırpılır")
+
+    def test_kisa_ekranda_hesapla_gorunur_kalir(self) -> None:
+        panel = self._panel()
+        btn = panel.btn_projekte
+        for h in (620, 460, 400, 340):
+            panel.resize(panel.width(), h)
+            panel.layout().activate()
+            self.app.processEvents()
+            alt = btn.mapTo(panel, btn.rect().bottomLeft()).y()
+            self.assertLessEqual(
+                alt, h, f"panel {h}px iken «Hesapla» {alt}px'te — panelden taşıyor")
+
+    def test_alanlar_yatayda_paya_sahip(self) -> None:
+        """Kaydırma çubuğu çıktığında bile alan istediği genişliği bulmalı."""
+        panel = self._panel()
+        panel.resize(panel.width(), 400)   # kaydırma çubuğu çıkar
+        panel.layout().activate()
+        self.app.processEvents()
+        sp = self._spinler[0]
+        self.assertGreaterEqual(
+            sp.width(), sp.sizeHint().width(),
+            "alan istediğinden dar çiziliyor — rakamlar yatayda kırpılır")
+
+
+@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
 class TestIptalCokmesi(unittest.TestCase):
     """
     İptal, ÇALIŞAN worker'ı silmemeli.
