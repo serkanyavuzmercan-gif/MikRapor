@@ -109,6 +109,31 @@ class TestUiSmoke(unittest.TestCase):
         ], bas="2026-01-01", bit="2026-06-30")
         self.assertIsNotNone(build_tahsilat_alacak_widget(ta, firma="Test A.Ş."))
 
+    def test_gecikmis_borc_da_ustte(self) -> None:
+        """
+        Gecikmiş alacak KPI'daydı, gecikmiş borç değildi — ikisi birlikte okunur.
+
+        Rakam yaşlandırma panelinde zaten vardı; üstte olmaması onu görünmez kılıyordu.
+        """
+        from domain.tahsilat_alacak import build_tahsilat_alacak
+        from ui.tahsilat_alacak_view import build_tahsilat_alacak_widget
+        ta = build_tahsilat_alacak([
+            {"kod": "120.01", "unvan": "Müşteri A", "muh_kod": "120", "hareket_tipi": 1,
+             "baglanti_tipi": 0, "tip": 0, "evrak_tarihi": "2026-01-15",
+             "cha_vade": "2026-02-15", "tutar": 10000.0, "tutar_donem": 10000.0},
+            {"kod": "320.01", "unvan": "Satıcı B", "muh_kod": "320", "hareket_tipi": 1,
+             "baglanti_tipi": 0, "tip": 1, "evrak_tarihi": "2026-01-10",
+             "cha_vade": "2026-02-10", "tutar": 4000.0, "tutar_donem": 4000.0},
+        ], bas="2026-01-01", bit="2026-07-29")
+        w = build_tahsilat_alacak_widget(ta, firma="Test A.Ş.")
+        try:
+            metinler = " ".join(lbl.text() for lbl in w.findChildren(QLabel))
+            for baslik in ("TOPLAM ALACAK", "GECİKMİŞ ALACAK",
+                           "TOPLAM BORÇ", "GECİKMİŞ BORÇ", "NET POZİSYON"):
+                self.assertIn(baslik, metinler)
+        finally:
+            w.deleteLater()
+
     def test_gerceklesen_etiketi_ve_hareket_sayisi(self) -> None:
         """
         «Bu rakamlar yapılanı değil yapılacak olanı gösteriyor» iddiası doğru DEĞİL.

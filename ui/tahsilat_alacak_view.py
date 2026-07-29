@@ -196,6 +196,12 @@ def build_tahsilat_alacak_widget(ta: TahsilatAlacak, firma: str = "") -> QWidget
     ag_bg, ag_vr = ("#fdecec", NEG) if ta.alacak_gecikmis > 0.005 else ("#e8f6ee", POZ)
     kpi.addWidget(_kpi_card("GECİKMİŞ ALACAK", tl(ta.alacak_gecikmis), ag_bg, ag_vr))
     kpi.addWidget(_kpi_card("TOPLAM BORÇ", tl(ta.borc_toplam), "#fdf3e0", "#b45309"))
+    # GECİKMİŞ BORÇ da üstte. Gecikmiş alacak KPI'da vardı, karşılığı yoktu; oysa
+    # ikisi birlikte okunur: vadesi geçmiş alacağını tahsil edememişsen vadesi geçmiş
+    # borcunu da ödeyemiyor olabilirsin. Rakam aşağıdaki yaşlandırma panelinde zaten
+    # duruyordu, üstte olmaması onu görünmez kılıyordu.
+    bg_bg, bg_vr = ("#fdf3e0", "#b45309") if ta.borc_gecikmis > 0.005 else ("#e8f6ee", POZ)
+    kpi.addWidget(_kpi_card("GECİKMİŞ BORÇ", tl(ta.borc_gecikmis), bg_bg, bg_vr))
     np_bg, np_vr = ("#e8f6ee", POZ) if ta.net_pozisyon >= 0 else ("#fdecec", NEG)
     kpi.addWidget(_kpi_card("NET POZİSYON  (alacak−borç)", tl(ta.net_pozisyon), np_bg, np_vr))
     root.addLayout(kpi)
