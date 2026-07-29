@@ -178,3 +178,48 @@ class TestKrediKartiFinansmani(unittest.TestCase):
         csv = tahmin_csv(t)
         self.assertIn("Kredi Kartı Aylık Faizi", csv)
         self.assertIn("Kart Finansman Maliyeti", csv)
+
+
+class TestSonucOnceSoylenir(unittest.TestCase):
+    """
+    «Tamam 8'de düşüyor ama bana ne 8'den, sonunu söyle.»
+
+    Özet ve uyarı, dip varsa YALNIZ dibi yazıyordu; 12 aylık projeksiyonun nereye
+    vardığı hiçbir yerde geçmiyordu. Ayrıca bir ay düşüp toparlayan senaryo ile eksi
+    kapatan senaryo aynı kırmızı şeritle aynı tavsiyeyi alıyordu — oysa yapılacak iş
+    farklı: biri köprü finansman, diğeri büyüme/marj/gider kararı.
+    """
+
+    _ORTAK = {"baslangic_ay": "2026-07", "baslangic_nakit": 1_042_810.0,
+              "baz_ciro": 3_234_753.0, "buyume_yuzde": 0.4, "marj_yuzde": 28.1,
+              "sabit_gider": 356_949.0, "ufuk_ay": 12}
+
+    def _t(self, **kw):
+        return build_tahmin(TahminVarsayim(**{**self._ORTAK, **kw}))
+
+    def test_bir_ay_dusup_toparlayan_kalici_degil(self):
+        t = self._t(kart_borcu_acik=1_710_437.0, kart_borcu_odeme_yuzde=100.0)
+        self.assertEqual(t.eksi_ay_sayisi, 1)
+        self.assertFalse(t.kalici_eksi)
+        self.assertGreater(t.son_nakit, 0)
+
+    def test_dibin_sebebi_kart_odemesi_olarak_olculur(self):
+        t = self._t(kart_borcu_acik=1_710_437.0, kart_borcu_odeme_yuzde=100.0)
+        self.assertTrue(t.dip_sebebi_kart)
+        # Kart borcu yoksa dip de yok, sebep iddiası da yok.
+        self.assertFalse(self._t().dip_sebebi_kart)
+
+    def test_eksi_kapatan_senaryo_kalici(self):
+        t = self._t(sabit_gider=1_400_000.0)
+        self.assertTrue(t.kalici_eksi)
+        self.assertLess(t.son_nakit, 0)
+
+    def test_dip_ayi_en_dusuk_ayla_ayni(self):
+        t = self._t(kart_borcu_acik=1_710_437.0, kart_borcu_odeme_yuzde=100.0)
+        self.assertEqual(t.dip_ayi.ay, t.en_dusuk_ay)
+        self.assertAlmostEqual(t.dip_ayi.nakit, t.en_dusuk_nakit, places=2)
+
+    def test_dipsiz_senaryoda_sayaclar_sifir(self):
+        t = self._t()
+        self.assertEqual(t.eksi_ay_sayisi, 0)
+        self.assertFalse(t.kalici_eksi)

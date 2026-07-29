@@ -114,6 +114,33 @@ class Tahmin:
     toplam_kart_borcu_odeme: float = 0.0
     toplam_kart_finansman: float = 0.0
     kalan_kart_borcu: float = 0.0
+
+    @property
+    def eksi_ay_sayisi(self) -> int:
+        """Nakitin eksi olduğu ay sayısı."""
+        return sum(1 for a in self.aylar if a.nakit < 0)
+
+    @property
+    def kalici_eksi(self) -> bool:
+        """
+        Dönem SONUNDA da eksi mi?
+
+        «Bir ay eksiye düşüp toparlamak» ile «eksiyle bitirmek» aynı şey değil ve
+        kullanıcının yapacağı iş de aynı değil: ilki köprü finansman, ikincisi
+        büyüme/marj/gider kararı. Uyarı metni bunları ayırmak zorunda.
+        """
+        return bool(self.aylar) and self.aylar[-1].nakit < 0
+
+    @property
+    def dip_ayi(self):
+        """En düşük nakdin yaşandığı ay (AyTahmin) — sebebini söyleyebilmek için."""
+        return min(self.aylar, key=lambda a: a.nakit) if self.aylar else None
+
+    @property
+    def dip_sebebi_kart(self) -> bool:
+        """Dip, o ay ödenen kredi kartı borcuyla tek başına açıklanıyor mu?"""
+        ay = self.dip_ayi
+        return bool(ay and ay.nakit < 0 and ay.kart_borcu_odeme >= abs(ay.nakit))
     son_nakit: float = 0.0
     en_dusuk_nakit: float = 0.0
     en_dusuk_ay: str = ""

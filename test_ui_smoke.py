@@ -334,6 +334,36 @@ class TestUiSmoke(unittest.TestCase):
         c.resize(900, 240)
         c.grab()
 
+    def test_uyari_sonucu_soyler_ve_agirligi_ayirir(self) -> None:
+        """Bir ay düşüp toparlamak ile eksi kapatmak aynı uyarıyı almamalı."""
+        import re
+
+        from domain.tahmin import TahminVarsayim, build_tahmin
+        from ui.tahmin_view import _nakit_uyarisi, _normal_ozet
+        ortak = {"baslangic_ay": "2026-07", "baslangic_nakit": 1_042_810.0,
+                 "baz_ciro": 3_234_753.0, "buyume_yuzde": 0.4, "marj_yuzde": 28.1,
+                 "sabit_gider": 356_949.0, "ufuk_ay": 12}
+        duz = lambda s: re.sub("<[^>]+>", "", s)   # noqa: E731
+
+        # 1) Bir ay dibe iner, toparlar → hafif uyarı, SONUÇ yazılı, sebep söylenmiş.
+        t = build_tahmin(TahminVarsayim(**ortak, kart_borcu_acik=1_710_437.0,
+                                        kart_borcu_odeme_yuzde=100.0))
+        metin, agir = _nakit_uyarisi(t)
+        self.assertFalse(agir)
+        self.assertIn("sonra toparlıyor", duz(metin))
+        self.assertIn("12 ay sonunda", duz(metin))
+        self.assertIn("kredi kartı borcu", duz(metin))
+        self.assertIn("12 ay sonunda", duz(_normal_ozet(t)))   # önce sonuç
+
+        # 2) Eksi kapatıyor → ağır uyarı.
+        kotu = build_tahmin(TahminVarsayim(**{**ortak, "sabit_gider": 1_400_000.0}))
+        metin2, agir2 = _nakit_uyarisi(kotu)
+        self.assertTrue(agir2)
+        self.assertIn("eksi kapatıyor", duz(metin2))
+
+        # 3) Dip yoksa uyarı da yok.
+        self.assertEqual(_nakit_uyarisi(build_tahmin(TahminVarsayim(**ortak)))[0], "")
+
     def test_reel_deger_view(self) -> None:
         from domain.reel_deger import ReelDegerVarsayim, build_reel_deger_analizi
         from domain.tahsilat_alacak import AcikVadeParcasi, TahsilatAlacak

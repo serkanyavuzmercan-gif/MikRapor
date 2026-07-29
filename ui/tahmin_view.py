@@ -54,12 +54,48 @@ def _kotu_ozet(rt: RunwayTakvim) -> str:
 
 
 def _normal_ozet(t: Tahmin) -> str:
-    """Normal beklentinin tek cümlelik özeti."""
+    """
+    Normal beklentinin tek cümlelik özeti — ÖNCE SONUÇ.
+
+    Eskiden dip varsa yalnız dip yazılıyordu ve 12 aylık projeksiyonun nereye vardığı
+    hiç söylenmiyordu. Kullanıcının ifadesiyle: «tamam 8'de düşüyor ama bana ne 8'den,
+    sonunu söyle». Sonuç önce gelir, dip onun niteleyicisidir.
+    """
     n = len(t.aylar)
-    if t.en_dusuk_nakit < 0:
-        return (f"nakit yine de <b>{t.en_dusuk_ay}</b> ayında eksiye düşüyor "
-                f"({tl(t.en_dusuk_nakit)})")
-    return f"{n} ay sonunda nakitin <b>{tl(t.son_nakit)}</b> olur"
+    son = f"{n} ay sonunda nakitin <b>{tl(t.son_nakit)}</b> olur"
+    if t.en_dusuk_nakit >= 0:
+        return son
+    return (f"{son} — ama arada <b>{t.eksi_ay_sayisi} ay</b> eksiye düşüyor "
+            f"(en düşük {_ay_str(t.en_dusuk_ay)}: {tl(t.en_dusuk_nakit)})")
+
+
+def _nakit_uyarisi(t: Tahmin) -> tuple[str, bool]:
+    """
+    Nakit uyarısı — (metin, ağır mı). Uyarı yoksa metin boş.
+
+    İKİ DURUM AYRI. «Bir ay eksiye düşüp toparlamak» ile «eksiyle bitirmek» aynı şey
+    değil; kullanıcının yapacağı iş de aynı değil. Eskiden ikisine de aynı kırmızı
+    şeritle «büyüme, kâr oranı veya gideri gözden geçir» deniyordu — 12 ayı +6,2
+    milyonla kapatan bir projeksiyonda ilk aydaki 112 binlik dip için verilecek tavsiye
+    bu değil. Dibin sebebi kart ödemesiyse o da söylenir; sebebi bilinmeyen uyarı
+    kullanıcıya iş vermez (kural 3b).
+    """
+    if t.en_dusuk_nakit >= 0:
+        return "", False
+    dip = f"{_ay_str(t.en_dusuk_ay)} ayında {tl(t.en_dusuk_nakit)}"
+    if t.kalici_eksi:
+        return (f"⚠ <b>Normal gidişte bile nakit eksiye düşüyor ve dönemi eksi "
+                f"kapatıyor</b> ({len(t.aylar)} ay sonunda {tl(t.son_nakit)}; en düşük "
+                f"{dip}). Büyüme, kâr oranı veya gideri gözden geçir ya da "
+                "kredi/finansman planla.", True)
+    sebep = ""
+    ay = t.dip_ayi
+    if t.dip_sebebi_kart and ay is not None:
+        sebep = (f" Sebebi o ay ödenen kredi kartı borcu ({tl(ay.kart_borcu_odeme)}); "
+                 "ödeme oranını düşürmek dibi kaldırır ama finansman maliyeti doğurur.")
+    return (f"⚠ <b>Nakit {t.eksi_ay_sayisi} ay eksiye düşüyor</b> (en düşük {dip}), "
+            f"sonra toparlıyor: {len(t.aylar)} ay sonunda {tl(t.son_nakit)}."
+            f"{sebep} O ay için köprü finansman gerekebilir.", False)
 
 
 def _iki_ihtimal_karti(rt: RunwayTakvim | None, t: Tahmin) -> QFrame:
@@ -372,20 +408,20 @@ def build_tahmin_widget(
     sn_bg, sn_vr = ("#e8f6ee", POZ) if t.son_nakit >= 0 else ("#fdecec", NEG)
     kpi.addWidget(_kpi_card("DÖNEM SONU NAKİT", tl(t.son_nakit), sn_bg, sn_vr))
     ed_bg, ed_vr = ("#fdecec", NEG) if t.en_dusuk_nakit < 0 else ("#fff7ed", "#b45309")
-    kpi.addWidget(_kpi_card(f"EN DÜŞÜK NAKİT ({t.en_dusuk_ay})", tl(t.en_dusuk_nakit), ed_bg, ed_vr))
+    kpi.addWidget(_kpi_card(f"EN DÜŞÜK NAKİT ({_ay_str(t.en_dusuk_ay)})",
+                            tl(t.en_dusuk_nakit), ed_bg, ed_vr))
     root.addLayout(kpi)
 
-    if t.en_dusuk_nakit < 0:
-        uyari = QLabel(
-            f"⚠ <b>Normal gidişte bile nakit {t.en_dusuk_ay} ayında eksiye düşüyor</b> "
-            f"({tl(t.en_dusuk_nakit)}). Büyüme, kâr oranı veya gideri gözden geçir ya da "
-            "kredi/finansman planla."
-        )
+    uyari_metni, uyari_agir = _nakit_uyarisi(t)
+    if uyari_metni:
+        uyari = QLabel(uyari_metni)
         uyari.setWordWrap(True)
         uyari.setTextFormat(Qt.TextFormat.RichText)
+        bg, kenar, yazi = (("#fdecec", "#f0b4b4", "#8a1c1c") if uyari_agir
+                           else ("#fdf3e0", "#f0d090", "#8a5a00"))
         uyari.setStyleSheet(
-            "QLabel { background: #fdecec; border: 1px solid #f0b4b4; border-radius: 8px; "
-            "color: #8a1c1c; padding: 11px 14px; font-size: 12px; }"
+            f"QLabel {{ background: {bg}; border: 1px solid {kenar}; border-radius: 8px; "
+            f"color: {yazi}; padding: 11px 14px; font-size: 12px; }}"
         )
         root.addWidget(uyari)
 
