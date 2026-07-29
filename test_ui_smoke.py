@@ -313,6 +313,27 @@ class TestUiSmoke(unittest.TestCase):
         finally:
             w.deleteLater()
 
+    def test_grafik_en_dusuk_nakiti_isaretler(self) -> None:
+        """
+        «Grafik başka söylüyor, yazı başka söylüyor» — canlıda birebir bu yaşandı.
+
+        Yazı «2026-08'de nakit eksiye düşüyor (−111.974)» derken grafikte çizgi yalnız
+        yukarı gidiyordu: dip, 6,24 milyonluk ölçeğin %1,8'i kadar. Ölçek bozulmadan
+        rakam noktanın yanına yazılıyor.
+        """
+        from ui.tahmin_view import _TahminChart, dip_isareti
+        nakit = [-111_974.54, 447_328.32, 1_010_296.19, 6_244_370.70]
+        i, etiket = dip_isareti(nakit)
+        self.assertEqual(i, 0)
+        self.assertIn("111.975", etiket)
+        self.assertIn("en düşük", etiket)
+        self.assertEqual(dip_isareti([]), (0, ""))
+
+        # Eksili veriyle çizim gerçekten çalışsın (kırmızı parça + işaret).
+        c = _TahminChart([(f"2026-{8 + k:02d}", 3.2e6, n) for k, n in enumerate(nakit)])
+        c.resize(900, 240)
+        c.grab()
+
     def test_reel_deger_view(self) -> None:
         from domain.reel_deger import ReelDegerVarsayim, build_reel_deger_analizi
         from domain.tahsilat_alacak import AcikVadeParcasi, TahsilatAlacak

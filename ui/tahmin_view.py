@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 )
 
 from domain.mizan_bilanco import tl
+from domain.ortak import tl0
 from domain.runway import RunwayTakvim
 from domain.tahmin import Tahmin
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _fit_height, _kpi_card
@@ -185,6 +186,21 @@ def _tablo_panel(t: Tahmin) -> QFrame:
 _CUBUK_RENK = "#bfdbfe"
 
 
+def dip_isareti(nakit: list[float]) -> tuple[int, str]:
+    """
+    Grafikte işaretlenecek en düşük nakit noktası: (indeks, etiket).
+
+    Yazı «2026-08'de nakit eksiye düşüyor (−111.974)» derken grafikte çizgi yalnız
+    yukarı gidiyor gibi duruyordu. Sebep ölçek: dip −111.974, tavan 6,24 milyon, yani
+    düşüş grafiğin %1,8'i kadar — gözle görülmüyor. Ölçeği bozup düşüşü abartmak yerine
+    rakam noktanın yanına yazılıyor; grafikle yazı aynı şeyi söylüyor.
+    """
+    if not nakit:
+        return 0, ""
+    i = min(range(len(nakit)), key=lambda k: nakit[k])
+    return i, f"en düşük {tl0(nakit[i])}"
+
+
 class _TahminChart(QWidget):
     """
     Aylık tutar (çubuk) + kümülatif nakit (çizgi) grafiği — QPainter.
@@ -234,14 +250,37 @@ class _TahminChart(QWidget):
             vy = y_of(c)
             p.fillRect(QRectF(cx - bar_w / 2, min(vy, zy), bar_w, max(1.0, abs(vy - zy))),
                        QColor(_CUBUK_RENK))
-        # nakit çizgisi
-        p.setPen(QPen(QColor(ACCENT), 2))
+        # nakit çizgisi — EKSİYE DÜŞEN PARÇA KIRMIZI.
         pts = []
         for i, nk in enumerate(nakit):
             cx = sol + grup_w * i + grup_w / 2
             pts.append((cx, y_of(nk)))
         for i in range(1, len(pts)):
+            eksi = nakit[i] < 0 or nakit[i - 1] < 0
+            p.setPen(QPen(QColor(NEG if eksi else ACCENT), 2))
             p.drawLine(int(pts[i - 1][0]), int(pts[i - 1][1]), int(pts[i][0]), int(pts[i][1]))
+
+        # EN DÜŞÜK NOKTA İŞARETLENİR. Yazı «2026-08'de nakit eksiye düşüyor» derken
+        # grafikte çizgi yalnız yukarı gidiyor gibi duruyordu: canlıda dip −111.974 TL
+        # ama ölçek 6,36 milyon, yani düşüş grafiğin %1,8'i kadar — gözle görünmüyor.
+        # Rakamı çizmek, ölçeği bozmadan yazıyla grafiği aynı şeyi söyletir.
+        dip_i, etiket = dip_isareti(nakit)
+        dip_v = nakit[dip_i]
+        dx, dy = pts[dip_i]
+        renk = QColor(NEG if dip_v < 0 else ACCENT)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(renk)
+        p.drawEllipse(QRectF(dx - 4, dy - 4, 8, 8))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(renk))
+        p.setFont(QFont("Segoe UI", 7, QFont.Weight.Bold))
+        gen = 118.0
+        ex = min(max(sol, dx - gen / 2), sol + cw - gen)
+        # Dip zaten alttaysa etiketi üste al, taşmasın.
+        ey = dy + 6 if dy < ust + ch / 2 else dy - 20
+        p.drawText(QRectF(ex, ey, gen, 14),
+                   Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, etiket)
+
         p.setPen(QPen(QColor(MUTED)))
         p.setFont(QFont("Segoe UI", 7))
         for i, (ay, *_) in enumerate(self._aylar):
