@@ -87,22 +87,16 @@ class ReelDegerAnalizi:
 
     @property
     def makas_var(self) -> bool:
+        # İKİ TARAF ŞARTI YOK. «Hem alacak hem borç olsun» demek, tedarikçi kredisi
+        # olmayan firmayı (yazılım/hizmet: müşteriye 60 gün vade, maliyeti peşin maaş)
+        # tam da en geniş makasa sahipken ekrandan siliyordu.
         return (self.gun_olculdu and abs(self.makas_gun) >= 0.5
-                and self.alacak.nominal > 0.005 and self.borc.nominal > 0.005)
+                and (self.alacak.nominal > 0.005 or self.borc.nominal > 0.005))
 
     @property
-    def makas_finanse_edilen(self) -> float:
-        """Makas boyunca finanse edilen tutar — iki tarafın örtüşmeyen kısmı."""
-        return min(self.alacak.nominal, self.borc.nominal) if self.makas_var else 0.0
-
-    @property
-    def makas_maliyeti(self) -> float:
-        """Makasın parasal karşılığı: finanse edilen tutarın makas günündeki iskontosu."""
-        if not self.makas_var:
-            return 0.0
-        tutar = self.makas_finanse_edilen
-        gun = abs(self.makas_gun)
-        return abs(tutar - bugunku_deger(tutar, gun, self.varsayim.yillik_iskonto_yuzde))
+    def tedarikci_kredisi_yok(self) -> bool:
+        """Ödeme vadesi ~0: makasın tamamı firmanın kendi finansmanı."""
+        return self.alacak.nominal > 0.005 and self.borc.agirlikli_gun < 0.5
 
     @property
     def makas_lehte(self) -> bool:
@@ -229,8 +223,7 @@ def reel_deger_csv(a: ReelDegerAnalizi) -> str:
             f"VADE MAKASI;Müşteriden tahsil (gün);{s(a.alacak.agirlikli_gun)}",
             f"VADE MAKASI;Tedarikçiye ödeme (gün);{s(a.borc.agirlikli_gun)}",
             f"VADE MAKASI;Makas (gün);{s(a.makas_gun)}",
-            f"VADE MAKASI;Finanse edilen tutar;{s(a.makas_finanse_edilen)}",
-            f"VADE MAKASI;{'Avantaj' if a.makas_lehte else 'Maliyet'};{s(a.makas_maliyeti)}",
+            f"VADE MAKASI;Yön;{'lehte' if a.makas_lehte else 'aleyhte'}",
         ])
     elif not a.gun_olculdu:
         out.append("VADE MAKASI;Ölçülemedi;Mikro'da vade kaydı yok, günler tahminî")

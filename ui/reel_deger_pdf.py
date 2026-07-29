@@ -75,9 +75,7 @@ def _makas_bloku(a: ReelDegerAnalizi, elems: list) -> None:
     if a.makas_var:
         satirlar.extend([
             [Paragraph("Makas", sty_kpi()), _gun(abs(a.makas_gun))],
-            [Paragraph("Finanse edilen tutar", sty_row()), tl(a.makas_finanse_edilen)],
-            [Paragraph("Avantaj" if a.makas_lehte else "Yıllık maliyeti", sty_kpi()),
-             tl(a.makas_maliyeti)],
+            [Paragraph("Yön", sty_row()), "lehte" if a.makas_lehte else "aleyhte"],
         ])
     else:
         satirlar.append([Paragraph("Makas", sty_row()), "—"])
@@ -95,9 +93,12 @@ def _makas_bloku(a: ReelDegerAnalizi, elems: list) -> None:
             "Mikro'da vade kaydı bulunmadığı için gün rakamları evrak tarihinden türetildi; "
             "makas bu veriyle güvenilir olmadığı için gösterilmiyor.", sty_row())])
     elif a.makas_var and not a.makas_lehte:
+        ek = (" Tedarikçi kredisi bulunmadığı için sürenin tamamı firma tarafından "
+              "finanse edilmektedir." if a.tedarikci_kredisi_yok else "")
         elems.extend([Spacer(1, 3), Paragraph(
-            f"Bu {_gun(a.makas_gun)} boyunca ticaret kendi kaynaklarınızdan finanse ediliyor.",
-            sty_row())])
+            f"Bu {_gun(a.makas_gun)} boyunca ticaret kendi kaynaklarınızdan finanse "
+            f"ediliyor.{ek} Parasal karşılığı yukarıdaki vade maliyeti / vade etkisi "
+            "satırlarındadır.", sty_row())])
 
 
 def _basabas_bloku(a: ReelDegerAnalizi, elems: list) -> None:

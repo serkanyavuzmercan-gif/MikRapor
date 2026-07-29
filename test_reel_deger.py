@@ -62,7 +62,6 @@ class TestVadeMakasi(unittest.TestCase):
         self.assertAlmostEqual(a.makas_gun, 60.0, places=1)
         self.assertTrue(a.makas_var)
         self.assertFalse(a.makas_lehte)
-        self.assertGreater(a.makas_maliyeti, 0.0)
 
     def test_makas_lehte_olabilir(self):
         """Tedarikçiye geç ödeyip müşteriden erken tahsil eden firma finanse EDİLİYOR."""
@@ -78,11 +77,29 @@ class TestVadeMakasi(unittest.TestCase):
                     vade_kaynagi="tarih")
         self.assertFalse(a.gun_olculdu)
         self.assertFalse(a.makas_var)
-        self.assertEqual(a.makas_maliyeti, 0.0)
 
-    def test_tek_taraf_varsa_makas_yok(self):
-        a = _analiz([AcikVadeParcasi("customer", 90, 1_000_000, "M1", "MUSTERI")])
+    def test_tedarikci_kredisi_olmayan_firma_makasi_gorur(self):
+        """
+        Yazılım/hizmet firması: müşteriye 60 gün vade, maliyeti peşin maaş, cari borç yok.
+
+        «Hem alacak hem borç olsun» şartı bu firmayı tam da en geniş makasa sahipken
+        ekrandan siliyordu; makasın parasal karşılığı da min(alacak,borç) ile
+        hesaplanınca 3M'lik yükü 20 bin TL'lik kırtasiye faturasına indiriyordu.
+        """
+        a = _analiz([AcikVadeParcasi("customer", 60, 3_000_000, "K1", "KURUMSAL"),
+                     AcikVadeParcasi("supplier", 0, 0.0, "S1", "YOK")])
+        self.assertTrue(a.makas_var, "tedarikçi kredisi olmayan firmada makas gizlenmiş")
+        self.assertTrue(a.tedarikci_kredisi_yok)
+        self.assertAlmostEqual(a.makas_gun, 60.0, places=1)
+        # Gerçek yük alacak tarafındaki erimededir; makas ayrı bir tutar uydurmaz.
+        self.assertGreater(a.alacak.vade_etkisi, 100_000)
+
+    def test_pesin_calisan_firmada_makas_gosterilmez(self):
+        """Peşin alıp peşin satan firma (market/lokanta): vade riski yok, makas «—»."""
+        a = _analiz([AcikVadeParcasi("customer", 0, 500_000, "M1", "PESIN MUSTERI"),
+                     AcikVadeParcasi("supplier", 0, 300_000, "S1", "PESIN SATICI")])
         self.assertFalse(a.makas_var)
+        self.assertAlmostEqual(a.makas_gun, 0.0, places=1)
 
 
 class TestBasabasVadeFarki(unittest.TestCase):
@@ -157,6 +174,7 @@ class TestCsvYeniBolumler(unittest.TestCase):
                      AcikVadeParcasi("supplier", 30, 600_000, "S1", "SATICI B")])
         csv = reel_deger_csv(a)
         self.assertIn("VADE MAKASI;Makas (gün)", csv)
+        self.assertIn("VADE MAKASI;Yön;aleyhte", csv)
         self.assertIn("BAŞABAŞ VADE FARKI;90 gün (%)", csv)
         self.assertIn("EN ÇOK ERİTEN MÜŞTERİ;MUSTERI A", csv)
         self.assertIn("EN ÇOK KAZANDIRAN SATICI;SATICI B", csv)

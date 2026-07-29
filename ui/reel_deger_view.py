@@ -54,28 +54,33 @@ def _makas_panel(a: ReelDegerAnalizi) -> QFrame:
         renk = POZ if a.makas_lehte else NEG
         _tsatir(t, [_c("Makas", kalin=True),
                     _c(_gun(abs(a.makas_gun)), renk=renk, kalin=True, sag=True)])
-        _tsatir(t, [_c("Yıllık karşılığı", kalin=True),
-                    _c(tl(a.makas_maliyeti), renk=renk, kalin=True, sag=True)])
     else:
         _tsatir(t, [_c("Makas", kalin=True), _c("—", renk=FAINT, kalin=True, sag=True)])
     _fit_height(t)
 
+    # Makasın PARASAL karşılığı burada ayrıca hesaplanmaz: ① ve ② panelleri ile
+    # üstteki «vade etkisi» rakamı zaten onu veriyor. İkinci bir yöntemle aynı şeyi
+    # hesaplamak «özet şunu, döküm bunu diyor» hâline yol açar (kural 3c).
     if not a.gun_olculdu:
         # Kural 2: güvenilmez veri gösterilmez, sebebi rakamın yanında söylenir.
         notlar = [("Mikro'da vade kaydı bulunmadığı için gün rakamları evrak tarihinden "
                    "türetildi — makas bu veriyle güvenilir değil, gösterilmiyor.", FAINT)]
     elif not a.makas_var:
-        notlar = [("Makas hesaplanabilmesi için hem açık alacak hem açık borç gerekiyor.",
-                   FAINT)]
+        notlar = [("Açık vadeli alacak ya da borç yok: peşin çalışıyorsun, vade riski "
+                   "taşımıyorsun.", FAINT)]
     elif a.makas_lehte:
-        notlar = [(f"Tedarikçin seni <b>{_gun(abs(a.makas_gun))}</b> finanse ediyor: mala "
-                   f"ödeme yapmadan önce parasını tahsil ediyorsun. Bu, {tl(a.makas_maliyeti)} "
-                   "tutarında bir finansman avantajı.", POZ)]
+        notlar = [(f"Tedarikçin seni <b>{_gun(abs(a.makas_gun))}</b> finanse ediyor: malın "
+                   "parasını ödemeden önce tahsil ediyorsun. Bu, işletme sermayesi "
+                   "ihtiyacını düşüren bir avantaj.", POZ)]
+    elif a.tedarikci_kredisi_yok:
+        notlar = [(f"Tedarikçi kredin yok — <b>{_gun(a.makas_gun)}</b>ün tamamını sen "
+                   "finanse ediyorsun. Maliyetin peşin (maaş, hizmet) ama müşterin vadeli "
+                   f"ödüyorsa yük buradadır; parasal karşılığı ① panelinde "
+                   f"<b>{tl(a.alacak.vade_etkisi)}</b>.", NEG)]
     else:
         notlar = [(f"Bu <b>{_gun(a.makas_gun)}</b> boyunca ticareti kendi kesenden finanse "
-                   f"ediyorsun — yılda yaklaşık <b>{tl(a.makas_maliyeti)}</b>. Tahsilatı "
-                   "öne çekmek ya da satıcı vadesini uzatmak doğrudan bu rakamı düşürür.",
-                   NEG)]
+                   "ediyorsun. Tahsilatı öne çekmek ya da satıcı vadesini uzatmak doğrudan "
+                   "bu günü kısaltır.", NEG)]
     return _card("③ VADE MAKASI  ·  kaç gün kendi kesenden finanse ediyorsun", _ic(t, notlar))
 
 
