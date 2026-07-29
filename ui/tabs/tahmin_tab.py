@@ -78,7 +78,7 @@ from ui.yukleniyor import YukleniyorEkrani
 # kendi kart faizini yazar. Kart borcu YOKSA bu alan hiç görünmez (kural 6).
 _KART_AYLIK_FAIZ_VARSAYILAN = 4.0
 
-_PANEL_GENISLIK = 240
+_PANEL_GENISLIK = 272
 _RAIL_GENISLIK = 36
 
 
@@ -133,7 +133,10 @@ class TahminTab(RaporTab):
             self._sp_buyume, self._sp_marj, self._sp_kart_oran, self._sp_kart_faiz,
             self._sp_ufuk,
         ):
-            sp.setMinimumWidth(0)
+            # Qt'nin kendi ölçtüğü genişlik (yazı tipi/DPI'a göre değişir) taban
+            # alınır — sabit bir piksel varsayımı laptopta farklı fontla rakamları
+            # kırpıyordu (kural: ölçülür, varsayılmaz — burada da geçerli).
+            sp.setMinimumWidth(sp.sizeHint().width())
             sp.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             # Rakam değişince sağ taraf bayatlar; hesaplama anlık olduğu için
             # "yükleniyor" göstergesi yanıp söner — bunun yerine tazelik durumu
