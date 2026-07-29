@@ -7,6 +7,7 @@ from typing import Any
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -133,6 +134,9 @@ class TahminTab(RaporTab):
             self._sp_buyume, self._sp_marj, self._sp_kart_oran, self._sp_kart_faiz,
             self._sp_ufuk,
         ):
+            # Yukarı/aşağı ok yerine değer yazarak ya da «Geçmişten Doldur» ile
+            # giriliyor — oklar dar panelde yer çalıyordu, kaldırıldı.
+            sp.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
             # Qt'nin kendi ölçtüğü genişlik (yazı tipi/DPI'a göre değişir) taban
             # alınır — sabit bir piksel varsayımı laptopta farklı fontla rakamları
             # kırpıyordu (kural: ölçülür, varsayılmaz — burada da geçerli).

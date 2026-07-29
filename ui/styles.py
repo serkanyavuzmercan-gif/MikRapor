@@ -406,7 +406,8 @@ QAbstractSpinBox#tahminAlanGirdi {{
     color: {INK_SOFT};
     border: 1px solid #c5d4de;
     border-radius: 8px;
-    padding: 6px 8px;
+    font-size: 12px;
+    padding: 5px 6px;
 }}
 QAbstractSpinBox#tahminAlanGirdi:focus {{
     border: 1px solid {ACCENT};
