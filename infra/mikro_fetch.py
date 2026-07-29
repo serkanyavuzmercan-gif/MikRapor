@@ -595,14 +595,24 @@ def fetch_bakiye_ozet(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     """
     Tarih (asof) itibarıyla nakit/alacak/borç ana hesap bakiyeleri (3 hane): SUM(fis_meblag0).
 
-    Nakit & Kârlılık'ın "param var mı / kim kime borçlu" ayağı: 10x (kasa/banka), 12x (alacaklar),
-    32x (satıcı borçları). bakiye>0 = borç bakiyesi (varlık), bakiye<0 = alacak bakiyesi (borç).
+    10x (kasa/banka), 12x (alacaklar), 32x (satıcı borçları).
+    bakiye>0 = borç bakiyesi (varlık), bakiye<0 = alacak bakiyesi (borç).
+
+    Tek üretim tüketicisi Tahmin & Projeksiyon'un BAŞLANGIÇ NAKDİ'dir
+    (`nakit_gl_ozetten`, yalnız 10x okur). 12x/32x genel bakiye özeti sözleşmesi olarak
+    duruyor; aynı indeks taramasına düştükleri için ayrıca maliyeti yok.
+
+    Kapanış fişi elemesi mizanla AYNI koşuldan gelir (`_bakiye_kosulu`); eskiden burada
+    yoktu ve 31 Aralık'ta biten dönemde bütün bakiyeler sıfır görünüyordu. Açılış
+    daraltması bilerek YOK — gerekçe `_bakiye_kosulu` docstring'inde.
     """
     asof = iso_tarih(asof, alan="tarih")
     sql = (
         "SELECT LEFT(fis_hesap_kod, 3) AS ana, SUM(fis_meblag0) AS bakiye "
         "FROM MUHASEBE_FISLERI WITH (NOLOCK) "
-        f"WHERE fis_iptal = 0 AND fis_tarih < '{_bit_son(asof)}' AND ("
+        # Hesap grubu bloğu PARANTEZLİ kalmalı: SQL'de AND, OR'dan sıkı bağlar; parantez
+        # düşerse filtre tüm tabloya açılır ve şişik ama makul bir nakit üretir.
+        f"WHERE {_bakiye_kosulu(client, asof)} AND ("
         "fis_hesap_kod LIKE '100%' OR fis_hesap_kod LIKE '101%' OR fis_hesap_kod LIKE '102%' "
         "OR fis_hesap_kod LIKE '103%' OR fis_hesap_kod LIKE '108%' "
         "OR fis_hesap_kod LIKE '120%' OR fis_hesap_kod LIKE '121%' "
@@ -818,6 +828,37 @@ def _kapanis_fis_nolari(client: MikroClient, asof: str) -> list[int]:
     return out
 
 
+def _bakiye_kosulu(client: MikroClient, asof: str) -> str:
+    """
+    Bir tarihe kadar BİRİKMİŞ bakiye okumanın ortak WHERE koşulu — DOĞRULUK kuralı.
+
+    Mizan ile nakit/alacak/borç özeti aynı şeyi okur; koşul iki yerde ayrı yazılınca
+    ayrıştı ve `fetch_bakiye_ozet` kapanış fişini ELEMİYORDU. Sonuç: 31 Aralık'ta biten
+    bir dönem seçilince (yaygın: «Bu yıl», 01.01–31.12) kapanış fişi bütün bakiyeleri
+    sıfırlıyor, Tahmin'in başlangıç nakdi ~0 çıkıyor ve bunu hiçbir yerde söylemiyordu.
+    Tek kaynak olması, bir daha ayrışmasını engelliyor (kural 3c).
+
+    AÇILIŞ DARALTMASI BURADA YOK, bilerek: o bir performans ayarı ve SEZGİSEL
+    (1 Ocak'ta 5xx içeren ≥10 satırlık fiş). Doğruluk kuralıyla aynı çuvala konunca,
+    eskiden tüm geçmişi tarayıp HER ZAMAN eksiksiz olan bakiye özetini sezgisele
+    bağımlı hâle getiriyordu — ölçülmemiş bir kazanç için ölçülü risk (kural 6).
+    Yeri `fetch_mizan`; gerekçesi orada yazılı.
+    """
+    return " ".join(p for p in (
+        f"fis_iptal = 0 AND fis_tarih < '{_bit_son(asof)}'",
+        _kapanis_elemesi(client, asof),
+    ) if p)
+
+
+def _kapanis_elemesi(client: MikroClient, asof: str) -> str:
+    """31 Aralık kapanış fişlerini dışlayan koşul parçası; fiş yoksa boş dize."""
+    haric = _kapanis_fis_nolari(client, asof)
+    if not haric:
+        return ""
+    liste = ", ".join(str(n) for n in haric)
+    return f"AND NOT (fis_tarih >= '{asof}' AND fis_yevmiye_no IN ({liste}))"
+
+
 def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     """
     Belirli tarihe (asof = 'YYYY-MM-DD') kadar kümülatif mizan: hesap başına borç/alacak.
@@ -828,26 +869,28 @@ def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     Dönüş: [{'hesap_kodu','borc','alacak'}, ...] — mizan_bilanco.build_bilanco() bunu yer.
 
     İki ucuz ön sorgu (tek günlük, saniyenin altında) sorguyu şekillendirir:
-      • Yıl başında açılış fişi varsa aralık o yıla daraltılır — aksi hâlde tüm tablo
-        taranıyor ve zaman aşımına uğruyordu.
       • asof bir yıl sonuysa o günün kapanış fişleri dışlanır — yoksa bilanço sıfırlanmış
-        görünüyordu.
+        görünüyordu (`_bakiye_kosulu`, bakiye okuyan her sorguda aynı).
+      • Yıl başında açılış fişi varsa aralık o yıla daraltılır — aksi hâlde tüm tablo
+        taranıyor ve zaman aşımına uğruyordu. Bu YALNIZ mizana ait.
     İkisi de kanıt bulunamazsa eski davranışa (sınırsız tarama) düşülür: yavaş ama doğru.
     """
     asof = iso_tarih(asof, alan="tarih")
-    kosul = [f"fis_iptal = 0 AND fis_tarih < '{_bit_son(asof)}'"]
+    kosul = _bakiye_kosulu(client, asof)
     if _acilis_fisi_var(client, int(asof[:4])):
-        kosul.append(f"AND fis_tarih >= '{asof[:4]}-01-01'")
-    haric = _kapanis_fis_nolari(client, asof)
-    if haric:
-        liste = ", ".join(str(n) for n in haric)
-        kosul.append(f"AND NOT (fis_tarih >= '{asof}' AND fis_yevmiye_no IN ({liste}))")
+        # PERFORMANS, doğruluk değil: mizan TÜM hesapları tam hesap koduyla gruplar
+        # (binlerce grup) ve alt tarih sınırı olmadan canlıda 120 sn zaman aşımına
+        # düşüyordu. Açılış fişi önceki yılların bakiyesini taşır, ondan geriye gitmek
+        # gerekmez. `fetch_bakiye_ozet`e TAŞINMADI: o 9 sargable önekle ≤9 kovaya
+        # gruplar ve zaman aşımı kaydı yok — ölçülmemiş kazanç için sezgisele
+        # bağımlılık ithal edilmez (kural 6).
+        kosul += f" AND fis_tarih >= '{asof[:4]}-01-01'"
     sql = (
         "SELECT fis_hesap_kod AS hesap_kodu, "
         "SUM(CASE WHEN fis_meblag0 > 0 THEN fis_meblag0 ELSE 0 END) AS borc, "
         "SUM(CASE WHEN fis_meblag0 < 0 THEN -fis_meblag0 ELSE 0 END) AS alacak "
         "FROM MUHASEBE_FISLERI WITH (NOLOCK) "
-        f"WHERE {' '.join(kosul)} "
+        f"WHERE {kosul} "
         "GROUP BY fis_hesap_kod"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))

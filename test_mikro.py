@@ -875,6 +875,64 @@ class TestMizanSorgusu(unittest.TestCase):
         fetch_mizan(c, "2025-12-31")
         self.assertNotIn("fis_yevmiye_no IN", c.sorgular[-1])
 
+    def test_bakiye_ozet_de_kapanis_fisini_dislar(self) -> None:
+        """
+        fetch_bakiye_ozet'te bu eleme YOKTU — Tahmin'in başlangıç nakdi 31 Aralık'ta
+        biten dönemde (yaygın: «Bu yıl») sıfıra yakın çıkıp bunu söylemiyordu.
+        """
+        from infra.mikro_fetch import fetch_bakiye_ozet
+        c = self._yakala({"2025-12-31": [self._fis(20089, 514)]})
+        fetch_bakiye_ozet(c, "2025-12-31")
+        sql = c.sorgular[-1]
+        self.assertIn("fis_yevmiye_no IN (20089)", sql)
+        self.assertIn("NOT (fis_tarih >= '2025-12-31'", sql)
+        self.assertIn("GROUP BY LEFT(fis_hesap_kod, 3)", sql)
+
+    def test_bakiye_ozet_acilis_daraltmasi_YAPMAZ(self) -> None:
+        """
+        Açılış daraltması SEZGİSELDİR (1 Ocak'ta 5xx içeren ≥10 satırlık fiş) ve bir
+        performans ayarıdır. Bakiye özeti eskiden tüm geçmişi tarayıp her zaman
+        eksiksizdi; daraltmayı buraya taşımak, ölçülmemiş bir kazanç için Tahmin'in
+        başlangıç nakdini sezgisele bağımlı yapardı (kural 6). Mizanda kalmalı.
+        """
+        from infra.mikro_fetch import fetch_bakiye_ozet, fetch_mizan
+        fisler = {"2025-01-01": [self._fis(1, 571)]}
+        cb, cm = self._yakala(fisler), self._yakala(fisler)
+        fetch_bakiye_ozet(cb, "2025-06-30")
+        fetch_mizan(cm, "2025-06-30")
+        self.assertNotIn("fis_tarih >= '2025-01-01'", cb.sorgular[-1],
+                         "bakiye özetine açılış daraltması sızmış")
+        self.assertIn("fis_tarih >= '2025-01-01'", cm.sorgular[-1],
+                      "mizan daraltmasını kaybetmiş")
+
+    def test_mizan_ve_bakiye_ozet_kapanis_kosulunu_BIREBIR_paylasir(self) -> None:
+        """
+        Varlığı değil EŞİTLİĞİ ölçer. «assertIn ile 4 parça ara» biçimindeki bir test,
+        yalnız birine yeni koşul eklenince yeşil kalır ve ayrışma geri döner (kural 3c).
+        Ortak koşulun birebir aynı dizeyle geçtiğini doğruluyoruz.
+        """
+        from infra.mikro_fetch import _bakiye_kosulu, fetch_bakiye_ozet, fetch_mizan
+        fisler = {"2025-01-01": [self._fis(1, 571)], "2025-12-31": [self._fis(20089, 514)]}
+        ortak = _bakiye_kosulu(self._yakala(fisler), "2025-12-31")
+        self.assertIn("NOT (fis_tarih >= '2025-12-31'", ortak)   # boş dize sızmasın
+        cm, cb = self._yakala(fisler), self._yakala(fisler)
+        fetch_mizan(cm, "2025-12-31")
+        fetch_bakiye_ozet(cb, "2025-12-31")
+        self.assertIn(ortak, cm.sorgular[-1])
+        self.assertIn(ortak, cb.sorgular[-1])
+
+    def test_bakiye_ozet_hesap_grubu_parantezli_kalir(self) -> None:
+        """
+        SQL'de AND, OR'dan sıkı bağlar: parantez düşerse `A AND B OR C` → `(A AND B) OR C`
+        olur ve 101/102/103/108 satırları tarih/iptal filtresi olmadan tüm geçmişten
+        gelir. Sonuç gürültülü değil SESSİZ yanlıştır — makul görünen şişik bir nakit.
+        """
+        from infra.mikro_fetch import fetch_bakiye_ozet
+        c = self._yakala({})
+        fetch_bakiye_ozet(c, "2025-06-30")
+        self.assertIn("AND (fis_hesap_kod LIKE '100%'", c.sorgular[-1])
+        self.assertIn("LIKE '321%') GROUP BY", c.sorgular[-1])
+
     def test_gun_sorgusu_patlarsa_mizan_yine_kurulur(self) -> None:
         """Yardımcı sorgu teşhis amaçlı; asıl mizanı düşürmemeli."""
         from infra.mikro_api import MikroAPIError
