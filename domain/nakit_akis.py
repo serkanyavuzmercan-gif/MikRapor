@@ -110,6 +110,12 @@ class NakitAkis:
     kredi_ozet_gl: bool = False
     aylik: list = field(default_factory=list)
     hareket_sayisi: int = 0
+    # Giriş/çıkış AYRI sayılır: panel başlığında «412 hareket» yazınca rakamın tek bir
+    # işlem değil DÖNEM TOPLAMI olduğu sorulmadan anlaşılıyor. Canlıda mali müşavir
+    # «müşteri tahsilatı 3M — bu yapıldı mı?» diye sordu; o 3M yüzlerce tahsilatın
+    # toplamıydı ve ikisi de tek bir işlem sandı.
+    giris_adet: int = 0
+    cikis_adet: int = 0
     kaynak: str = "cari"   # "gl" = muhasebe yevmiyesinden (tam kapsam) | "cari" = cari hareketten
 
     @property
@@ -227,6 +233,7 @@ def build_nakit_akis(
         if tip == 0:
             giris[kat] += tutar
             na.toplam_giris += tutar
+            na.giris_adet += 1
             a.giris += tutar
             if kat == "kredi":
                 na.kredi_kullanim += tutar
@@ -237,6 +244,7 @@ def build_nakit_akis(
         else:
             cikis[kat] += tutar
             na.toplam_cikis += tutar
+            na.cikis_adet += 1
             a.cikis += tutar
             if kat == "kredi":
                 na.kredi_odeme += tutar

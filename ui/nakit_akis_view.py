@@ -64,6 +64,22 @@ def _ozet_panel(na: NakitAkis) -> QFrame:
     return _card("NAKİT AKIŞ ÖZETİ", _ic(t, notlar))
 
 
+def _donem_eki(bas: str, bit: str, adet: int) -> str:
+    """
+    «· 01.01–29.07 · 412 hareket» — rakamın DÖNEM TOPLAMI olduğunu başlıkta söyler.
+
+    Canlıda mali müşavir «müşteri tahsilatı 3M, bu yapıldı mı?» diye sordu; o rakam
+    yüzlerce tahsilatın toplamıydı ama ekranda tek bir işlem gibi duruyordu. Hareket
+    sayısı bunu tek başına açıklıyor.
+    """
+    parca = []
+    if len(bas) == 10 and len(bit) == 10:
+        parca.append(f"{bas[8:10]}.{bas[5:7]}–{bit[8:10]}.{bit[5:7]}")
+    if adet:
+        parca.append(f"{adet:,} hareket".replace(",", "."))
+    return ("  ·  " + "  ·  ".join(parca)) if parca else ""
+
+
 def _kategori_panel(
     baslik: str,
     kategori: dict,
@@ -209,7 +225,9 @@ def _runway_banner(
     lay = QVBoxLayout(card)
     lay.setContentsMargins(18, 12, 18, 12)
     lay.setSpacing(2)
-    eyebrow = QLabel("6 AYLIK NAKİT ÖNGÖRÜSÜ")
+    # PROJEKSİYON: bu panel gerçekleşmiş hareketleri değil, gelecek 6 ayı gösterir.
+    # Aynı sekmede gerçekleşen ve öngörülen yan yana durduğu için ayrımı başlık taşır.
+    eyebrow = QLabel("PROJEKSİYON  ·  6 AYLIK NAKİT ÖNGÖRÜSÜ — HENÜZ GERÇEKLEŞMEDİ")
     eyebrow.setStyleSheet(
         f"color: {renk}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; "
         "background: transparent;"
@@ -356,11 +374,13 @@ def build_nakit_akis_widget(
 
     firma_str = f" &nbsp;·&nbsp; <b>{firma}</b>" if firma else ""
     kaynak_metin = (
-        "Muhasebe yevmiyesinden — banka/kasa hesaplarına giren-çıkan her hareket, "
-        "karşı hesabına göre kategorize. İç transferler hariç."
+        "GERÇEKLEŞEN hareketler — muhasebe yevmiyesine işlenmiş, banka/kasa hesaplarına "
+        "giren-çıkan her fiş karşı hesabına göre kategorize. İç transferler hariç. "
+        "Rakamlar dönem TOPLAMIDIR, tek bir işlem değildir."
         if na.kaynak == "gl" else
-        "Banka ve kasadan fiilen geçen para — karşı tarafına göre kategorize "
-        "(tahsilat, satıcı ödemesi, kredi, vergi…). İç transferler hariç."
+        "GERÇEKLEŞEN hareketler — banka ve kasadan fiilen geçen para, karşı tarafına "
+        "göre kategorize (tahsilat, satıcı ödemesi, kredi, vergi…). İç transferler "
+        "hariç. Rakamlar dönem TOPLAMIDIR, tek bir işlem değildir."
     )
     head = QLabel(
         f"<span style='color:{MUTED}; font-size:11px;'>NAKİT AKIŞ &nbsp;·&nbsp; "
@@ -409,15 +429,20 @@ def build_nakit_akis_widget(
 
     row1 = QHBoxLayout()
     row1.setSpacing(20)
+    # «GERÇEKLEŞEN» kelimesi başlıkta AÇIKÇA geçer. Kaynak cümlesi üstte yazıyordu ama
+    # kimse okumuyor; canlıda bir mali müşavir bu rakamların projeksiyon olduğunu sandı.
+    # Bu sekmedeki tek ileriye dönük panel runway'dir ve o da PROJEKSİYON diye ayrışır.
     row1.addWidget(_kategori_panel(
-        "GİRİŞLER", na.giris_kategori, na.toplam_giris, POZ,
+        "GERÇEKLEŞEN GİRİŞLER" + _donem_eki(na.bas, na.bit, na.giris_adet),
+        na.giris_kategori, na.toplam_giris, POZ,
         {
             "Diğer girişler": na.diger_giris_kirilim,
             "Gider iadesi": na.gider_giris_kirilim,
         },
     ), 1)
     row1.addWidget(_kategori_panel(
-        "ÇIKIŞLAR", na.cikis_kategori, na.toplam_cikis, NEG,
+        "GERÇEKLEŞEN ÇIKIŞLAR" + _donem_eki(na.bas, na.bit, na.cikis_adet),
+        na.cikis_kategori, na.toplam_cikis, NEG,
         {
             "Diğer çıkışlar": na.diger_cikis_kirilim,
             "Genel giderler": na.gider_cikis_kirilim,

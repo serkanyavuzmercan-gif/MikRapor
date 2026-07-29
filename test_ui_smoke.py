@@ -109,6 +109,53 @@ class TestUiSmoke(unittest.TestCase):
         ], bas="2026-01-01", bit="2026-06-30")
         self.assertIsNotNone(build_tahsilat_alacak_widget(ta, firma="Test A.Ş."))
 
+    def test_gerceklesen_etiketi_ve_hareket_sayisi(self) -> None:
+        """
+        «Bu rakamlar yapılanı değil yapılacak olanı gösteriyor» iddiası doğru DEĞİL.
+
+        Canlıda bir mali müşavir tam olarak bunu söyledi ve rakam savunulamadı. İki
+        sebep vardı: «gerçekleşen» kelimesi ekranda hiç geçmiyordu ve dönem toplamı
+        tek bir işlem gibi duruyordu. İkisi de başlıkta.
+        """
+        from domain.nakit_akis import build_nakit_akis
+        from ui.nakit_akis_view import build_nakit_akis_widget
+        na = build_nakit_akis(
+            [{"ay": "2026-01", "tip": 0, "prefix": "120", "tutar": 5000.0},
+             {"ay": "2026-02", "tip": 0, "prefix": "120", "tutar": 7000.0},
+             {"ay": "2026-01", "tip": 1, "prefix": "320", "tutar": 2000.0}],
+            kapanis_nakit=10000.0, bas="2026-01-01", bit="2026-07-29")
+        self.assertEqual((na.giris_adet, na.cikis_adet), (2, 1))
+        w = build_nakit_akis_widget(na, firma="Test A.Ş.")
+        try:
+            metinler = " ".join(lbl.text() for lbl in w.findChildren(QLabel))
+            self.assertIn("GERÇEKLEŞEN GİRİŞLER", metinler)
+            self.assertIn("GERÇEKLEŞEN ÇIKIŞLAR", metinler)
+            self.assertIn("2 hareket", metinler)          # tek işlem değil, toplam
+            self.assertIn("01.01–29.07", metinler)
+            self.assertIn("dönem TOPLAMIDIR", metinler)
+        finally:
+            w.deleteLater()
+
+    def test_sekme_sirasi_sahip_odakli(self) -> None:
+        """
+        İlk sekme demoyu belirler; Bilanço ile açılmak ürünü muhasebe programı gibi
+        gösteriyordu. Resmî tablolar (kural 1b) sona alındı, ayrımın kendisi duruyor.
+        """
+        from ui.app import MikRaporWindow
+        w = MikRaporWindow()
+        try:
+            adlar = [w._tab_bar.tabText(i).replace("&&", "&")
+                     for i in range(w._tab_bar.count())]
+            self.assertEqual(adlar[0], "Alacak & Borç")
+            self.assertEqual(adlar[1], "Nakit Akış")
+            self.assertEqual(adlar[-1], "Yapay Zekâ Yorumu")
+            # Resmî ikili sonda ve ayraçlar tam onların iki yanında.
+            self.assertEqual(adlar[6:8], ["Bilanço", "Gelir Tablosu"])
+            self.assertEqual(w._tab_bar._AYRAC_SONRASI, (5, 7))
+            self.assertEqual(w._tab_bar.currentIndex(), 0)
+        finally:
+            w.close()
+
     def test_nakit_akis_view(self) -> None:
         from domain.kredi import KrediOdeme
         from domain.nakit_akis import build_nakit_akis
