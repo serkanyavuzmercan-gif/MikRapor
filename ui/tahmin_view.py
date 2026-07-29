@@ -321,11 +321,15 @@ def build_tahmin_widget(
     kpi.addWidget(_kpi_card(f"TOPLAM CİRO ({len(t.aylar)} AY)", tl(t.toplam_ciro), PRIMARY_SOFT, ACCENT))
     nk_bg, nk_vr = ("#e8f6ee", POZ) if t.toplam_net >= 0 else ("#fdecec", NEG)
     kpi.addWidget(_kpi_card("TOPLAM NET KÂR", tl(t.toplam_net), nk_bg, nk_vr))
-    kart_bg, kart_vr = ("#fff7ed", "#b45309") if v.kart_borcu_acik > 0.005 else ("#f3f4f6", MUTED)
-    kpi.addWidget(_kpi_card(
-        "AÇIK KART BORCU", tl(v.kart_borcu_acik), kart_bg, kart_vr,
-        alt=f"{len(t.aylar)} ayda ödeme: {tl(t.toplam_kart_borcu_odeme)}",
-    ))
+    # KART KARTI YALNIZ BORÇ VARSA. Kredi kartı kullanmayan firmada bu kutu her koşuda
+    # sıfır gösteriyordu; kurulum bağımlı bir kalemi herkese göstermek kural 6'ya aykırı.
+    if v.kart_borcu_acik > 0.005:
+        faiz = (f" · finansman maliyeti: {tl(t.toplam_kart_finansman)}"
+                if t.toplam_kart_finansman > 0.005 else "")
+        kpi.addWidget(_kpi_card(
+            "AÇIK KREDİ KARTI BORCU", tl(v.kart_borcu_acik), "#fff7ed", "#b45309",
+            alt=f"{len(t.aylar)} ayda ödeme: {tl(t.toplam_kart_borcu_odeme)}{faiz}",
+        ))
     sn_bg, sn_vr = ("#e8f6ee", POZ) if t.son_nakit >= 0 else ("#fdecec", NEG)
     kpi.addWidget(_kpi_card("DÖNEM SONU NAKİT", tl(t.son_nakit), sn_bg, sn_vr))
     ed_bg, ed_vr = ("#fdecec", NEG) if t.en_dusuk_nakit < 0 else ("#fff7ed", "#b45309")

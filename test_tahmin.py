@@ -129,3 +129,52 @@ class TestTahmin(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestKrediKartiFinansmani(unittest.TestCase):
+    """
+    Kredi kartı finansman senaryosu Reel Değer'den BURAYA taşındı.
+
+    Kart borcu zaten burada modelleniyordu (canlı bakiye + ödeme oranı + aylık ödeme
+    sütunu); yalnız faiz eksikti. Aynı kart borcunu iki sekmede göstermek kural 5'e
+    (sekmeler arası veri tekrarı yok) aykırıydı.
+    """
+
+    @staticmethod
+    def _v(**kw):
+        args = {"baslangic_ay": "2026-08", "baslangic_nakit": 1_000_000.0,
+                "baz_ciro": 3_000_000.0, "marj_yuzde": 18.0, "sabit_gider": 400_000.0,
+                "ufuk_ay": 6, "kart_borcu_acik": 100_000.0}
+        args.update(kw)
+        return TahminVarsayim(**args)
+
+    def test_tam_odemede_finansman_maliyeti_yok(self):
+        t = build_tahmin(self._v(kart_borcu_odeme_yuzde=100.0, kart_aylik_faiz_yuzde=4.0))
+        self.assertAlmostEqual(t.toplam_kart_finansman, 0.0, places=2)
+        self.assertAlmostEqual(t.kalan_kart_borcu, 0.0, places=2)
+        self.assertAlmostEqual(t.toplam_kart_borcu_odeme, 100_000.0, places=2)
+
+    def test_kismi_odemede_taşinan_borca_faiz_isler(self):
+        t = build_tahmin(self._v(kart_borcu_odeme_yuzde=90.0, kart_aylik_faiz_yuzde=4.0))
+        ilk = t.aylar[0]
+        self.assertAlmostEqual(ilk.kart_borcu_odeme, 90_000.0, places=2)
+        self.assertAlmostEqual(ilk.kart_finansman, 400.0, places=2)   # 10.000 × %4
+        self.assertGreater(t.toplam_kart_finansman, 0.0)
+
+    def test_faiz_sifirsa_eski_davranis(self):
+        """Faiz girilmemişse hesap eskisi gibi: yalnız ödeme, maliyet yok."""
+        t = build_tahmin(self._v(kart_borcu_odeme_yuzde=50.0, kart_aylik_faiz_yuzde=0.0))
+        self.assertAlmostEqual(t.toplam_kart_finansman, 0.0, places=2)
+
+    def test_faiz_nakdi_dolayli_azaltir(self):
+        """Faiz kalan borcu büyütür → sonraki ayların ödemesi ve nakit çıkışı artar."""
+        faizsiz = build_tahmin(self._v(kart_borcu_odeme_yuzde=50.0, kart_aylik_faiz_yuzde=0.0))
+        faizli = build_tahmin(self._v(kart_borcu_odeme_yuzde=50.0, kart_aylik_faiz_yuzde=8.0))
+        self.assertGreater(faizli.toplam_kart_borcu_odeme, faizsiz.toplam_kart_borcu_odeme)
+        self.assertLess(faizli.son_nakit, faizsiz.son_nakit)
+
+    def test_csv_faizi_tasir(self):
+        t = build_tahmin(self._v(kart_borcu_odeme_yuzde=50.0, kart_aylik_faiz_yuzde=4.0))
+        csv = tahmin_csv(t)
+        self.assertIn("Kredi Kartı Aylık Faizi", csv)
+        self.assertIn("Kart Finansman Maliyeti", csv)

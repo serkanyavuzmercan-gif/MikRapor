@@ -324,7 +324,7 @@ class TestUiSmoke(unittest.TestCase):
                 AcikVadeParcasi("supplier", 60, 300_000),
             ],
         )
-        a = build_reel_deger_analizi(ta, ReelDegerVarsayim(kart_borcu_acik=100_000))
+        a = build_reel_deger_analizi(ta, ReelDegerVarsayim(yillik_iskonto_yuzde=45))
         self.assertIsNotNone(build_reel_deger_widget(a, bas=ta.bas, bit=ta.bit, firma="Test A.Ş."))
 
     def test_trend_view(self) -> None:

@@ -33,45 +33,6 @@ def _deger_panel(baslik: str, o: DegerOzet, *, alacak: bool) -> QFrame:
     return _card(baslik, _ic(t, [(aciklama, FAINT)]))
 
 
-def _kart_panel(a: ReelDegerAnalizi) -> QFrame:
-    k = a.kart
-    t = _agac(5, [(0, 52), (1, 140), (2, 140), (3, 150), (4, 145)])
-    _tsatir(t, [
-        _c("Ay", renk=MUTED, kalin=True), _c("Açılış borcu", renk=MUTED, kalin=True, sag=True),
-        _c("Ödeme", renk=MUTED, kalin=True, sag=True),
-        _c("Finansman maliyeti", renk=MUTED, kalin=True, sag=True),
-        _c("Kapanış borcu", renk=MUTED, kalin=True, sag=True),
-    ])
-    if not k.aylar:
-        _tsatir(t, [_c("—"), _c("—"), _c("—"), _c("—"), _c("—")])
-    for ay in k.aylar:
-        _tsatir(t, [
-            _c(str(ay.sira), kalin=True), _c(tl(ay.acilis_borc), sag=True),
-            _c(tl(ay.odeme), renk=NEG if ay.odeme > 0.005 else FAINT, sag=True),
-            _c(tl(ay.finansman_maliyeti) if ay.finansman_maliyeti > 0.005 else "—",
-               renk="#b45309" if ay.finansman_maliyeti > 0.005 else FAINT, sag=True),
-            _c(tl(ay.kapanis_borc), kalin=True, sag=True),
-        ])
-    _fit_height(t)
-
-    if k.baslangic_borc < 0.005:
-        notlar = [("Açık kredi kartı borcu bulunamadı.", FAINT)]
-    elif k.kapandi_mi:
-        if k.toplam_finansman_maliyeti < 0.005:
-            notlar = [("Borç tam ödendiği için bu senaryoda kart finansman maliyeti oluşmuyor.", POZ)]
-        else:
-            notlar = [(
-                f"Toplam finansman maliyeti: {tl(k.toplam_finansman_maliyeti)} · "
-                f"toplam ödeme: {tl(k.toplam_odeme)}.", "#b45309")]
-    else:
-        notlar = [(
-            f"{len(k.aylar)} ay sonunda kalan borç: {tl(k.kalan_borc)}. Bu senaryoda borç kapanmıyor.", NEG)]
-    notlar.append((
-        "Faiz, her ay ödenmeyen bakiye üzerinden hesaplanır. Vergi, gecikme cezası ve yeni kart harcaması "
-        "bu ilk sürümde dahil değildir.", FAINT))
-    return _card("KREDİ KARTI FİNANSMAN SENARYOSU", _ic(t, notlar))
-
-
 def _bilgilendirme() -> QFrame:
     f = QFrame()
     f.setObjectName("reelDegerBilgi")
@@ -85,8 +46,9 @@ def _bilgilendirme() -> QFrame:
     baslik.setStyleSheet("color:#1d4f91; font-size:11px; font-weight:800; background:transparent;")
     lay.addWidget(baslik)
     metin = QLabel(
-        "Nominal muhasebe tutarları değişmez. Bu analiz, vadeli alacak/borçların seçilen iskonto oranıyla "
-        "bugünkü ekonomik değerini ve kart borcunun kısmi ödenmesi halinde oluşabilecek finansman maliyetini gösterir."
+        "Nominal muhasebe tutarları değişmez. Bu analiz, vadeli alacak ve borçlarınızın "
+        "bugün kaç para ettiğini gösterir: 90 gün sonra gelecek 100 TL, bugünkü 100 TL "
+        "değildir."
     )
     metin.setWordWrap(True)
     metin.setStyleSheet("color:#365676; font-size:12px; background:transparent;")
@@ -105,11 +67,11 @@ def build_reel_deger_widget(a: ReelDegerAnalizi, *, bas: str, bit: str, firma: s
     firma_str = f" &nbsp;·&nbsp; <b>{firma}</b>" if firma else ""
     v = a.varsayim
     head = QLabel(
-        f"<span style='color:{MUTED}; font-size:11px;'>REEL DEĞER &amp; FİNANSMAN &nbsp;·&nbsp; "
+        f"<span style='color:{MUTED}; font-size:11px;'>REEL DEĞER &nbsp;·&nbsp; "
         f"{bit} itibarıyla{firma_str}</span><br>"
-        f"<span style='color:{FAINT}; font-size:11px;'>Yıllık iskonto / fırsat maliyeti: "
-        f"%{v.yillik_iskonto_yuzde:.1f} · kart aylık finansman maliyeti: "
-        f"%{v.kart_aylik_faiz_yuzde:.1f} · kart ödeme oranı: %{v.kart_odeme_yuzde:.0f}.</span>"
+        f"<span style='color:{FAINT}; font-size:11px;'>Paranın size yıllık maliyeti "
+        f"%{v.yillik_iskonto_yuzde:.1f} kabul edildi — soldaki panelden "
+        "değiştirebilirsiniz.</span>"
     )
     head.setTextFormat(Qt.TextFormat.RichText)
     head.setStyleSheet("background: transparent;")
@@ -148,6 +110,5 @@ def build_reel_deger_widget(a: ReelDegerAnalizi, *, bas: str, bit: str, firma: s
     row.addWidget(_deger_panel("ALACAKLARIN REEL DEĞERİ", a.alacak, alacak=True), 1)
     row.addWidget(_deger_panel("BORÇLARIN REEL DEĞERİ", a.borc, alacak=False), 1)
     root.addLayout(row)
-    root.addWidget(_kart_panel(a))
     root.addStretch(1)
     return content

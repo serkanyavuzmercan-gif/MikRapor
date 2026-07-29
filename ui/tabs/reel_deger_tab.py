@@ -1,4 +1,9 @@
-"""Reel Değer & Finansman sekmesi — vade etkisi ve kart finansman senaryosu."""
+"""
+Reel Değer sekmesi — vadeli satmak neye mal oluyor, vadeli almak ne kazandırıyor?
+
+TEK KONU. Kredi kartı finansman senaryosu Tahmin & Projeksiyon'a taşındı: buradaki dört
+değişkenin üçü yalnız en alttaki kart tablosunu besliyordu ve panel bunu söylemiyordu.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,6 @@ from typing import Any
 
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
-from domain.kredi import KART_BORCU_VARSAYILAN_ODEME_YUZDE, kredi_karti_borclarini_derle
 from domain.mizan_bilanco import tl
 from domain.reel_deger import (
     ReelDegerAnalizi,
@@ -16,9 +20,9 @@ from domain.reel_deger import (
 )
 from domain.tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak
 from infra.config import MikroConfig
-from infra.mikro_fetch import fetch_acik_kalemler, fetch_cari_vade_gun, fetch_kredi_karti_borclari
+from infra.mikro_fetch import fetch_acik_kalemler, fetch_cari_vade_gun
 from infra.mukayese_fetch import yil_client
-from ui.bilesenler import para_spin, yuzde_spin
+from ui.bilesenler import yuzde_spin
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.reel_deger_view import build_reel_deger_widget
 from ui.worker import IsFonksiyonu
@@ -30,12 +34,12 @@ class ReelDegerTab(RaporTab):
     EMOJI = "💡"
     BASLIK = "Reel Değer"
     ACIKLAMA = (
-        "Açık alacak ve borçların vade yapısını, seçtiğiniz iskonto oranıyla bugünkü ekonomik<br>"
-        "değere çevirir. Kredi kartı borcunun kısmi ödenmesi halinde oluşabilecek finansman<br>"
-        "maliyetini de ayrı gösterir; muhasebe tutarlarını değiştirmez."
+        "Vadeli satmak size neye mal oluyor, vadeli almak ne kazandırıyor?<br>"
+        "Açık alacak ve borçlarınızı vadelerine göre bugünkü değerine çevirir.<br>"
+        "<span style='color:#9aa0a8;'>Muhasebe tutarlarını değiştirmez.</span>"
     )
     GETIR_ETIKET = "Reel Değer Analizi"
-    BASLARKEN = "Açık alacak, borç ve kart bakiyeleri çekiliyor…"
+    BASLARKEN = "Açık alacak ve borç kalemleri çekiliyor…"
     HERO_ASSET = "empty-tahsilat.png"
 
     _ta: TahsilatAlacak | None = None
@@ -61,18 +65,12 @@ class ReelDegerTab(RaporTab):
 
         self._sp_iskonto = yuzde_spin(0.0, 250.0)
         self._sp_iskonto.setValue(45.0)
-        self._sp_kart_faiz = yuzde_spin(0.0, 30.0)
-        self._sp_kart_faiz.setValue(4.0)
-        self._sp_kart_odeme = yuzde_spin(0.0, 100.0)
-        self._sp_kart_odeme.setValue(KART_BORCU_VARSAYILAN_ODEME_YUZDE)
-        self._sp_kart_borc = para_spin()
-        self._sp_kart_borc.setReadOnly(True)
 
         for etiket, spin in (
-            ("Yıllık iskonto / fırsat maliyeti", self._sp_iskonto),
-            ("Kart aylık finansman maliyeti", self._sp_kart_faiz),
-            ("Kart aylık ödeme oranı", self._sp_kart_odeme),
-            ("Açık kart borcu (canlı)", self._sp_kart_borc),
+            # TEK DEĞİŞKEN, JARGONSUZ. «Yıllık iskonto / fırsat maliyeti» ders
+            # kitabından alınmıştı; kullanıcı «buraya ne yazacağım» sorusunu
+            # cevaplayamıyordu. Kredi kartı senaryosu Tahmin'e taşındı.
+            ("Paranın size yıllık maliyeti", self._sp_iskonto),
         ):
             grup = QWidget()
             gl = QVBoxLayout(grup)
@@ -92,15 +90,12 @@ class ReelDegerTab(RaporTab):
         lay.addWidget(bilgi, 1)
         layout.addWidget(bar)
 
-        for spin in (self._sp_iskonto, self._sp_kart_faiz, self._sp_kart_odeme):
+        for spin in (self._sp_iskonto,):
             spin.valueChanged.connect(self._varsayim_degisti)
 
     def _varsayim(self) -> ReelDegerVarsayim:
         return ReelDegerVarsayim(
             yillik_iskonto_yuzde=self._sp_iskonto.value(),
-            kart_aylik_faiz_yuzde=self._sp_kart_faiz.value(),
-            kart_odeme_yuzde=self._sp_kart_odeme.value(),
-            kart_borcu_acik=self._sp_kart_borc.value(),
         )
 
     def _varsayim_degisti(self, _deger: float) -> None:
@@ -116,7 +111,7 @@ class ReelDegerTab(RaporTab):
             self._analiz, bas=self._ta.bas, bit=self._ta.bit, firma=self._firma))
         self._durum(
             f"Reel net pozisyon {tl(self._analiz.reel_net_pozisyon)} · "
-            f"kart finansman maliyeti {tl(self._analiz.kart.toplam_finansman_maliyeti)}",
+            f"vade etkisi {tl(self._analiz.net_vade_etkisi)}",
             "hata" if self._analiz.net_vade_etkisi < -0.005 else "iyi",
         )
 
@@ -130,20 +125,13 @@ class ReelDegerTab(RaporTab):
             bildir("Açık alacak ve borç kalemleri çekiliyor…")
             acik_rows = fetch_acik_kalemler(client, bit, bas, bit)
             ta = build_tahsilat_alacak(acik_rows, vade_gun_map=vade_gun_map, bas=bas, bit=bit)
-            bildir("Açık kredi kartı borçları çekiliyor…")
-            kart_borclari = kredi_karti_borclarini_derle(fetch_kredi_karti_borclari(client, bit))
-            return {
-                "ta": ta,
-                "kart_borcu": sum(k.borc for k in kart_borclari),
-                "firma": firma_getir(cfg, client),
-            }
+            return {"ta": ta, "firma": firma_getir(cfg, client)}
 
         return is_fn
 
     def _goster(self, sonuc: dict[str, Any]) -> None:
         self._ta = sonuc["ta"]
         self._firma = sonuc["firma"]
-        self._sp_kart_borc.setValue(float(sonuc.get("kart_borcu", 0.0)))
         self._analizi_yenile()
 
     def _csv_dosya_adi(self) -> str:

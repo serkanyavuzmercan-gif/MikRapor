@@ -73,6 +73,11 @@ from ui.tahmin_view import build_tahmin_widget
 from ui.worker import IsFonksiyonu
 from ui.yukleniyor import YukleniyorEkrani
 
+# Kredi kartı aylık faizi için başlangıç değeri. Mikro'dan ölçülemez (sözleşme
+# firmanın bankasıyla), o yüzden düzenlenebilir bir senaryo varsayımıdır; kullanıcı
+# kendi kart faizini yazar. Kart borcu YOKSA bu alan hiç görünmez (kural 6).
+_KART_AYLIK_FAIZ_VARSAYILAN = 4.0
+
 _PANEL_GENISLIK = 240
 _RAIL_GENISLIK = 36
 
@@ -113,6 +118,9 @@ class TahminTab(RaporTab):
         self._sp_kart_borc.setReadOnly(True)
         self._sp_kart_oran = yuzde_spin(0.0, 100.0)
         self._sp_kart_oran.setValue(KART_BORCU_VARSAYILAN_ODEME_YUZDE)
+        # Reel Değer'den taşındı: kart borcu zaten burada modelleniyordu, faizi eksikti.
+        self._sp_kart_faiz = yuzde_spin(0.0, 30.0)
+        self._sp_kart_faiz.setValue(_KART_AYLIK_FAIZ_VARSAYILAN)
         self._sp_buyume = yuzde_spin(-50.0, 100.0)
         self._sp_marj = yuzde_spin(0.0, 100.0)
         self._sp_ufuk = QSpinBox()
@@ -122,7 +130,8 @@ class TahminTab(RaporTab):
 
         for sp in (
             self._sp_nakit, self._sp_ciro, self._sp_gider, self._sp_kart_borc,
-            self._sp_buyume, self._sp_marj, self._sp_kart_oran, self._sp_ufuk,
+            self._sp_buyume, self._sp_marj, self._sp_kart_oran, self._sp_kart_faiz,
+            self._sp_ufuk,
         ):
             sp.setMinimumWidth(0)
             sp.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -137,8 +146,9 @@ class TahminTab(RaporTab):
             ("Aylık büyüme", self._sp_buyume),
             ("Kâr oranı (brüt marj)", self._sp_marj),
             ("Aylık sabit gider", self._sp_gider),
-            ("Mevcut kart borcu (canlı)", self._sp_kart_borc),
-            ("Kart borcu aylık ödeme", self._sp_kart_oran),
+            ("Açık kredi kartı borcu (canlı)", self._sp_kart_borc),
+            ("Kredi kartı aylık ödeme oranı", self._sp_kart_oran),
+            ("Kredi kartı aylık faizi", self._sp_kart_faiz),
             ("Kaç ay ileri", self._sp_ufuk),
         )
         self._senaryo = _SenaryoSolPanel(alanlar)
@@ -308,7 +318,8 @@ class TahminTab(RaporTab):
                 satis_serisi=satis_serisi, brut_marj_yuzde=gd.gercek_brut_marj,
                 baslangic_nakit=baslangic_nakit, aylik_sabit_gider=sabit_gider,
                 baslangic_ay=bit[:7], kart_borcu_acik=kart_borcu_acik,
-                kart_borcu_odeme_yuzde=KART_BORCU_VARSAYILAN_ODEME_YUZDE, ufuk_ay=ufuk,
+                kart_borcu_odeme_yuzde=KART_BORCU_VARSAYILAN_ODEME_YUZDE,
+                kart_aylik_faiz_yuzde=_KART_AYLIK_FAIZ_VARSAYILAN, ufuk_ay=ufuk,
             )
             return {
                 "varsayim": v, "firma": firma_getir(cfg, client), "runway": runway,
@@ -330,6 +341,7 @@ class TahminTab(RaporTab):
         self._sp_gider.setValue(v.sabit_gider)
         self._sp_kart_borc.setValue(v.kart_borcu_acik)
         self._sp_kart_oran.setValue(v.kart_borcu_odeme_yuzde)
+        self._sp_kart_faiz.setValue(v.kart_aylik_faiz_yuzde)
         self._senaryo.ac()
         self._durum(
             "Geçmişten dolduruldu (son 12 ayın ortalaması) — rakamları düzenleyip "
@@ -364,6 +376,7 @@ class TahminTab(RaporTab):
             sabit_gider=self._sp_gider.value(),
             kart_borcu_acik=self._sp_kart_borc.value(),
             kart_borcu_odeme_yuzde=self._sp_kart_oran.value(),
+            kart_aylik_faiz_yuzde=self._sp_kart_faiz.value(),
             ufuk_ay=self._sp_ufuk.value(),
         )
         self._t = build_tahmin(v)
