@@ -933,6 +933,53 @@ class TestMizanSorgusu(unittest.TestCase):
         self.assertIn("AND (fis_hesap_kod LIKE '100%'", c.sorgular[-1])
         self.assertIn("LIKE '321%') GROUP BY", c.sorgular[-1])
 
+    def test_nakit_bakiye_gl_kapanis_fisini_dislar(self) -> None:
+        """
+        fetch_bakiye_ozet'te düzeltilen kapanış hatasının İKİZİ buradaydı ve atlanmıştı.
+
+        Nakit Akış'ın kapanış nakdi bu sorgudan geliyor: 31 Aralık'ta biten dönemde
+        kapanış fişi bütün bakiyeleri sıfırlıyor ve rakam sessizce çöküyordu.
+        """
+        from infra.mikro_fetch import fetch_nakit_bakiye_gl
+        c = self._yakala({"2025-12-31": [self._fis(20089, 514)]})
+        fetch_nakit_bakiye_gl(c, "2025-12-31")
+        sql = c.sorgular[-1]
+        self.assertIn("fis_yevmiye_no IN (20089)", sql)
+        self.assertIn("NOT (fis_tarih >= '2025-12-31'", sql)
+
+    def test_nakit_bakiye_gl_sargable_filtre_kullanir(self) -> None:
+        """
+        LEFT(LTRIM(kol),3) IN (...) indeks kullandırmaz → tam tarama → zaman aşımı.
+
+        CLAUDE.md teknik notlarının adıyla yasakladığı desen; bu sorguda duruyordu.
+        """
+        from infra.mikro_fetch import fetch_nakit_bakiye_gl
+        c = self._yakala({})
+        fetch_nakit_bakiye_gl(c, "2025-06-30")
+        sql = c.sorgular[-1]
+        self.assertNotIn("LEFT(LTRIM(fis_hesap_kod), 3)", sql)
+        self.assertIn("fis_hesap_kod LIKE '100%'", sql)
+
+    def test_iki_bakiye_okuyucusu_ayni_hesap_kumesini_kullanir(self) -> None:
+        """
+        Nakit Akış'ın kapanış nakdi ile Tahmin'in başlangıç nakdi AYNI soruyu soruyor;
+        farklı hesap kümesi okurlarsa aynı tarihte farklı rakam gösterirler.
+
+        Canlıda öyleydi: akış kümesi (103 hariç) bakiye sorusunda kullanılıyordu, oysa
+        Tahmin GL_NAKIT_BAKIYE_ANA (103 dahil) okuyor. 103 Verilen Çekler kontra
+        hesabıdır, eksi bakiyelidir — iki sekme sessizce ayrışıyordu.
+        """
+        from domain.nakit_akis import GL_NAKIT_BAKIYE_ANA
+        from infra.mikro_fetch import fetch_nakit_bakiye_gl
+        c = self._yakala({})
+        fetch_nakit_bakiye_gl(c, "2025-06-30")
+        sql = c.sorgular[-1]
+        for onek in GL_NAKIT_BAKIYE_ANA:
+            self.assertIn(f"fis_hesap_kod LIKE '{onek}%'", sql,
+                          f"bakiye sorgusu {onek} hesabını okumuyor")
+        self.assertIn("103", "".join(GL_NAKIT_BAKIYE_ANA),
+                      "bakiye kümesinden 103 düşmüş — Bilanço ile ayrışır")
+
     def test_gun_sorgusu_patlarsa_mizan_yine_kurulur(self) -> None:
         """Yardımcı sorgu teşhis amaçlı; asıl mizanı düşürmemeli."""
         from infra.mikro_api import MikroAPIError

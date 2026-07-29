@@ -188,10 +188,17 @@ def nakit_bakiye(bakiye_rows: list[dict] | None) -> float:
     return total
 
 
-# GL (mizan) hazır değerler — Bilanço "Nakit ve Nakit Benzerleri" ile birebir.
-# Cari-hareket nakiti döviz-kur nedeniyle onlarca kat şişebildiğinden, runway/tahmin
-# için GÜVENİLİR başlangıç bu kaynaktır.
-_GL_NAKIT_ANA = frozenset({"100", "101", "102", "103", "108"})
+# GL hazır değerler — BAKİYE sorusu ("ne kadar nakdim var"). Bilanço "Nakit ve Nakit
+# Benzerleri" ile birebir olsun diye 103 (Verilen Çekler, kontra) DAHİLDİR: yazılmış çek
+# takas edilince nakdi düşürecektir.
+#
+# AKIŞ sorusu ("hangi fiş bir nakit hareketidir") AYRI bir kümedir ve 103'ü DIŞLAR —
+# bkz. infra/mikro_fetch.py: _NAKIT_AKIS_ONEK. İkisi bilerek farklı; aynı soruyu iki
+# farklı kümeyle cevaplamak yasak, farklı soruları farklı kümeyle cevaplamak zorunlu.
+GL_NAKIT_BAKIYE_ANA = frozenset({"100", "101", "102", "103", "108"})
+
+# Geriye uyumluluk (eski ad)
+_GL_NAKIT_ANA = GL_NAKIT_BAKIYE_ANA
 
 
 def nakit_gl_ozetten(bakiye_ozet_rows: list[dict] | None) -> float:
@@ -224,9 +231,18 @@ def baslangic_nakit_sec(gl_nakit: float | None, cari_nakit: float) -> tuple[floa
     oluyor, cari yedeğe hiç düşülmüyor ve kullanıcıya sebep söylenmiyordu. Projeksiyonun
     tamamı bu rakama dayandığı için sessiz 0 en pahalı hatalardan biri.
 
-    GL tercih edilir (Bilanço «Nakit ve Benzerleri» ile birebir); cari-hareket nakiti
-    döviz kuru yüzünden ~47 kat şişebiliyor. Eşik uydurulmuyor: yalnız «sıfır mı değil
-    mi» sorulur.
+    GL tercih edilir çünkü Bilanço «Nakit ve Benzerleri» ile birebirdir. Eşik
+    uydurulmuyor: yalnız «sıfır mı değil mi» sorulur.
+
+    DİKKAT — BU TERCİH HENÜZ DOĞRULANMADI. Kod tabanında bir zamanlar «cari-hareket
+    nakiti döviz kuru yüzünden ~47 kat şişebiliyor» diye yazılmıştı; o «47 kat»,
+    canlı bir kurulumun GL/cari farkının (27.056.018 ÷ 569.002 = 47,55) birebir
+    kendisiydi — yani bir gözlem, sebebi tahmin edilip olgu gibi yazılmış. Aynı veride
+    120 ve 320 yalnız %5-7 sapıyor; kur etkisi olsaydı onlar da şişerdi. Muhtemel sebep
+    banka fişlerinin muhasebeleşmemesi, ama ÖLÇÜLMEDİ.
+    Sonuç: iki kaynak büyük ölçüde çeliştiğinde hangisinin doğru olduğunu program
+    bilmiyor ve şu an bunu SÖYLEMİYOR da. Mikro'daki Bankalar listesiyle kıyaslanıp
+    karara bağlanmalı; o zamana kadar buraya «cari şişiktir» gerekçesi yazılmayacak.
     """
     if gl_nakit is not None and abs(gl_nakit) >= 0.005:
         return gl_nakit, "gl"

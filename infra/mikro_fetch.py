@@ -17,6 +17,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from domain.cari_vade import hesapla_vade_gun
+from domain.nakit_akis import GL_NAKIT_BAKIYE_ANA
 from domain.ortak import to_float as _f_local
 from infra.mikro_api import MikroAPIError, MikroClient, get_row_value, parse_sql_rows
 from infra.sql_params import firma_kodu_guvenli, iso_tarih, sql_string
@@ -1217,7 +1218,17 @@ def _fetch_nakit_akis_sql(
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 
 
-_NAKIT_GL_ONEK = "('100', '101', '102', '108')"  # kasa + çek + banka; 103 verilen çek kontra
+# AKIŞ kümesi: «hangi fiş bir nakit HAREKETİDİR». 103 (Verilen Çekler) bilerek DIŞARIDA —
+# çek yazma anı bir nakit çıkışı değil, takas edildiğinde 102 üzerinden çıkıyor; içeri
+# alınsa aynı ödeme iki kez sayılırdı. BAKİYE sorusu farklı kümeyle cevaplanır:
+# domain/nakit_akis.py: GL_NAKIT_BAKIYE_ANA (103 DAHİL, Bilanço ile birebir olsun diye).
+_NAKIT_AKIS_ONEK = "('100', '101', '102', '108')"
+_NAKIT_GL_ONEK = _NAKIT_AKIS_ONEK          # geriye uyumluluk (eski ad)
+
+
+def _hesap_like(onekler) -> str:
+    """Önek kümesinden SARGABLE filtre üretir — LEFT(LTRIM(kol),3) indeks kullandırmaz."""
+    return "(" + " OR ".join(f"fis_hesap_kod LIKE '{k}%'" for k in sorted(onekler)) + ")"
 _KREDI_GL_ONEK = "('300', '303', '304', '305', '308', '309', '400', '403')"
 
 
@@ -1456,12 +1467,23 @@ def fetch_kredi_odemeleri_gl(
 
 
 def fetch_nakit_bakiye_gl(client: MikroClient, asof: str) -> float:
-    """Nakit hesapların (100/101/102/108) GL kümülatif bakiyesi (asof dahil)."""
+    """
+    Nakit hesapların GL kümülatif bakiyesi (asof dahil) — Nakit Akış'ın kapanış nakdi.
+
+    Üç şey düzeltildi (hepsi sessizce yanlış rakam üretiyordu):
+      • KAPANIŞ FİŞİ ELENMİYORDU: 31 Aralık'ta biten dönemde bütün bakiyeler sıfırlanıyor.
+        `fetch_bakiye_ozet`'te düzeltilen hatanın ikizi; ortak `_bakiye_kosulu`ya geçti.
+      • `LEFT(LTRIM(kol),3) IN (...)` indeks kullandırmıyordu → tam tarama → zaman aşımı
+        (CLAUDE.md teknik notlarının adıyla yasakladığı desen). Sargable LIKE'a geçti.
+      • AKIŞ kümesini (103 hariç) kullanıyordu; bu bir BAKİYE sorusu. Tahmin'in başlangıç
+        nakdi `GL_NAKIT_BAKIYE_ANA` (103 dahil) okuyordu, yani Nakit Akış'ın kapanış
+        nakdi ile Tahmin'in başlangıç nakdi aynı tarihte FARKLI çıkabiliyordu.
+    """
     asof = iso_tarih(asof, alan="tarih")
     sql = (
         "SELECT SUM(fis_meblag0) AS bakiye FROM MUHASEBE_FISLERI WITH (NOLOCK) "
-        f"WHERE fis_iptal = 0 AND LEFT(LTRIM(fis_hesap_kod), 3) IN {_NAKIT_GL_ONEK} "
-        f"AND fis_tarih < '{_bit_son(asof)}'"
+        f"WHERE {_bakiye_kosulu(client, asof)} "
+        f"AND {_hesap_like(GL_NAKIT_BAKIYE_ANA)}"
     )
     rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
     if rows:

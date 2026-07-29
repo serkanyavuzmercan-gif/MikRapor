@@ -252,7 +252,24 @@ anahtarı **ve** açık onay kutusu birlikte olmadan hiçbir ağ çağrısı yap
   `infra/veritabani.py` kataloğundan gelir; sekmeler `yil_client(cfg, yil)` kullanır,
   `MikroClient(cfg)` kurmaz.
 - **Kapanış/açılış fişleri**: 31 Aralık kapanış fişi bütün bakiyeleri sıfırlar,
-  1 Ocak açılış fişi geri yükler. Mizan sorgusu ikisini de eler.
+  1 Ocak açılış fişi geri yükler. Kümülatif bakiye okuyan **her** sorgu ortak
+  `_bakiye_kosulu`yu kullanır (mizan, nakit/alacak/borç özeti, GL nakit bakiyesi) —
+  aynı eleme üç yere ayrı yazılınca ikisinde vardı birinde yoktu.
+- **GL nakit iki AYRI kümedir, karıştırılmaz.** *Bakiye* sorusu («ne kadar nakdim var»)
+  `domain/nakit_akis.py: GL_NAKIT_BAKIYE_ANA` → 100/101/102/**103**/108, Bilanço «Nakit
+  ve Benzerleri» ile birebir olsun diye 103 dâhil. *Akış* sorusu («hangi fiş nakit
+  hareketidir») `infra/mikro_fetch.py: _NAKIT_AKIS_ONEK` → 103 **hariç**, çünkü çek
+  yazma anı nakit çıkışı değil; takas edilince 102'den çıkıyor, içeri alınsa aynı ödeme
+  iki kez sayılırdı. Bakiye sorusunu akış kümesiyle cevaplamak, Nakit Akış'ın kapanış
+  nakdi ile Tahmin'in başlangıç nakdini aynı tarihte ayrıştırıyordu.
+- **Cari nakit ile GL nakit büyük ölçüde çelişebilir ve hangisinin doğru olduğunu
+  program BİLMİYOR.** Canlıda cari 27.056.018 ⟷ GL 569.002 (47 kat), ama aynı veride
+  120 ve 320 yalnız %5-7 sapıyor. Kod tabanında bir zamanlar bunun sebebi «döviz kuru»
+  diye yazılmıştı; o «47 kat» tam bu farkın kendisiydi, yani gözlem sebep sanılıp olgu
+  gibi kaydedilmişti. Kur olsaydı alacak/borç da şişerdi. Muhtemel sebep banka
+  fişlerinin muhasebeleşmemesi — **ölçülmedi.** Mikro'daki Bankalar listesiyle
+  kıyaslanıp karara bağlanana kadar buraya «cari şişiktir» gerekçesi yazılmaz ve
+  `baslangic_nakit_sec` sessizce GL seçmeye devam eder (bilinen açık).
 - **Sargability**: `LEFT(LTRIM(kol),3) = 'x'` ve `LEFT(kol,6)` üzerinden join indeks
   kullandırmaz → tam tarama → zaman aşımı. Önce küçük tablodan kodu çöz, sonra
   `kol LIKE 'kod%'`.
