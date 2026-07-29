@@ -1143,7 +1143,8 @@ def _fetch_nakit_akis_sql(
     tl = _cha_tl_sql("c")
     bit_son = _bit_son(bit)
     if kredi_ayir:
-        nakit_kosul = "(c.cha_cari_cins = 4 OR (c.cha_cari_cins = 2 AND ISNULL(cb.ban_hesap_tip, 0) <> 1))"
+        nakit_kosul = ("(c.cha_cari_cins = 4 OR (c.cha_cari_cins = 2 AND NOT "
+                       f"{_kredi_banka_sql('cb')}))")
         # Karşı taraf cari satırda yoksa (doğrudan muhasebeye işlenen banka ödemesi:
         # maaş 335 / vergi 360 / SGK 361 / kredi 300 / gider 770), karşı hesap bu satırın
         # cha_kasa_hizkod alanındadır. BANKALAR ile ayrış — banka hesapları 300.02.x gibi
@@ -1154,21 +1155,22 @@ def _fetch_nakit_akis_sql(
         # Tablo 51). Kod ne olursa olsun tür kazanır.
         hizkod_expr = (
             "CASE WHEN c.cha_kasa_hizmet IN (10, 11) THEN 'KRD' "
-            "WHEN hb.ban_kod IS NOT NULL AND ISNULL(hb.ban_hesap_tip, 0) = 1 THEN 'KRD' "
+            f"WHEN hb.ban_kod IS NOT NULL AND {_kredi_banka_sql('hb')} THEN 'KRD' "
             "WHEN hb.ban_kod IS NOT NULL THEN '' "
             "WHEN LTRIM(RTRIM(ISNULL(c.cha_kasa_hizkod, ''))) <> '' "
             "THEN LEFT(LTRIM(c.cha_kasa_hizkod), 3) ELSE '' END"
         )
         prefix_expr = (
-            "CASE WHEN karsi.kcins = 2 AND karsi.kban = 1 THEN 'KRD' "
+            "CASE WHEN karsi.kcins = 2 AND karsi.kkredi = 1 THEN 'KRD' "
             "WHEN karsi.kcins = 0 THEN karsi.kprefix "
             f"ELSE {hizkod_expr} END"
         )
-        ic_transfer = "(karsi.kcins = 4 OR (karsi.kcins = 2 AND karsi.kban <> 1))"
+        ic_transfer = "(karsi.kcins = 4 OR (karsi.kcins = 2 AND karsi.kkredi = 0))"
         apply_join = (
             "OUTER APPLY ("
             "SELECT TOP 1 k.cha_cari_cins AS kcins, LEFT(LTRIM(k.cha_kod), 3) AS kprefix, "
-            "ISNULL(kb.ban_hesap_tip, -1) AS kban "
+            "CASE WHEN kb.ban_kod IS NULL THEN 0 WHEN "
+            f"{_kredi_banka_sql('kb')} THEN 1 ELSE 0 END AS kkredi "
             "FROM CARI_HESAP_HAREKETLERI k WITH (NOLOCK) "
             "LEFT JOIN BANKALAR kb WITH (NOLOCK) ON kb.ban_kod = k.cha_kod "
             "WHERE k.cha_Guid <> c.cha_Guid AND k.cha_iptal = 0 AND ("
@@ -1224,6 +1226,23 @@ def _fetch_nakit_akis_sql(
 # domain/nakit_akis.py: GL_NAKIT_BAKIYE_ANA (103 DAHİL, Bilanço ile birebir olsun diye).
 _NAKIT_AKIS_ONEK = "('100', '101', '102', '108')"
 _NAKIT_GL_ONEK = _NAKIT_AKIS_ONEK          # geriye uyumluluk (eski ad)
+
+
+def _kredi_banka_sql(alias: str) -> str:
+    """
+    «Bu banka kaydı bir KREDİ hesabı mı» — SQL yüklemi. domain/ortak.py:kredi_banka_mi
+    ile AYNI kural (ban_hesap_tip=1 · 300 öneki · 320 satıcı sınıfı).
+
+    Eskiden yalnız `ban_hesap_tip = 1` sorulurdu. Canlı kurulumda kredi hesaplarının o
+    alanı 1 DEĞİL: 300.02.* hesapları mevduat gibi görünüyordu. Sonucu ağırdı — kredi
+    hesabı «nakit» sayıldığı için 102→300 kredi ödemesi nakit↔nakit İÇ TRANSFERİ olup
+    tamamen eleniyor, Nakit Akış'ta kredi ödemesi HİÇ görünmüyordu. `kredi_odeme_gl`
+    yedeği (GL 300/303'ü ayrıca okuyan) zaten bu belirti için yazılmıştı; şimdi sebep
+    düzeldi.
+    """
+    return (f"(ISNULL({alias}.ban_hesap_tip, 0) = 1 "
+            f"OR {alias}.ban_muh_kod LIKE '300%' OR {alias}.ban_muh_kod LIKE '320%' "
+            f"OR {alias}.ban_kod LIKE '300%')")
 
 
 def _hesap_like(onekler) -> str:
@@ -1629,7 +1648,7 @@ def fetch_nakit_delta(client: MikroClient, bas: str, bit: str) -> float:
         "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
         "LEFT JOIN BANKALAR cb WITH (NOLOCK) ON cb.ban_kod = c.cha_kod "
         "WHERE c.cha_iptal = 0 AND ISNULL(c.cha_hidden, 0) = 0 "
-        "AND (c.cha_cari_cins = 4 OR (c.cha_cari_cins = 2 AND ISNULL(cb.ban_hesap_tip, 0) <> 1)) "
+        f"AND (c.cha_cari_cins = 4 OR (c.cha_cari_cins = 2 AND NOT {_kredi_banka_sql('cb')})) "
         f"AND c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{_bit_son(bit)}'"
     )
     rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))

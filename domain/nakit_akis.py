@@ -17,7 +17,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from domain.mizan_bilanco import ana_hesap, hesap_adi
-from domain.ortak import csv_sayi
+from domain.ortak import csv_sayi, kredi_banka_mi
 from domain.ortak import to_float as _f
 from domain.ortak import to_int as _i
 
@@ -176,13 +176,20 @@ class NakitAkis:
 
 
 def nakit_bakiye(bakiye_rows: list[dict] | None) -> float:
-    """fetch_cari_bakiye satırlarından banka+kasa nakit mevcudu (kredi bankaları hariç)."""
+    """
+    fetch_cari_bakiye satırlarından banka+kasa nakit mevcudu (kredi hesapları hariç).
+
+    Kredi ayrımı `kredi_banka_mi` ile yapılır — eskiden yalnız `ban_hesap_tip == 1`
+    sorulurdu ve canlı kurulumda kredi hesaplarının o alanı 1 olmadığı için 7 kredi
+    hesabının net -3.744.328'i NAKDE katılıyordu. Tahmin krediyi ayrıca taksit taksit
+    modellediğinden borç iki kez sayılmış oluyordu.
+    """
     total = 0.0
     for r in (bakiye_rows or []):
         cins = _i(r.get("cins", r.get("CINS")))
         if cins not in (2, 4):
             continue
-        if cins == 2 and _i(r.get("ban_hesap_tip", r.get("BAN_HESAP_TIP"))) == 1:
+        if cins == 2 and kredi_banka_mi(r):
             continue
         total += _f(r.get("borc_h", r.get("BORC_H"))) - _f(r.get("alacak_h", r.get("ALACAK_H")))
     return total

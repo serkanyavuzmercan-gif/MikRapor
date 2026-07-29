@@ -980,6 +980,24 @@ class TestMizanSorgusu(unittest.TestCase):
         self.assertIn("103", "".join(GL_NAKIT_BAKIYE_ANA),
                       "bakiye kümesinden 103 düşmüş — Bilanço ile ayrışır")
 
+    def test_akis_sorgusu_krediyi_300_onekinden_de_ayirir(self) -> None:
+        """
+        ASIL ZARAR CARİ YOLUNDAYDI (GL yolu karşı hesabı fis_hesap_kod'dan aldığı için
+        krediyi zaten 300 önekiyle görüyor). Kredi hesabı «nakit» sayıldığı için 102→300
+        nakit↔nakit İÇ TRANSFERİ olup tamamen eleniyordu — Nakit Akış'ta kredi ödemesi
+        hiç görünmüyordu. kredi_odeme_gl yedeği zaten bu belirti için yazılmıştı.
+
+        Canlı kurulumda kredi hesaplarının ban_hesap_tip'i 1 değil, o yüzden tek teste
+        güvenen sorgu krediyi ayırt edemiyordu.
+        """
+        from infra.mikro_fetch import _fetch_nakit_akis_sql
+        c = self._yakala({})
+        _fetch_nakit_akis_sql(c, "2026-01-01", "2026-07-30", kredi_ayir=True)
+        sql = " ".join(c.sorgular)
+        self.assertIn("ban_muh_kod LIKE '300%'", sql,
+                      "akış sorgusu krediyi 300 önekinden ayırmıyor")
+        self.assertNotIn("karsi.kban", sql, "eski tek-testli kban bayrağı kalmış")
+
     def test_gun_sorgusu_patlarsa_mizan_yine_kurulur(self) -> None:
         """Yardımcı sorgu teşhis amaçlı; asıl mizanı düşürmemeli."""
         from infra.mikro_api import MikroAPIError

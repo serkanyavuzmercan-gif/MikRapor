@@ -303,3 +303,54 @@ class TestDetayOzetleAyniKaynak(unittest.TestCase):
                     if kategori_etiketi(r["prefix"], r["tip"]) == etiket)
         self.assertAlmostEqual(panel, dokum)
         self.assertAlmostEqual(panel, 12000.0)
+
+
+class TestKrediHesabiTekKural(unittest.TestCase):
+    """
+    «Bu banka hesabı kredi mi» TEK kuraldır: ban_hesap_tip=1 · 300 öneki · 320 sınıfı.
+
+    Niyet gercek_durum_ayarlar.py'de yazılıydı («300.* ve ban_hesap_tip=1 nakitten
+    hariç») ama üç yerde üç farklı tamlıkta uygulanmıştı. Canlı kurulumda kredi
+    hesaplarının ban_hesap_tip'i 1 DEĞİL (300.02.* mevduat gibi görünüyor), o yüzden
+    tek teste güvenen iki uygulama krediyi nakit sayıyordu.
+    """
+
+    def test_ban_hesap_tip_bos_olsa_bile_300_kredi_sayilir(self):
+        from domain.ortak import kredi_banka_mi
+        self.assertTrue(kredi_banka_mi({"kod": "300.02.0001", "ban_hesap_tip": 0}))
+        self.assertTrue(kredi_banka_mi({"ban_muh_kod": "300.02", "ban_hesap_tip": 0}))
+        self.assertTrue(kredi_banka_mi({"ban_hesap_tip": 1}))
+
+    def test_mevduat_hesabi_kredi_sayilmaz(self):
+        from domain.ortak import kredi_banka_mi
+        self.assertFalse(kredi_banka_mi({"kod": "102.01.0004", "ban_hesap_tip": 0}))
+
+    def test_nakit_bakiye_kredi_hesabini_nakde_katmaz(self):
+        """
+        Canlıda 7 kredi hesabının net -3.744.328'i nakde katılıyordu. Tahmin krediyi
+        ayrıca taksit taksit modellediği için borç İKİ KEZ sayılıyordu.
+        """
+        from domain.nakit_akis import nakit_bakiye
+        satirlar = [
+            {"cins": 2, "kod": "102.01.0004", "ban_hesap_tip": 0,
+             "borc_h": 9_456_672.88, "alacak_h": 3_033_866.53},
+            {"cins": 2, "kod": "300.02.0001", "ban_hesap_tip": 0,   # KREDİ, tip 1 DEĞİL
+             "borc_h": 2_136_342.44, "alacak_h": 1_316_696.17},
+            {"cins": 4, "kod": "KASA01", "borc_h": 523_705.79, "alacak_h": 0.0},
+        ]
+        beklenen = (9_456_672.88 - 3_033_866.53) + 523_705.79
+        self.assertAlmostEqual(nakit_bakiye(satirlar), beklenen, places=2)
+
+    def test_iki_domain_okuyucusu_ayni_sonucu_verir(self):
+        """nakit_bakiye ile _bakiye_caridan aynı satırlarda aynı nakdi bulmalı."""
+        from domain.gercek_durum import _bakiye_caridan
+        from domain.nakit_akis import nakit_bakiye
+        satirlar = [
+            {"cins": 2, "kod": "102.01.0004", "ban_hesap_tip": 0,
+             "borc_h": 1_000_000.0, "alacak_h": 250_000.0},
+            {"cins": 2, "kod": "300.02.0001", "ban_hesap_tip": 0,
+             "borc_h": 800_000.0, "alacak_h": 900_000.0},
+            {"cins": 4, "kod": "KASA01", "borc_h": 50_000.0, "alacak_h": 0.0},
+        ]
+        self.assertAlmostEqual(
+            nakit_bakiye(satirlar), _bakiye_caridan(satirlar)["nakit_mevcut"], places=2)

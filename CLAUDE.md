@@ -262,6 +262,18 @@ anahtarı **ve** açık onay kutusu birlikte olmadan hiçbir ağ çağrısı yap
   yazma anı nakit çıkışı değil; takas edilince 102'den çıkıyor, içeri alınsa aynı ödeme
   iki kez sayılırdı. Bakiye sorusunu akış kümesiyle cevaplamak, Nakit Akış'ın kapanış
   nakdi ile Tahmin'in başlangıç nakdini aynı tarihte ayrıştırıyordu.
+- **«Bu banka hesabı kredi mi» TEK kuraldır: `domain/ortak.py: kredi_banka_mi`**
+  (`ban_hesap_tip = 1` **veya** 300 öneki **veya** 320 satıcı sınıfı). Niyet
+  `gercek_durum_ayarlar.py`de yazılıydı ama üç yerde üç farklı tamlıkta uygulanmıştı.
+  Canlıda kredi hesaplarının `ban_hesap_tip`i **1 DEĞİL** — 300.02.* hesapları mevduat
+  gibi görünüyor. Tek teste güvenmenin iki bedeli vardı: `nakit_bakiye` 7 kredi
+  hesabının net −3.744.328'ini nakde katıyordu (Tahmin krediyi ayrıca taksit taksit
+  modellediği için borç İKİ KEZ sayılıyordu), ve **cari akış yolunda** kredi hesabı
+  «nakit» sayıldığı için 102→300 kredi ödemesi nakit↔nakit **iç transferi olup tamamen
+  eleniyordu** — Nakit Akış'ta kredi ödemesi hiç görünmüyordu. `kredi_odeme_gl` yedeği
+  zaten bu belirti için yazılmıştı. SQL karşılığı `infra: _kredi_banka_sql`; GL akış
+  yolu etkilenmiyor (karşı hesabı `fis_hesap_kod`'dan alıyor, krediyi 300 önekiyle
+  zaten görüyor). `ban_muh_kod` kullanıcı tarafından atandığı için tek test yetmez.
 - **Cari nakit ile GL nakit büyük ölçüde çelişebilir ve hangisinin doğru olduğunu
   program BİLMİYOR.** Canlıda cari 27.056.018 ⟷ GL 569.002 (47 kat), ama aynı veride
   120 ve 320 yalnız %5-7 sapıyor. Kod tabanında bir zamanlar bunun sebebi «döviz kuru»

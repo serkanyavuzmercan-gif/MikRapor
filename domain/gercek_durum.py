@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 
 from domain.gercek_durum_ayarlar import GercekDurumAyarlar
 from domain.mizan_bilanco import Bilanco
-from domain.ortak import csv_sayi, yuzde
+from domain.ortak import csv_sayi, kredi_banka_mi, yuzde
 from domain.ortak import muh_sinifi as _muh_sinifi
 from domain.ortak import to_float as _f
 from domain.ortak import to_int as _i
@@ -487,16 +487,10 @@ def _bakiye_caridan(rows: list[dict], *, banka_kredi_haric: bool = True) -> dict
             continue
         out["cari_hesap_sayisi"] += 1
         if cins == _BANKA_CINS:
-            tip = _i(r.get("ban_hesap_tip", r.get("BAN_HESAP_TIP")))
-            if banka_kredi_haric and tip == 1:
-                continue
-            kod = str(r.get("kod", r.get("KOD")) or "")
-            muh = str(r.get("muh_kod", r.get("MUH_KOD")) or "")
-            if not muh:
-                muh = str(r.get("ban_muh_kod", r.get("BAN_MUH_KOD")) or "")
-            if banka_kredi_haric and _muh_sinifi(muh) == "supplier":
-                continue
-            if banka_kredi_haric and (muh.startswith("300") or kod.upper().startswith("300")):
+            # Kredi ayrımı domain/ortak.py: kredi_banka_mi — TEK yer. Buradaki üç test
+            # doğruydu ama nakit_bakiye ve akış sorguları yalnız ban_hesap_tip'e
+            # bakıyordu; aynı kural üç yerde üç farklı tamlıktaydı.
+            if banka_kredi_haric and kredi_banka_mi(r):
                 continue
             net = borc_h - alacak_h
             out["nakit_banka"] += net

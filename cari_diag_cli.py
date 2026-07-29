@@ -17,6 +17,7 @@ from datetime import date
 
 from domain.gercek_durum import _bakiye_bilancodan, _bakiye_caridan
 from domain.mizan_bilanco import build_bilanco, tl
+from domain.ortak import kredi_banka_mi
 from domain.ortak import to_float as _f
 from infra.config import load_config
 from infra.mikro_api import MikroClient
@@ -78,39 +79,55 @@ def _banka_teshisi(client: MikroClient, asof: str) -> None:
         print("\nBanka hesabı için cari hareket bulunamadı.")
         return
 
-    print(f"\nBANKA HESABI KIRILIMI — {asof} (kredi hesapları * ile işaretli)")
+    tarihler = [str(r.get("ilk", r.get("ILK")) or "")[:10] for r in satirlar]
+    tarihler += [str(r.get("son", r.get("SON")) or "")[:10] for r in satirlar]
+    tarihler = [t for t in tarihler if t]
+    aralik = f"  hareket aralığı: {min(tarihler)} → {max(tarihler)}" if tarihler else ""
+    print(f"\nBANKA HESABI KIRILIMI — {asof}{aralik}")
     print("Soru: cari rakamı bir BAKİYE mi? Borç ve alacak birlikte varsa evet.\n")
     print(f"{'hesap':16} {'adet':>6} {'cari borç':>16} {'cari alacak':>16} "
-          f"{'cari net':>15} {'GL net':>14}  ilk → son")
-    print("-" * 118)
+          f"{'cari net':>15} {'GL net':>14} tek?  banka adı")
+    print("-" * 132)
     t_borc = t_alacak = t_gl = 0.0
+    tek_sayi = 0
+    tek_tutar = 0.0
     for r in satirlar[:15]:
         kod = str(r.get("kod", r.get("KOD")) or "")
         adet = int(_f(r.get("adet", r.get("ADET"))))
         borc = _f(r.get("borc", r.get("BORC")))
         alacak = _f(r.get("alacak", r.get("ALACAK")))
         gl = gl_102.get(kod, 0.0)
-        kredi = int(_f(r.get("hesap_tip", r.get("HESAP_TIP")))) == 1
-        ilk = str(r.get("ilk", r.get("ILK")) or "")[:10]
-        son = str(r.get("son", r.get("SON")) or "")[:10]
+        ban = str(r.get("ban_ismi", r.get("BAN_ISMI")) or "")
+        # Kredi ayrımı programın kullandığı TEK kuralla aynı olsun (ban_hesap_tip tek
+        # başına bu kurulumda çalışmıyor: 300.02.* hesapları mevduat gibi görünüyor).
+        kredi = kredi_banka_mi({"ban_hesap_tip": r.get("hesap_tip", r.get("HESAP_TIP")),
+                                "kod": kod})
         t_borc += borc
         t_alacak += alacak
         if not kredi:
             t_gl += gl
         isaret = "*" if kredi else " "
+        # TEK YÖNLÜLÜK HESAP BAZINDA. Toplamda alacak dolu görünüp tek tek hesaplarda
+        # sıfır olabiliyor; toplam bunu maskeliyordu.
+        tek_yonlu = alacak < abs(borc) * 0.02 and abs(borc) > 0.005
+        if tek_yonlu:
+            tek_sayi += 1
+            tek_tutar += borc - alacak
         print(f"{kod:15}{isaret} {adet:>6} {tl(borc):>16} {tl(alacak):>16} "
-              f"{tl(borc - alacak):>15} {tl(gl):>14}  {ilk} → {son}")
-    print("-" * 118)
+              f"{tl(borc - alacak):>15} {tl(gl):>14} {'TEK ' if tek_yonlu else '    '} "
+              f"{ban[:34]}")
+    print("-" * 132)
     print(f"{'TOPLAM':16} {'':>6} {tl(t_borc):>16} {tl(t_alacak):>16} "
           f"{tl(t_borc - t_alacak):>15} {tl(t_gl):>14}")
 
     print("\nNASIL OKUNUR:")
-    if t_alacak < abs(t_borc) * 0.05:
-        print("  → Alacak tarafı neredeyse BOŞ: bu bir bakiye değil, tek yönlü kayıt.")
-        print("    Cari rakamı nakit mevcudu olarak KULLANILMAMALI, GL doğru kaynaktır.")
+    print("  * = kredi hesabı (nakit sayılmaz)   TEK = para girmiş ama hiç çıkmamış")
+    if tek_sayi:
+        print(f"  → {tek_sayi} hesap TEK YÖNLÜ, toplam {tl(tek_tutar)}.")
+        print("    Banka adında VADELİ / BLOKE / POS geçiyorsa rakam GERÇEKTİR (para")
+        print("    girer, çıkmaz). Geçmiyorsa transferin karşı ayağı kaydedilmemiş demektir.")
     else:
-        print("  → Borç ve alacak birlikte dolu: cari rakamı gerçek bir hareket bakiyesi.")
-        print("    GL ile aradaki fark muhasebeleşmemiş banka fişi demektir.")
+        print("  → Tek yönlü hesap yok: her hesapta para hem girmiş hem çıkmış.")
     print("  Kesin cevap: Mikro → Banka → Banka Hesap Durumu ekranındaki bakiyeyi")
     print("  yukarıdaki «cari net» ve «GL net» ile kıyaslayın; hangisine eşitse o doğru.")
 

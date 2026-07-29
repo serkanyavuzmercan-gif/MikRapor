@@ -82,6 +82,39 @@ def muh_sinifi(muh_kod: str) -> str:
     return ""
 
 
+def kredi_banka_mi(satir: dict) -> bool:
+    """
+    Bir banka kaydı KREDİ hesabı mı (yani nakit DEĞİL mi)?
+
+    TEK KURAL, TEK YER. Niyet `domain/gercek_durum_ayarlar.py` içinde yazılıydı —
+    «300.* ve ban_hesap_tip=1 nakitten hariç» — ama üç yerde üç farklı tamlıkta
+    uygulanmıştı: `_bakiye_caridan` üç testi de yapıyordu, `nakit_bakiye` ve akış
+    sorguları yalnız `ban_hesap_tip`'e bakıyordu.
+
+    Canlı kurulumda kredi hesaplarının `ban_hesap_tip`i 1 DEĞİL (300.02.* hesapları
+    mevduat gibi görünüyor). Sonuçları:
+      • `nakit_bakiye` 7 kredi hesabının net -3.744.328'ini NAKDE katıyordu. Tahmin
+        krediyi ayrıca taksit taksit modellediği için borç iki kez sayılıyordu.
+      • Akışta kredi hesabı «nakit» sayıldığı için 102→300 kredi ödemesi nakit↔nakit
+        İÇ TRANSFERİ olup tamamen eleniyordu (bkz. infra: _kredi_banka_sql).
+
+    `ban_muh_kod` kullanıcı tarafından atanır, o yüzden tek teste güvenilmez; üçü
+    birden sorulur. 300 = Banka Kredileri TDHP'de kanunla sabittir (kural 6'nın
+    yasakladığı şey iş akışı varsayımıdır, hesap planı kodu değil).
+    """
+    if to_int(satir.get("ban_hesap_tip", satir.get("BAN_HESAP_TIP"))) == 1:
+        return True
+    muh = str(
+        satir.get("muh_kod", satir.get("MUH_KOD"))
+        or satir.get("ban_muh_kod", satir.get("BAN_MUH_KOD"))
+        or ""
+    ).strip()
+    if muh_sinifi(muh) == "supplier":
+        return True
+    kod = str(satir.get("kod", satir.get("KOD")) or "").strip()
+    return muh.startswith("300") or kod.upper().startswith("300")
+
+
 def tr_buyuk(metin: str) -> str:
     """
     Türkçe büyük harf: 'i' → 'İ', 'ı' → 'I'.
