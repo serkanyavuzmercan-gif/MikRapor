@@ -278,6 +278,41 @@ class TestUiSmoke(unittest.TestCase):
             buyume_yuzde=2.0, marj_yuzde=20.0, sabit_gider=50000.0, ufuk_ay=6))
         self.assertIsNotNone(build_tahmin_widget(t, firma="Test A.Ş."))
 
+    def test_tahmin_once_normal_sonra_kotu(self) -> None:
+        """
+        Rapor kötü ihtimalle açılıyordu; işin normal seyrini görmeden felaket
+        senaryosu okumak yanlış sırayla düşündürüyor. Grafik artık İKİSİNDE de var.
+        """
+        import re
+
+        from domain.runway import RunwayTakvim, RunwayTakvimAy
+        from domain.tahmin import TahminVarsayim, build_tahmin
+        from ui.tahmin_view import build_tahmin_widget
+        t = build_tahmin(TahminVarsayim(
+            baslangic_ay="2026-08", baslangic_nakit=500000.0, baz_ciro=3000000.0,
+            buyume_yuzde=2.0, marj_yuzde=18.0, sabit_gider=400000.0, ufuk_ay=6))
+        rt = RunwayTakvim(aylar=[
+            RunwayTakvimAy(ay=f"2026-{m:02d}", giren=900000.0, cikan=700000.0,
+                           nakit=500000.0) for m in range(8, 12)])
+        w = build_tahmin_widget(t, firma="Test A.Ş.", runway=rt)
+        try:
+            metin = [lbl.text() for lbl in w.findChildren(QLabel)]
+            # Bölüm başlığı «— » ile devam eder; kart başlığı «  ·  » ile. İkisi de
+            # numaralı olduğu için ayrım buradan yapılır.
+            bolum = [m for m in metin if re.match(r"^[①②] .+ — ", m)]
+            self.assertEqual(len(bolum), 2)
+            self.assertTrue(bolum[0].startswith("① NORMAL BEKLENTİ"))
+            self.assertTrue(bolum[1].startswith("② EN KÖTÜ İHTİMAL"))
+            # Grafik iki senaryoda da var.
+            grafikler = [m for m in metin if "GRAFİĞİ" in m]
+            self.assertEqual(len(grafikler), 2)
+            self.assertTrue(any("normal beklenti" in g for g in grafikler))
+            self.assertTrue(any("en kötü ihtimal" in g for g in grafikler))
+            # «Gerçek durum ikisinin arasında olur» tavsiyesi kaldırıldı.
+            self.assertFalse(any("arasında" in m for m in metin))
+        finally:
+            w.deleteLater()
+
     def test_reel_deger_view(self) -> None:
         from domain.reel_deger import ReelDegerVarsayim, build_reel_deger_analizi
         from domain.tahsilat_alacak import AcikVadeParcasi, TahsilatAlacak

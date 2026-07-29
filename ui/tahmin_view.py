@@ -1,11 +1,15 @@
 """
 Tahmin — yerel Qt görünümü (ileriye dönük nakit tahmini).
 
-İki ihtimali sade Türkçe ile yan yana anlatır:
-  • EN KÖTÜ İHTİMAL — bugünkü açık alacak/borçlar; yeni satış varsayılmaz (vade takvimi).
+İki ihtimali sade Türkçe ile anlatır — ÖNCE BEKLENEN, sonra kötü:
   • NORMAL BEKLENTİ — her ay ortalama satış devam ederse (düzenlenebilir senaryo).
-Gerçek durum ikisinin arasında olur. Terimler bilinçli olarak Türkçe ve yalındır
-(runway / what-if gibi İngilizce ifadeler kullanılmaz).
+  • EN KÖTÜ İHTİMAL — bugünkü açık alacak/borçlar; yeni satış varsayılmaz (vade takvimi).
+
+Sıra bilinçli: kullanıcı önce işin normal seyrini görür, kötü ihtimal onun altında bir
+kontrol olarak durur. Tersi, raporu felaket senaryosuyla açmak demekti.
+
+Terimler bilinçli olarak Türkçe ve yalındır (runway / what-if gibi İngilizce ifadeler
+kullanılmaz).
 """
 
 from __future__ import annotations
@@ -96,24 +100,15 @@ def _iki_ihtimal_karti(rt: RunwayTakvim | None, t: Tahmin) -> QFrame:
         fl.addWidget(alt)
         return f
 
+    v.addWidget(_satir(
+        POZ, "#eef7f1", "#9cc9ac", "Normal beklenti",
+        "her ay ortalama satışın <u>devam ederse</u>",
+        _normal_ozet(t)))
     if rt is not None and rt.aylar:
         v.addWidget(_satir(
             NEG, "#fdf0f0", "#e79a9a", "En kötü ihtimal",
             "bugün elindeki alacak/borçlarla, <u>hiç yeni satış olmazsa</u>",
             _kotu_ozet(rt)))
-    v.addWidget(_satir(
-        POZ, "#eef7f1", "#9cc9ac", "Normal beklenti",
-        "her ay ortalama satışın <u>devam ederse</u>",
-        _normal_ozet(t)))
-
-    kapanis = QLabel(
-        "Gerçek durum çoğu zaman bu ikisinin <b>arasında</b> olur. "
-        "Kötü ihtimale hazırlıklı ol; normalde bundan iyi gidersin."
-    )
-    kapanis.setTextFormat(Qt.TextFormat.RichText)
-    kapanis.setWordWrap(True)
-    kapanis.setStyleSheet(f"color: {MUTED}; font-size: 12px; background: transparent;")
-    v.addWidget(kapanis)
 
     if rt is not None and rt.gider_eksik:
         uy = QLabel(
@@ -157,7 +152,7 @@ def _kotu_tablo(rt: RunwayTakvim) -> QFrame:
         "Girecek = müşterilerden açık alacaklar (vadesine göre). Vadesi geçmiş birikim tek "
         "aya yığılmaz, 3 aya yayılır. Bu tablo yeni satış saymaz — bu yüzden «Girecek» "
         "birkaç ay sonra biter; gerçek durum bundan iyi olur (bkz. «normal beklenti»).", FAINT)]
-    return _card("① EN KÖTÜ İHTİMAL  ·  ay ay nakit (yeni satış yok)", _ic(t, notlar))
+    return _card("② EN KÖTÜ İHTİMAL  ·  ay ay nakit (yeni satış yok)", _ic(t, notlar))
 
 
 def _tablo_panel(t: Tahmin) -> QFrame:
@@ -183,15 +178,26 @@ def _tablo_panel(t: Tahmin) -> QFrame:
         "İşletme çıkışı = satılan malın maliyeti + aylık sabit gider (yeni mal alımı bunun içinde). "
         "Kart borcu, bugünkü açık kart bakiyesinin ayrı nakit ödemesidir; kârı değil nakdi etkiler. "
         "Aylık Fark = Girecek − İşletme çıkışı − Kart borcu. Kalan Nakit = önceki ay + aylık fark.", FAINT)]
-    return _card("② NORMAL BEKLENTİ  ·  ay ay tahmin (satış devam eder)", _ic(tr, notlar))
+    return _card("① NORMAL BEKLENTİ  ·  ay ay tahmin (satış devam eder)", _ic(tr, notlar))
+
+
+# Çubuk rengi TEK yerde: efsane ile çubuk farklı renkteydi (efsane teal, çubuk mavi).
+_CUBUK_RENK = "#bfdbfe"
 
 
 class _TahminChart(QWidget):
-    """Aylık ciro (çubuk) + nakit (çizgi) grafiği — QPainter."""
+    """
+    Aylık tutar (çubuk) + kümülatif nakit (çizgi) grafiği — QPainter.
 
-    def __init__(self, t: Tahmin, parent=None) -> None:
+    Veri dışarıdan (ay, çubuk, çizgi) üçlüleri olarak gelir; böylece AYNI grafik hem
+    normal beklenti (ciro) hem en kötü ihtimal (girecek) için kullanılabiliyor.
+    Kullanıcı «grafiği her iki ihtimale de koy» dedi — haklıydı, kötü ihtimalin gidişatı
+    tablodan okunmak zorunda kalıyordu.
+    """
+
+    def __init__(self, aylar: list[tuple[str, float, float]], parent=None) -> None:
         super().__init__(parent)
-        self._aylar = t.aylar
+        self._aylar = aylar
         self.setMinimumHeight(230)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setStyleSheet("background: transparent;")
@@ -207,8 +213,8 @@ class _TahminChart(QWidget):
             p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "Tahmin yok")
             p.end()
             return
-        ciro = [a.ciro for a in self._aylar]
-        nakit = [a.nakit for a in self._aylar]
+        ciro = [satir[1] for satir in self._aylar]
+        nakit = [satir[2] for satir in self._aylar]
         min_v = min(min(ciro, default=0.0), min(nakit, default=0.0), 0.0)
         max_v = max(max(ciro, default=0.0), max(nakit, default=0.0), 0.0)
         span = (max_v - min_v) or 1.0
@@ -227,7 +233,7 @@ class _TahminChart(QWidget):
             cx = sol + grup_w * i + grup_w / 2
             vy = y_of(c)
             p.fillRect(QRectF(cx - bar_w / 2, min(vy, zy), bar_w, max(1.0, abs(vy - zy))),
-                       QColor("#bfdbfe"))
+                       QColor(_CUBUK_RENK))
         # nakit çizgisi
         p.setPen(QPen(QColor(ACCENT), 2))
         pts = []
@@ -238,28 +244,29 @@ class _TahminChart(QWidget):
             p.drawLine(int(pts[i - 1][0]), int(pts[i - 1][1]), int(pts[i][0]), int(pts[i][1]))
         p.setPen(QPen(QColor(MUTED)))
         p.setFont(QFont("Segoe UI", 7))
-        for i, a in enumerate(self._aylar):
-            ay_kisa = a.ay[2:] if len(a.ay) >= 7 else a.ay
+        for i, (ay, *_) in enumerate(self._aylar):
+            ay_kisa = ay[2:] if len(ay) >= 7 else ay
             p.drawText(QRectF(sol + grup_w * i, h - alt + 4, grup_w, alt - 6),
                        Qt.AlignmentFlag.AlignCenter, ay_kisa)
         p.end()
 
 
-def _grafik_panel(t: Tahmin) -> QFrame:
+def _grafik_panel(aylar: list[tuple[str, float, float]], *,
+                  baslik: str, cubuk_ad: str) -> QFrame:
     inner = QWidget()
     inner.setStyleSheet("background: transparent;")
     v = QVBoxLayout(inner)
     v.setContentsMargins(0, 0, 0, 0)
     v.setSpacing(6)
     lej = QLabel(
-        f"<span style='color:#99f6e4;'>■</span> Aylık ciro &nbsp;&nbsp;"
+        f"<span style='color:{_CUBUK_RENK};'>■</span> {cubuk_ad} &nbsp;&nbsp;"
         f"<span style='color:{ACCENT};'>▬</span> Nakit (birikimli)"
     )
     lej.setStyleSheet("font-size: 11px; background: transparent;")
     lej.setTextFormat(Qt.TextFormat.RichText)
     v.addWidget(lej)
-    v.addWidget(_TahminChart(t))
-    return _card("CİRO VE NAKİT GRAFİĞİ  ·  normal beklenti", inner)
+    v.addWidget(_TahminChart(aylar))
+    return _card(baslik, inner)
 
 
 def _bolum_basligi(metin: str, renk: str) -> QLabel:
@@ -288,15 +295,11 @@ def build_tahmin_widget(
     # 0) "Bu iki tablo ne?" — sade açıklama kartı (en tepede)
     root.addWidget(_iki_ihtimal_karti(runway, t))
 
-    # 1) En kötü ihtimal tablosu (vade takvimi)
-    if var_runway:
-        root.addWidget(_bolum_basligi(
-            "① EN KÖTÜ İHTİMAL — hiç yeni satış olmazsa", NEG))
-        root.addWidget(_kotu_tablo(runway))
-
-    # 2) Normal beklenti (düzenlenebilir senaryo)
+    # 1) ÖNCE NORMAL BEKLENTİ. Rapor kötü ihtimalle açılıyordu; işin normal seyrini
+    #    görmeden felaket senaryosu okumak yanlış sırayla düşündürüyor. Kötü ihtimal
+    #    altta, bir kontrol olarak durur.
     root.addWidget(_bolum_basligi(
-        "② NORMAL BEKLENTİ — her ay ortalama satış devam ederse", POZ))
+        "① NORMAL BEKLENTİ — her ay ortalama satış devam ederse", POZ))
 
     v = t.varsayim
     firma_str = f" &nbsp;·&nbsp; <b>{firma}</b>" if firma else ""
@@ -343,7 +346,21 @@ def build_tahmin_widget(
         )
         root.addWidget(uyari)
 
-    root.addWidget(_grafik_panel(t))
+    root.addWidget(_grafik_panel(
+        [(a.ay, a.ciro, a.nakit) for a in t.aylar],
+        baslik="CİRO VE NAKİT GRAFİĞİ  ·  normal beklenti",
+        cubuk_ad="Aylık ciro"))
     root.addWidget(_tablo_panel(t))
+
+    # 2) En kötü ihtimal — kendi grafiği ve tablosuyla, aynı okuma düzeninde.
+    if var_runway:
+        root.addWidget(_bolum_basligi(
+            "② EN KÖTÜ İHTİMAL — hiç yeni satış olmazsa", NEG))
+        root.addWidget(_grafik_panel(
+            [(a.ay, a.giren, a.nakit) for a in runway.aylar],
+            baslik="GİRECEK VE NAKİT GRAFİĞİ  ·  en kötü ihtimal",
+            cubuk_ad="Aylık girecek"))
+        root.addWidget(_kotu_tablo(runway))
+
     root.addStretch(1)
     return content
