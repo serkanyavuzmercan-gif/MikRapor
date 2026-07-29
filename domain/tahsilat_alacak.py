@@ -86,6 +86,11 @@ class AcikVadeParcasi:
     sinif: str          # customer | supplier
     vade_gun: int       # asof'tan itibaren; gecikmişse 0 (bugün tahsil/ödenmesi beklenir)
     tutar: float
+    # Vade maliyetini hangi carinin büyüttüğünü söyleyebilmek için (kural 3c: rakamın
+    # arkası bir tık uzakta olmalı). Sıralama bakiyeye değil ERİMEYE göre yapılır,
+    # o yüzden «en çok alacak» listesinden farklı bir sıra çıkar.
+    kod: str = ""
+    unvan: str = ""
 
 
 @dataclass
@@ -313,6 +318,7 @@ def build_tahsilat_alacak(
             # kaybı ayrı bir gecikme/risk analizidir. Burada yalnız ileriye dönük vade etkisi var.
             ta.acik_vade_parcalari.append(AcikVadeParcasi(
                 sinif=sinif, vade_gun=max(0, -gecikme_gun), tutar=tutar,
+                kod=kod, unvan=unvan or kod,
             ))
 
         ozet = CariOzet(kod=kod, unvan=unvan or kod, sinif=sinif, net=net, gecikmis=gecikmis)

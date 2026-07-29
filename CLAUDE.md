@@ -170,6 +170,14 @@ dolar rakamlarını TL sandırıyordu.)
 ## 5. Aynı rapor, tek isim
 
 Sekme adı = PDF başlığı = sayfa başlığı = dosya adı. Sekmeler arasında veri tekrarı yok.
+
+Reel Değer'deki cari listesi bu yüzden **ERİMEYE göre sıralanır, bakiyeye göre değil**:
+bakiye sırası Alacak & Borç'taki «en çok alacak»ın tekrarı olurdu. Erime = tutar ×
+bekleme, o yüzden sıra gerçekten farklı çıkar — 1M'lik 15 günlük müşteri, 500K'lık
+120 günlük müşteriden AZ eritir. Liste, «vade maliyeti 3,5M» rakamının arkasını
+gösterir (kural 3c). Vade makası ise `vade_kaynagi == "tarih"` iken (Mikro'da vade
+kaydı yok, günler evrak tarihinden türetilmiş) `—` gösterir; tahminî günden makas
+üretmek kural 2 ihlalidir.
 Her tabloda satır vurgusu (row hover) standarttır, ayrıca istenmesi gerekmez.
 
 **Aynı şeye tek kelime: «MUKAYESE».** «Kıyaslama» ve «karşılaştırma» eş anlamlıydı ve

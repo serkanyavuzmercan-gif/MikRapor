@@ -123,6 +123,39 @@ class TestPdfSmoke(unittest.TestCase):
             export_tahmin_pdf(t, out, firma="Test Ticaret A.Ş.")
             _pdf_dogrula(self, out)
 
+    def test_reel_deger_pdf(self) -> None:
+        from domain.reel_deger import ReelDegerVarsayim, build_reel_deger_analizi
+        from domain.tahsilat_alacak import AcikVadeParcasi, TahsilatAlacak
+        from ui.reel_deger_pdf import export_reel_deger_pdf
+        ta = TahsilatAlacak(
+            bas="2026-01-01", bit="2026-07-27",
+            acik_vade_parcalari=[
+                AcikVadeParcasi("customer", 120, 500_000, "M1", "UZUN VADELİ MÜŞTERİ"),
+                AcikVadeParcasi("customer", 15, 1_000_000, "M2", "HIZLI ÖDEYEN"),
+                AcikVadeParcasi("supplier", 30, 700_000, "S1", "TEDARİKÇİ"),
+            ],
+        )
+        ta.vade_kaynagi = "vade"
+        a = build_reel_deger_analizi(ta, ReelDegerVarsayim(yillik_iskonto_yuzde=45))
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "reel_deger.pdf"
+            export_reel_deger_pdf(a, out, bas=ta.bas, bit=ta.bit, firma="Test Ticaret A.Ş.")
+            _pdf_dogrula(self, out)
+
+    def test_reel_deger_pdf_vade_olculemezse(self) -> None:
+        """Makas gösterilmediğinde de PDF üretilmeli (kural 2: sebebi yazılır)."""
+        from domain.reel_deger import ReelDegerVarsayim, build_reel_deger_analizi
+        from domain.tahsilat_alacak import AcikVadeParcasi, TahsilatAlacak
+        from ui.reel_deger_pdf import export_reel_deger_pdf
+        ta = TahsilatAlacak(bas="2026-01-01", bit="2026-07-27", acik_vade_parcalari=[
+            AcikVadeParcasi("customer", 90, 400_000, "M1", "MÜŞTERİ")])
+        ta.vade_kaynagi = "tarih"
+        a = build_reel_deger_analizi(ta, ReelDegerVarsayim(yillik_iskonto_yuzde=45))
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "reel_deger_tahmini.pdf"
+            export_reel_deger_pdf(a, out, bas=ta.bas, bit=ta.bit)
+            _pdf_dogrula(self, out)
+
     def test_trend_pdf(self) -> None:
         from domain.gercek_durum import AyTrend
         from domain.trend import build_trend

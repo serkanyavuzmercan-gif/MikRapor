@@ -7,9 +7,19 @@ değişkenin üçü yalnız en alttaki kart tablosunu besliyordu ve panel bunu s
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from domain.mizan_bilanco import tl
 from domain.reel_deger import (
@@ -22,8 +32,9 @@ from domain.tahsilat_alacak import TahsilatAlacak, build_tahsilat_alacak
 from infra.config import MikroConfig
 from infra.mikro_fetch import fetch_acik_kalemler, fetch_cari_vade_gun
 from infra.mukayese_fetch import yil_client
-from ui.bilesenler import yuzde_spin
+from ui.bilesenler import varsayilan_kayit_yolu, yuzde_spin
 from ui.rapor_tab import RaporTab, firma_getir
+from ui.reel_deger_pdf import export_reel_deger_pdf
 from ui.reel_deger_view import build_reel_deger_widget
 from ui.worker import IsFonksiyonu
 
@@ -41,6 +52,7 @@ class ReelDegerTab(RaporTab):
     GETIR_ETIKET = "Reel Değer Analizi"
     BASLARKEN = "Açık alacak ve borç kalemleri çekiliyor…"
     HERO_ASSET = "empty-tahsilat.png"
+    PDF_DESTEK = True
 
     _ta: TahsilatAlacak | None = None
     _analiz: ReelDegerAnalizi | None = None
@@ -133,6 +145,22 @@ class ReelDegerTab(RaporTab):
         self._ta = sonuc["ta"]
         self._firma = sonuc["firma"]
         self._analizi_yenile()
+
+    def _on_pdf(self) -> None:
+        if self._analiz is None or self._ta is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "PDF Kaydet",
+            varsayilan_kayit_yolu(f"{self._slug}_{self._ta.bit}.pdf"), "PDF (*.pdf)")
+        if not path:
+            return
+        try:
+            export_reel_deger_pdf(
+                self._analiz, path, bas=self._ta.bas, bit=self._ta.bit, firma=self._firma)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "PDF Hatası", str(exc))
+            return
+        self._durum(f"PDF kaydedildi: {Path(path).name}", "iyi")
 
     def _csv_dosya_adi(self) -> str:
         if self._ta is None:

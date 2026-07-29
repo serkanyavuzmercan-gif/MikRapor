@@ -37,10 +37,29 @@ class DegerOzet:
 
 
 @dataclass
+class CariErime:
+    """Vade maliyetini/avantajını en çok büyüten cari — sıra BAKİYEYE değil erimeye göre."""
+    kod: str
+    unvan: str
+    nominal: float
+    agirlikli_gun: float
+    vade_etkisi: float
+
+
+# Başabaş vade farkı merdiveninde gösterilen vadeler (gün).
+BASABAS_GUNLER: tuple[int, ...] = (30, 60, 90, 120, 180)
+
+
+@dataclass
 class ReelDegerAnalizi:
     varsayim: ReelDegerVarsayim = field(default_factory=ReelDegerVarsayim)
     alacak: DegerOzet = field(default_factory=DegerOzet)
     borc: DegerOzet = field(default_factory=DegerOzet)
+    # Vade günleri Mikro'da vade kolonu boşsa evrak tarihinden türetiliyor; o hâlde
+    # gün rakamları tahminîdir ve makas gösterilmez (kural 2).
+    vade_kaynagi: str = "vade"
+    top_alacak_erime: list[CariErime] = field(default_factory=list)
+    top_borc_erime: list[CariErime] = field(default_factory=list)
 
     @property
     def nominal_net_pozisyon(self) -> float:
@@ -54,6 +73,53 @@ class ReelDegerAnalizi:
     def net_vade_etkisi(self) -> float:
         """Vade nedeniyle net ekonomik pozisyondaki değişim (reel − nominal)."""
         return self.reel_net_pozisyon - self.nominal_net_pozisyon
+
+    # ---- Vade makası ----------------------------------------------------------
+    @property
+    def gun_olculdu(self) -> bool:
+        """Vade günleri gerçek vade kaydından mı geliyor (yoksa makas gösterilmez)."""
+        return self.vade_kaynagi in ("vade", "plan")
+
+    @property
+    def makas_gun(self) -> float:
+        """Tahsil gününden ödeme günü çıkarılınca kendi kesenden finanse edilen gün."""
+        return self.alacak.agirlikli_gun - self.borc.agirlikli_gun
+
+    @property
+    def makas_var(self) -> bool:
+        return (self.gun_olculdu and abs(self.makas_gun) >= 0.5
+                and self.alacak.nominal > 0.005 and self.borc.nominal > 0.005)
+
+    @property
+    def makas_finanse_edilen(self) -> float:
+        """Makas boyunca finanse edilen tutar — iki tarafın örtüşmeyen kısmı."""
+        return min(self.alacak.nominal, self.borc.nominal) if self.makas_var else 0.0
+
+    @property
+    def makas_maliyeti(self) -> float:
+        """Makasın parasal karşılığı: finanse edilen tutarın makas günündeki iskontosu."""
+        if not self.makas_var:
+            return 0.0
+        tutar = self.makas_finanse_edilen
+        gun = abs(self.makas_gun)
+        return abs(tutar - bugunku_deger(tutar, gun, self.varsayim.yillik_iskonto_yuzde))
+
+    @property
+    def makas_lehte(self) -> bool:
+        """Tedarikçi bizi finanse ediyorsa (ödeme günü tahsil gününden uzunsa) lehte."""
+        return self.makas_gun < 0
+
+    # ---- Başabaş vade farkı ---------------------------------------------------
+    @property
+    def basabas_kendi_vaden(self) -> float:
+        """Kendi ağırlıklı vadesinde başabaş kalmak için gereken fiyat farkı (%)."""
+        return basabas_vade_farki(
+            self.alacak.agirlikli_gun, self.varsayim.yillik_iskonto_yuzde)
+
+    @property
+    def basabas_merdiven(self) -> list[tuple[int, float]]:
+        return [(g, basabas_vade_farki(g, self.varsayim.yillik_iskonto_yuzde))
+                for g in BASABAS_GUNLER]
 
 
 def _oran(yuzde: float) -> float:
@@ -70,6 +136,46 @@ def bugunku_deger(tutar: float, gun: float, yillik_iskonto_yuzde: float) -> floa
     if gun < 0.005 or oran < 0.0000001:
         return nominal
     return nominal / ((1.0 + oran) ** (gun / 365.0))
+
+
+def basabas_vade_farki(gun: float, yillik_iskonto_yuzde: float) -> float:
+    """
+    Vadeli satarken peşin fiyatın kaç yüzde üstüne çıkılmalı ki başabaş kalınsın.
+
+    İskonto oranı soyut kalıyor: «%45» rakamı sahibe bir şey söylemiyor. Somut hâli
+    şudur — 90 gün vadeli satıyorsan peşin fiyatın %9,6 üstüne çıkmazsan, farkı
+    kendi cebinden ödüyorsun. Bu, iskontonun tam tersi işlem (bugünkü değeri
+    nominale çıkaran çarpan), o yüzden 1/PV değil (1+oran)^(gün/365).
+    """
+    gun = max(0.0, float(gun))
+    oran = _oran(yillik_iskonto_yuzde)
+    if gun < 0.005 or oran < 0.0000001:
+        return 0.0
+    return ((1.0 + oran) ** (gun / 365.0) - 1.0) * 100.0
+
+
+def _cari_erimeleri(parcalar: list, sinif: str, yillik_iskonto_yuzde: float,
+                    top_n: int = 10) -> list[CariErime]:
+    """Cari bazında vade etkisi — en çok eriteni öne alır (bakiye sırası DEĞİL)."""
+    kova: dict[str, dict] = {}
+    for p in parcalar:
+        if getattr(p, "sinif", "") != sinif or p.tutar <= 0.005:
+            continue
+        kod = getattr(p, "kod", "") or ""
+        d = kova.setdefault(kod, {"unvan": getattr(p, "unvan", "") or kod,
+                                  "nominal": 0.0, "pv": 0.0, "gun_agirlik": 0.0})
+        d["nominal"] += p.tutar
+        d["pv"] += bugunku_deger(p.tutar, p.vade_gun, yillik_iskonto_yuzde)
+        d["gun_agirlik"] += max(0, p.vade_gun) * p.tutar
+    out = [
+        CariErime(kod=kod, unvan=d["unvan"], nominal=d["nominal"],
+                  agirlikli_gun=(d["gun_agirlik"] / d["nominal"]) if d["nominal"] > 0.005 else 0.0,
+                  vade_etkisi=d["nominal"] - d["pv"])
+        for kod, d in kova.items()
+    ]
+    out = [c for c in out if c.vade_etkisi > 0.005]
+    out.sort(key=lambda c: c.vade_etkisi, reverse=True)
+    return out[:top_n]
 
 
 def _deger_ozeti(parcalar: list, sinif: str, yillik_iskonto_yuzde: float) -> DegerOzet:
@@ -90,10 +196,14 @@ def _deger_ozeti(parcalar: list, sinif: str, yillik_iskonto_yuzde: float) -> Deg
 def build_reel_deger_analizi(ta: TahsilatAlacak, v: ReelDegerVarsayim) -> ReelDegerAnalizi:
     """Açık cari kalemlerden vade etkisi analizini kurar."""
     parcalar = getattr(ta, "acik_vade_parcalari", []) or []
+    o = v.yillik_iskonto_yuzde
     return ReelDegerAnalizi(
         varsayim=v,
-        alacak=_deger_ozeti(parcalar, "customer", v.yillik_iskonto_yuzde),
-        borc=_deger_ozeti(parcalar, "supplier", v.yillik_iskonto_yuzde),
+        alacak=_deger_ozeti(parcalar, "customer", o),
+        borc=_deger_ozeti(parcalar, "supplier", o),
+        vade_kaynagi=getattr(ta, "vade_kaynagi", "vade") or "vade",
+        top_alacak_erime=_cari_erimeleri(parcalar, "customer", o),
+        top_borc_erime=_cari_erimeleri(parcalar, "supplier", o),
     )
 
 
@@ -114,4 +224,20 @@ def reel_deger_csv(a: ReelDegerAnalizi) -> str:
         f"NET;Reel pozisyon;{s(a.reel_net_pozisyon)}",
         f"NET;Vade etkisi;{s(a.net_vade_etkisi)}",
     ])
+    if a.makas_var:
+        out.extend([
+            f"VADE MAKASI;Müşteriden tahsil (gün);{s(a.alacak.agirlikli_gun)}",
+            f"VADE MAKASI;Tedarikçiye ödeme (gün);{s(a.borc.agirlikli_gun)}",
+            f"VADE MAKASI;Makas (gün);{s(a.makas_gun)}",
+            f"VADE MAKASI;Finanse edilen tutar;{s(a.makas_finanse_edilen)}",
+            f"VADE MAKASI;{'Avantaj' if a.makas_lehte else 'Maliyet'};{s(a.makas_maliyeti)}",
+        ])
+    elif not a.gun_olculdu:
+        out.append("VADE MAKASI;Ölçülemedi;Mikro'da vade kaydı yok, günler tahminî")
+    out.append(f"BAŞABAŞ VADE FARKI;Kendi ağırlıklı vadende (%);{s(a.basabas_kendi_vaden)}")
+    out.extend(f"BAŞABAŞ VADE FARKI;{g} gün (%);{s(y)}" for g, y in a.basabas_merdiven)
+    out.extend(
+        f"EN ÇOK ERİTEN MÜŞTERİ;{c.unvan};{s(c.vade_etkisi)}" for c in a.top_alacak_erime)
+    out.extend(
+        f"EN ÇOK KAZANDIRAN SATICI;{c.unvan};{s(c.vade_etkisi)}" for c in a.top_borc_erime)
     return "\r\n".join(out)

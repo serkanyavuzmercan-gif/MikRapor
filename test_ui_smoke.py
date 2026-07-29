@@ -378,6 +378,30 @@ class TestUiSmoke(unittest.TestCase):
         a = build_reel_deger_analizi(ta, ReelDegerVarsayim(yillik_iskonto_yuzde=45))
         self.assertIsNotNone(build_reel_deger_widget(a, bas=ta.bas, bit=ta.bit, firma="Test A.Ş."))
 
+    def test_reel_deger_view_makas_basabas_ve_cari_tablolari(self) -> None:
+        """Sekmenin boş kalan alt yarısına eklenen bloklar kurulabiliyor mu."""
+        from domain.reel_deger import ReelDegerVarsayim, build_reel_deger_analizi
+        from domain.tahsilat_alacak import AcikVadeParcasi, TahsilatAlacak
+        from ui.reel_deger_view import build_reel_deger_widget
+        ta = TahsilatAlacak(
+            bas="2026-01-01", bit="2026-07-27",
+            acik_vade_parcalari=[
+                AcikVadeParcasi("customer", 120, 500_000, "M1", "UZUN VADELİ MÜŞTERİ"),
+                AcikVadeParcasi("customer", 15, 1_000_000, "M2", "HIZLI ÖDEYEN"),
+                AcikVadeParcasi("supplier", 30, 700_000, "S1", "TEDARİKÇİ"),
+            ],
+        )
+        ta.vade_kaynagi = "vade"
+        a = build_reel_deger_analizi(ta, ReelDegerVarsayim(yillik_iskonto_yuzde=45))
+        self.assertTrue(a.makas_var)
+        self.assertTrue(a.top_alacak_erime)
+        self.assertIsNotNone(build_reel_deger_widget(a, bas=ta.bas, bit=ta.bit, firma="Test A.Ş."))
+        # Vade ölçülemediğinde de çökmeden kurulmalı (makas «—» olur)
+        ta.vade_kaynagi = "tarih"
+        a2 = build_reel_deger_analizi(ta, ReelDegerVarsayim(yillik_iskonto_yuzde=45))
+        self.assertFalse(a2.makas_var)
+        self.assertIsNotNone(build_reel_deger_widget(a2, bas=ta.bas, bit=ta.bit))
+
     def test_trend_view(self) -> None:
         from domain.gercek_durum import AyTrend
         from domain.mizan_bilanco import build_bilanco

@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from domain.mizan_bilanco import tl
+from domain.ortak import tr_sayi
 from domain.reel_deger import DegerOzet, ReelDegerAnalizi
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _fit_height, _kpi_card
 from ui.gercek_durum_view import NEG, POZ, _agac, _c, _card, _ic, _tsatir
@@ -30,6 +31,105 @@ def _deger_panel(baslik: str, o: DegerOzet, *, alacak: bool) -> QFrame:
         if alacak else
         "Ödeme vadesi uzadıkça, aynı nominal borcun bugünkü ekonomik yükü azalır."
     )
+    return _card(baslik, _ic(t, [(aciklama, FAINT)]))
+
+
+def _yuzde(v: float) -> str:
+    return f"%{tr_sayi(v, 1)}"
+
+
+def _makas_panel(a: ReelDegerAnalizi) -> QFrame:
+    """
+    VADE MAKASI — sahibin en çok işine yarayan tek rakam.
+
+    Alacak ve borç toplamlarına bakıp «pozisyonum artı» diyen firma, aradaki GÜN
+    makası yüzünden nakitte boğuluyor olabilir: 78 günde tahsil edip 31 günde ödüyorsan
+    aradaki 47 günü kendi kesenden finanse ediyorsun. İki ağırlıklı vade zaten
+    hesaplanıyordu, yan yana konmuyordu.
+    """
+    t = _agac(2, [(1, 145)])
+    _tsatir(t, [_c("Müşteriden tahsil (ağırlıklı)"), _c(_gun(a.alacak.agirlikli_gun), sag=True)])
+    _tsatir(t, [_c("Tedarikçiye ödeme (ağırlıklı)"), _c(_gun(a.borc.agirlikli_gun), sag=True)])
+    if a.makas_var:
+        renk = POZ if a.makas_lehte else NEG
+        _tsatir(t, [_c("Makas", kalin=True),
+                    _c(_gun(abs(a.makas_gun)), renk=renk, kalin=True, sag=True)])
+        _tsatir(t, [_c("Yıllık karşılığı", kalin=True),
+                    _c(tl(a.makas_maliyeti), renk=renk, kalin=True, sag=True)])
+    else:
+        _tsatir(t, [_c("Makas", kalin=True), _c("—", renk=FAINT, kalin=True, sag=True)])
+    _fit_height(t)
+
+    if not a.gun_olculdu:
+        # Kural 2: güvenilmez veri gösterilmez, sebebi rakamın yanında söylenir.
+        notlar = [("Mikro'da vade kaydı bulunmadığı için gün rakamları evrak tarihinden "
+                   "türetildi — makas bu veriyle güvenilir değil, gösterilmiyor.", FAINT)]
+    elif not a.makas_var:
+        notlar = [("Makas hesaplanabilmesi için hem açık alacak hem açık borç gerekiyor.",
+                   FAINT)]
+    elif a.makas_lehte:
+        notlar = [(f"Tedarikçin seni <b>{_gun(abs(a.makas_gun))}</b> finanse ediyor: mala "
+                   f"ödeme yapmadan önce parasını tahsil ediyorsun. Bu, {tl(a.makas_maliyeti)} "
+                   "tutarında bir finansman avantajı.", POZ)]
+    else:
+        notlar = [(f"Bu <b>{_gun(a.makas_gun)}</b> boyunca ticareti kendi kesenden finanse "
+                   f"ediyorsun — yılda yaklaşık <b>{tl(a.makas_maliyeti)}</b>. Tahsilatı "
+                   "öne çekmek ya da satıcı vadesini uzatmak doğrudan bu rakamı düşürür.",
+                   NEG)]
+    return _card("③ VADE MAKASI  ·  kaç gün kendi kesenden finanse ediyorsun", _ic(t, notlar))
+
+
+def _basabas_panel(a: ReelDegerAnalizi) -> QFrame:
+    """
+    Başabaş vade farkı — iskonto oranını tavsiyeye çevirir.
+
+    «%45» rakamı sahibe bir şey söylemiyor. Somut hâli: 90 gün vadeli satıyorsan peşin
+    fiyatın %9,6 üstüne çıkmazsan farkı kendi cebinden ödüyorsun.
+    """
+    t = _agac(2, [(1, 145)])
+    for g, y in a.basabas_merdiven:
+        _tsatir(t, [_c(f"{g} gün vadeli satış"), _c(_yuzde(y), kalin=True, sag=True)])
+    _fit_height(t)
+    kendi = a.basabas_kendi_vaden
+    if a.alacak.agirlikli_gun >= 0.5 and kendi > 0.005:
+        notlar = [(f"Senin ağırlıklı vaden <b>{_gun(a.alacak.agirlikli_gun)}</b> — vadeli "
+                   f"fiyatın peşin fiyatın <b>{_yuzde(kendi)}</b> üstünde değilse, vadeyi "
+                   "sen finanse ediyorsun.", NEG)]
+    else:
+        notlar = [("Açık vadeli alacak olmadığı için kendi vadene göre bir eşik "
+                   "hesaplanmadı.", FAINT)]
+    return _card("④ VADELİ SATIŞTA BAŞABAŞ FİYAT FARKI", _ic(t, notlar))
+
+
+def _erime_tablo(kayitlar: list, *, alacak: bool) -> QFrame:
+    """
+    Vade etkisini en çok büyüten cariler — kural 3c: rakamın arkası bir tık uzakta.
+
+    «Vade maliyeti 3,5M» diye bir rakam vardı ve arkasında gösterilecek hiçbir şey yoktu.
+    Sıra BAKİYEYE değil ERİMEYE göre (tutar × bekleme), o yüzden Alacak & Borç'taki
+    «en çok alacak» listesinin tekrarı değil: hızlı ödeyen büyük müşteri burada altta.
+    """
+    t = _agac(4, [(1, 118), (2, 78), (3, 118)])
+    _tsatir(t, [_c("Cari", renk=MUTED, kalin=True),
+                _c("Nominal", renk=MUTED, kalin=True, sag=True),
+                _c("Vade", renk=MUTED, kalin=True, sag=True),
+                _c("Vade maliyeti" if alacak else "Vade avantajı",
+                   renk=MUTED, kalin=True, sag=True)])
+    for c in kayitlar:
+        _tsatir(t, [_c(c.unvan),
+                    _c(tl(c.nominal), sag=True),
+                    _c(_gun(c.agirlikli_gun), sag=True),
+                    _c(tl(c.vade_etkisi), renk=NEG if alacak else POZ, kalin=True, sag=True)])
+    _fit_height(t)
+    aciklama = (
+        "Sıra bakiyeye değil erimeye göre: büyük ama hızlı ödeyen müşteri, küçük ama "
+        "uzun vadeli müşteriden daha az eritir. Vade farkı konuşulacak ilk adresler "
+        "listenin başındakiler."
+        if alacak else
+        "Uzun vadeli satıcı lehine çalışır: ödemeyi geciktikçe borcun bugünkü yükü azalır."
+    )
+    baslik = ("⑤ VADE MALİYETİNİ EN ÇOK BÜYÜTEN MÜŞTERİLER" if alacak
+              else "⑥ EN ÇOK VADE AVANTAJI SAĞLAYAN SATICILAR")
     return _card(baslik, _ic(t, [(aciklama, FAINT)]))
 
 
@@ -107,8 +207,20 @@ def build_reel_deger_widget(a: ReelDegerAnalizi, *, bas: str, bit: str, firma: s
 
     row = QHBoxLayout()
     row.setSpacing(20)
-    row.addWidget(_deger_panel("ALACAKLARIN REEL DEĞERİ", a.alacak, alacak=True), 1)
-    row.addWidget(_deger_panel("BORÇLARIN REEL DEĞERİ", a.borc, alacak=False), 1)
+    row.addWidget(_deger_panel("① ALACAKLARIN REEL DEĞERİ", a.alacak, alacak=True), 1)
+    row.addWidget(_deger_panel("② BORÇLARIN REEL DEĞERİ", a.borc, alacak=False), 1)
     root.addLayout(row)
+
+    row2 = QHBoxLayout()
+    row2.setSpacing(20)
+    row2.addWidget(_makas_panel(a), 1)
+    row2.addWidget(_basabas_panel(a), 1)
+    root.addLayout(row2)
+
+    if a.top_alacak_erime:
+        root.addWidget(_erime_tablo(a.top_alacak_erime, alacak=True))
+    if a.top_borc_erime:
+        root.addWidget(_erime_tablo(a.top_borc_erime, alacak=False))
+
     root.addStretch(1)
     return content
