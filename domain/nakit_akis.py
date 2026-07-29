@@ -204,6 +204,37 @@ def nakit_gl_ozetten(bakiye_ozet_rows: list[dict] | None) -> float:
     return total
 
 
+NAKIT_KAYNAK_NOTU = {
+    "gl": "",
+    "cari": ("GL nakit hesapları (100/101/102/103/108) boş okundu; başlangıç nakdi "
+             "banka/kasa cari hareketlerinden alındı. Bu kaynak döviz kurundan "
+             "şişebiliyor — rakamı Mikro'daki kasa/banka bakiyesiyle karşılaştırın."),
+    "yok": ("Başlangıç nakdi ölçülemedi: hem GL nakit hesapları hem banka/kasa cari "
+            "hareketleri boş okundu. Projeksiyon 0 nakitle başlıyor — soldaki "
+            "«Bugünkü nakit» alanına kendiniz yazabilirsiniz."),
+}
+
+
+def baslangic_nakit_sec(gl_nakit: float | None, cari_nakit: float) -> tuple[float, str]:
+    """
+    Başlangıç nakdini seç ve HANGİ KAYNAKTAN geldiğini söyle → (tutar, kaynak).
+
+    Eskiden yalnız MikroAPIError yakalanıyordu: GL okunup 0 dönerse (kurulumda nakit
+    başka hesap kodlarında tutuluyorsa olur — kural 6) o 0 sessizce başlangıç nakdi
+    oluyor, cari yedeğe hiç düşülmüyor ve kullanıcıya sebep söylenmiyordu. Projeksiyonun
+    tamamı bu rakama dayandığı için sessiz 0 en pahalı hatalardan biri.
+
+    GL tercih edilir (Bilanço «Nakit ve Benzerleri» ile birebir); cari-hareket nakiti
+    döviz kuru yüzünden ~47 kat şişebiliyor. Eşik uydurulmuyor: yalnız «sıfır mı değil
+    mi» sorulur.
+    """
+    if gl_nakit is not None and abs(gl_nakit) >= 0.005:
+        return gl_nakit, "gl"
+    if abs(cari_nakit) >= 0.005:
+        return cari_nakit, "cari"
+    return 0.0, "yok"
+
+
 # Geriye uyumluluk
 _nakit_bakiye = nakit_bakiye
 

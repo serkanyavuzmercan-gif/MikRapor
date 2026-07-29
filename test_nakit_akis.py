@@ -199,6 +199,54 @@ class TestKrediGLYedek(unittest.TestCase):
         self.assertAlmostEqual(na.mutabakat_farki, 0.0, places=2)  # aynı kaynak → kapanır
 
 
+class TestBaslangicNakitKaynagi(unittest.TestCase):
+    """
+    Sessiz 0 yasak: başlangıç nakdi ölçülemediğinde SEBEBİ söylenmeli (kural 2).
+
+    Eskiden yalnız MikroAPIError yakalanıyordu. GL okunup 0 dönerse (kurulumda nakit
+    başka hesap kodlarında tutuluyorsa olur — kural 6) o 0 sessizce başlangıç nakdi
+    oluyor, cari yedeğe hiç düşülmüyordu. Projeksiyonun tamamı bu rakama dayanıyor.
+    """
+
+    def test_gl_okunduysa_gl_kullanilir(self):
+        from domain.nakit_akis import baslangic_nakit_sec
+        self.assertEqual(baslangic_nakit_sec(1_500_000.0, 9_999.0), (1_500_000.0, "gl"))
+
+    def test_gl_negatif_de_gecerli_bir_olcumdur(self):
+        """Eksi banka bakiyesi gerçek bir ölçümdür; 0 sanıp cari'ye düşmek yanlış olur."""
+        from domain.nakit_akis import baslangic_nakit_sec
+        self.assertEqual(baslangic_nakit_sec(-250_000.0, 800_000.0), (-250_000.0, "gl"))
+
+    def test_gl_okunamazsa_cariye_dusulur(self):
+        from domain.nakit_akis import baslangic_nakit_sec
+        self.assertEqual(baslangic_nakit_sec(None, 640_000.0), (640_000.0, "cari"))
+
+    def test_gl_sifir_okunursa_da_cariye_dusulur(self):
+        """Asıl açık buydu: 0 bir hata değil «bulunamadı» olabilir, sessizce kullanılmaz."""
+        from domain.nakit_akis import baslangic_nakit_sec
+        self.assertEqual(baslangic_nakit_sec(0.0, 640_000.0), (640_000.0, "cari"))
+
+    def test_ikisi_de_bossa_sifir_ama_kaynak_yok_der(self):
+        from domain.nakit_akis import baslangic_nakit_sec
+        self.assertEqual(baslangic_nakit_sec(0.0, 0.0), (0.0, "yok"))
+
+    def test_her_kaynak_icin_not_var_gl_icin_sessiz(self):
+        """gl beklenen hâl → uyarı yok. Diğer ikisi sebebini yazmak ZORUNDA."""
+        from domain.nakit_akis import NAKIT_KAYNAK_NOTU
+        self.assertEqual(NAKIT_KAYNAK_NOTU["gl"], "")
+        for kaynak in ("cari", "yok"):
+            self.assertTrue(NAKIT_KAYNAK_NOTU[kaynak].strip(),
+                            f"{kaynak} için sebep metni yok — kural 2 ihlali")
+
+    def test_notlar_terminal_komutu_ya_da_bize_bildirin_demez(self):
+        """Kural 3b: tavsiye Mikro'da yapılabilecek bir şey olmalı."""
+        from domain.nakit_akis import NAKIT_KAYNAK_NOTU
+        for metin in NAKIT_KAYNAK_NOTU.values():
+            d = metin.lower()
+            self.assertNotIn("bize bildir", d)
+            self.assertNotIn(".py", d)
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -34,7 +34,13 @@ from domain.kredi import (
     taksitleri_derle,
 )
 from domain.mizan_bilanco import tl
-from domain.nakit_akis import build_nakit_akis, nakit_bakiye, nakit_gl_ozetten
+from domain.nakit_akis import (
+    NAKIT_KAYNAK_NOTU,
+    baslangic_nakit_sec,
+    build_nakit_akis,
+    nakit_bakiye,
+    nakit_gl_ozetten,
+)
 from domain.runway import RunwayTakvim, _ay_ekle, runway_takvim_kur
 from domain.tahmin import (
     Tahmin,
@@ -250,7 +256,9 @@ class TahminTab(RaporTab):
                 gl_nakit: float | None = nakit_gl_ozetten(fetch_bakiye_ozet(client, bit))
             except MikroAPIError:
                 gl_nakit = None
-            baslangic_nakit = gl_nakit if gl_nakit is not None else nakit_bakiye(kapanis_rows)
+            # Hangi kaynaktan geldiği taşınıyor: sessiz 0 yerine sebebi ekranda yazılır.
+            baslangic_nakit, nakit_kaynagi = baslangic_nakit_sec(
+                gl_nakit, nakit_bakiye(kapanis_rows))
             # Kart ekstre/asgari ödeme verisi her Mikro kurulumunda bulunmuyor. Bu yüzden
             # yalnızca canlı açık borcu okuyor, ödeme planını kullanıcı senaryosuna bırakıyoruz.
             try:
@@ -333,6 +341,7 @@ class TahminTab(RaporTab):
             return {
                 "varsayim": v, "firma": firma_getir(cfg, client), "runway": runway,
                 "kart_borclari": kart_borclari, "runway_bilesenleri": runway_bilesenleri,
+                "nakit_kaynagi": nakit_kaynagi,
             }
 
         return is_fn
@@ -343,6 +352,11 @@ class TahminTab(RaporTab):
         self._runway = sonuc.get("runway")
         self._kart_borclari = sonuc.get("kart_borclari", [])
         self._runway_bilesenleri = sonuc.get("runway_bilesenleri")
+        # Notu burada DONDURMUYORUZ: kullanıcı «Bugünkü nakit»i elle yazınca not
+        # yalan söylemeye başlıyordu («0 nakitle başlıyor» derken projeksiyon 1,5M'den
+        # başlıyor). Ölçüleni saklayıp her koşuda karşılaştırıyoruz (kural 4).
+        self._nakit_kaynagi = sonuc.get("nakit_kaynagi", "gl")
+        self._olculen_nakit = v.baslangic_nakit
         self._sp_nakit.setValue(v.baslangic_nakit)
         self._sp_ciro.setValue(v.baz_ciro)
         self._sp_buyume.setValue(v.buyume_yuzde)
@@ -369,6 +383,21 @@ class TahminTab(RaporTab):
             ),
         )
 
+    def _nakit_elle_girildi(self) -> bool:
+        """Kullanıcı ölçülen başlangıç nakdini değiştirdi mi?"""
+        return abs(self._sp_nakit.value() - getattr(self, "_olculen_nakit", 0.0)) >= 0.005
+
+    def _nakit_notu(self) -> str:
+        """Kaynak notu — kullanıcı rakamı kendi yazdıysa not düşer, çünkü artık geçersiz."""
+        if self._nakit_elle_girildi():
+            return ""
+        return NAKIT_KAYNAK_NOTU.get(getattr(self, "_nakit_kaynagi", "gl"), "")
+
+    def _nakit_olculdu(self) -> bool:
+        """Nakit türevli rakamların altında ölçülmüş bir taban var mı?"""
+        return (getattr(self, "_nakit_kaynagi", "gl") != "yok"
+                or self._nakit_elle_girildi())
+
     def _on_varsayim_degisti(self) -> None:
         """Varsayım değişti → sağdaki rapor artık bu rakamları yansıtmıyor."""
         if self._t is not None:
@@ -391,7 +420,8 @@ class TahminTab(RaporTab):
         self._t = build_tahmin(v)
         self._runway = self._runway_yenile(v.baslangic_ay)
         self._icerik_koy(build_tahmin_widget(
-            self._t, firma=self._firma, runway=getattr(self, "_runway", None)))
+            self._t, firma=self._firma, runway=getattr(self, "_runway", None),
+            nakit_notu=self._nakit_notu(), nakit_olculdu=self._nakit_olculdu()))
         self._senaryo.set_guncel(True)
         if self._chrome is not None:
             self._chrome.set_csv_aktif(True)

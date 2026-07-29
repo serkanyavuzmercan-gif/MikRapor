@@ -98,7 +98,8 @@ def _nakit_uyarisi(t: Tahmin) -> tuple[str, bool]:
             f"{sebep} O ay için köprü finansman gerekebilir.", False)
 
 
-def _iki_ihtimal_karti(rt: RunwayTakvim | None, t: Tahmin) -> QFrame:
+def _iki_ihtimal_karti(rt: RunwayTakvim | None, t: Tahmin,
+                       nakit_olculdu: bool = True) -> QFrame:
     """'Bu iki tablo ne?' sorusunu kökten çözen sade açıklama kartı."""
     inner = QWidget()
     inner.setStyleSheet("background: transparent;")
@@ -140,7 +141,9 @@ def _iki_ihtimal_karti(rt: RunwayTakvim | None, t: Tahmin) -> QFrame:
     v.addWidget(_satir(
         POZ, "#eef7f1", "#9cc9ac", "Normal beklenti",
         "her ay ortalama satışın <u>devam ederse</u>",
-        _normal_ozet(t)))
+        _normal_ozet(t) if nakit_olculdu
+        else "başlangıç nakdi ölçülemediği için nakit seviyesi hesaplanamıyor — "
+             "soldaki «Bugünkü nakit» alanına yazın"))
     if rt is not None and rt.aylar:
         v.addWidget(_satir(
             NEG, "#fdf0f0", "#e79a9a", "En kötü ihtimal",
@@ -354,8 +357,21 @@ def _bolum_basligi(metin: str, renk: str) -> QLabel:
     return lbl
 
 
+def _nakit_kaynak_uyarisi(metin: str) -> QLabel:
+    """Başlangıç nakdi beklenen kaynaktan gelmedi — amber, çünkü rakam kullanılabilir."""
+    uy = QLabel(f"⚠ <b>Başlangıç nakdi:</b> {metin}")
+    uy.setTextFormat(Qt.TextFormat.RichText)
+    uy.setWordWrap(True)
+    uy.setStyleSheet(
+        "QLabel { background: #fdf3e0; border: 1px solid #f0d4a0; "
+        "border-left: 3px solid #b45309; border-radius: 8px; color: #7a4e0e; "
+        "padding: 10px 13px; font-size: 12px; }")
+    return uy
+
+
 def build_tahmin_widget(
     t: Tahmin, firma: str = "", runway: RunwayTakvim | None = None,
+    nakit_notu: str = "", nakit_olculdu: bool = True,
 ) -> QWidget:
     """Bir Tahmin'den görünüm üretir; runway (en kötü ihtimal) verilirse ikisini birlikte gösterir."""
     content = QWidget()
@@ -368,7 +384,12 @@ def build_tahmin_widget(
     var_runway = runway is not None and runway.aylar
 
     # 0) "Bu iki tablo ne?" — sade açıklama kartı (en tepede)
-    root.addWidget(_iki_ihtimal_karti(runway, t))
+    root.addWidget(_iki_ihtimal_karti(runway, t, nakit_olculdu))
+
+    # Başlangıç nakdi beklenen kaynaktan gelmediyse SEBEBİ rakamın üstünde yazar
+    # (kural 2). Projeksiyonun tamamı bu rakama dayanıyor; sessiz 0 en pahalı hata.
+    if nakit_notu:
+        root.addWidget(_nakit_kaynak_uyarisi(nakit_notu))
 
     # 1) ÖNCE NORMAL BEKLENTİ. Rapor kötü ihtimalle açılıyordu; işin normal seyrini
     #    görmeden felaket senaryosu okumak yanlış sırayla düşündürüyor. Kötü ihtimal
@@ -405,14 +426,23 @@ def build_tahmin_widget(
             "AÇIK KREDİ KARTI BORCU", tl(v.kart_borcu_acik), "#fff7ed", "#b45309",
             alt=f"{len(t.aylar)} ayda ödeme: {tl(t.toplam_kart_borcu_odeme)}{faiz}",
         ))
-    sn_bg, sn_vr = ("#e8f6ee", POZ) if t.son_nakit >= 0 else ("#fdecec", NEG)
-    kpi.addWidget(_kpi_card("DÖNEM SONU NAKİT", tl(t.son_nakit), sn_bg, sn_vr))
-    ed_bg, ed_vr = ("#fdecec", NEG) if t.en_dusuk_nakit < 0 else ("#fff7ed", "#b45309")
-    kpi.addWidget(_kpi_card(f"EN DÜŞÜK NAKİT ({_ay_str(t.en_dusuk_ay)})",
-                            tl(t.en_dusuk_nakit), ed_bg, ed_vr))
+    if nakit_olculdu:
+        sn_bg, sn_vr = ("#e8f6ee", POZ) if t.son_nakit >= 0 else ("#fdecec", NEG)
+        kpi.addWidget(_kpi_card("DÖNEM SONU NAKİT", tl(t.son_nakit), sn_bg, sn_vr))
+        ed_bg, ed_vr = ("#fdecec", NEG) if t.en_dusuk_nakit < 0 else ("#fff7ed", "#b45309")
+        kpi.addWidget(_kpi_card(f"EN DÜŞÜK NAKİT ({_ay_str(t.en_dusuk_ay)})",
+                                tl(t.en_dusuk_nakit), ed_bg, ed_vr))
+    else:
+        # Başlangıç nakdi ÖLÇÜLEMEDİ. Nakit seviyesi = başlangıç + akış olduğu için bu
+        # iki rakam bilinmeyen kadar kaymış olur; kesin görünen bir tutar basmak kural 2
+        # ihlali. Akış kartları (ciro, net kâr) gerçekten hesaplanıyor, onlar kalır.
+        for baslik in ("DÖNEM SONU NAKİT", "EN DÜŞÜK NAKİT"):
+            kpi.addWidget(_kpi_card(
+                baslik, "—", "#f1f5f9", MUTED,
+                alt="başlangıç nakdi ölçülemedi — soldaki «Bugünkü nakit»i yazın"))
     root.addLayout(kpi)
 
-    uyari_metni, uyari_agir = _nakit_uyarisi(t)
+    uyari_metni, uyari_agir = _nakit_uyarisi(t) if nakit_olculdu else ("", False)
     if uyari_metni:
         uyari = QLabel(uyari_metni)
         uyari.setWordWrap(True)

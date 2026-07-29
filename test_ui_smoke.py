@@ -364,6 +364,72 @@ class TestUiSmoke(unittest.TestCase):
         # 3) Dip yoksa uyarı da yok.
         self.assertEqual(_nakit_uyarisi(build_tahmin(TahminVarsayim(**ortak)))[0], "")
 
+    def test_tahmin_view_nakit_kaynak_uyarisi(self) -> None:
+        """Başlangıç nakdi beklenen kaynaktan gelmediyse uyarı görünür, geldiyse görünmez."""
+        from PyQt6.QtWidgets import QLabel as _QL
+
+        from domain.nakit_akis import NAKIT_KAYNAK_NOTU
+        from domain.tahmin import TahminVarsayim, build_tahmin
+        from ui.tahmin_view import build_tahmin_widget
+        t = build_tahmin(TahminVarsayim(
+            baslangic_ay="2026-07", baslangic_nakit=0.0, baz_ciro=400_000.0,
+            buyume_yuzde=1.0, marj_yuzde=20.0, sabit_gider=60_000.0, ufuk_ay=6))
+
+        def uyari_var(w) -> bool:
+            return any("Başlangıç nakdi" in (lb.text() or "")
+                       for lb in w.findChildren(_QL))
+
+        self.assertTrue(uyari_var(build_tahmin_widget(t, nakit_notu=NAKIT_KAYNAK_NOTU["yok"])))
+        self.assertFalse(uyari_var(build_tahmin_widget(t)), "gl kaynağında uyarı çıkmamalı")
+
+    def test_nakit_notu_elle_girisden_sonra_dusuyor(self) -> None:
+        """
+        Not DONDURULMAMALI. «Projeksiyon 0 nakitle başlıyor — kendiniz yazın» notu,
+        kullanıcı tam bunu yaptıktan sonra ekranda kalıyordu: altındaki projeksiyon
+        1,5M'den başlarken not hâlâ 0 diyordu. Ekrandaki rakamla çelişen cümle,
+        hiç not olmamasından kötüdür (kural 4).
+        """
+        from ui.tabs.tahmin_tab import TahminTab
+        t = TahminTab.__new__(TahminTab)          # Qt kurulumu olmadan mantığı sına
+        t._olculen_nakit = 0.0
+        t._nakit_kaynagi = "yok"
+
+        class _Sp:
+            def __init__(self, v): self._v = v
+            def value(self): return self._v
+        t._sp_nakit = _Sp(0.0)
+        self.assertTrue(t._nakit_notu(), "ölçülemediğinde sebep yazılmalı")
+        self.assertFalse(t._nakit_olculdu())
+
+        t._sp_nakit = _Sp(1_500_000.0)            # kullanıcı kendi yazdı
+        self.assertEqual(t._nakit_notu(), "", "elle girişten sonra not düşmeli")
+        self.assertTrue(t._nakit_olculdu(), "elle girilen değer ölçülmüş sayılır")
+
+    def test_nakit_olculmediyse_nakit_kartlari_bos(self) -> None:
+        """Kural 2: taban ölçülmemişse nakit seviyesi rakamı basılmaz, sebebi yazılır."""
+        from PyQt6.QtWidgets import QLabel as _QL
+
+        from domain.tahmin import TahminVarsayim, build_tahmin
+        from ui.tahmin_view import build_tahmin_widget
+        t = build_tahmin(TahminVarsayim(
+            baslangic_ay="2026-07", baslangic_nakit=0.0, baz_ciro=400_000.0,
+            buyume_yuzde=1.0, marj_yuzde=20.0, sabit_gider=60_000.0, ufuk_ay=6))
+
+        def metinler(w) -> str:
+            return " ".join(lb.text() or "" for lb in w.findChildren(_QL))
+
+        olcusuz = metinler(build_tahmin_widget(t, nakit_olculdu=False))
+        self.assertIn("DÖNEM SONU NAKİT", olcusuz)
+        self.assertIn("ölçülemedi", olcusuz)
+        self.assertIn("—", olcusuz)
+        # Akış kartları gerçekten hesaplanıyor, onlar kalmalı (kural 3: gizlemek çare değil)
+        self.assertIn("TOPLAM CİRO", olcusuz)
+        self.assertIn("TOPLAM NET KÂR", olcusuz)
+
+        olculu = metinler(build_tahmin_widget(t, nakit_olculdu=True))
+        self.assertIn("DÖNEM SONU NAKİT", olculu)
+        self.assertNotIn("başlangıç nakdi ölçülemedi", olculu)
+
     def test_reel_deger_view(self) -> None:
         from domain.reel_deger import ReelDegerVarsayim, build_reel_deger_analizi
         from domain.tahsilat_alacak import AcikVadeParcasi, TahsilatAlacak
