@@ -117,11 +117,19 @@ class VeriSagligiDialog(QDialog):
 
         def is_fn(bildir) -> VeriSagligi:
             client = yil_client(cfg, int(bit[:4]))
-            # Kapsam katalogtan: bozuk kayıt hangi yılda olursa olsun bulunmalı.
-            # Katalog okunamazsa içinde bulunulan yıla düşülür (boş liste yerine).
-            ilk_yil = min((k.ilk_yil for k in katalog(cfg)), default=int(bit[:4]))
-            bas = f"{ilk_yil}-01-01"
             okunamayan: list[str] = []
+            # Kapsam katalogtan: bozuk kayıt hangi yılda olursa olsun bulunmalı.
+            # KATALOG OKUNAMAZSA SESSİZCE DARALMAZ: tarama içinde bulunulan yıla
+            # düşer ama bu «kontrol edilemedi» diye yazılır. Yoksa kullanıcı bütün
+            # geçmişin tarandığını sanıp temiz sonuca güvenir — hatanın kendisinden
+            # kötüsü budur.
+            yillar = [k.ilk_yil for k in katalog(cfg)]
+            if not yillar:
+                okunamayan.append(
+                    "Veritabanı kataloğu — yalnız içinde bulunulan yıl tarandı "
+                    "(Mikro Ayarları'nda firma kodlarını kontrol edin)")
+            ilk_yil = min(yillar, default=int(bit[:4]))
+            bas = f"{ilk_yil}-01-01"
             # Her kaynak AYRI denenir; düşen kaynak sessizce atlanmaz, «kontrol
             # edilemedi» diye görünür. Bakılamayanı temiz sanmak hatadan kötüdür.
             bildir("Muhasebe mizanı okunuyor…")

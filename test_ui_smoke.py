@@ -356,6 +356,28 @@ class TestUiSmoke(unittest.TestCase):
         self.assertEqual(gorulen[0][0], "2019-01-01")        # katalogun ilk yılı
         self.assertEqual(gorulen[0][1], date.today().isoformat())
         self.assertEqual(vs.bas, "2019-01-01")
+        self.assertEqual(vs.okunamayan, [])
+
+    def test_katalog_okunamazsa_daralma_yazilir(self) -> None:
+        """Sessizce tek yıla düşmek, temiz sonuca sahte güven verir (kural 2)."""
+        from unittest.mock import patch
+
+        import ui.veri_sagligi_dialog as vsd
+        from infra.config import MikroConfig
+        cfg = MikroConfig(base_url="https://m.local", api_key="K", firma_kodu="26",
+                          calisma_yili=2026, kullanici_kodu="U", sifre_gun="S")
+        with patch.object(vsd, "load_config", return_value=cfg), \
+             patch.object(vsd, "katalog", return_value=[]), \
+             patch.object(vsd, "yil_client", return_value=None), \
+             patch.object(vsd, "fetch_mizan", return_value=[]), \
+             patch.object(vsd, "donem_satirlari", return_value=[]), \
+             patch.object(vsd, "RaporWorker") as sahte_worker:
+            d = vsd.VeriSagligiDialog()
+            try:
+                vs = sahte_worker.call_args[0][0](lambda _m: None)
+            finally:
+                d.deleteLater()
+        self.assertTrue(any("katalo" in x.lower() for x in vs.okunamayan))
 
     def test_tahmin_tazelik_gostergesi(self) -> None:
         """Sağdaki raporun güncel mi bayat mı olduğu panelde yazmalı.
