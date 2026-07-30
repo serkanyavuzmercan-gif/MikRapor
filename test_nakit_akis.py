@@ -210,25 +210,35 @@ class TestBaslangicNakitKaynagi(unittest.TestCase):
 
     def test_gl_okunduysa_gl_kullanilir(self):
         from domain.nakit_akis import baslangic_nakit_sec
-        self.assertEqual(baslangic_nakit_sec(1_500_000.0, 9_999.0), (1_500_000.0, "gl"))
+        b = baslangic_nakit_sec(1_500_000.0, 9_999.0)
+        self.assertAlmostEqual(b.tutar, 1_500_000.0, places=2)
+        self.assertEqual(b.kaynak, "gl")
 
     def test_gl_negatif_de_gecerli_bir_olcumdur(self):
         """Eksi banka bakiyesi gerçek bir ölçümdür; 0 sanıp cari'ye düşmek yanlış olur."""
         from domain.nakit_akis import baslangic_nakit_sec
-        self.assertEqual(baslangic_nakit_sec(-250_000.0, 800_000.0), (-250_000.0, "gl"))
+        b = baslangic_nakit_sec(-250_000.0, 800_000.0)
+        self.assertAlmostEqual(b.tutar, -250_000.0, places=2)
+        self.assertEqual(b.kaynak, "gl")
 
     def test_gl_okunamazsa_cariye_dusulur(self):
         from domain.nakit_akis import baslangic_nakit_sec
-        self.assertEqual(baslangic_nakit_sec(None, 640_000.0), (640_000.0, "cari"))
+        b = baslangic_nakit_sec(None, 640_000.0)
+        self.assertAlmostEqual(b.tutar, 640_000.0, places=2)
+        self.assertEqual(b.kaynak, "cari")
 
     def test_gl_sifir_okunursa_da_cariye_dusulur(self):
         """Asıl açık buydu: 0 bir hata değil «bulunamadı» olabilir, sessizce kullanılmaz."""
         from domain.nakit_akis import baslangic_nakit_sec
-        self.assertEqual(baslangic_nakit_sec(0.0, 640_000.0), (640_000.0, "cari"))
+        b = baslangic_nakit_sec(0.0, 640_000.0)
+        self.assertAlmostEqual(b.tutar, 640_000.0, places=2)
+        self.assertEqual(b.kaynak, "cari")
 
     def test_ikisi_de_bossa_sifir_ama_kaynak_yok_der(self):
         from domain.nakit_akis import baslangic_nakit_sec
-        self.assertEqual(baslangic_nakit_sec(0.0, 0.0), (0.0, "yok"))
+        b = baslangic_nakit_sec(0.0, 0.0)
+        self.assertAlmostEqual(b.tutar, 0.0, places=2)
+        self.assertEqual(b.kaynak, "yok")
 
     def test_her_kaynak_icin_not_var_gl_icin_sessiz(self):
         """gl beklenen hâl → uyarı yok. Diğer ikisi sebebini yazmak ZORUNDA."""
@@ -354,3 +364,58 @@ class TestKrediHesabiTekKural(unittest.TestCase):
         ]
         self.assertAlmostEqual(
             nakit_bakiye(satirlar), _bakiye_caridan(satirlar)["nakit_mevcut"], places=2)
+
+
+class TestNakitCeliskisi(unittest.TestCase):
+    """
+    İki bağımsız defter (GL, cari) büyük ölçüde ayrışırsa program HANGİSİNİN doğru
+    olduğunu bilmiyor ve iddia etmiyor — ama artık bunu söylüyor.
+
+    Eşik bakiyenin yüzdesi DEĞİL, bir büyüklük mertebesi (10×): mutabakat_farki'ndaki
+    %1, AYNI verinin iki görünümünü kıyaslayan bir muhasebe kimliğidir; iki BAĞIMSIZ
+    defteri kıyaslarken kopyalanamaz. Sağlıklı kurulumda normal muhasebeleşme
+    gecikmesi bile bakiyenin %1'ini rahat aşar — yüzdelik eşik her koşuda yanardı.
+    """
+
+    def test_normal_gecikme_celiski_sayilmaz(self):
+        """Haftalık muhasebeleşme gecikmesi (~%12 fark) çelişki değildir."""
+        from domain.nakit_akis import baslangic_nakit_sec
+        b = baslangic_nakit_sec(500_000.0, 560_000.0)
+        self.assertFalse(b.celiski)
+
+    def test_buyukluk_mertebesi_farki_celiski_sayilir(self):
+        from domain.nakit_akis import baslangic_nakit_sec
+        b = baslangic_nakit_sec(514_859.67, 25_982_795.06)
+        self.assertTrue(b.celiski)
+
+    def test_celiski_yalniz_gl_kullanildiginda_anlamli(self):
+        """Kaynak zaten cari ise (GL boş/sıfır) çelişki sorusu tanımsızdır."""
+        from domain.nakit_akis import baslangic_nakit_sec
+        b = baslangic_nakit_sec(None, 25_982_795.06)
+        self.assertEqual(b.kaynak, "cari")
+        self.assertFalse(b.celiski)
+
+    def test_celiski_kaynagi_degistirmez(self):
+        """
+        Çelişki AYRI bir teşhistir — `kaynak` alanı ne kullanıldığını söylemeye
+        devam eder, «celiski» diye üçüncü bir kaynak DEĞERİ icat edilmez.
+        """
+        from domain.nakit_akis import baslangic_nakit_sec
+        b = baslangic_nakit_sec(514_859.67, 25_982_795.06)
+        self.assertEqual(b.kaynak, "gl")
+        self.assertAlmostEqual(b.tutar, 514_859.67, places=2)
+
+    def test_celiski_notu_iki_rakami_da_yazar_ama_kazanan_secmez(self):
+        from domain.nakit_akis import baslangic_nakit_sec, celiski_notu
+        b = baslangic_nakit_sec(514_859.67, 25_982_795.06)
+        metin = celiski_notu(b)
+        self.assertIn("514.859", metin)
+        self.assertIn("25.982.795", metin)
+        for iddia in ("cari şişik", "cari yanlış", "gl eksik", "gl yanlış"):
+            self.assertNotIn(iddia, metin.lower())
+
+    def test_celiski_notu_oran_yazmaz(self):
+        """«50 kat» gibi bir oran, GL sıfıra yakınken patlar ya da anlamsız büyür."""
+        from domain.nakit_akis import baslangic_nakit_sec, celiski_notu
+        b = baslangic_nakit_sec(514_859.67, 25_982_795.06)
+        self.assertNotIn(" kat", celiski_notu(b))

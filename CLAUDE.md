@@ -275,13 +275,22 @@ anahtarı **ve** açık onay kutusu birlikte olmadan hiçbir ağ çağrısı yap
   yolu etkilenmiyor (karşı hesabı `fis_hesap_kod`'dan alıyor, krediyi 300 önekiyle
   zaten görüyor). `ban_muh_kod` kullanıcı tarafından atandığı için tek test yetmez.
 - **Cari nakit ile GL nakit büyük ölçüde çelişebilir ve hangisinin doğru olduğunu
-  program BİLMİYOR.** Canlıda cari 27.056.018 ⟷ GL 569.002 (47 kat), ama aynı veride
-  120 ve 320 yalnız %5-7 sapıyor. Kod tabanında bir zamanlar bunun sebebi «döviz kuru»
-  diye yazılmıştı; o «47 kat» tam bu farkın kendisiydi, yani gözlem sebep sanılıp olgu
-  gibi kaydedilmişti. Kur olsaydı alacak/borç da şişerdi. Muhtemel sebep banka
-  fişlerinin muhasebeleşmemesi — **ölçülmedi.** Mikro'daki Bankalar listesiyle
-  kıyaslanıp karara bağlanana kadar buraya «cari şişiktir» gerekçesi yazılmaz ve
-  `baslangic_nakit_sec` sessizce GL seçmeye devam eder (bilinen açık).
+  program BİLMİYOR — ama artık bunu SÖYLÜYOR.** Canlıda cari 25.982.795 ⟷ GL 514.859
+  (50 kat), ama aynı veride 120 ve 320 yalnız %5-7 sapıyor. Kod tabanında bir zamanlar
+  bunun sebebi «döviz kuru» diye yazılmıştı; o «47 kat» tam bu farkın kendisiydi, yani
+  gözlem sebep sanılıp olgu gibi kaydedilmişti. Kur olsaydı alacak/borç da şişerdi.
+  `domain/nakit_akis.py: BaslangicNakit.celiski` — kaynak (GL) kullanılmaya devam eder,
+  DEĞİŞMEZ; ama iki kaynak bir büyüklük mertebesi (`NAKIT_CELISKI_KAT = 10×`) ayrıştıysa
+  Tahmin'de amber not (`celiski_notu`) iki ölçülen rakamı yan yana yazar ve doğrulamayı
+  Mikro'daki Banka Hesap Durumu'na yönlendirir — **hangisinin doğru olduğunu iddia
+  etmez.** Eşik bakiyenin yüzdesi DEĞİL mertebe farkı: `mutabakat_farki`deki %1 aynı
+  verinin iki görünümünü kıyaslayan bir muhasebe kimliğidir, iki BAĞIMSIZ defteri
+  kıyaslarken kopyalanamaz — sağlıklı kurulumda normal muhasebeleşme gecikmesi bile
+  bakiyenin %1'ini rahat aşar.
+  **`--banka` teşhisinde banka ADI güvenilmez** — muhasebeci elle girer: canlıda
+  gerçekte Ziraat olan bir hesap «Katılım» diye kaydedilmişti. Ada bakıp hesap türü
+  (vadeli/DBS/POS) çıkarmak yasak; tek güvenilir ayrım hesabın hangi TDHP koduna
+  bağlandığıdır (`kredi_banka_mi`).
 - **Sargability**: `LEFT(LTRIM(kol),3) = 'x'` ve `LEFT(kol,6)` üzerinden join indeks
   kullandırmaz → tam tarama → zaman aşımı. Önce küçük tablodan kodu çöz, sonra
   `kol LIKE 'kod%'`.

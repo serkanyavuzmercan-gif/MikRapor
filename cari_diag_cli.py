@@ -124,8 +124,11 @@ def _banka_teshisi(client: MikroClient, asof: str) -> None:
     print("  * = kredi hesabı (nakit sayılmaz)   TEK = para girmiş ama hiç çıkmamış")
     if tek_sayi:
         print(f"  → {tek_sayi} hesap TEK YÖNLÜ, toplam {tl(tek_tutar)}.")
-        print("    Banka adında VADELİ / BLOKE / POS geçiyorsa rakam GERÇEKTİR (para")
-        print("    girer, çıkmaz). Geçmiyorsa transferin karşı ayağı kaydedilmemiş demektir.")
+        print("    Banka ADI bu ayrımda kullanılmaz — muhasebeci elle girer ve yanlış")
+        print("    olabilir (örn. gerçekte Ziraat olan bir hesap «Katılım» diye")
+        print("    kaydedilmiş olabilir). DBS gibi tedarikçi finansman limitleri de")
+        print("    isimden anlaşılmaz; hesabın 300 (kredi) koduna mı 102'ye mi")
+        print("    bağlandığı önemlidir, o da yukarıdaki * işaretiyle görünür.")
     else:
         print("  → Tek yönlü hesap yok: her hesapta para hem girmiş hem çıkmış.")
     print("  Kesin cevap: Mikro → Banka → Banka Hesap Durumu ekranındaki bakiyeyi")

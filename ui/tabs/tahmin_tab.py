@@ -38,6 +38,7 @@ from domain.nakit_akis import (
     NAKIT_KAYNAK_NOTU,
     baslangic_nakit_sec,
     build_nakit_akis,
+    celiski_notu,
     nakit_bakiye,
     nakit_gl_ozetten,
 )
@@ -116,6 +117,11 @@ class TahminTab(RaporTab):
 
     _t: Tahmin | None = None
     _runway: RunwayTakvim | None = None
+    # SINIF DÜZEYİ VARSAYILAN — Qt tuzağı: yarı kurulmuş bir QObject'te
+    # getattr(self, ad, varsayilan) varsayılanı DÖNDÜRMEZ, RuntimeError atar.
+    _nakit_kaynagi: str = "gl"
+    _nakit_celiski_notu: str = ""
+    _olculen_nakit: float = 0.0
 
     def _ilk_mesaj(self) -> str:
         return "Hazır"
@@ -257,8 +263,8 @@ class TahminTab(RaporTab):
             except MikroAPIError:
                 gl_nakit = None
             # Hangi kaynaktan geldiği taşınıyor: sessiz 0 yerine sebebi ekranda yazılır.
-            baslangic_nakit, nakit_kaynagi = baslangic_nakit_sec(
-                gl_nakit, nakit_bakiye(kapanis_rows))
+            bnakit = baslangic_nakit_sec(gl_nakit, nakit_bakiye(kapanis_rows))
+            baslangic_nakit = bnakit.tutar
             # Kart ekstre/asgari ödeme verisi her Mikro kurulumunda bulunmuyor. Bu yüzden
             # yalnızca canlı açık borcu okuyor, ödeme planını kullanıcı senaryosuna bırakıyoruz.
             try:
@@ -341,7 +347,9 @@ class TahminTab(RaporTab):
             return {
                 "varsayim": v, "firma": firma_getir(cfg, client), "runway": runway,
                 "kart_borclari": kart_borclari, "runway_bilesenleri": runway_bilesenleri,
-                "nakit_kaynagi": nakit_kaynagi,
+                "nakit_kaynagi": bnakit.kaynak,
+                # Metin ölçülen iki rakamı içerdiği için sabit eşlemeden gelemez.
+                "nakit_celiski_notu": celiski_notu(bnakit) if bnakit.celiski else "",
             }
 
         return is_fn
@@ -356,6 +364,7 @@ class TahminTab(RaporTab):
         # yalan söylemeye başlıyordu («0 nakitle başlıyor» derken projeksiyon 1,5M'den
         # başlıyor). Ölçüleni saklayıp her koşuda karşılaştırıyoruz (kural 4).
         self._nakit_kaynagi = sonuc.get("nakit_kaynagi", "gl")
+        self._nakit_celiski_notu = sonuc.get("nakit_celiski_notu", "")
         self._olculen_nakit = v.baslangic_nakit
         self._sp_nakit.setValue(v.baslangic_nakit)
         self._sp_ciro.setValue(v.baz_ciro)
@@ -385,18 +394,24 @@ class TahminTab(RaporTab):
 
     def _nakit_elle_girildi(self) -> bool:
         """Kullanıcı ölçülen başlangıç nakdini değiştirdi mi?"""
-        return abs(self._sp_nakit.value() - getattr(self, "_olculen_nakit", 0.0)) >= 0.005
+        return abs(self._sp_nakit.value() - self._olculen_nakit) >= 0.005
 
     def _nakit_notu(self) -> str:
-        """Kaynak notu — kullanıcı rakamı kendi yazdıysa not düşer, çünkü artık geçersiz."""
+        """
+        Kaynak notu — kullanıcı rakamı kendi yazdıysa not düşer, çünkü artık geçersiz.
+
+        Çelişki notu önce gelir: kaynak «gl» olduğu için kaynak notu boştur, ama iki
+        defter bir büyüklük mertebesi ayrışmışsa söylenecek şey vardır.
+        """
         if self._nakit_elle_girildi():
             return ""
-        return NAKIT_KAYNAK_NOTU.get(getattr(self, "_nakit_kaynagi", "gl"), "")
+        if self._nakit_celiski_notu:
+            return self._nakit_celiski_notu
+        return NAKIT_KAYNAK_NOTU.get(self._nakit_kaynagi, "")
 
     def _nakit_olculdu(self) -> bool:
         """Nakit türevli rakamların altında ölçülmüş bir taban var mı?"""
-        return (getattr(self, "_nakit_kaynagi", "gl") != "yok"
-                or self._nakit_elle_girildi())
+        return self._nakit_kaynagi != "yok" or self._nakit_elle_girildi()
 
     def _on_varsayim_degisti(self) -> None:
         """Varsayım değişti → sağdaki rapor artık bu rakamları yansıtmıyor."""

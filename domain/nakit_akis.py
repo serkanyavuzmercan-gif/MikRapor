@@ -17,6 +17,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from domain.mizan_bilanco import ana_hesap, hesap_adi
+from domain.mizan_bilanco import tl as _tl
 from domain.ortak import csv_sayi, kredi_banka_mi
 from domain.ortak import to_float as _f
 from domain.ortak import to_int as _i
@@ -218,6 +219,41 @@ def nakit_gl_ozetten(bakiye_ozet_rows: list[dict] | None) -> float:
     return total
 
 
+# İki bağımsız defterin AYNI büyüklüğü ölçtüğü hâlde ayrışması. Eşik BAKİYENİN
+# YÜZDESİ DEĞİL, bir BÜYÜKLÜK MERTEBESİ: banka fişlerini haftada bir işleyen firmada
+# GL, cari'nin bir haftalık trafiği kadar geride kalır ve bu bakiyenin %1'ini rahat
+# aşar — yüzdeye bakan bir eşik sağlıklı kurulumda her koşuda yanardı. Hiçbir
+# muhasebeleşme gecikmesi iki defteri 10 kat ayırmaz.
+# (mutabakat_farki'ndaki %1 buraya kopyalanamaz: o AYNI verinin iki görünümünü
+# kıyaslayan bir muhasebe kimliğidir, artığı yuvarlama gürültüsüdür.)
+NAKIT_CELISKI_KAT = 10.0
+
+
+@dataclass
+class BaslangicNakit:
+    """Projeksiyonun başlangıç nakdi: seçilen tutar + hangi kaynaktan + öbür kaynak."""
+    tutar: float
+    kaynak: str              # "gl" | "cari" | "yok" — HANGİ KAYNAK KULLANILDI
+    gl: float | None = None  # ölçülen GL nakdi (okunamadıysa None)
+    cari: float = 0.0        # ölçülen cari/banka-kasa nakdi
+
+    @property
+    def celiski(self) -> bool:
+        """
+        Kullanılan kaynak ile öbür kaynak bir büyüklük mertebesi ayrışıyor mu?
+
+        `kaynak` alanı ne kullanıldığını söyler; çelişki AYRI bir teşhistir. İkisini tek
+        alanda taşımak («kaynak = celiski») alanı iki anlama sokar ve sabit metin
+        eşlemesini bozar — çelişki metni ölçülen iki rakamı içermek zorunda.
+        """
+        if self.kaynak != "gl" or self.gl is None:
+            return False
+        a, b = abs(self.gl), abs(self.cari)
+        if min(a, b) < 0.005:
+            return max(a, b) >= 0.005
+        return max(a, b) / min(a, b) >= NAKIT_CELISKI_KAT
+
+
 NAKIT_KAYNAK_NOTU = {
     "gl": "",
     "cari": ("GL nakit hesapları (100/101/102/103/108) boş okundu; başlangıç nakdi "
@@ -229,7 +265,23 @@ NAKIT_KAYNAK_NOTU = {
 }
 
 
-def baslangic_nakit_sec(gl_nakit: float | None, cari_nakit: float) -> tuple[float, str]:
+def celiski_notu(b: BaslangicNakit) -> str:
+    """
+    İki kaynak ayrıştı — HANGİSİNİN doğru olduğu SÖYLENMEZ.
+
+    Sebep («banka fişleri muhasebeleşmemiş») ölçülmedi; ekrana yazmak, bir zamanlar
+    «47 kat kur farkı» diye yazılan doğrulanmamış gerekçenin tekrarı olur. Ekran iki
+    ölçülen rakamı ve nereden doğrulanacağını söyler, gerisini kullanıcı bilir.
+
+    Oran («50 kat») yazılmaz: GL sıfıra yakınken bölme patlar ya da anlamsız büyür.
+    """
+    return (f"Muhasebe kaydı {_tl(b.gl or 0.0)}, banka/kasa hareketleri {_tl(b.cari)}. "
+            f"Projeksiyon muhasebe rakamıyla kuruldu. Mikro'da "
+            "Banka → Banka Hesap Durumu'ndaki bakiye hangisine yakınsa onu soldaki "
+            "«Bugünkü nakit» alanına yazın.")
+
+
+def baslangic_nakit_sec(gl_nakit: float | None, cari_nakit: float) -> BaslangicNakit:
     """
     Başlangıç nakdini seç ve HANGİ KAYNAKTAN geldiğini söyle → (tutar, kaynak).
 
@@ -251,11 +303,12 @@ def baslangic_nakit_sec(gl_nakit: float | None, cari_nakit: float) -> tuple[floa
     bilmiyor ve şu an bunu SÖYLEMİYOR da. Mikro'daki Bankalar listesiyle kıyaslanıp
     karara bağlanmalı; o zamana kadar buraya «cari şişiktir» gerekçesi yazılmayacak.
     """
+    ortak = {"gl": gl_nakit, "cari": cari_nakit}
     if gl_nakit is not None and abs(gl_nakit) >= 0.005:
-        return gl_nakit, "gl"
+        return BaslangicNakit(tutar=gl_nakit, kaynak="gl", **ortak)
     if abs(cari_nakit) >= 0.005:
-        return cari_nakit, "cari"
-    return 0.0, "yok"
+        return BaslangicNakit(tutar=cari_nakit, kaynak="cari", **ortak)
+    return BaslangicNakit(tutar=0.0, kaynak="yok", **ortak)
 
 
 # Geriye uyumluluk

@@ -405,6 +405,26 @@ class TestUiSmoke(unittest.TestCase):
         self.assertEqual(t._nakit_notu(), "", "elle girişten sonra not düşmeli")
         self.assertTrue(t._nakit_olculdu(), "elle girilen değer ölçülmüş sayılır")
 
+    def test_celiski_notu_kaynak_notunun_onune_gecer(self) -> None:
+        """
+        Kaynak «gl» olduğu için tek başına sessizdir (NAKIT_KAYNAK_NOTU["gl"] boş),
+        ama iki defter bir büyüklük mertebesi ayrışmışsa söylenecek şey vardır.
+        """
+        from ui.tabs.tahmin_tab import TahminTab
+        t = TahminTab.__new__(TahminTab)
+        t._olculen_nakit = 514_859.67
+        t._nakit_kaynagi = "gl"
+        t._nakit_celiski_notu = "Muhasebe kaydı 514.860, banka/kasa hareketleri 25.982.795."
+
+        class _Sp:
+            def __init__(self, v): self._v = v
+            def value(self): return self._v
+        t._sp_nakit = _Sp(514_859.67)
+        self.assertEqual(t._nakit_notu(), t._nakit_celiski_notu)
+
+        t._sp_nakit = _Sp(25_982_795.06)          # kullanıcı diğer rakamı yazdı
+        self.assertEqual(t._nakit_notu(), "", "elle girişten sonra çelişki notu da düşmeli")
+
     def test_nakit_olculmediyse_nakit_kartlari_bos(self) -> None:
         """Kural 2: taban ölçülmemişse nakit seviyesi rakamı basılmaz, sebebi yazılır."""
         from PyQt6.QtWidgets import QLabel as _QL
