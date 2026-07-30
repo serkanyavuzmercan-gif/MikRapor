@@ -90,7 +90,7 @@ def _erime_tablo(kayitlar: list, *, alacak: bool) -> QFrame:
     Sıra BAKİYEYE değil ERİMEYE göre (tutar × bekleme), o yüzden Alacak & Borç'taki
     «en çok alacak» listesinin tekrarı değil: hızlı ödeyen büyük müşteri burada altta.
     """
-    t = _agac(4, [(1, 118), (2, 78), (3, 118)])
+    t = _agac(4, [(1, 118), (2, 110), (3, 118)])
     _tsatir(t, [_c("Cari", renk=MUTED, kalin=True),
                 _c("Nominal", renk=MUTED, kalin=True, sag=True),
                 _c("Vadeye kalan", renk=MUTED, kalin=True, sag=True),

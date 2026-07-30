@@ -493,6 +493,28 @@ class TestUiSmoke(unittest.TestCase):
         self.assertFalse(a2.basabas_olculdu)
         self.assertIsNotNone(build_reel_deger_widget(a2, bas=ta.bas, bit=ta.bit))
 
+    def test_erime_tablosu_vade_basligi_kirpilmiyor(self) -> None:
+        """
+        «Vadeye kalan» sütun başlığı «Vadeye ...» diye kesiliyordu — sütun 78px,
+        kalın başlık metni ~90px'ti. Sabit genişlik varsayılmasın, ÖLÇÜLSÜN.
+        """
+        from PyQt6.QtGui import QFont, QFontMetrics
+        from PyQt6.QtWidgets import QTreeWidget
+
+        from domain.reel_deger import CariErime
+        from ui.reel_deger_view import _erime_tablo
+        kayitlar = [CariErime(kod="M1", unvan="TEST FİRMASI A.Ş.", nominal=356_505.54,
+                              agirlikli_gun=68.0, vade_etkisi=23_720.19)]
+        kart = _erime_tablo(kayitlar, alacak=True)
+        agac = kart.findChild(QTreeWidget)
+        self.assertIsNotNone(agac)
+        f = QFont(self.app.font())
+        f.setBold(True)
+        gerekli = QFontMetrics(f).horizontalAdvance("Vadeye kalan")
+        # QSS padding: 6px 4px → sağ+sol 8px (ui/bilanco_view.py: _TREE_GOVDE)
+        self.assertGreaterEqual(agac.columnWidth(2), gerekli + 8,
+                                "«Vadeye kalan» başlığı sütuna sığmıyor, kesilir")
+
     def test_trend_view(self) -> None:
         from domain.gercek_durum import AyTrend
         from domain.mizan_bilanco import build_bilanco
