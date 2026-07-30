@@ -19,6 +19,7 @@ from ui.pdf_ortak import (
     letterhead_sade,
     pdf_ciz,
     pdf_doc,
+    pdf_metin,
     sty_kpi,
     sty_row,
     sty_sec,
@@ -104,7 +105,7 @@ def _erime_bloku(kayitlar: list, elems: list, *, alacak: bool) -> None:
     rows = [[Paragraph(h, sty_sec()) for h in ("Cari", "Nominal", "Vade", son)]]
     for c in kayitlar:
         rows.append([
-            Paragraph(c.unvan, sty_row()), tl(c.nominal),
+            Paragraph(pdf_metin(c.unvan), sty_row()), tl(c.nominal),
             _gun(c.agirlikli_gun), tl(c.vade_etkisi),
         ])
     t = Table(rows, colWidths=[78 * mm, 32 * mm, 24 * mm, 36 * mm])

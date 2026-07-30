@@ -27,6 +27,7 @@ from ui.pdf_ortak import (
     letterhead_sade,
     pdf_ciz,
     pdf_doc,
+    pdf_metin,
     sty_sec,
 )
 
@@ -80,9 +81,15 @@ def _bulgu_blogu(bulgu: Bulgu) -> KeepTogether:
 
 
 def _kayit_tablosu(kayitlar: list[str]) -> Table:
-    """Düzeltilecek kayıtlar — PDF'te hepsi, kırpma yok."""
+    """
+    Düzeltilecek kayıtlar — PDF'te hepsi, kırpma yok.
+
+    Satırlar `pdf_metin`den geçer: içlerinde Mikro'dan gelen serbest metin var
+    (`sth_stok_kod`, `sth_evrakno_seri`) ve tek bir «<» belgeyi çökertirdi.
+    """
     basliklar = [[Paragraph("DÜZELTİLECEK KAYITLAR", sty_sec())]]
-    satirlar = [[Paragraph(k, _sty(7.6, renk=DARK, leading=10))] for k in kayitlar]
+    satirlar = [[Paragraph(pdf_metin(k), _sty(7.6, renk=DARK, leading=10))]
+                for k in kayitlar]
     t = Table(basliklar + satirlar, colWidths=[_EN], repeatRows=1)
     t.setStyle(TableStyle([
         ("TOPPADDING", (0, 0), (-1, -1), 2),
@@ -99,10 +106,10 @@ def export_veri_sagligi_pdf(vs: VeriSagligi, path: str | Path,
     out = Path(path)
     doc = pdf_doc(out, title="Veri Sağlığı", firma=firma)
     elems: list = []
-    # Dönem yerine TARANAN ARALIK yazar: «temiz» sonucu, neye bakıldığı bilinmeden
-    # sahte güven verir. Bu PDF müşavire gidiyor, kapsamı görmesi şart.
-    letterhead_sade(elems, firma=firma,
-                    donem=f"Taranan kayıtlar: {_gun(vs.bas)} – {_gun(vs.bit)}")
+    # Dönem yerine TARANAN KAPSAM yazar: «temiz» sonucu, neye bakıldığı bilinmeden
+    # sahte güven verir. Bu PDF müşavire gidiyor, kapsamı görmesi şart. Cümle
+    # domain'den gelir — ekrandakiyle ayrışamaz.
+    letterhead_sade(elems, firma=firma, donem=f"Taranan kayıtlar: {vs.kapsam_satiri()}")
 
     elems.append(Paragraph(vs.ozet(), _sty(13, kalin=True)))
     elems.append(Spacer(1, 9))
@@ -110,16 +117,10 @@ def export_veri_sagligi_pdf(vs: VeriSagligi, path: str | Path,
     for bulgu in vs.bulgular:
         elems.append(_bulgu_blogu(bulgu))
 
-    if vs.temiz and not vs.okunamayan:
+    if vs.temiz:
         elems.append(Paragraph(
             "Rapor rakamlarını bozabilecek bir kayıt sorunu bulunamadı.",
             _sty(10, renk=colors.HexColor("#166534"))))
-    if vs.okunamayan:
-        elems.append(Spacer(1, 4))
-        elems.append(Paragraph(
-            "<b>Kontrol edilemedi:</b> " + " · ".join(vs.okunamayan)
-            + " — bağlantı ya da yetki sorunu olabilir. Bu alanlar «temiz» sayılmamalıdır.",
-            _sty(8.5, renk=GRAY)))
 
     dipnot_ekle(
         elems,
@@ -130,7 +131,3 @@ def export_veri_sagligi_pdf(vs: VeriSagligi, path: str | Path,
     )
     pdf_ciz(doc, elems, baslik="VERİ SAĞLIĞI")
     return out
-
-
-def _gun(iso: str) -> str:
-    return f"{iso[8:10]}.{iso[5:7]}.{iso[:4]}" if len(iso) == 10 else (iso or "—")

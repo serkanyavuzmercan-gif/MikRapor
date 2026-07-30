@@ -196,5 +196,23 @@ class TestCsvYeniBolumler(unittest.TestCase):
         self.assertIn("Vade maliyeti alt sınır sebebi", reel_deger_csv(a))
 
 
+class TestCsvSutunKaymasi(unittest.TestCase):
+    """Ünvandaki «;» sütun ayracıdır — bkz. test_tahsilat_alacak.TestCsvSutunKaymasi."""
+
+    def test_ayrac_iceren_unvan_sutunlari_kaydirmaz(self) -> None:
+        ta = TahsilatAlacak(bas="2026-01-01", bit="2026-07-30",
+                            acik_vade_parcalari=[
+                                AcikVadeParcasi("customer", 60, 500_000.0, "M1",
+                                                "BETA MAK; SAN. A.Ş.")])
+        ta.alacak_toplam, ta.donem_satis, ta.donem_gun = 500_000.0, 2_000_000.0, 211
+        a = build_reel_deger_analizi(ta, ReelDegerVarsayim(yillik_iskonto_yuzde=45))
+        satirlar = reel_deger_csv(a).split("\r\n")
+        beklenen = satirlar[0].count(";")
+        cari = [s for s in satirlar if s.startswith("EN ÇOK ERİTEN")]
+        self.assertTrue(cari, "cari satırı üretilmedi")
+        for s in cari:
+            self.assertEqual(s.count(";"), beklenen, f"sütun kaydı: {s!r}")
+
+
 if __name__ == "__main__":
     unittest.main()

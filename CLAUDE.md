@@ -111,6 +111,37 @@ ayağı vardır — kâr **ve** stok aynı tutarda şişer. O yılın kâr kalem
 özkaynağı, aktif toplamı ve bunlardan türeyen oranları boş bırakılır. Asit-Test
 etkilenmez: `(dönen − stok)` şişkinliği zaten götürür.
 
+### BAKILAMAYAN, TEMİZ SAYILMAZ
+
+«Bulgu yok» ile «bakamadım» aynı şey değildir. `VeriSagligi.temiz` yalnız
+`bulgular`a bakıyordu; mizan ve stok ikisi de düştüğünde ekran ve **müşavire giden
+PDF** kalın puntoyla «Veriniz sağlıklı» yazıyordu — sıfır kayıt taranmışken. PDF
+kendi içinde çelişiyordu: on dört satır aşağıda «Bu alanlar «temiz» sayılmamalıdır».
+Koruma yeşil kartta vardı (`temiz and not okunamayan`), başlıkta yoktu.
+
+**Düşen kaynağı ÇAĞIRAN bildirmez, veri kendisi söyler.** `build_veri_sagligi`
+`bilanco is None` / `stok_rows is None` görüyor; doğruluğu çağıranın
+`okunamayan.append()` yazmayı hatırlamasına bağlamak aynı elemeyi iki yere yazmaktı
+(bkz. `_bakiye_kosulu`, `kredi_banka_mi`). `stok_rows=[]` ile `stok_rows=None`
+FARKLIDIR: «okundu, boştu» ve «okunamadı».
+
+**DÜŞEN KAYNAK ile DARALAN KAPSAM ayrı tutulur** — ikisi tek listede durunca ters
+yönde yanlış alarm çıkıyordu. `yil_client` katalog boşken bilerek seçili firmayla
+devam ediyor, yani mizan ve stok BAŞARIYLA okunuyor, yalnız tek yıl taranıyor. Bu
+`okunamayan`a yazılınca sonuç «kontrol tamamlanamadı» görünüyordu: kural 3b'nin
+yasakladığı, hiçbir rakamı bozmayan uyarı. Artık `okunamayan` «temiz» demeyi
+engeller, `kapsam_notu` engellemez — yalnız `kapsam_satiri()`nde yazar.
+
+Kapsam cümlesi **silinmez, doğrusu yazılır** ve ekran ile PDF onu tek yerden alır
+(`kapsam_satiri()`). «Bütün» kelimesi yalnız gerçekten bütünken geçer; kapsam notu
+varken «bütün kayıtlar tarandı» demek hemen ardındaki cümleyle çelişiyordu.
+Düşen kaynak SAYILMAZ, ADLANDIRILIR: «2 kaynak okunamadı» kullanıcıya hangisinin
+düştüğünü söylemez, toplam kaç kaynak olduğunu bilmediği için hepsinin düştüğünü de
+anlamaz.
+
+İhlali engelleyen testler: `test_veri_sagligi.TestOkunamayanKaynak`,
+`test_ui_smoke.test_katalog_okunamazsa_daralma_yazilir`.
+
 ## 3. Hesaplayabiliyorsak gizlemeyiz
 
 Gizlemek çare değil. Bir rakam canlı veriden hesaplanabiliyorsa hesaplanır. Ama
@@ -229,6 +260,24 @@ ne kadar tutar çıkarıldığı rakamın yanında yazar. Canlıda 13 böyle sat
 **KDV oranı da varsayılmaz.** «%20'dir» demek yanlış olurdu: ürün karması %1/%10/%20
 karışık olabilir, ihracat satışında KDV hiç doğmaz. Efektif oran dönemin kendi
 rakamından ölçülür — hesaplanan KDV (391) ÷ net satış (60/61).
+
+**CARİ ÜNVANI VE STOK KODU DA VARSAYILMAZ** — muhasebeci elle giriyor, temiz olduğu
+kabul edilemez. İki gerçek arıza çıktı:
+
+- **CSV:** ünvanın içindeki `;` sütun ayracıdır. Başlık 3 sütunken ünvanlı satır
+  4 sütuna çıkıyor, tutar Excel'de yanlış kolona düşüyordu. `domain/ortak.py:
+  csv_metin` bunun için yazılmıştı ama 12 üreticiden **1'inde** kullanılıyordu.
+- **PDF:** reportlab `Paragraph` içeriğini mini-HTML gibi ayrıştırır. Firma adında ya
+  da ünvanda tek bir `<`, belgeyi `paraparser: syntax error: parse ended with 2
+  unclosed tags` ile düşürüyordu — kullanıcıya hiçbir şey söylemeyen bir hatayla.
+  `&` affediliyordu, `<` affedilmiyordu.
+
+Kaçışlama **çağıranlara bırakılmaz, kapının kendisinde yapılır**: firma adı dokuz
+PDF'in hepsine `ui/pdf_ortak.py: letterhead_sade` üzerinden giriyor, `pdf_metin`
+orada uygulanır. Kasıtlı markup kuran satırlar (`<b>Etkisi:</b> …`) muaftır — kaçışlama
+yalnız DIŞARIDAN gelene. Bekçi test üreticileri tek tek değil topluca koşturur
+(`test_pdf_smoke.TestSerbestMetinKacisi`), CSV tarafında sütun sayısı başlıkla
+kıyaslanır (`TestCsvSutunKaymasi`).
 
 **Arayüz %100 Türkçe, hesap planı TDHP.** İngilizce sürüm planı yok.
 

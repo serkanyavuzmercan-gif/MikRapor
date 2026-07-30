@@ -142,5 +142,34 @@ class TestCariVade(unittest.TestCase):
         self.assertIsNone(gun_from_plan_adi("bilinmeyen"))
 
 
+class TestCsvSutunKaymasi(unittest.TestCase):
+    """
+    Ünvanın içindeki «;» sütun ayracıdır — kaçışlanmazsa satır kayar.
+
+    Canlıda başlık 3 sütunken ünvanlı satır 4 sütuna çıkıyor, tutar Excel'de yanlış
+    kolona düşüyordu. Ünvanları elle giren muhasebeci varken bu alanın temiz olduğu
+    varsayılamaz (kural 6).
+    """
+
+    def test_ayrac_iceren_unvan_sutunlari_kaydirmaz(self) -> None:
+        ta = build_tahsilat_alacak(
+            [_row("120.01", 0, "2026-03-01", 100_000.0,
+                  unvan="ACME SAN; VE TİC. LTD.ŞTİ.")],
+            bas="2026-01-01", bit="2026-07-30")
+        satirlar = tahsilat_alacak_csv(ta).split("\r\n")
+        beklenen = satirlar[0].count(";")
+        cari = [s for s in satirlar if s.startswith("EN ÇOK ALACAK")]
+        self.assertTrue(cari, "cari satırı üretilmedi")
+        for s in cari:
+            self.assertEqual(s.count(";"), beklenen, f"sütun kaydı: {s!r}")
+
+    def test_satir_sonu_iceren_unvan_satiri_bolmez(self) -> None:
+        ta = build_tahsilat_alacak(
+            [_row("120.01", 0, "2026-03-01", 100_000.0, unvan="SATIR\nSONLU A.Ş.")],
+            bas="2026-01-01", bit="2026-07-30")
+        icerik = tahsilat_alacak_csv(ta)
+        self.assertNotIn("\n", icerik.replace("\r\n", ""))
+
+
 if __name__ == "__main__":
     unittest.main()

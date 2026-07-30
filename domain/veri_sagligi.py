@@ -49,6 +49,11 @@ _BILINEN_EVRAK = {(0, 3), (0, 12), (1, 1), (1, 4), (1, 16)}
 # Canlıda %1'di; kullanıcının yapabileceği bir şey yok ve gerçek bulguyu gölgeliyor.
 _ONEMLI_PAY = 5.0
 
+# Bulgu çıkarmak için veri gereken kaynaklar: (ad, build_veri_sagligi parametresi).
+# `None` = OKUNAMADI, boş liste/None-olmayan = okundu. Bu ayrımı ÇAĞIRAN DEĞİL bu modül
+# yapar; gerekçesi build_veri_sagligi docstring'inde.
+_KAYNAKLAR = ("Muhasebe mizanı", "Stok hareketleri")
+
 
 @dataclass
 class Bulgu:
@@ -67,10 +72,28 @@ class Bulgu:
 
 @dataclass
 class VeriSagligi:
+    """
+    Tarama sonucu.
+
+    OKUNAMAYAN ile KAPSAM NOTU AYNI ŞEY DEĞİLDİR, karıştırılmaz:
+
+    • `okunamayan` — kaynak DÜŞTÜ, bulgular onun içinde saklı olabilir. «Temiz»
+      demeyi engeller.
+    • `kapsam_notu` — kaynak okundu, yalnız daha DAR bir aralık tarandı (ör. yıl
+      kataloğu kurulamadığı için tek yıl). Okunan neyse temizdir; «temiz» demeyi
+      engellemez, yalnız kapsam satırında yazar.
+
+    İkisi tek listede tutulunca ters yönde yanlış alarm çıkıyordu: katalog geçici bir
+    ağ hatasıyla düştüğünde `yil_client` bilerek seçili firmayla devam ediyor (mizan ve
+    stok BAŞARIYLA okunuyor), ama sonuç «kontrol tamamlanamadı» diye görünüyordu —
+    ekranda hiçbir rakamı bozmayan, kullanıcının yapacak işi olmayan bir uyarı.
+    """
+
     bas: str = ""
     bit: str = ""
     bulgular: list[Bulgu] = field(default_factory=list)
-    okunamayan: list[str] = field(default_factory=list)   # kontrol edilemeyen alanlar
+    okunamayan: list[str] = field(default_factory=list)   # DÜŞEN kaynaklar
+    kapsam_notu: str = ""                                 # daralan kapsam açıklaması
 
     @property
     def kritik(self) -> int:
@@ -82,12 +105,24 @@ class VeriSagligi:
 
     @property
     def temiz(self) -> bool:
-        return not self.bulgular
+        """
+        Bulgu YOK **ve** bakılamayan kaynak yok.
+
+        Bakılamayanı temiz saymak hatanın kendisinden kötüdür: canlıda mizan ve stok
+        ikisi de düştüğünde ekran ve müşavire giden PDF kalın puntoyla «Veriniz
+        sağlıklı» yazıyordu — sıfır kayıt taranmışken.
+        """
+        return not self.bulgular and not self.okunamayan
 
     def ozet(self) -> str:
         """Üst şeritte tek satır — idareci başka bir şey okumasa bile bunu okur."""
         if self.temiz:
             return "Veriniz sağlıklı — rakamları bozacak bir şey bulunamadı."
+        # Düşen kaynak SAYILMAZ, ADLANDIRILIR: «2 kaynak okunamadı» kullanıcıya kaçının
+        # düştüğünü söylemez, üstelik toplam kaç kaynak olduğunu bilmediği için hepsinin
+        # düştüğünü de anlamaz.
+        if not self.bulgular:
+            return "Kontrol yapılamadı — " + " ve ".join(self.okunamayan) + " okunamadı."
         parcalar = []
         if self.kritik:
             parcalar.append(f"{self.kritik} kritik")
@@ -96,7 +131,39 @@ class VeriSagligi:
         bilgi = len(self.bulgular) - self.kritik - self.uyari
         if bilgi:
             parcalar.append(f"{bilgi} not")
-        return f"{len(self.bulgular)} bulgu: " + " · ".join(parcalar)
+        ozet = f"{len(self.bulgular)} bulgu: " + " · ".join(parcalar)
+        if self.okunamayan:
+            ozet += f" · {' ve '.join(self.okunamayan)} okunamadı"
+        return ozet
+
+    def kapsam_satiri(self) -> str:
+        """
+        NEYİN tarandığı — ekran ve PDF AYNI cümleyi kullanır.
+
+        «Temiz» sonucu, neye bakıldığı bilinmeden sahte bir güven verir; bu yüzden
+        kapsam hiçbir durumda silinmez, yalnız doğrusu yazılır. İki yere ayrı yazılan
+        cümle er ya da geç ayrışır — biri «bütün kayıtlar tarandı» derken öteki
+        düşen kaynağı biliyor olurdu.
+        """
+        aralik = f"{_gun(self.bas)} – {_gun(self.bit)}"
+        if self.okunamayan:
+            okunan = [a for a in _KAYNAKLAR if a not in self.okunamayan]
+            if not okunan:
+                return (f"{aralik} aralığında hiçbir kayıt okunamadı — "
+                        "bağlantı ya da yetki sorunu olabilir.")
+            return (f"{aralik} aralığında yalnız {' · '.join(okunan)} tarandı; "
+                    f"{' · '.join(self.okunamayan)} okunamadı — bağlantı ya da yetki "
+                    "sorunu olabilir.")
+        # «BÜTÜN» kelimesi yalnız gerçekten bütünken yazılır: kapsam notu varken
+        # «bütün kayıtlar tarandı» demek, hemen ardından gelen «yalnız şu kadarı
+        # tarandı» cümlesiyle çelişiyordu.
+        if self.kapsam_notu:
+            return f"{aralik} arası kayıtlar tarandı. {self.kapsam_notu}"
+        return f"{aralik} arası bütün kayıtlar tarandı."
+
+
+def _gun(iso: str) -> str:
+    return f"{iso[8:10]}.{iso[5:7]}.{iso[:4]}" if len(iso) == 10 else iso
 
 
 def _sirala(bulgular: list[Bulgu]) -> list[Bulgu]:
@@ -244,15 +311,25 @@ def build_veri_sagligi(
     stok_rows: list[dict] | None = None,
     aykiri_rows: list[dict] | None = None,
     okunamayan: list[str] | None = None,
+    kapsam_notu: str = "",
 ) -> VeriSagligi:
     """
     Çekilmiş satırlardan bulguları kurar (saf).
 
-    Okunamayan kaynak SESSİZCE ATLANMAZ: `okunamayan` listesine yazılır ve ekranda
-    «kontrol edilemedi» diye görünür. Yoksa kullanıcı, bakılamayan bir şeyi temiz
-    sanar — bu, hatanın kendisinden daha kötüdür.
+    Okunamayan kaynak SESSİZCE ATLANMAZ ve bunu ÇAĞIRANIN BİLDİRMESİ GEREKMEZ: veri
+    `None` geldiyse o kaynak okunamamış demektir, burada görülüyor. Doğruluğu çağıranın
+    `okunamayan`a eklemeyi hatırlamasına bağlamak, aynı elemeyi iki yere yazmak olurdu —
+    biri güncellenir, öteki unutulur (bkz. `_bakiye_kosulu`, `kredi_banka_mi`).
+    `okunamayan` parametresi yalnız buradan görünmeyen düşüşler için (ör. firma ünvanı).
+
+    `stok_rows=[]` ile `stok_rows=None` FARKLIDIR: birincisi «okundu, içinde bir şey
+    yoktu», ikincisi «okunamadı».
     """
-    vs = VeriSagligi(bas=bas, bit=bit, okunamayan=list(okunamayan or []))
+    vs = VeriSagligi(bas=bas, bit=bit, okunamayan=list(okunamayan or []),
+                     kapsam_notu=kapsam_notu)
+    for ad, veri in zip(_KAYNAKLAR, (bilanco, stok_rows), strict=True):
+        if veri is None and ad not in vs.okunamayan:
+            vs.okunamayan.append(ad)
     bulgular: list[Bulgu | None] = []
     if bilanco is not None:
         bulgular += [_maliyet_kapanisi(bilanco), _mizan_dengesi(bilanco)]

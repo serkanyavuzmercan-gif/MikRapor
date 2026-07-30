@@ -202,10 +202,27 @@ class TestVeriSagligiPdf(unittest.TestCase):
             _pdf_dogrula(self, out)
 
     def test_temiz_veride_de_uretilir(self) -> None:
-        """Bulgu yoksa da belge çıkmalı: «kontrol edildi, temiz» de bir sonuçtur."""
+        """
+        Bulgu yoksa da belge çıkmalı: «kontrol edildi, temiz» de bir sonuçtur.
+
+        «Temiz» için İKİ kaynağın da okunmuş olması şart — `bilanco` verilmeyince
+        mizan okunamamış sayılır ve sonuç temiz değildir.
+        """
+        from domain.mizan_bilanco import build_bilanco
         from domain.veri_sagligi import build_veri_sagligi
         from ui.veri_sagligi_pdf import export_veri_sagligi_pdf
-        vs = build_veri_sagligi(bas="2026-01-01", bit="2026-07-28", stok_rows=[])
+        # Dengeli mizan: aktif 900.000 = pasif 700.000 + dönem kârı 200.000. 621
+        # işlenmiş olmalı, yoksa maliyet bulgusu çıkar ve sonuç «temiz» olmaz.
+        bilanco = build_bilanco(
+            [{"hesap_kodu": "102", "borc": 100_000.0, "alacak": 0.0},
+             {"hesap_kodu": "153", "borc": 800_000.0, "alacak": 0.0},
+             {"hesap_kodu": "320", "borc": 0.0, "alacak": 300_000.0},
+             {"hesap_kodu": "500", "borc": 0.0, "alacak": 400_000.0},
+             {"hesap_kodu": "600", "borc": 0.0, "alacak": 900_000.0},
+             {"hesap_kodu": "621", "borc": 700_000.0, "alacak": 0.0}],
+            asof="2026-07-28")
+        vs = build_veri_sagligi(bas="2026-01-01", bit="2026-07-28",
+                                bilanco=bilanco, stok_rows=[])
         self.assertTrue(vs.temiz)
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "temiz.pdf"
@@ -294,6 +311,105 @@ def _mukayese_data(kapanislar: list) -> list[list[str]]:
         for satir in bolum.satirlar:
             data.append([satir.etiket, *satir.hucreler, satir.degisim])
     return data
+
+
+# Muhasebeci elle giriyor: ünvanların ve stok kodlarının «temiz» olduğu VARSAYILMAZ.
+_KOTU_AD = "A<B & C>D SAN. TİC. LTD.ŞTİ."
+
+
+@unittest.skipUnless(_REPORTLAB, "reportlab kurulu değil")
+class TestSerbestMetinKacisi(unittest.TestCase):
+    """
+    Veritabanından gelen serbest metin PDF'i ÇÖKERTMEZ.
+
+    `Paragraph` içeriğini mini-HTML gibi ayrıştırır; firma adında ya da cari ünvanında
+    tek bir «<» bütün belgeyi `paraparser: syntax error: parse ended with 2 unclosed
+    tags` ile düşürüyordu — kullanıcıya hiçbir şey söylemeyen bir hatayla. «&»
+    reportlab tarafından affediliyordu, «<» affedilmiyordu.
+
+    Firma adı DOKUZ PDF'in hepsine `letterhead_sade` üzerinden giriyor; bu yüzden test
+    üreticileri tek tek değil TOPLUCA koşturur — yeni bir rapor eklendiğinde de aynı
+    kapıdan geçtiği sürece korunur.
+    """
+
+    def _uret(self, ad: str, cagir) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / f"{ad}.pdf"
+            cagir(out)
+            _pdf_dogrula(self, out)
+
+    def test_firma_adindaki_isaretler_dokuz_pdfi_dusurmez(self) -> None:
+        from domain.gercek_durum import build_gercek_durum
+        from domain.nakit_akis import build_nakit_akis
+        from domain.tahsilat_alacak import build_tahsilat_alacak
+        from domain.trend import build_trend
+        from ui.bilanco_pdf import export_bilanco_pdf
+        from ui.gelir_tablosu_pdf import export_gelir_tablosu_pdf
+        from ui.gercek_durum_pdf import export_gercek_durum_pdf
+        from ui.nakit_akis_pdf import export_nakit_akis_pdf
+        from ui.tahsilat_alacak_pdf import export_tahsilat_alacak_pdf
+        from ui.trend_pdf import export_trend_pdf
+
+        b = build_bilanco(_MIZAN_ROWS, asof="2026-06-30")
+        gt = build_gelir_tablosu(_GT_ROWS, bas="2026-01-01", bit="2026-06-30")
+        na = build_nakit_akis([{"ay": "2026-01", "tip": 0, "prefix": "120",
+                                "tutar": 5000.0}],
+                              kapanis_nakit=10_000.0, donem_delta=1000.0,
+                              bas="2026-01-01", bit="2026-06-30")
+        ta = build_tahsilat_alacak([], bas="2026-01-01", bit="2026-06-30")
+        gd = build_gercek_durum(stok_rows=[], stok_aylik=[], nakit_rows=[],
+                                nakit_aylik=[], bas="2026-01-01", bit="2026-06-30")
+        tr = build_trend(bilanco=b, aylik=[], bas="2026-01-01", bit="2026-06-30")
+
+        uretimler = {
+            "bilanco": lambda o: export_bilanco_pdf(
+                b, o, firma=_KOTU_AD, bas="2026-01-01", bit="2026-06-30"),
+            "gelir": lambda o: export_gelir_tablosu_pdf(gt, o, firma=_KOTU_AD),
+            "nakit": lambda o: export_nakit_akis_pdf(na, o, firma=_KOTU_AD),
+            "tahsilat": lambda o: export_tahsilat_alacak_pdf(ta, o, firma=_KOTU_AD),
+            "gercek": lambda o: export_gercek_durum_pdf(gd, o, firma=_KOTU_AD),
+            "trend": lambda o: export_trend_pdf(tr, o, firma=_KOTU_AD),
+        }
+        for ad, cagir in uretimler.items():
+            with self.subTest(rapor=ad):
+                self._uret(ad, cagir)
+
+    def test_cari_unvanindaki_isaretler_reel_degeri_dusurmez(self) -> None:
+        from domain.reel_deger import ReelDegerVarsayim, build_reel_deger_analizi
+        from domain.tahsilat_alacak import AcikVadeParcasi, TahsilatAlacak
+        from ui.reel_deger_pdf import export_reel_deger_pdf
+
+        ta = TahsilatAlacak(bas="2026-01-01", bit="2026-07-30",
+                            acik_vade_parcalari=[
+                                AcikVadeParcasi("customer", 60, 500_000.0, "M1",
+                                                _KOTU_AD)])
+        ta.alacak_toplam, ta.donem_satis, ta.donem_gun = 500_000.0, 2_000_000.0, 211
+        a = build_reel_deger_analizi(ta, ReelDegerVarsayim(yillik_iskonto_yuzde=45))
+        self.assertTrue(a.top_alacak_erime, "test ünvanı listeye girmedi")
+        self._uret("reel", lambda o: export_reel_deger_pdf(
+            a, o, bas=ta.bas, bit=ta.bit, firma=_KOTU_AD))
+
+    def test_stok_kodundaki_isaretler_veri_sagligini_dusurmez(self) -> None:
+        """«Düzeltilecek kayıtlar» satırları Mikro'dan gelen stok kodunu taşıyor."""
+        from domain.veri_sagligi import build_veri_sagligi
+        from ui.veri_sagligi_pdf import export_veri_sagligi_pdf
+
+        vs = build_veri_sagligi(
+            bas="2019-01-01", bit="2026-07-28",
+            stok_rows=[{"sth_tip": 0, "sth_evraktip": 12, "tutar": 2e7, "adet": 6_592,
+                        "aykiri_adet": 1, "aykiri_tutar": 3_333_333_333_340.0}],
+            aykiri_rows=[{"tarih": "2023-12-07T00:00:00", "sth_evrakno_seri": "A<B",
+                          "sth_evrakno_sira": 700, "sth_stok_kod": "MAL<001>",
+                          "sth_tip": 0, "sth_evraktip": 12, "sth_miktar": 2.0,
+                          "sth_tutar": 3_333_333_333_340.0}])
+        kayit = next(b for b in vs.bulgular if b.kayitlar).kayitlar[0]
+        self.assertIn("<", kayit, "test verisi işaret taşımıyor")
+        self._uret("saglik", lambda o: export_veri_sagligi_pdf(vs, o, firma=_KOTU_AD))
+
+    def test_pdf_metin_isaretleri_kacislar(self) -> None:
+        from ui.pdf_ortak import pdf_metin
+        self.assertEqual(pdf_metin("A<B>C&D"), "A&lt;B&gt;C&amp;D")
+        self.assertEqual(pdf_metin(None), "")
 
 
 if __name__ == "__main__":

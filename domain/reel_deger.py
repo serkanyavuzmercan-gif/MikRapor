@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from domain.ortak import csv_sayi
+from domain.ortak import csv_metin, csv_sayi
 from domain.tahsilat_alacak import TahsilatAlacak
 
 
@@ -237,8 +237,9 @@ def reel_deger_csv(a: ReelDegerAnalizi) -> str:
     else:
         out.append("BAŞABAŞ VADE FARKI;Tahsil süresi ölçülemedi;dönemde kredili satış yok")
     out.extend(f"BAŞABAŞ VADE FARKI;{g} gün (%);{s(y)}" for g, y in a.basabas_merdiven)
-    out.extend(
-        f"EN ÇOK ERİTEN MÜŞTERİ;{c.unvan};{s(c.vade_etkisi)}" for c in a.top_alacak_erime)
-    out.extend(
-        f"EN ÇOK KAZANDIRAN SATICI;{c.unvan};{s(c.vade_etkisi)}" for c in a.top_borc_erime)
+    # Ünvan csv_metin'den geçer — «;» içeren ünvan sütunları kaydırıyordu.
+    out.extend(f"EN ÇOK ERİTEN MÜŞTERİ;{csv_metin(c.unvan)};{s(c.vade_etkisi)}"
+               for c in a.top_alacak_erime)
+    out.extend(f"EN ÇOK KAZANDIRAN SATICI;{csv_metin(c.unvan)};{s(c.vade_etkisi)}"
+               for c in a.top_borc_erime)
     return "\r\n".join(out)

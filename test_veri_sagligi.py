@@ -190,12 +190,52 @@ class TestOkunamayanKaynak(unittest.TestCase):
 
     def test_verilmeyen_kaynak_icin_bulgu_uydurulmaz(self) -> None:
         vs = build_veri_sagligi(bilanco=None, stok_rows=None)
-        self.assertTrue(vs.temiz)
+        self.assertEqual(vs.bulgular, [])
+
+    def test_hic_kaynak_okunamayinca_temiz_denmez(self) -> None:
+        """
+        Canlıda ekran ve müşavire giden PDF kalın puntoyla «Veriniz sağlıklı» yazıyordu
+        — sıfır kayıt taranmışken. `temiz` yalnız `bulgular`a bakıyordu.
+        """
+        vs = build_veri_sagligi(bilanco=None, stok_rows=None)
+        self.assertFalse(vs.temiz)
+        self.assertNotIn("sağlıklı", vs.ozet())
+
+    def test_dusen_kaynagi_cagiran_bildirmek_zorunda_degil(self) -> None:
+        """Veri `None` geldiyse kaynak okunamamıştır; eleme tek yerde durur."""
+        vs = build_veri_sagligi(bilanco=None, stok_rows=[])
+        self.assertEqual(vs.okunamayan, ["Muhasebe mizanı"])
+        self.assertFalse(vs.temiz)
 
     def test_okunamayan_listesi_ozette_kalir(self) -> None:
-        vs = build_veri_sagligi(okunamayan=["Muhasebe mizanı"])
-        self.assertEqual(vs.okunamayan, ["Muhasebe mizanı"])
-        self.assertIn("Muhasebe mizanı", veri_sagligi_csv(vs))
+        vs = build_veri_sagligi(okunamayan=["Firma ünvanı"], stok_rows=[],
+                                bilanco=_bilanco(smm=700_000.0))
+        self.assertEqual(vs.okunamayan, ["Firma ünvanı"])
+        self.assertIn("Firma ünvanı", veri_sagligi_csv(vs))
+
+    def test_daralan_kapsam_temizi_engellemez(self) -> None:
+        """
+        Katalog düşünce `yil_client` bilerek seçili firmayla devam ediyor: mizan ve stok
+        OKUNUYOR, yalnız tek yıl taranıyor. Bunu «düşen kaynak» saymak, ekranda hiçbir
+        rakamı bozmayan ve kullanıcının yapacak işi olmayan bir alarm üretiyordu.
+        """
+        vs = build_veri_sagligi(bas="2026-01-01", bit="2026-07-30",
+                                bilanco=_bilanco(smm=700_000.0), stok_rows=[],
+                                kapsam_notu="Yıl kataloğu kurulamadı.")
+        self.assertTrue(vs.temiz)
+        self.assertIn("sağlıklı", vs.ozet())
+        self.assertIn("Yıl kataloğu kurulamadı.", vs.kapsam_satiri())
+
+    def test_kapsam_satiri_dusen_kaynagi_yazar(self) -> None:
+        """«Bütün kayıtlar tarandı» cümlesi, taranmamışken basılamaz."""
+        hic = build_veri_sagligi(bas="2020-01-01", bit="2026-07-30")
+        self.assertNotIn("bütün kayıtlar tarandı", hic.kapsam_satiri())
+        self.assertIn("hiçbir kayıt okunamadı", hic.kapsam_satiri())
+
+        yarim = build_veri_sagligi(bas="2020-01-01", bit="2026-07-30", stok_rows=[])
+        self.assertNotIn("bütün kayıtlar tarandı", yarim.kapsam_satiri())
+        self.assertIn("Stok hareketleri", yarim.kapsam_satiri())
+        self.assertIn("Muhasebe mizanı", yarim.kapsam_satiri())
 
 
 class TestOzet(unittest.TestCase):

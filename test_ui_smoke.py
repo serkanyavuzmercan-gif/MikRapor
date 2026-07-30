@@ -709,7 +709,14 @@ class TestUiSmoke(unittest.TestCase):
         self.assertEqual(vs.okunamayan, [])
 
     def test_katalog_okunamazsa_daralma_yazilir(self) -> None:
-        """Sessizce tek yıla düşmek, temiz sonuca sahte güven verir (kural 2)."""
+        """
+        Sessizce tek yıla düşmek, temiz sonuca sahte güven verir (kural 2).
+
+        Ama bu bir DÜŞEN KAYNAK DEĞİL: `yil_client` katalog boşken bilerek seçili
+        firmayla devam ediyor, mizan ve stok okunuyor. `okunamayan`a yazılınca sonuç
+        «kontrol tamamlanamadı» görünüyordu — kural 3b'nin yasakladığı, hiçbir rakamı
+        bozmayan uyarı. Kapsam notu olarak kapsam satırında yazar.
+        """
         from unittest.mock import patch
 
         import ui.veri_sagligi_dialog as vsd
@@ -728,7 +735,11 @@ class TestUiSmoke(unittest.TestCase):
                 vs, _firma = sahte_worker.call_args[0][0](lambda _m: None)
             finally:
                 d.deleteLater()
-        self.assertTrue(any("katalo" in x.lower() for x in vs.okunamayan))
+        self.assertIn("katalo", vs.kapsam_notu.lower())
+        self.assertIn("katalo", vs.kapsam_satiri().lower())
+        # Daralan kapsam «düşen kaynak» sayılmaz: okunan neyse temizdir.
+        self.assertEqual(vs.okunamayan, [])
+        self.assertTrue(vs.temiz)
 
     def test_tahmin_tazelik_gostergesi(self) -> None:
         """Sağdaki raporun güncel mi bayat mı olduğu panelde yazmalı.

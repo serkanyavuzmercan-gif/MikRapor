@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import os
 import sys
@@ -24,6 +25,22 @@ DARK = colors.HexColor("#1f2937")
 GRAY = colors.HexColor("#6b7280")
 LINE = colors.HexColor("#c9cfd8")
 ACCENT = colors.HexColor("#0f766e")
+
+
+def pdf_metin(deger: str | None) -> str:
+    """
+    Veritabanından/kullanıcıdan gelen SERBEST METNİ reportlab için kaçışlar.
+
+    `Paragraph` içeriğini mini-HTML gibi ayrıştırır: cari ünvanında ya da firma adında
+    tek bir «<», bütün PDF'i `paraparser: syntax error: parse ended with 2 unclosed
+    tags` ile çökertir — kullanıcıya hiçbir şey söylemeyen bir hatayla. «&» reportlab
+    tarafından affediliyor, «<» affedilmiyor.
+
+    Ünvanları elle giren muhasebeci varken bu alanların temiz olduğu VARSAYILMAZ
+    (kural 6). Kasıtlı markup içeren metinlere (`<b>…</b>` kuran kod satırları)
+    uygulanmaz — yalnız dışarıdan gelene.
+    """
+    return html.escape(str(deger or ""), quote=False)
 
 
 def _kok() -> Path:
@@ -197,10 +214,18 @@ def pdf_ciz(doc: SimpleDocTemplate, elems: list, *, baslik: str = "") -> None:
 def letterhead_sade(
     elems: list, *, firma: str, bas: str = "", bit: str = "", donem: str = "",
 ) -> None:
-    """Sayfa header'lı PDF'ler için sade içerik başlığı: firma + dönem (marka/başlık sayfa header'ında)."""
+    """
+    Sayfa header'lı PDF'ler için sade içerik başlığı: firma + dönem.
+
+    `firma` BURADA kaçışlanır, çağıranlarda değil: dokuz PDF'in hepsi buradan geçiyor
+    ve firma adı Mikro Ayarları'ndaki serbest metin kutusundan (ya da
+    `FIRMALAR.fir_unvan`'dan) geliyor. Kaçışlamayı dokuz çağırana bırakmak, aynı
+    elemeyi dokuz yere yazmak olurdu. `donem` kaçışlanmaz çünkü çağıranların hepsi onu
+    tarihten üretiyor — buraya dışarıdan metin verilecekse `pdf_metin`'den geçirilmeli.
+    """
     if firma:
         elems.append(Paragraph(
-            firma,
+            pdf_metin(firma),
             ParagraphStyle("firma", fontName=FONT_B, fontSize=14, textColor=DARK, leading=17),
         ))
     donem_yazi = (donem or "").strip() or donem_satiri(bas, bit)

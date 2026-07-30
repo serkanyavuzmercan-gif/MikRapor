@@ -144,27 +144,27 @@ class VeriSagligiDialog(QDialog):
 
         def is_fn(bildir) -> tuple[VeriSagligi, str]:
             client = yil_client(cfg, int(bit[:4]))
-            okunamayan: list[str] = []
             # Kapsam katalogtan: bozuk kayıt hangi yılda olursa olsun bulunmalı.
-            # KATALOG OKUNAMAZSA SESSİZCE DARALMAZ: tarama içinde bulunulan yıla
-            # düşer ama bu «kontrol edilemedi» diye yazılır. Yoksa kullanıcı bütün
-            # geçmişin tarandığını sanıp temiz sonuca güvenir — hatanın kendisinden
-            # kötüsü budur.
+            # KATALOG OKUNAMAZSA SESSİZCE DARALMAZ, ama bu bir DÜŞEN KAYNAK DEĞİL:
+            # `yil_client` katalog boşken bilerek seçili firmayla devam ediyor, yani
+            # mizan ve stok yine okunuyor — yalnız tek yıl taranıyor. `okunamayan`a
+            # yazılınca sonuç «kontrol tamamlanamadı» görünüyordu; oysa okunan neyse
+            # temizdi. Kapsam notu olarak kapsam satırında yazar.
             yillar = [k.ilk_yil for k in katalog(cfg)]
-            if not yillar:
-                okunamayan.append(
-                    "Veritabanı kataloğu — yalnız içinde bulunulan yıl tarandı "
-                    "(Mikro Ayarları'nda firma kodlarını kontrol edin)")
+            kapsam_notu = "" if yillar else (
+                "Yıl kataloğu kurulamadığı için geçmiş yıllar taranamadı — "
+                "Mikro Ayarları'nda firma kodlarını kontrol edin.")
             ilk_yil = min(yillar, default=int(bit[:4]))
             bas = f"{ilk_yil}-01-01"
-            # Her kaynak AYRI denenir; düşen kaynak sessizce atlanmaz, «kontrol
-            # edilemedi» diye görünür. Bakılamayanı temiz sanmak hatadan kötüdür.
+            # Her kaynak AYRI denenir; düşen kaynak sessizce atlanmaz. Listeye ELLE
+            # eklenmiyor: veri `None` kaldığında build_veri_sagligi bunu kendisi görür,
+            # böylece eleme tek yerde durur.
             bildir("Muhasebe mizanı okunuyor…")
             bilanco = None
             try:
                 bilanco = build_bilanco(fetch_mizan(client, bit), asof=bit)
             except (MikroAPIError, YilVeritabaniHatasi):
-                okunamayan.append("Muhasebe mizanı")
+                pass
             bildir(f"Stok hareketleri okunuyor ({ilk_yil}–{bit[:4]})…")
             stok_rows = None
             aykiri_rows: list[dict] = []
@@ -181,8 +181,7 @@ class VeriSagligiDialog(QDialog):
                         cfg, bas, bit, fetch_stok_aykiri_satirlar,
                         bildir=bildir, ad="hatalı kayıtlar")
             except (MikroAPIError, YilVeritabaniHatasi):
-                if stok_rows is None:
-                    okunamayan.append("Stok hareketleri")
+                pass
             # Firma ünvanı PDF başlığına girer; müşavire giden belge kime ait olduğunu
             # yazmalı. Okunamazsa boş kalır, rapor yine üretilir.
             firma = (cfg.firma_adi or "").strip()
@@ -193,7 +192,7 @@ class VeriSagligiDialog(QDialog):
                     firma = ""
             return build_veri_sagligi(bas=bas, bit=bit, bilanco=bilanco,
                                       stok_rows=stok_rows, aykiri_rows=aykiri_rows,
-                                      okunamayan=okunamayan), firma
+                                      kapsam_notu=kapsam_notu), firma
 
         worker = RaporWorker(is_fn, parent=self)
         self._worker = worker
@@ -244,18 +243,15 @@ class VeriSagligiDialog(QDialog):
         self._btn_pdf.setEnabled(True)
         self._btn_csv.setEnabled(True)
         self._ozet.setText(sonuc.ozet())
-        # Hangi dönemin tarandığı YAZAR: «temiz» sonucu, neye bakıldığı bilinmeden
-        # sahte bir güven verir.
+        # Hangi kapsamın tarandığı YAZAR: «temiz» sonucu, neye bakıldığı bilinmeden
+        # sahte bir güven verir. Cümle domain'den gelir — PDF'le aynısı olsun diye.
         self._alt.setText(
-            f"{_gun(sonuc.bas)} – {_gun(sonuc.bit)} arası bütün kayıtlar tarandı. "
-            "Rapor rakamlarını bozabilecek sorunlar ve ne yapılması gerektiği listelenir.")
+            f"{sonuc.kapsam_satiri()} Rapor rakamlarını bozabilecek sorunlar ve ne "
+            "yapılması gerektiği listelenir.")
         for b in sonuc.bulgular:
             self._ekle(_kart(b))
-        if sonuc.temiz and not sonuc.okunamayan:
+        if sonuc.temiz:
             self._ekle(_iyi_kart())
-        if sonuc.okunamayan:
-            self._not("Kontrol edilemedi: " + " · ".join(sonuc.okunamayan)
-                      + " — bağlantı ya da yetki sorunu olabilir.")
 
     def _ekle(self, w: QWidget) -> None:
         self._gl.insertWidget(self._gl.count() - 1, w)
@@ -265,10 +261,6 @@ class VeriSagligiDialog(QDialog):
         lbl.setWordWrap(True)
         lbl.setStyleSheet(f"color:{MUTED}; font-size:11px; background:transparent;")
         self._ekle(lbl)
-
-
-def _gun(iso: str) -> str:
-    return f"{iso[8:10]}.{iso[5:7]}.{iso[:4]}" if len(iso) == 10 else iso
 
 
 def _cerceve(yazi: str, arka: str, kenar: str) -> QFrame:
