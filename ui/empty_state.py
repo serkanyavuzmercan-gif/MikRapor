@@ -155,6 +155,27 @@ class _CoverBackground(QWidget):
         p.end()
 
 
+class _ClusterPanel(QWidget):
+    """
+    Marka/başlık/açıklama/CTA cluster'ının arkasına yarı şeffaf beyaz kart çizer.
+
+    Hero illüstrasyonu tam opaklıkla (empty modda soluk değil) çizildiği için,
+    illüstrasyonun parlak/yoğun kısımları (ör. AI ikonunun ışıklı halkası) yazının
+    tam arkasına denk gelince metin okunmuyordu. Panel TÜM empty-state'lerde ortak
+    (tek sekmeye özel yama değil) — hangi hero eklenirse eklensin metin garanti
+    okunur kalsın diye.
+    """
+
+    def paintEvent(self, _ev) -> None:  # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), 24, 24)
+        p.fillPath(path, QColor(255, 255, 255, 158))
+        p.end()
+        super().paintEvent(_ev)
+
+
 class _HScaleLabel(QWidget):
     """Tek satır — max_width aşarsa yatay ölçek; yükseklik sabit."""
 
@@ -361,7 +382,7 @@ class EmptyState(QWidget):
         self._arka_plan = False
 
         # Sabit cluster — layout stretch yok; resizeEvent ile alta sabitlenir
-        self._cluster = QWidget(self)
+        self._cluster = _ClusterPanel(self)
         self._cluster.setObjectName("emptyCol")
         self._cluster.setFixedSize(_COL_W, _CLUSTER_H)
         self._cluster.setStyleSheet("background: transparent;")

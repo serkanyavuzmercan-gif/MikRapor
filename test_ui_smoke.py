@@ -1079,5 +1079,34 @@ class _SahteSinyal:
         raise TypeError("bağlı değil")        # RaporTab bunu yutmalı
 
 
+@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+class TestEmptyStateOkunabilirlik(unittest.TestCase):
+    """
+    Hero illüstrasyonu empty-durumda TAM opaklıkla çizilir (soluk mod yalnız rapor
+    altındaki arka planda). «ai.png»nin ışıklı AI ikonu marka/başlık/açıklama metninin
+    tam arkasına denk gelince okunmuyordu — panel TÜM empty-state'lerde ortak olsun
+    diye tek sekmeye özel yama değil, _ClusterPanel'e taşındı.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_cluster_kendi_arka_planini_cizer(self) -> None:
+        from ui.empty_state import _ClusterPanel, build_empty_state
+        w = build_empty_state(
+            "Yapay Zekâ Yorumu", "açıklama", cta_hint="Yorumla ve Gönder",
+            hero_asset="ai.png", on_cta=lambda: None)
+        panel = w.findChild(_ClusterPanel)
+        self.assertIsNotNone(panel, "cluster artık kendi arka planını çizen bir panel değil")
+
+    def test_arka_plan_modunda_panel_gizlenir(self) -> None:
+        """Rapor altındaki soluk arka planda cluster (ve paneli) hiç görünmemeli."""
+        from ui.empty_state import EmptyState
+        w = EmptyState("Başlık", "açıklama", hero_asset="ai.png")
+        w.set_arka_plan_modu(True)
+        self.assertFalse(w._cluster.isVisible())
+
+
 if __name__ == "__main__":
     unittest.main()
