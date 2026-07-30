@@ -101,7 +101,7 @@ class AiYorumTab(RaporTab):
     # yazar. "Birkaç saniye" demek kullanıcıya takıldığını düşündürüyordu.
     SURE_IPUCU = "Yapay zekâ tüm dönemi okuyup yazıyor — birkaç dakika sürebilir · «İptal» ile durdurabilirsin"
     PDF_DESTEK = True
-    HERO_ASSET = "empty-trendler.png"
+    HERO_ASSET = "ai.png"
 
     _y: AiYorum | None = None
 
