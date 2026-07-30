@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 
 from domain.gercek_durum_ayarlar import GercekDurumAyarlar
 from domain.mizan_bilanco import Bilanco
-from domain.ortak import csv_sayi, yuzde
+from domain.ortak import csv_sayi, kredi_banka_mi, yuzde
 from domain.ortak import muh_sinifi as _muh_sinifi
 from domain.ortak import to_float as _f
 from domain.ortak import to_int as _i
@@ -94,6 +94,9 @@ class GercekDurum:
     tum_giris: float = 0.0          # tip=0 tüm girişler
     siniflandirilmayan_cikis: float = 0.0
     siniflandirilmayan_giris: float = 0.0
+    # Toplama girmeyen aykırı stok satırları (bkz. _siniflandir_stok).
+    aykiri_adet: int = 0
+    aykiri_tutar: float = 0.0
     stok_kirilim_sayisi: int = 0
     stok_hareket_adet: int = 0
     siniflandirma_fallback: bool = False  # bilinen evraktip dışı → tüm çıkış/giriş kullanıldı
@@ -284,8 +287,14 @@ def _siniflandir_stok(
         "tum_cikis": 0.0, "tum_giris": 0.0,
         "siniflandirilmayan_cikis": 0.0, "siniflandirilmayan_giris": 0.0,
         "hareket_adet": 0.0,
+        # AYKIRI SATIRLAR TOPLAMA GİRMEZ ama görünmez de olmaz: kaç satırın, ne kadar
+        # tutarla elendiği taşınır ve rakamın yanında yazılır. Canlıda tek bir kayıt
+        # (2 adet mala 3,3 trilyon TL) 2023 sütununu tek başına ele geçiriyordu.
+        "aykiri_adet": 0.0, "aykiri_tutar": 0.0,
     }
     for r in rows:
+        out["aykiri_adet"] += _f(r.get("aykiri_adet", r.get("AYKIRI_ADET")))
+        out["aykiri_tutar"] += _f(r.get("aykiri_tutar", r.get("AYKIRI_TUTAR")))
         tip = _i(r.get("sth_tip", r.get("STH_TIP")))
         ev = _i(r.get("sth_evraktip", r.get("STH_EVRAKTIP")))
         tutar = _f(r.get("tutar", r.get("TUTAR")))
@@ -478,16 +487,10 @@ def _bakiye_caridan(rows: list[dict], *, banka_kredi_haric: bool = True) -> dict
             continue
         out["cari_hesap_sayisi"] += 1
         if cins == _BANKA_CINS:
-            tip = _i(r.get("ban_hesap_tip", r.get("BAN_HESAP_TIP")))
-            if banka_kredi_haric and tip == 1:
-                continue
-            kod = str(r.get("kod", r.get("KOD")) or "")
-            muh = str(r.get("muh_kod", r.get("MUH_KOD")) or "")
-            if not muh:
-                muh = str(r.get("ban_muh_kod", r.get("BAN_MUH_KOD")) or "")
-            if banka_kredi_haric and _muh_sinifi(muh) == "supplier":
-                continue
-            if banka_kredi_haric and (muh.startswith("300") or kod.upper().startswith("300")):
+            # Kredi ayrımı domain/ortak.py: kredi_banka_mi — TEK yer. Buradaki üç test
+            # doğruydu ama nakit_bakiye ve akış sorguları yalnız ban_hesap_tip'e
+            # bakıyordu; aynı kural üç yerde üç farklı tamlıktaydı.
+            if banka_kredi_haric and kredi_banka_mi(r):
                 continue
             net = borc_h - alacak_h
             out["nakit_banka"] += net
@@ -574,6 +577,8 @@ def build_gercek_durum(
     gd.tum_giris = s["tum_giris"]
     gd.siniflandirilmayan_cikis = s["siniflandirilmayan_cikis"]
     gd.siniflandirilmayan_giris = s["siniflandirilmayan_giris"]
+    gd.aykiri_adet = int(s.get("aykiri_adet", 0.0))
+    gd.aykiri_tutar = s.get("aykiri_tutar", 0.0)
     gd.stok_kirilim_sayisi = len(stok_rows or [])
     gd.stok_hareket_adet = int(s["hareket_adet"])
     gd.siniflandirma_fallback = bool(s.get("siniflandirma_fallback"))

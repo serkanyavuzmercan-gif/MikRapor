@@ -362,6 +362,14 @@ QFrame#tahminSolPanel {{
     border-right: 1px solid #c5d4de;
     border-left: 3px solid {ACCENT};
 }}
+/* Kaydırma alanı ve dipteki buton şeridi panelin zeminini sürdürür — QScrollArea
+   kendi viewport'unu varsayılan gri çizer, panelin içinde yama gibi durur. */
+QWidget#tahminSolAlanlar, QWidget#tahminSolAlt {{
+    background-color: #e9f1f4;
+}}
+QWidget#tahminSolAlt {{
+    border-top: 1px solid #c5d4de;
+}}
 QFrame#tahminSolBaslikSerit {{
     background-color: {NAVY};
     border: none;

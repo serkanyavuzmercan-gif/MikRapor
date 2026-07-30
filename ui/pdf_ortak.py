@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import os
 import sys
 from pathlib import Path
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
@@ -24,6 +25,22 @@ DARK = colors.HexColor("#1f2937")
 GRAY = colors.HexColor("#6b7280")
 LINE = colors.HexColor("#c9cfd8")
 ACCENT = colors.HexColor("#0f766e")
+
+
+def pdf_metin(deger: str | None) -> str:
+    """
+    Veritabanından/kullanıcıdan gelen SERBEST METNİ reportlab için kaçışlar.
+
+    `Paragraph` içeriğini mini-HTML gibi ayrıştırır: cari ünvanında ya da firma adında
+    tek bir «<», bütün PDF'i `paraparser: syntax error: parse ended with 2 unclosed
+    tags` ile çökertir — kullanıcıya hiçbir şey söylemeyen bir hatayla. «&» reportlab
+    tarafından affediliyor, «<» affedilmiyor.
+
+    Ünvanları elle giren muhasebeci varken bu alanların temiz olduğu VARSAYILMAZ
+    (kural 6). Kasıtlı markup içeren metinlere (`<b>…</b>` kuran kod satırları)
+    uygulanmaz — yalnız dışarıdan gelene.
+    """
+    return html.escape(str(deger or ""), quote=False)
 
 
 def _kok() -> Path:
@@ -89,11 +106,18 @@ def tr_tarih(asof: str) -> str:
         return asof
 
 
-def pdf_doc(path: Path, *, title: str, firma: str = "") -> SimpleDocTemplate:
+def pdf_doc(path: Path, *, title: str, firma: str = "",
+            yatay: bool = False) -> SimpleDocTemplate:
+    """
+    Rapor belgesi. `yatay=True` → A4 yatay (297 mm).
+
+    Yatay yalnız GEREKİYORSA kullanılır: on yıl yan yana konan mukayese tablosu dikey
+    sayfaya sığmıyor, sütunlar 11 mm'ye düşüp «41,2 milyon» taşıyordu.
+    """
     # Üst/alt marj kurumsal header/footer bandına yer açacak şekilde geniş.
     return SimpleDocTemplate(
         str(path),
-        pagesize=A4,
+        pagesize=landscape(A4) if yatay else A4,
         leftMargin=18 * mm,
         rightMargin=18 * mm,
         topMargin=26 * mm,
@@ -125,7 +149,9 @@ _LOGO = _logo_yolu()
 def _ciz_header_footer(canvas, doc, *, baslik: str = "") -> None:
     """Her sayfaya kurumsal başlık ile sabit sorumluluk reddi / sayfa altlığını çizer."""
     canvas.saveState()
-    w, h = A4
+    # Sayfa boyu BELGEDEN okunur, A4 varsayılmaz: yatay sayfada header/footer sağ kenarı
+    # sayfanın dışında kalıyordu (297 mm sayfaya 210 mm'lik hesap).
+    w, h = doc.pagesize
     lm, rm = doc.leftMargin, doc.rightMargin
 
     # ---- HEADER ----
@@ -188,10 +214,18 @@ def pdf_ciz(doc: SimpleDocTemplate, elems: list, *, baslik: str = "") -> None:
 def letterhead_sade(
     elems: list, *, firma: str, bas: str = "", bit: str = "", donem: str = "",
 ) -> None:
-    """Sayfa header'lı PDF'ler için sade içerik başlığı: firma + dönem (marka/başlık sayfa header'ında)."""
+    """
+    Sayfa header'lı PDF'ler için sade içerik başlığı: firma + dönem.
+
+    `firma` BURADA kaçışlanır, çağıranlarda değil: dokuz PDF'in hepsi buradan geçiyor
+    ve firma adı Mikro Ayarları'ndaki serbest metin kutusundan (ya da
+    `FIRMALAR.fir_unvan`'dan) geliyor. Kaçışlamayı dokuz çağırana bırakmak, aynı
+    elemeyi dokuz yere yazmak olurdu. `donem` kaçışlanmaz çünkü çağıranların hepsi onu
+    tarihten üretiyor — buraya dışarıdan metin verilecekse `pdf_metin`'den geçirilmeli.
+    """
     if firma:
         elems.append(Paragraph(
-            firma,
+            pdf_metin(firma),
             ParagraphStyle("firma", fontName=FONT_B, fontSize=14, textColor=DARK, leading=17),
         ))
     donem_yazi = (donem or "").strip() or donem_satiri(bas, bit)
@@ -242,12 +276,14 @@ def kurumsal_dipnot(
     kaynak: str = "Mikro ERP kayıtları · Hesap planı: TDHP",
     ek: str = "",
     metin: str = "",
+    en: float = 174 * mm,
 ) -> list:
     """
     PDF içeriğindeki belgeye özgü kurumsal dipnot.
 
     metin verilirse tek paragraf olarak kullanılır; yoksa belge ve kaynak şablonu.
     Genel sorumluluk reddi, tüm sayfalarda ortak footer içinde çizilir.
+    `en`: içerik genişliği (yatay sayfada doc.width verilir).
     """
     sty = ParagraphStyle(
         "ft", fontName=FONT, fontSize=8, textColor=GRAY, leading=10.5, alignment=0,
@@ -267,7 +303,7 @@ def kurumsal_dipnot(
             [Paragraph(kaynak_satir, sty)],
         ]
 
-    t = Table(satirlar, colWidths=[174 * mm])
+    t = Table(satirlar, colWidths=[en])
     t.setStyle(TableStyle([
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
@@ -285,8 +321,9 @@ def dipnot_ekle(
     kaynak: str = "Mikro ERP kayıtları · Hesap planı: TDHP",
     ek: str = "",
     metin: str = "",
+    en: float = 174 * mm,
 ) -> None:
     """İçeriğin altına çizgi + kurumsal dipnot ekler."""
     elems.append(Spacer(1, 10))
     elems.append(HRFlowable(width="100%", thickness=0.4, color=LINE, spaceAfter=4))
-    elems.extend(kurumsal_dipnot(belge=belge, kaynak=kaynak, ek=ek, metin=metin))
+    elems.extend(kurumsal_dipnot(belge=belge, kaynak=kaynak, ek=ek, metin=metin, en=en))

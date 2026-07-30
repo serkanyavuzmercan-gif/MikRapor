@@ -3,6 +3,11 @@ Cari bakiye teşhisi — Mikro cari modülüyle kıyas için.
 
     .\\.venv\\Scripts\\python.exe cari_diag_cli.py
     .\\.venv\\Scripts\\python.exe cari_diag_cli.py 2025-12-31
+    .\\.venv\\Scripts\\python.exe cari_diag_cli.py --banka        # banka hesabı kırılımı
+
+--banka: cari banka rakamı BAKİYE mi yoksa başka bir şey mi? Borç/alacak kırılımını,
+hareket sayısını ve tarih aralığını GL ile yan yana koyar. Cari ile GL 47 kat
+ayrıştığında hangisinin doğru olduğunu bu kırılım söyler.
 """
 
 from __future__ import annotations
@@ -12,10 +17,17 @@ from datetime import date
 
 from domain.gercek_durum import _bakiye_bilancodan, _bakiye_caridan
 from domain.mizan_bilanco import build_bilanco, tl
+from domain.ortak import kredi_banka_mi
 from domain.ortak import to_float as _f
 from infra.config import load_config
 from infra.mikro_api import MikroClient
-from infra.mikro_fetch import fetch_cari_bakiye, fetch_mizan
+from infra.mikro_fetch import (
+    _bit_son,
+    _cha_tl_sql,
+    fetch_cari_bakiye,
+    fetch_mizan,
+    parse_sql_rows,
+)
 from infra.mukayese_fetch import yil_client
 
 
@@ -32,6 +44,95 @@ def _gl_102_bakiye(mizan_rows: list[dict]) -> dict[str, float]:
         if abs(bakiye) >= 0.005:
             out[kod] = bakiye
     return out
+
+
+def _cari_banka_kirilim(client: MikroClient, asof: str) -> list[dict]:
+    """
+    Banka hesapları için cari hareketlerin BORÇ/ALACAK kırılımı + adet + tarih aralığı.
+
+    Net rakamı tek başına «bakiye mi akış mı» sorusunu cevaplamıyor. Borç 40M / alacak
+    33,6M → net 6,4M ise bu gerçek bir bakiyedir (para girdi, çıktı, kalanı bu).
+    Borç 6,4M / alacak 0 ise tek yönlü kayıt var, yani bakiye değil.
+    """
+    tl_sql = _cha_tl_sql("c")
+    sql = (
+        "SELECT c.cha_kod AS kod, COUNT(*) AS adet, "
+        f"SUM(CASE WHEN c.cha_tip = 0 THEN {tl_sql} ELSE 0 END) AS borc, "
+        f"SUM(CASE WHEN c.cha_tip = 1 THEN {tl_sql} ELSE 0 END) AS alacak, "
+        "MIN(c.cha_tarihi) AS ilk, MAX(c.cha_tarihi) AS son, "
+        "MAX(ISNULL(b.ban_ismi, '')) AS ban_ismi, "
+        "MAX(ISNULL(CAST(b.ban_hesap_tip AS int), -1)) AS hesap_tip "
+        "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
+        "JOIN BANKALAR b WITH (NOLOCK) ON b.ban_kod = c.cha_kod "
+        "WHERE c.cha_iptal = 0 AND ISNULL(c.cha_hidden, 0) = 0 "
+        f"AND c.cha_tarihi < '{_bit_son(asof)}' "
+        "GROUP BY c.cha_kod ORDER BY COUNT(*) DESC"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
+def _banka_teshisi(client: MikroClient, asof: str) -> None:
+    """Cari banka rakamının ne olduğunu GL ile yan yana koyarak gösterir."""
+    satirlar = _cari_banka_kirilim(client, asof)
+    gl_102 = _gl_102_bakiye(fetch_mizan(client, asof))
+    if not satirlar:
+        print("\nBanka hesabı için cari hareket bulunamadı.")
+        return
+
+    tarihler = [str(r.get("ilk", r.get("ILK")) or "")[:10] for r in satirlar]
+    tarihler += [str(r.get("son", r.get("SON")) or "")[:10] for r in satirlar]
+    tarihler = [t for t in tarihler if t]
+    aralik = f"  hareket aralığı: {min(tarihler)} → {max(tarihler)}" if tarihler else ""
+    print(f"\nBANKA HESABI KIRILIMI — {asof}{aralik}")
+    print("Soru: cari rakamı bir BAKİYE mi? Borç ve alacak birlikte varsa evet.\n")
+    print(f"{'hesap':16} {'adet':>6} {'cari borç':>16} {'cari alacak':>16} "
+          f"{'cari net':>15} {'GL net':>14} tek?  banka adı")
+    print("-" * 132)
+    t_borc = t_alacak = t_gl = 0.0
+    tek_sayi = 0
+    tek_tutar = 0.0
+    for r in satirlar[:15]:
+        kod = str(r.get("kod", r.get("KOD")) or "")
+        adet = int(_f(r.get("adet", r.get("ADET"))))
+        borc = _f(r.get("borc", r.get("BORC")))
+        alacak = _f(r.get("alacak", r.get("ALACAK")))
+        gl = gl_102.get(kod, 0.0)
+        ban = str(r.get("ban_ismi", r.get("BAN_ISMI")) or "")
+        # Kredi ayrımı programın kullandığı TEK kuralla aynı olsun (ban_hesap_tip tek
+        # başına bu kurulumda çalışmıyor: 300.02.* hesapları mevduat gibi görünüyor).
+        kredi = kredi_banka_mi({"ban_hesap_tip": r.get("hesap_tip", r.get("HESAP_TIP")),
+                                "kod": kod})
+        t_borc += borc
+        t_alacak += alacak
+        if not kredi:
+            t_gl += gl
+        isaret = "*" if kredi else " "
+        # TEK YÖNLÜLÜK HESAP BAZINDA. Toplamda alacak dolu görünüp tek tek hesaplarda
+        # sıfır olabiliyor; toplam bunu maskeliyordu.
+        tek_yonlu = alacak < abs(borc) * 0.02 and abs(borc) > 0.005
+        if tek_yonlu:
+            tek_sayi += 1
+            tek_tutar += borc - alacak
+        print(f"{kod:15}{isaret} {adet:>6} {tl(borc):>16} {tl(alacak):>16} "
+              f"{tl(borc - alacak):>15} {tl(gl):>14} {'TEK ' if tek_yonlu else '    '} "
+              f"{ban[:34]}")
+    print("-" * 132)
+    print(f"{'TOPLAM':16} {'':>6} {tl(t_borc):>16} {tl(t_alacak):>16} "
+          f"{tl(t_borc - t_alacak):>15} {tl(t_gl):>14}")
+
+    print("\nNASIL OKUNUR:")
+    print("  * = kredi hesabı (nakit sayılmaz)   TEK = para girmiş ama hiç çıkmamış")
+    if tek_sayi:
+        print(f"  → {tek_sayi} hesap TEK YÖNLÜ, toplam {tl(tek_tutar)}.")
+        print("    Banka ADI bu ayrımda kullanılmaz — muhasebeci elle girer ve yanlış")
+        print("    olabilir (örn. gerçekte Ziraat olan bir hesap «Katılım» diye")
+        print("    kaydedilmiş olabilir). DBS gibi tedarikçi finansman limitleri de")
+        print("    isimden anlaşılmaz; hesabın 300 (kredi) koduna mı 102'ye mi")
+        print("    bağlandığı önemlidir, o da yukarıdaki * işaretiyle görünür.")
+    else:
+        print("  → Tek yönlü hesap yok: her hesapta para hem girmiş hem çıkmış.")
+    print("  Kesin cevap: Mikro → Banka → Banka Hesap Durumu ekranındaki bakiyeyi")
+    print("  yukarıdaki «cari net» ve «GL net» ile kıyaslayın; hangisine eşitse o doğru.")
 
 
 def _yil(tarih: str) -> int | None:
@@ -62,7 +163,9 @@ def _gl_karsilastir(
 
 
 def main() -> None:
-    asof = sys.argv[1] if len(sys.argv) > 1 else date.today().isoformat()
+    argv = [a for a in sys.argv[1:] if a != "--banka"]
+    banka_modu = "--banka" in sys.argv
+    asof = argv[0] if argv else date.today().isoformat()
     cfg = load_config()
     if not cfg.is_complete():
         print("Ayarlar eksik:", cfg.eksik_alanlar())
@@ -74,6 +177,9 @@ def main() -> None:
     client = yil_client(cfg, yil)
     print(f"Cari bakiye teşhisi — {asof} "
           f"(firma {client.cfg.firma_kodu}, yıl {client.cfg.calisma_yili})\n")
+    if banka_modu:
+        _banka_teshisi(client, asof)
+        return
     rows = fetch_cari_bakiye(client, asof)
     if not rows:
         print("UYARI: 0 satır döndü — Mikro SQL sessiz hata veya bu tarihte hareket yok.")

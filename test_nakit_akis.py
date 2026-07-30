@@ -199,5 +199,223 @@ class TestKrediGLYedek(unittest.TestCase):
         self.assertAlmostEqual(na.mutabakat_farki, 0.0, places=2)  # aynı kaynak → kapanır
 
 
+class TestBaslangicNakitKaynagi(unittest.TestCase):
+    """
+    Sessiz 0 yasak: başlangıç nakdi ölçülemediğinde SEBEBİ söylenmeli (kural 2).
+
+    Eskiden yalnız MikroAPIError yakalanıyordu. GL okunup 0 dönerse (kurulumda nakit
+    başka hesap kodlarında tutuluyorsa olur — kural 6) o 0 sessizce başlangıç nakdi
+    oluyor, cari yedeğe hiç düşülmüyordu. Projeksiyonun tamamı bu rakama dayanıyor.
+    """
+
+    def test_gl_okunduysa_gl_kullanilir(self):
+        from domain.nakit_akis import baslangic_nakit_sec
+        b = baslangic_nakit_sec(1_500_000.0, 9_999.0)
+        self.assertAlmostEqual(b.tutar, 1_500_000.0, places=2)
+        self.assertEqual(b.kaynak, "gl")
+
+    def test_gl_negatif_de_gecerli_bir_olcumdur(self):
+        """Eksi banka bakiyesi gerçek bir ölçümdür; 0 sanıp cari'ye düşmek yanlış olur."""
+        from domain.nakit_akis import baslangic_nakit_sec
+        b = baslangic_nakit_sec(-250_000.0, 800_000.0)
+        self.assertAlmostEqual(b.tutar, -250_000.0, places=2)
+        self.assertEqual(b.kaynak, "gl")
+
+    def test_gl_okunamazsa_cariye_dusulur(self):
+        from domain.nakit_akis import baslangic_nakit_sec
+        b = baslangic_nakit_sec(None, 640_000.0)
+        self.assertAlmostEqual(b.tutar, 640_000.0, places=2)
+        self.assertEqual(b.kaynak, "cari")
+
+    def test_gl_sifir_okunursa_da_cariye_dusulur(self):
+        """Asıl açık buydu: 0 bir hata değil «bulunamadı» olabilir, sessizce kullanılmaz."""
+        from domain.nakit_akis import baslangic_nakit_sec
+        b = baslangic_nakit_sec(0.0, 640_000.0)
+        self.assertAlmostEqual(b.tutar, 640_000.0, places=2)
+        self.assertEqual(b.kaynak, "cari")
+
+    def test_ikisi_de_bossa_sifir_ama_kaynak_yok_der(self):
+        from domain.nakit_akis import baslangic_nakit_sec
+        b = baslangic_nakit_sec(0.0, 0.0)
+        self.assertAlmostEqual(b.tutar, 0.0, places=2)
+        self.assertEqual(b.kaynak, "yok")
+
+    def test_her_kaynak_icin_not_var_gl_icin_sessiz(self):
+        """gl beklenen hâl → uyarı yok. Diğer ikisi sebebini yazmak ZORUNDA."""
+        from domain.nakit_akis import NAKIT_KAYNAK_NOTU
+        self.assertEqual(NAKIT_KAYNAK_NOTU["gl"], "")
+        for kaynak in ("cari", "yok"):
+            self.assertTrue(NAKIT_KAYNAK_NOTU[kaynak].strip(),
+                            f"{kaynak} için sebep metni yok — kural 2 ihlali")
+
+    def test_notlar_terminal_komutu_ya_da_bize_bildirin_demez(self):
+        """Kural 3b: tavsiye Mikro'da yapılabilecek bir şey olmalı."""
+        from domain.nakit_akis import NAKIT_KAYNAK_NOTU
+        for metin in NAKIT_KAYNAK_NOTU.values():
+            d = metin.lower()
+            self.assertNotIn("bize bildir", d)
+            self.assertNotIn(".py", d)
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDetayOzetleAyniKaynak(unittest.TestCase):
+    """
+    Kanıt penceresinin TEK işi var: paneldeki rakamı doğrulamak.
+
+    Detay ayrı bir sorgu olarak yazılsaydı er ya da geç toplamdan ayrışırdı — «özet
+    3M diyor, döküm 2,8M» durumu hiç detay olmamasından kötüdür. Bu yüzden iki sorgu
+    aynı SQL gövdesini paylaşıyor ve sınıflama aynı fonksiyonla yapılıyor.
+    """
+
+    def _sql(self, cek) -> str:
+        class Sahte:
+            class cfg:
+                firma_kodu = "26"
+
+            def sql_veri_oku(self, sql, **_kw):
+                self.son = sql
+                return []
+
+        s = Sahte()
+        cek(s)
+        return s.son
+
+    def test_ayni_alt_sorgu(self) -> None:
+        from infra.mikro_fetch import fetch_nakit_akis_detay, fetch_nakit_akis_gl
+        ozet = self._sql(lambda c: fetch_nakit_akis_gl(c, "2026-01-01", "2026-07-29"))
+        detay = self._sql(
+            lambda c: fetch_nakit_akis_detay(c, "2026-01-01", "2026-07-29", 0))
+        govde = ozet[ozet.index("FROM ("):].split(" GROUP BY")[0]
+        self.assertIn(govde, detay)
+
+    def test_siniflama_ayni_fonksiyondan(self) -> None:
+        """Detay penceresi kategoriyi kendi eşlemesiyle değil, özetinkiyle bulur."""
+        from domain.nakit_akis import GIRIS_ETIKET, kategori_etiketi
+        self.assertEqual(kategori_etiketi("120", 0), GIRIS_ETIKET["musteri"])
+        self.assertEqual(kategori_etiketi("320", 1), "Satıcı ödemesi")
+        self.assertEqual(kategori_etiketi("KKT", 1), "Kredi kartı ödemeleri")
+        # Tanınmayan önek iki tarafta da «diğer» kovasına düşer.
+        self.assertEqual(kategori_etiketi("999", 0), GIRIS_ETIKET["diger"])
+
+    def test_detay_toplami_kategori_toplamini_verir(self) -> None:
+        """Aynı ham satırlardan özet ve döküm aynı rakamı üretmeli."""
+        from domain.nakit_akis import build_nakit_akis, kategori_etiketi
+        ham = [{"ay": "2026-01", "tip": 0, "prefix": "120", "tutar": 5000.0},
+               {"ay": "2026-02", "tip": 0, "prefix": "121", "tutar": 7000.0},
+               {"ay": "2026-03", "tip": 0, "prefix": "320", "tutar": 900.0}]
+        na = build_nakit_akis(ham, kapanis_nakit=0.0, bas="2026-01-01", bit="2026-07-29")
+        etiket = kategori_etiketi("120", 0)
+        panel = na.giris_kategori[etiket]
+        dokum = sum(r["tutar"] for r in ham
+                    if kategori_etiketi(r["prefix"], r["tip"]) == etiket)
+        self.assertAlmostEqual(panel, dokum)
+        self.assertAlmostEqual(panel, 12000.0)
+
+
+class TestKrediHesabiTekKural(unittest.TestCase):
+    """
+    «Bu banka hesabı kredi mi» TEK kuraldır: ban_hesap_tip=1 · 300 öneki · 320 sınıfı.
+
+    Niyet gercek_durum_ayarlar.py'de yazılıydı («300.* ve ban_hesap_tip=1 nakitten
+    hariç») ama üç yerde üç farklı tamlıkta uygulanmıştı. Canlı kurulumda kredi
+    hesaplarının ban_hesap_tip'i 1 DEĞİL (300.02.* mevduat gibi görünüyor), o yüzden
+    tek teste güvenen iki uygulama krediyi nakit sayıyordu.
+    """
+
+    def test_ban_hesap_tip_bos_olsa_bile_300_kredi_sayilir(self):
+        from domain.ortak import kredi_banka_mi
+        self.assertTrue(kredi_banka_mi({"kod": "300.02.0001", "ban_hesap_tip": 0}))
+        self.assertTrue(kredi_banka_mi({"ban_muh_kod": "300.02", "ban_hesap_tip": 0}))
+        self.assertTrue(kredi_banka_mi({"ban_hesap_tip": 1}))
+
+    def test_mevduat_hesabi_kredi_sayilmaz(self):
+        from domain.ortak import kredi_banka_mi
+        self.assertFalse(kredi_banka_mi({"kod": "102.01.0004", "ban_hesap_tip": 0}))
+
+    def test_nakit_bakiye_kredi_hesabini_nakde_katmaz(self):
+        """
+        Canlıda 7 kredi hesabının net -3.744.328'i nakde katılıyordu. Tahmin krediyi
+        ayrıca taksit taksit modellediği için borç İKİ KEZ sayılıyordu.
+        """
+        from domain.nakit_akis import nakit_bakiye
+        satirlar = [
+            {"cins": 2, "kod": "102.01.0004", "ban_hesap_tip": 0,
+             "borc_h": 9_456_672.88, "alacak_h": 3_033_866.53},
+            {"cins": 2, "kod": "300.02.0001", "ban_hesap_tip": 0,   # KREDİ, tip 1 DEĞİL
+             "borc_h": 2_136_342.44, "alacak_h": 1_316_696.17},
+            {"cins": 4, "kod": "KASA01", "borc_h": 523_705.79, "alacak_h": 0.0},
+        ]
+        beklenen = (9_456_672.88 - 3_033_866.53) + 523_705.79
+        self.assertAlmostEqual(nakit_bakiye(satirlar), beklenen, places=2)
+
+    def test_iki_domain_okuyucusu_ayni_sonucu_verir(self):
+        """nakit_bakiye ile _bakiye_caridan aynı satırlarda aynı nakdi bulmalı."""
+        from domain.gercek_durum import _bakiye_caridan
+        from domain.nakit_akis import nakit_bakiye
+        satirlar = [
+            {"cins": 2, "kod": "102.01.0004", "ban_hesap_tip": 0,
+             "borc_h": 1_000_000.0, "alacak_h": 250_000.0},
+            {"cins": 2, "kod": "300.02.0001", "ban_hesap_tip": 0,
+             "borc_h": 800_000.0, "alacak_h": 900_000.0},
+            {"cins": 4, "kod": "KASA01", "borc_h": 50_000.0, "alacak_h": 0.0},
+        ]
+        self.assertAlmostEqual(
+            nakit_bakiye(satirlar), _bakiye_caridan(satirlar)["nakit_mevcut"], places=2)
+
+
+class TestNakitCeliskisi(unittest.TestCase):
+    """
+    İki bağımsız defter (GL, cari) büyük ölçüde ayrışırsa program HANGİSİNİN doğru
+    olduğunu bilmiyor ve iddia etmiyor — ama artık bunu söylüyor.
+
+    Eşik bakiyenin yüzdesi DEĞİL, bir büyüklük mertebesi (10×): mutabakat_farki'ndaki
+    %1, AYNI verinin iki görünümünü kıyaslayan bir muhasebe kimliğidir; iki BAĞIMSIZ
+    defteri kıyaslarken kopyalanamaz. Sağlıklı kurulumda normal muhasebeleşme
+    gecikmesi bile bakiyenin %1'ini rahat aşar — yüzdelik eşik her koşuda yanardı.
+    """
+
+    def test_normal_gecikme_celiski_sayilmaz(self):
+        """Haftalık muhasebeleşme gecikmesi (~%12 fark) çelişki değildir."""
+        from domain.nakit_akis import baslangic_nakit_sec
+        b = baslangic_nakit_sec(500_000.0, 560_000.0)
+        self.assertFalse(b.celiski)
+
+    def test_buyukluk_mertebesi_farki_celiski_sayilir(self):
+        from domain.nakit_akis import baslangic_nakit_sec
+        b = baslangic_nakit_sec(514_859.67, 25_982_795.06)
+        self.assertTrue(b.celiski)
+
+    def test_celiski_yalniz_gl_kullanildiginda_anlamli(self):
+        """Kaynak zaten cari ise (GL boş/sıfır) çelişki sorusu tanımsızdır."""
+        from domain.nakit_akis import baslangic_nakit_sec
+        b = baslangic_nakit_sec(None, 25_982_795.06)
+        self.assertEqual(b.kaynak, "cari")
+        self.assertFalse(b.celiski)
+
+    def test_celiski_kaynagi_degistirmez(self):
+        """
+        Çelişki AYRI bir teşhistir — `kaynak` alanı ne kullanıldığını söylemeye
+        devam eder, «celiski» diye üçüncü bir kaynak DEĞERİ icat edilmez.
+        """
+        from domain.nakit_akis import baslangic_nakit_sec
+        b = baslangic_nakit_sec(514_859.67, 25_982_795.06)
+        self.assertEqual(b.kaynak, "gl")
+        self.assertAlmostEqual(b.tutar, 514_859.67, places=2)
+
+    def test_celiski_notu_iki_rakami_da_yazar_ama_kazanan_secmez(self):
+        from domain.nakit_akis import baslangic_nakit_sec, celiski_notu
+        b = baslangic_nakit_sec(514_859.67, 25_982_795.06)
+        metin = celiski_notu(b)
+        self.assertIn("514.859", metin)
+        self.assertIn("25.982.795", metin)
+        for iddia in ("cari şişik", "cari yanlış", "gl eksik", "gl yanlış"):
+            self.assertNotIn(iddia, metin.lower())
+
+    def test_celiski_notu_oran_yazmaz(self):
+        """«50 kat» gibi bir oran, GL sıfıra yakınken patlar ya da anlamsız büyür."""
+        from domain.nakit_akis import baslangic_nakit_sec, celiski_notu
+        b = baslangic_nakit_sec(514_859.67, 25_982_795.06)
+        self.assertNotIn(" kat", celiski_notu(b))

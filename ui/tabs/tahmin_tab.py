@@ -7,6 +7,7 @@ from typing import Any
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -18,6 +19,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QStackedWidget,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -32,7 +34,14 @@ from domain.kredi import (
     taksitleri_derle,
 )
 from domain.mizan_bilanco import tl
-from domain.nakit_akis import build_nakit_akis, nakit_bakiye, nakit_gl_ozetten
+from domain.nakit_akis import (
+    NAKIT_KAYNAK_NOTU,
+    baslangic_nakit_sec,
+    build_nakit_akis,
+    celiski_notu,
+    nakit_bakiye,
+    nakit_gl_ozetten,
+)
 from domain.runway import RunwayTakvim, _ay_ekle, runway_takvim_kur
 from domain.tahmin import (
     Tahmin,
@@ -73,8 +82,20 @@ from ui.tahmin_view import build_tahmin_widget
 from ui.worker import IsFonksiyonu
 from ui.yukleniyor import YukleniyorEkrani
 
-_PANEL_GENISLIK = 240
+# Kredi kartı aylık faizi için başlangıç değeri. Mikro'dan ölçülemez (sözleşme
+# firmanın bankasıyla), o yüzden düzenlenebilir bir senaryo varsayımıdır; kullanıcı
+# kendi kart faizini yazar. Kart borcu YOKSA bu alan hiç görünmez (kural 6).
+_KART_AYLIK_FAIZ_VARSAYILAN = 4.0
+
+# 240px'te TL alanına kalan yer, alanın istediği genişliğin TAM kendisiydi (210px) —
+# sıfır pay. Biraz daha geniş çizen bir sistem fontunda yatayda kırpılırdı.
+_PANEL_GENISLIK = 256
 _RAIL_GENISLIK = 36
+
+
+def _kaydirma_genisligi() -> int:
+    """Dikey kaydırma çubuğunun kapladığı genişlik — stilden ölçülür, varsayılmaz."""
+    return QApplication.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
 
 
 class TahminTab(RaporTab):
@@ -96,6 +117,11 @@ class TahminTab(RaporTab):
 
     _t: Tahmin | None = None
     _runway: RunwayTakvim | None = None
+    # SINIF DÜZEYİ VARSAYILAN — Qt tuzağı: yarı kurulmuş bir QObject'te
+    # getattr(self, ad, varsayilan) varsayılanı DÖNDÜRMEZ, RuntimeError atar.
+    _nakit_kaynagi: str = "gl"
+    _nakit_celiski_notu: str = ""
+    _olculen_nakit: float = 0.0
 
     def _ilk_mesaj(self) -> str:
         return "Hazır"
@@ -113,6 +139,9 @@ class TahminTab(RaporTab):
         self._sp_kart_borc.setReadOnly(True)
         self._sp_kart_oran = yuzde_spin(0.0, 100.0)
         self._sp_kart_oran.setValue(KART_BORCU_VARSAYILAN_ODEME_YUZDE)
+        # Reel Değer'den taşındı: kart borcu zaten burada modelleniyordu, faizi eksikti.
+        self._sp_kart_faiz = yuzde_spin(0.0, 30.0)
+        self._sp_kart_faiz.setValue(_KART_AYLIK_FAIZ_VARSAYILAN)
         self._sp_buyume = yuzde_spin(-50.0, 100.0)
         self._sp_marj = yuzde_spin(0.0, 100.0)
         self._sp_ufuk = QSpinBox()
@@ -122,7 +151,8 @@ class TahminTab(RaporTab):
 
         for sp in (
             self._sp_nakit, self._sp_ciro, self._sp_gider, self._sp_kart_borc,
-            self._sp_buyume, self._sp_marj, self._sp_kart_oran, self._sp_ufuk,
+            self._sp_buyume, self._sp_marj, self._sp_kart_oran, self._sp_kart_faiz,
+            self._sp_ufuk,
         ):
             sp.setMinimumWidth(0)
             sp.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -137,8 +167,9 @@ class TahminTab(RaporTab):
             ("Aylık büyüme", self._sp_buyume),
             ("Kâr oranı (brüt marj)", self._sp_marj),
             ("Aylık sabit gider", self._sp_gider),
-            ("Mevcut kart borcu (canlı)", self._sp_kart_borc),
-            ("Kart borcu aylık ödeme", self._sp_kart_oran),
+            ("Açık kredi kartı borcu (canlı)", self._sp_kart_borc),
+            ("Kredi kartı aylık ödeme oranı", self._sp_kart_oran),
+            ("Kredi kartı aylık faizi", self._sp_kart_faiz),
             ("Kaç ay ileri", self._sp_ufuk),
         )
         self._senaryo = _SenaryoSolPanel(alanlar)
@@ -231,7 +262,9 @@ class TahminTab(RaporTab):
                 gl_nakit: float | None = nakit_gl_ozetten(fetch_bakiye_ozet(client, bit))
             except MikroAPIError:
                 gl_nakit = None
-            baslangic_nakit = gl_nakit if gl_nakit is not None else nakit_bakiye(kapanis_rows)
+            # Hangi kaynaktan geldiği taşınıyor: sessiz 0 yerine sebebi ekranda yazılır.
+            bnakit = baslangic_nakit_sec(gl_nakit, nakit_bakiye(kapanis_rows))
+            baslangic_nakit = bnakit.tutar
             # Kart ekstre/asgari ödeme verisi her Mikro kurulumunda bulunmuyor. Bu yüzden
             # yalnızca canlı açık borcu okuyor, ödeme planını kullanıcı senaryosuna bırakıyoruz.
             try:
@@ -308,11 +341,15 @@ class TahminTab(RaporTab):
                 satis_serisi=satis_serisi, brut_marj_yuzde=gd.gercek_brut_marj,
                 baslangic_nakit=baslangic_nakit, aylik_sabit_gider=sabit_gider,
                 baslangic_ay=bit[:7], kart_borcu_acik=kart_borcu_acik,
-                kart_borcu_odeme_yuzde=KART_BORCU_VARSAYILAN_ODEME_YUZDE, ufuk_ay=ufuk,
+                kart_borcu_odeme_yuzde=KART_BORCU_VARSAYILAN_ODEME_YUZDE,
+                kart_aylik_faiz_yuzde=_KART_AYLIK_FAIZ_VARSAYILAN, ufuk_ay=ufuk,
             )
             return {
                 "varsayim": v, "firma": firma_getir(cfg, client), "runway": runway,
                 "kart_borclari": kart_borclari, "runway_bilesenleri": runway_bilesenleri,
+                "nakit_kaynagi": bnakit.kaynak,
+                # Metin ölçülen iki rakamı içerdiği için sabit eşlemeden gelemez.
+                "nakit_celiski_notu": celiski_notu(bnakit) if bnakit.celiski else "",
             }
 
         return is_fn
@@ -323,6 +360,12 @@ class TahminTab(RaporTab):
         self._runway = sonuc.get("runway")
         self._kart_borclari = sonuc.get("kart_borclari", [])
         self._runway_bilesenleri = sonuc.get("runway_bilesenleri")
+        # Notu burada DONDURMUYORUZ: kullanıcı «Bugünkü nakit»i elle yazınca not
+        # yalan söylemeye başlıyordu («0 nakitle başlıyor» derken projeksiyon 1,5M'den
+        # başlıyor). Ölçüleni saklayıp her koşuda karşılaştırıyoruz (kural 4).
+        self._nakit_kaynagi = sonuc.get("nakit_kaynagi", "gl")
+        self._nakit_celiski_notu = sonuc.get("nakit_celiski_notu", "")
+        self._olculen_nakit = v.baslangic_nakit
         self._sp_nakit.setValue(v.baslangic_nakit)
         self._sp_ciro.setValue(v.baz_ciro)
         self._sp_buyume.setValue(v.buyume_yuzde)
@@ -330,6 +373,7 @@ class TahminTab(RaporTab):
         self._sp_gider.setValue(v.sabit_gider)
         self._sp_kart_borc.setValue(v.kart_borcu_acik)
         self._sp_kart_oran.setValue(v.kart_borcu_odeme_yuzde)
+        self._sp_kart_faiz.setValue(v.kart_aylik_faiz_yuzde)
         self._senaryo.ac()
         self._durum(
             "Geçmişten dolduruldu (son 12 ayın ortalaması) — rakamları düzenleyip "
@@ -348,6 +392,27 @@ class TahminTab(RaporTab):
             ),
         )
 
+    def _nakit_elle_girildi(self) -> bool:
+        """Kullanıcı ölçülen başlangıç nakdini değiştirdi mi?"""
+        return abs(self._sp_nakit.value() - self._olculen_nakit) >= 0.005
+
+    def _nakit_notu(self) -> str:
+        """
+        Kaynak notu — kullanıcı rakamı kendi yazdıysa not düşer, çünkü artık geçersiz.
+
+        Çelişki notu önce gelir: kaynak «gl» olduğu için kaynak notu boştur, ama iki
+        defter bir büyüklük mertebesi ayrışmışsa söylenecek şey vardır.
+        """
+        if self._nakit_elle_girildi():
+            return ""
+        if self._nakit_celiski_notu:
+            return self._nakit_celiski_notu
+        return NAKIT_KAYNAK_NOTU.get(self._nakit_kaynagi, "")
+
+    def _nakit_olculdu(self) -> bool:
+        """Nakit türevli rakamların altında ölçülmüş bir taban var mı?"""
+        return self._nakit_kaynagi != "yok" or self._nakit_elle_girildi()
+
     def _on_varsayim_degisti(self) -> None:
         """Varsayım değişti → sağdaki rapor artık bu rakamları yansıtmıyor."""
         if self._t is not None:
@@ -364,12 +429,14 @@ class TahminTab(RaporTab):
             sabit_gider=self._sp_gider.value(),
             kart_borcu_acik=self._sp_kart_borc.value(),
             kart_borcu_odeme_yuzde=self._sp_kart_oran.value(),
+            kart_aylik_faiz_yuzde=self._sp_kart_faiz.value(),
             ufuk_ay=self._sp_ufuk.value(),
         )
         self._t = build_tahmin(v)
         self._runway = self._runway_yenile(v.baslangic_ay)
         self._icerik_koy(build_tahmin_widget(
-            self._t, firma=self._firma, runway=getattr(self, "_runway", None)))
+            self._t, firma=self._firma, runway=getattr(self, "_runway", None),
+            nakit_notu=self._nakit_notu(), nakit_olculdu=self._nakit_olculdu()))
         self._senaryo.set_guncel(True)
         if self._chrome is not None:
             self._chrome.set_csv_aktif(True)
@@ -426,7 +493,10 @@ class _SenaryoSolPanel(QFrame):
 
         self._govde = QFrame()
         self._govde.setObjectName("tahminSolPanel")
-        self._govde.setFixedWidth(_PANEL_GENISLIK)
+        # Dikey kaydırma çubuğu alanlardan yatayda yer çalar; genişliği platforma
+        # ve temaya göre değişir, o yüzden VARSAYILMAZ, Qt'den ölçülüp panele
+        # eklenir (kural 6). Yoksa çubuk çıktığı an rakamlar yatayda kırpılırdı.
+        self._govde.setFixedWidth(_PANEL_GENISLIK + _kaydirma_genisligi())
         self._govde.setVisible(True)
         gl = QVBoxLayout(self._govde)
         gl.setContentsMargins(0, 0, 0, 0)
@@ -465,8 +535,9 @@ class _SenaryoSolPanel(QFrame):
         gl.addWidget(baslik_wrap)
 
         govde_ic = QWidget()
+        govde_ic.setObjectName("tahminSolAlanlar")
         gi = QVBoxLayout(govde_ic)
-        gi.setContentsMargins(14, 12, 14, 14)
+        gi.setContentsMargins(14, 12, 14, 12)
         gi.setSpacing(8)
 
         for etiket, w in alanlar:
@@ -478,11 +549,32 @@ class _SenaryoSolPanel(QFrame):
 
         gi.addStretch(1)
 
+        # Dokuz alan + başlık + buton dikeyde ~680px istiyor; küçük laptop
+        # ekranında panele bu kadar yer düşmüyor ve Qt alanları kendi minimumunun
+        # ALTINA sıkıştırıyordu — kutular kısalıp rakamların alt yarısı kesiliyordu
+        # ("0 TL" → "∩ Tl", "12 ay" → "12 av", virgül tamamen kayboluyordu).
+        # Sıkıştırmak yerine kaydırıyoruz: alan yüksekliği hiç bozulmuyor.
+        alan_kaydir = QScrollArea()
+        alan_kaydir.setWidgetResizable(True)
+        alan_kaydir.setFrameShape(QFrame.Shape.NoFrame)
+        alan_kaydir.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        alan_kaydir.setWidget(govde_ic)
+        gl.addWidget(alan_kaydir, 1)
+
+        # «Hesapla» ve tazelik durumu kaydırma alanının DIŞINDA, dipte sabit:
+        # ekran kısa olduğunda aşağı inmeden basılabilsin (eskiden buton panelin
+        # altından taşıp yarısı görünmüyordu).
+        alt = QWidget()
+        alt.setObjectName("tahminSolAlt")
+        al = QVBoxLayout(alt)
+        al.setContentsMargins(14, 8, 14, 12)
+        al.setSpacing(6)
+
         self.btn_projekte = QPushButton("Hesapla")
         self.btn_projekte.setObjectName("primaryBtn")
         self.btn_projekte.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_projekte.setMinimumHeight(36)
-        gi.addWidget(self.btn_projekte)
+        al.addWidget(self.btn_projekte)
 
         # Sağdaki raporun bu rakamlarla mı üretildiğini söyler. Hesaplama anlık
         # olduğundan "yükleniyor" göstergesi yanıp söner ve hiçbir şey anlatmaz;
@@ -491,8 +583,8 @@ class _SenaryoSolPanel(QFrame):
         self.lbl_tazelik.setObjectName("tahminTazelik")
         self.lbl_tazelik.setWordWrap(True)
         self.lbl_tazelik.setVisible(False)
-        gi.addWidget(self.lbl_tazelik)
-        gl.addWidget(govde_ic, 1)
+        al.addWidget(self.lbl_tazelik)
+        gl.addWidget(alt, 0)
 
         host.addWidget(self._govde)
 

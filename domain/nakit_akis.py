@@ -17,7 +17,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from domain.mizan_bilanco import ana_hesap, hesap_adi
-from domain.ortak import csv_sayi
+from domain.mizan_bilanco import tl as _tl
+from domain.ortak import csv_sayi, kredi_banka_mi
 from domain.ortak import to_float as _f
 from domain.ortak import to_int as _i
 
@@ -65,6 +66,17 @@ def _kategori(prefix: str) -> str:
     return _PREFIX_KATEGORI.get(p, _PREFIX_KATEGORI.get(p[:3], "diger"))
 
 
+def kategori_etiketi(prefix: str, tip: int) -> str:
+    """
+    Bir karşı hesap önekinin ekranda göründüğü kategori adı («Müşteri tahsilatı»).
+
+    Detay penceresi fişleri buna göre süzer. Özetle AYNI `_kategori` fonksiyonunu
+    kullanır — ayrı bir eşleme yazılsaydı detay ile toplam sessizce ayrışırdı.
+    """
+    kat = _kategori(prefix)
+    return (GIRIS_ETIKET if tip == 0 else CIKIS_ETIKET).get(kat, kat)
+
+
 def hesap_kirilim_etiketi(prefix: str) -> str:
     """Karşı hesap kırılımını yönetici için kod + TDHP adıyla gösterir."""
     kod = str(prefix or "").strip()
@@ -110,6 +122,12 @@ class NakitAkis:
     kredi_ozet_gl: bool = False
     aylik: list = field(default_factory=list)
     hareket_sayisi: int = 0
+    # Giriş/çıkış AYRI sayılır: panel başlığında «412 hareket» yazınca rakamın tek bir
+    # işlem değil DÖNEM TOPLAMI olduğu sorulmadan anlaşılıyor. Canlıda mali müşavir
+    # «müşteri tahsilatı 3M — bu yapıldı mı?» diye sordu; o 3M yüzlerce tahsilatın
+    # toplamıydı ve ikisi de tek bir işlem sandı.
+    giris_adet: int = 0
+    cikis_adet: int = 0
     kaynak: str = "cari"   # "gl" = muhasebe yevmiyesinden (tam kapsam) | "cari" = cari hareketten
 
     @property
@@ -159,22 +177,36 @@ class NakitAkis:
 
 
 def nakit_bakiye(bakiye_rows: list[dict] | None) -> float:
-    """fetch_cari_bakiye satırlarından banka+kasa nakit mevcudu (kredi bankaları hariç)."""
+    """
+    fetch_cari_bakiye satırlarından banka+kasa nakit mevcudu (kredi hesapları hariç).
+
+    Kredi ayrımı `kredi_banka_mi` ile yapılır — eskiden yalnız `ban_hesap_tip == 1`
+    sorulurdu ve canlı kurulumda kredi hesaplarının o alanı 1 olmadığı için 7 kredi
+    hesabının net -3.744.328'i NAKDE katılıyordu. Tahmin krediyi ayrıca taksit taksit
+    modellediğinden borç iki kez sayılmış oluyordu.
+    """
     total = 0.0
     for r in (bakiye_rows or []):
         cins = _i(r.get("cins", r.get("CINS")))
         if cins not in (2, 4):
             continue
-        if cins == 2 and _i(r.get("ban_hesap_tip", r.get("BAN_HESAP_TIP"))) == 1:
+        if cins == 2 and kredi_banka_mi(r):
             continue
         total += _f(r.get("borc_h", r.get("BORC_H"))) - _f(r.get("alacak_h", r.get("ALACAK_H")))
     return total
 
 
-# GL (mizan) hazır değerler — Bilanço "Nakit ve Nakit Benzerleri" ile birebir.
-# Cari-hareket nakiti döviz-kur nedeniyle onlarca kat şişebildiğinden, runway/tahmin
-# için GÜVENİLİR başlangıç bu kaynaktır.
-_GL_NAKIT_ANA = frozenset({"100", "101", "102", "103", "108"})
+# GL hazır değerler — BAKİYE sorusu ("ne kadar nakdim var"). Bilanço "Nakit ve Nakit
+# Benzerleri" ile birebir olsun diye 103 (Verilen Çekler, kontra) DAHİLDİR: yazılmış çek
+# takas edilince nakdi düşürecektir.
+#
+# AKIŞ sorusu ("hangi fiş bir nakit hareketidir") AYRI bir kümedir ve 103'ü DIŞLAR —
+# bkz. infra/mikro_fetch.py: _NAKIT_AKIS_ONEK. İkisi bilerek farklı; aynı soruyu iki
+# farklı kümeyle cevaplamak yasak, farklı soruları farklı kümeyle cevaplamak zorunlu.
+GL_NAKIT_BAKIYE_ANA = frozenset({"100", "101", "102", "103", "108"})
+
+# Geriye uyumluluk (eski ad)
+_GL_NAKIT_ANA = GL_NAKIT_BAKIYE_ANA
 
 
 def nakit_gl_ozetten(bakiye_ozet_rows: list[dict] | None) -> float:
@@ -185,6 +217,98 @@ def nakit_gl_ozetten(bakiye_ozet_rows: list[dict] | None) -> float:
         if ana in _GL_NAKIT_ANA:
             total += _f(r.get("bakiye", r.get("BAKIYE")))
     return total
+
+
+# İki bağımsız defterin AYNI büyüklüğü ölçtüğü hâlde ayrışması. Eşik BAKİYENİN
+# YÜZDESİ DEĞİL, bir BÜYÜKLÜK MERTEBESİ: banka fişlerini haftada bir işleyen firmada
+# GL, cari'nin bir haftalık trafiği kadar geride kalır ve bu bakiyenin %1'ini rahat
+# aşar — yüzdeye bakan bir eşik sağlıklı kurulumda her koşuda yanardı. Hiçbir
+# muhasebeleşme gecikmesi iki defteri 10 kat ayırmaz.
+# (mutabakat_farki'ndaki %1 buraya kopyalanamaz: o AYNI verinin iki görünümünü
+# kıyaslayan bir muhasebe kimliğidir, artığı yuvarlama gürültüsüdür.)
+NAKIT_CELISKI_KAT = 10.0
+
+
+@dataclass
+class BaslangicNakit:
+    """Projeksiyonun başlangıç nakdi: seçilen tutar + hangi kaynaktan + öbür kaynak."""
+    tutar: float
+    kaynak: str              # "gl" | "cari" | "yok" — HANGİ KAYNAK KULLANILDI
+    gl: float | None = None  # ölçülen GL nakdi (okunamadıysa None)
+    cari: float = 0.0        # ölçülen cari/banka-kasa nakdi
+
+    @property
+    def celiski(self) -> bool:
+        """
+        Kullanılan kaynak ile öbür kaynak bir büyüklük mertebesi ayrışıyor mu?
+
+        `kaynak` alanı ne kullanıldığını söyler; çelişki AYRI bir teşhistir. İkisini tek
+        alanda taşımak («kaynak = celiski») alanı iki anlama sokar ve sabit metin
+        eşlemesini bozar — çelişki metni ölçülen iki rakamı içermek zorunda.
+        """
+        if self.kaynak != "gl" or self.gl is None:
+            return False
+        a, b = abs(self.gl), abs(self.cari)
+        if min(a, b) < 0.005:
+            return max(a, b) >= 0.005
+        return max(a, b) / min(a, b) >= NAKIT_CELISKI_KAT
+
+
+NAKIT_KAYNAK_NOTU = {
+    "gl": "",
+    "cari": ("GL nakit hesapları (100/101/102/103/108) boş okundu; başlangıç nakdi "
+             "banka/kasa cari hareketlerinden alındı. Bu kaynak döviz kurundan "
+             "şişebiliyor — rakamı Mikro'daki kasa/banka bakiyesiyle karşılaştırın."),
+    "yok": ("Başlangıç nakdi ölçülemedi: hem GL nakit hesapları hem banka/kasa cari "
+            "hareketleri boş okundu. Projeksiyon 0 nakitle başlıyor — soldaki "
+            "«Bugünkü nakit» alanına kendiniz yazabilirsiniz."),
+}
+
+
+def celiski_notu(b: BaslangicNakit) -> str:
+    """
+    İki kaynak ayrıştı — HANGİSİNİN doğru olduğu SÖYLENMEZ.
+
+    Sebep («banka fişleri muhasebeleşmemiş») ölçülmedi; ekrana yazmak, bir zamanlar
+    «47 kat kur farkı» diye yazılan doğrulanmamış gerekçenin tekrarı olur. Ekran iki
+    ölçülen rakamı ve nereden doğrulanacağını söyler, gerisini kullanıcı bilir.
+
+    Oran («50 kat») yazılmaz: GL sıfıra yakınken bölme patlar ya da anlamsız büyür.
+    """
+    return (f"Muhasebe kaydı {_tl(b.gl or 0.0)}, banka/kasa hareketleri {_tl(b.cari)}. "
+            f"Projeksiyon muhasebe rakamıyla kuruldu. Mikro'da "
+            "Banka → Banka Hesap Durumu'ndaki bakiye hangisine yakınsa onu soldaki "
+            "«Bugünkü nakit» alanına yazın.")
+
+
+def baslangic_nakit_sec(gl_nakit: float | None, cari_nakit: float) -> BaslangicNakit:
+    """
+    Başlangıç nakdini seç ve HANGİ KAYNAKTAN geldiğini söyle → (tutar, kaynak).
+
+    Eskiden yalnız MikroAPIError yakalanıyordu: GL okunup 0 dönerse (kurulumda nakit
+    başka hesap kodlarında tutuluyorsa olur — kural 6) o 0 sessizce başlangıç nakdi
+    oluyor, cari yedeğe hiç düşülmüyor ve kullanıcıya sebep söylenmiyordu. Projeksiyonun
+    tamamı bu rakama dayandığı için sessiz 0 en pahalı hatalardan biri.
+
+    GL tercih edilir çünkü Bilanço «Nakit ve Benzerleri» ile birebirdir. Eşik
+    uydurulmuyor: yalnız «sıfır mı değil mi» sorulur.
+
+    DİKKAT — BU TERCİH HENÜZ DOĞRULANMADI. Kod tabanında bir zamanlar «cari-hareket
+    nakiti döviz kuru yüzünden ~47 kat şişebiliyor» diye yazılmıştı; o «47 kat»,
+    canlı bir kurulumun GL/cari farkının (27.056.018 ÷ 569.002 = 47,55) birebir
+    kendisiydi — yani bir gözlem, sebebi tahmin edilip olgu gibi yazılmış. Aynı veride
+    120 ve 320 yalnız %5-7 sapıyor; kur etkisi olsaydı onlar da şişerdi. Muhtemel sebep
+    banka fişlerinin muhasebeleşmemesi, ama ÖLÇÜLMEDİ.
+    Sonuç: iki kaynak büyük ölçüde çeliştiğinde hangisinin doğru olduğunu program
+    bilmiyor ve şu an bunu SÖYLEMİYOR da. Mikro'daki Bankalar listesiyle kıyaslanıp
+    karara bağlanmalı; o zamana kadar buraya «cari şişiktir» gerekçesi yazılmayacak.
+    """
+    ortak = {"gl": gl_nakit, "cari": cari_nakit}
+    if gl_nakit is not None and abs(gl_nakit) >= 0.005:
+        return BaslangicNakit(tutar=gl_nakit, kaynak="gl", **ortak)
+    if abs(cari_nakit) >= 0.005:
+        return BaslangicNakit(tutar=cari_nakit, kaynak="cari", **ortak)
+    return BaslangicNakit(tutar=0.0, kaynak="yok", **ortak)
 
 
 # Geriye uyumluluk
@@ -227,6 +351,7 @@ def build_nakit_akis(
         if tip == 0:
             giris[kat] += tutar
             na.toplam_giris += tutar
+            na.giris_adet += 1
             a.giris += tutar
             if kat == "kredi":
                 na.kredi_kullanim += tutar
@@ -237,6 +362,7 @@ def build_nakit_akis(
         else:
             cikis[kat] += tutar
             na.toplam_cikis += tutar
+            na.cikis_adet += 1
             a.cikis += tutar
             if kat == "kredi":
                 na.kredi_odeme += tutar

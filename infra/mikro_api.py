@@ -51,6 +51,23 @@ class MikroIptalError(MikroAPIError):
     """Kullanıcı / worker iptali — retry edilmez, UI'ya hata olarak gösterilmez."""
 
 
+class MikroZamanAsimiError(MikroAPIError):
+    """
+    Sunucu süresinde yanıt vermedi.
+
+    Ayrı bir sınıf, çünkü kullanıcının yapacağı şey farklı: bağlantı hatasında ayarlara
+    bakılır, zaman aşımında tarih aralığı daraltılır. Eskiden ekrana ham soket metni
+    («Mikro bağlantı hatası: _ssl.c:1006: The handshake operation timed out») çıkıyordu;
+    kullanıcı raporun neden dakikalarca sürüp sonra düştüğünü anlamıyordu.
+    """
+
+
+def _zaman_asimi_mi(err: Exception) -> bool:
+    if isinstance(err, TimeoutError):
+        return True
+    return "timed out" in str(err).lower() or "timeout" in str(err).lower()
+
+
 def password_hash(sifre_gun: str, today: str | None = None) -> str:
     """
     Günlük rotasyonlu Mikro parolasını üretir. Hash girdisi: ``YYYY-MM-DD <şifre>``.
@@ -178,6 +195,38 @@ def _is_retryable(err: Exception) -> bool:
     return any(tok in msg for tok in ("timed out", "timeout", "reset", "socket", "tls", "refused", "eof"))
 
 
+def _baglanti_hatasi(err: Exception | None, timeout: float, deneme: int) -> MikroAPIError:
+    """Ağ hatasını kullanıcının anlayacağı ve NE YAPACAĞINI bilebileceği mesaja çevirir."""
+    if err is not None and _zaman_asimi_mi(err):
+        return MikroZamanAsimiError(
+            f"Mikro yanıt vermedi: sorgu {int(timeout)} saniyede tamamlanamadı "
+            f"({deneme} deneme yapıldı). Sunucu yoğun olabilir — tarih aralığını "
+            "daraltıp tekrar deneyin.")
+    return MikroAPIError(f"Mikro bağlantı hatası: {err}")
+
+
+# Satır listesinin durabileceği anahtarlar — Mikro sürümüne göre değişiyor.
+_SATIR_ANAHTARLARI = ("SQLResult1", "SQLResult", "Data", "Rows", "rows")
+
+
+def _satir_listesi(zarf: dict[str, Any]) -> list | None:
+    """
+    Zarfın içindeki satır listesi; hiçbiri liste değilse None.
+
+    KRİTİK AYRIM: «anahtar var ama liste BOŞ» ile «anahtar yok» aynı şey değildir.
+    Eskiden `a.get(x) or a.get(y) or …` zinciri kullanılıyordu ve boş liste falsy
+    olduğu için zincir sonuna kadar düşüyor, ardından ZARFIN KENDİSİ bir veri satırı
+    gibi geri dönüyordu. Canlıda Veri Sağlığı 8 yıl tarayınca aykırı kaydı olmayan
+    5 yıl için birer HAYALET satır üretti: tarihi, evrak no'su, tutarı boş kayıtlar
+    listeye girdi ve «8 bozuk kayıt» diye sayıldı. Sıfır satır dönebilen her sorgu
+    aynı hataya açıktı.
+    """
+    for ad in _SATIR_ANAHTARLARI:
+        if isinstance(zarf.get(ad), list):
+            return zarf[ad]
+    return None
+
+
 def parse_sql_rows(res: Any) -> list[dict[str, Any]]:
     """SqlVeriOkuV2 yanıtından satır listesini çıkarır (ss parseSqlRows mantığı)."""
     if isinstance(res, list):
@@ -185,25 +234,14 @@ def parse_sql_rows(res: Any) -> list[dict[str, Any]]:
             return []
         first = res[0]
         if isinstance(first, dict):
-            inner = (
-                first.get("SQLResult1")
-                or first.get("SQLResult")
-                or first.get("Data")
-                or first.get("Rows")
-            )
-            if isinstance(inner, list):
-                return [r for r in inner if isinstance(r, dict)]
+            ic = _satir_listesi(first)
+            if ic is not None:
+                return [r for r in ic if isinstance(r, dict)]
         return [r for r in res if isinstance(r, dict)]
     if isinstance(res, dict):
-        inner = (
-            res.get("SQLResult1")
-            or res.get("SQLResult")
-            or res.get("Rows")
-            or res.get("Data")
-            or res.get("rows")
-        )
-        if isinstance(inner, list):
-            return [r for r in inner if isinstance(r, dict)]
+        ic = _satir_listesi(res)
+        if ic is not None:
+            return [r for r in ic if isinstance(r, dict)]
     return []
 
 
@@ -308,8 +346,8 @@ class MikroClient:
                         _iptal_kontrol()
                         time.sleep(0.2)
                     continue
-                raise MikroAPIError(f"Mikro bağlantı hatası: {exc}") from exc
-        raise MikroAPIError(f"Mikro bağlantı hatası: {last_err}")
+                raise _baglanti_hatasi(exc, to, attempts) from exc
+        raise _baglanti_hatasi(last_err, to, attempts)
 
     @staticmethod
     def _extract_data(text: str) -> Any:

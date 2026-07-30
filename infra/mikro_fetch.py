@@ -17,6 +17,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from domain.cari_vade import hesapla_vade_gun
+from domain.nakit_akis import GL_NAKIT_BAKIYE_ANA
 from domain.ortak import to_float as _f_local
 from infra.mikro_api import MikroAPIError, MikroClient, get_row_value, parse_sql_rows
 from infra.sql_params import firma_kodu_guvenli, iso_tarih, sql_string
@@ -123,12 +124,20 @@ def _cha_tl_sql(alias: str = "c") -> str:
     )
 
 
-def _stok_tarih_sql() -> str:
+def _stok_tarih_sql(on: str = "") -> str:
     """Belge tarihi doluysa onu, değilse hareket tarihini kullanan tarih ifadesi."""
     return (
-        "CASE WHEN sth_belge_tarih IS NOT NULL AND sth_belge_tarih >= '2000-01-01' "
-        "THEN sth_belge_tarih ELSE sth_tarih END"
+        f"CASE WHEN {on}sth_belge_tarih IS NOT NULL AND {on}sth_belge_tarih >= '2000-01-01' "
+        f"THEN {on}sth_belge_tarih ELSE {on}sth_tarih END"
     )
+
+
+# Bir stok hareketi SATIRI, dönemdeki ORTALAMA satırın bu katından büyükse mal hareketi
+# olamaz. MUTLAK bir TL sınırı (ör. «2 milyon») kurulum bağımlıdır ve bu program Mikro
+# kullanan HER firmaya satılacak: küçük firmada hiçbir şeyi yakalamaz, büyük firmada
+# gerçek faturayı eler. Ölçü verinin kendisinden çıkar (bkz. CLAUDE.md kural 6).
+# Kat bilinçli olarak çok geniş — canlıdaki bozuk kayıt ortalamanın ~3 MİLYAR katıydı.
+AYKIRI_KAT = 10_000.0
 
 
 def _tip_evrak(tip: int, evraktip: int) -> str:
@@ -150,12 +159,27 @@ def fetch_stok_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, A
     """
     bas, bit = _aralik(bas, bit)
     tarih = _stok_tarih_sql()
+    pencere = f"{tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}'"
+    # Aykırı satırlar AYRI toplanır — «tutar» temiz, «aykiri_tutar» elenen.
+    # Eşik dönemin kendi ortalamasından ölçülür (bkz. AYKIRI_KAT). Ortalama okunamazsa
+    # eşik pratikte sonsuzdur: hiçbir satır elenmez, eski davranışa düşülür.
+    esik = (
+        "SELECT ISNULL(NULLIF(AVG(ABS(sth_tutar)), 0) * "
+        f"{AYKIRI_KAT:.1f}, 1E30) AS esik "
+        f"FROM STOK_HAREKETLERI WITH (NOLOCK) WHERE {pencere}"
+    )
+    temiz = "ABS(h.sth_tutar) <= e.esik"
     sql = (
-        "SELECT sth_tip, sth_evraktip, "
-        "SUM(sth_tutar) AS tutar, SUM(sth_miktar) AS miktar, COUNT(*) AS adet "
-        "FROM STOK_HAREKETLERI WITH (NOLOCK) "
-        f"WHERE {tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}' "
-        "GROUP BY sth_tip, sth_evraktip"
+        "SELECT h.sth_tip, h.sth_evraktip, "
+        f"SUM(CASE WHEN {temiz} THEN h.sth_tutar ELSE 0 END) AS tutar, "
+        f"SUM(CASE WHEN {temiz} THEN h.sth_miktar ELSE 0 END) AS miktar, "
+        f"SUM(CASE WHEN {temiz} THEN 1 ELSE 0 END) AS adet, "
+        f"SUM(CASE WHEN {temiz} THEN 0 ELSE 1 END) AS aykiri_adet, "
+        f"SUM(CASE WHEN {temiz} THEN 0 ELSE h.sth_tutar END) AS aykiri_tutar "
+        "FROM STOK_HAREKETLERI h WITH (NOLOCK) "
+        f"CROSS JOIN ({esik}) e "
+        f"WHERE {pencere.replace(tarih, _stok_tarih_sql('h.'))} "
+        "GROUP BY h.sth_tip, h.sth_evraktip"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
@@ -234,8 +258,29 @@ def fetch_stok_depo_kirilimi(
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+def _maliyet_esigi(pencere: str) -> str:
+    """
+    Aykırı satır eşiği — dönemin KENDİ ortalama satır maliyetinden ölçülür.
+
+    Mutlak bir TL sınırı kurulum bağımlıdır (bkz. AYKIRI_KAT). Ortalama okunamazsa eşik
+    pratikte sonsuzdur: hiçbir satır elenmez, eksik veri yüzünden rakam bozulmaz.
+    """
+    return (
+        "SELECT ISNULL(NULLIF(AVG(ABS(sth_maliyet_ana)), 0) * "
+        f"{AYKIRI_KAT:.1f}, 1E30) AS esik "
+        f"FROM STOK_HAREKETLERI WITH (NOLOCK) WHERE {pencere}"
+    )
+
+
+def _stok_pencere(asof: str, bas: str) -> tuple[str, str]:
+    """(tarih ifadesi, WHERE alt sınırı) — pencere donem_parcalari ile bölünürken gerekir."""
+    tarih = _stok_tarih_sql()
+    alt = f"{tarih} >= '{iso_tarih(bas, alan='başlangıç tarihi')}' AND " if bas else ""
+    return tarih, alt
+
+
 def fetch_stok_bakiye_teshis(
-    client: MikroClient, asof: str,
+    client: MikroClient, asof: str, bas: str = "",
 ) -> list[dict[str, Any]]:
     """
     Depoda o tarihte NE VAR? — mizandan bağımsız, canlı stok değeri denemesi.
@@ -243,27 +288,94 @@ def fetch_stok_bakiye_teshis(
     Mizanın 153 bakiyesi satışın maliyeti işlenmemişse şişiktir. Stok hareketlerinin
     kümülatifi bundan bağımsızdır: giren − çıkan, kendi maliyetiyle.
 
-    ÜÇ YÖNTEM AYNI ANDA ölçülür, çünkü hangisinin dolu olduğu kurulumdan kurulma değişir:
+    ÜÇ YÖNTEM AYNI ANDA ölçülür, çünkü hangisinin dolu olduğu kurulumdan kuruluma değişir:
       • miktar     — her zaman dolu, ama TL değil
-      • maliyet    — sth_maliyet_ana; canlıda satırların ~%89'u dolu
+      • maliyet    — sth_maliyet_ana; canlıda satırların ~%82'si dolu
       • tutar      — sth_tutar; alışta maliyet, satışta SATIŞ FİYATI olduğu için
                      doğrudan stok değeri VERMEZ, yalnız kıyas için basılır
 
-    Bu bir TEŞHİS: rakamı rapora bağlamadan önce mizanla kıyaslanıp karar verilecek.
-    Kümülatif olduğu için tarih alt sınırı yoktur — bir BAKİYE sorgusudur, akış değil;
-    seçili aralığın bitişinde okunur (mizanın kendisi de aynı şekilde kümülatiftir).
+    AYKIRI SATIRLAR AYRI SAYILIR. Tek bozuk kayıt (canlıda 3,3 trilyon TL) toplamı ele
+    geçirip bütün ölçümü anlamsız kılıyor. Sorgu hem aykırıyı hem temizi ayrı döndürür;
+    hangisinin kullanılacağına çağıran karar verir, ama ikisi de görünür.
+
+    Alt sınır normalde YOKTUR (bakiye sorgusu, akış değil). `bas` yalnız veritabanı
+    parçalarını birleştirirken verilir: bir yıl iki veritabanında birden duruyorsa
+    (canlıda 2025 hem firma 20'de hem firma 26'da) sınırsız okumak o yılı İKİ KEZ
+    sayardı — pencereler donem_parcalari ile çakışmayacak şekilde bölünür.
     """
-    tarih = _stok_tarih_sql()
-    # tip 0 = giriş, 1 = çıkış. Çıkanı düşmek için işaret veriyoruz.
-    yon = "CASE WHEN sth_tip = 0 THEN 1 ELSE -1 END"
+    tarih, alt = _stok_pencere(asof, bas)
+    pencere = f"{alt}{tarih} < '{_bit_son(asof)}'"
+    # tip 0 = giriş, diğerleri çıkış. Çıkanı düşmek için işaret veriyoruz.
+    yon = "CASE WHEN h.sth_tip = 0 THEN 1 ELSE -1 END"
+    aykiri = "ABS(h.sth_maliyet_ana) >= e.esik"
     sql = (
-        f"SELECT SUM({yon} * sth_miktar) AS miktar, "
-        f"SUM({yon} * sth_maliyet_ana) AS maliyet, "
-        f"SUM({yon} * sth_tutar) AS tutar, "
+        f"SELECT SUM({yon} * h.sth_miktar) AS miktar, "
+        f"SUM({yon} * h.sth_maliyet_ana) AS maliyet, "
+        f"SUM({yon} * h.sth_tutar) AS tutar, "
         "COUNT(*) AS adet, "
-        "SUM(CASE WHEN sth_maliyet_ana <> 0 THEN 1 ELSE 0 END) AS maliyet_dolu "
+        "SUM(CASE WHEN h.sth_maliyet_ana <> 0 THEN 1 ELSE 0 END) AS maliyet_dolu, "
+        f"SUM(CASE WHEN {aykiri} THEN 1 ELSE 0 END) AS aykiri_satir, "
+        f"SUM(CASE WHEN {aykiri} THEN {yon} * h.sth_maliyet_ana ELSE 0 END) AS aykiri_maliyet, "
+        f"SUM(CASE WHEN {aykiri} THEN 0 ELSE {yon} * h.sth_maliyet_ana END) AS temiz_maliyet, "
+        f"SUM(CASE WHEN {aykiri} THEN 0 ELSE {yon} * h.sth_miktar END) AS temiz_miktar "
+        "FROM STOK_HAREKETLERI h WITH (NOLOCK) "
+        f"CROSS JOIN ({_maliyet_esigi(pencere)}) e "
+        f"WHERE {pencere.replace(tarih, _stok_tarih_sql('h.'))}"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
+def fetch_stok_kapsam(client: MikroClient, asof: str, bas: str = "") -> list[dict[str, Any]]:
+    """
+    Bu pencerede stok tablosunda ilk/son hareket ne zaman, kaç satır var?
+
+    Stok SEVİYESİ kümülatiftir: şirketin ilk gününden bugüne bütün hareketlerin
+    toplamıdır. Mikro her çalışma yılı grubunu ayrı veritabanında tuttuğu için tek
+    veritabanı yetmez — çağıran katalogtaki bütün pencereleri dolaşır ve bu sorgu her
+    pencerenin gerçekten okunup okunmadığını gösterir.
+
+    `bas` ŞART: alt sınır verilmezse MIN her pencerede tablonun en eski tarihini
+    döndürür ve sekiz satırın sekizinde de aynı tarih yazar (canlıda «2019-02-02» sekiz
+    kez tekrarladı) — pencere hakkında hiçbir şey söylemez.
+    """
+    tarih, alt = _stok_pencere(asof, bas)
+    sql = (
+        f"SELECT MIN({tarih}) AS ilk, MAX({tarih}) AS son, COUNT(*) AS adet "
         "FROM STOK_HAREKETLERI WITH (NOLOCK) "
-        f"WHERE {tarih} < '{_bit_son(asof)}'"
+        f"WHERE {alt}{tarih} < '{_bit_son(asof)}'"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
+def fetch_stok_maliyet_yonu(
+    client: MikroClient, asof: str, bas: str = "",
+) -> list[dict[str, Any]]:
+    """
+    Maliyeti BOŞ satırlar girişte mi çıkışta mı? — canlı stok değerinin yönü.
+
+    Doluluk oranı tek başına yetmez. Net maliyet = giren − çıkan olduğu için eksik bir
+    GİRİŞ satırı stoğu olduğundan düşük, eksik bir ÇIKIŞ satırı olduğundan YÜKSEK
+    gösterir. %91 doluluğa bakıp «kullanılabilir» demek, kalan %9'un hangi yöne çektiğini
+    bilmeden karar vermektir — mizanın şişkinliğini ölçmeye çalışırken aynı şişkinliği
+    canlı rakama taşımak demek olurdu.
+
+    Birim maliyet AYKIRI SATIRLAR HARİÇ hesaplanır: 3,3 trilyonluk tek kayıt ortalamayı
+    adet başına 1 milyon TL'ye çıkarıp boş satırların TL karşılığını da anlamsız yapıyordu.
+    """
+    tarih, alt = _stok_pencere(asof, bas)
+    pencere = f"{alt}{tarih} < '{_bit_son(asof)}'"
+    dolu = "h.sth_maliyet_ana <> 0 AND ABS(h.sth_maliyet_ana) < e.esik"
+    sql = (
+        "SELECT h.sth_tip AS tip, "
+        "SUM(CASE WHEN h.sth_maliyet_ana = 0 THEN 1 ELSE 0 END) AS bos_satir, "
+        "SUM(CASE WHEN h.sth_maliyet_ana = 0 THEN h.sth_miktar ELSE 0 END) AS bos_miktar, "
+        f"SUM(CASE WHEN {dolu} THEN 1 ELSE 0 END) AS dolu_satir, "
+        f"SUM(CASE WHEN {dolu} THEN h.sth_miktar ELSE 0 END) AS dolu_miktar, "
+        f"SUM(CASE WHEN {dolu} THEN h.sth_maliyet_ana ELSE 0 END) AS dolu_maliyet "
+        "FROM STOK_HAREKETLERI h WITH (NOLOCK) "
+        f"CROSS JOIN ({_maliyet_esigi(pencere)}) e "
+        f"WHERE {pencere.replace(tarih, _stok_tarih_sql('h.'))} "
+        "GROUP BY h.sth_tip"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 
@@ -378,6 +490,52 @@ def fetch_stok_evraktip_tepe(
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
+def fetch_stok_aykiri_satirlar(
+    client: MikroClient, bas: str, bit: str, adet: int = 100,
+) -> list[dict[str, Any]]:
+    """
+    Toplamdan çıkarılan aykırı stok satırlarının KENDİSİ — tarih, evrak no, stok kodu.
+
+    «13 bozuk kayıt var, Mikro'da düzeltin» demek yetmiyor: kullanıcı 390 bin satır
+    içinde o 13'ünü nasıl bulacak? Bu sorgu evrakı açacak kadar bilgi verir.
+
+    İKİ KOLON BİRDEN taranır. Raporlar `sth_tutar` toplar, stok değeri teşhisi
+    `sth_maliyet_ana`; bir satır yalnız birinde bozuk olabilir. Muhasebeciye gidecek
+    listenin eksik olmaması için ikisinden HERHANGİ BİRİNDE aykırı olan satır girer.
+
+    Eşik yine ÖLÇÜLÜR (AYKIRI_KAT) — mutlak bir TL sınırı başka kurulumda ya hiçbir şey
+    bulur ya da gerçek faturaları bozuk ilan ederdi.
+    """
+    bas, bit = _aralik(bas, bit)
+    tarih = _stok_tarih_sql()
+    pencere = f"{tarih} >= '{bas}' AND {tarih} < '{_bit_son(bit)}'"
+    n = max(1, min(int(adet), 500))
+
+    def _esik(kolon: str) -> str:
+        return (
+            f"SELECT ISNULL(NULLIF(AVG(ABS({kolon})), 0) * {AYKIRI_KAT:.1f}, 1E30) AS esik "
+            f"FROM STOK_HAREKETLERI WITH (NOLOCK) WHERE {pencere}"
+        )
+
+    # HANGİ ÖLÇÜ aykırı, satırda yazsın: canlıda «150 adet · 8.250 TL» gibi bakınca
+    # gayet normal görünen bir satır listeye girdi (maliyet kolonu aykırıydı, tutar
+    # değil) ve muhasebeci haklı olarak «bunun nesi bozuk» diye sordu.
+    sql = (
+        f"SELECT TOP {n} {_stok_tarih_sql('h.')} AS tarih, "
+        "h.sth_evrakno_seri, h.sth_evrakno_sira, h.sth_belge_no, h.sth_stok_kod, "
+        "h.sth_tip, h.sth_evraktip, h.sth_miktar, h.sth_tutar, h.sth_maliyet_ana, "
+        "CASE WHEN ABS(h.sth_tutar) >= et.esik THEN 1 ELSE 0 END AS tutar_aykiri, "
+        "CASE WHEN ABS(h.sth_maliyet_ana) >= em.esik THEN 1 ELSE 0 END AS maliyet_aykiri "
+        "FROM STOK_HAREKETLERI h WITH (NOLOCK) "
+        f"CROSS JOIN ({_esik('sth_tutar')}) et "
+        f"CROSS JOIN ({_esik('sth_maliyet_ana')}) em "
+        f"WHERE {pencere.replace(tarih, _stok_tarih_sql('h.'))} "
+        "AND (ABS(h.sth_tutar) >= et.esik OR ABS(h.sth_maliyet_ana) >= em.esik) "
+        "ORDER BY ABS(h.sth_tutar) + ABS(h.sth_maliyet_ana) DESC"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
 def fetch_stok_aylik(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
     """Dönem içi STOK_HAREKETLERI'nin AYLIK kırılımı (trend için): ay × tip × evraktip → tutar."""
     bas, bit = _aralik(bas, bit)
@@ -438,14 +596,24 @@ def fetch_bakiye_ozet(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     """
     Tarih (asof) itibarıyla nakit/alacak/borç ana hesap bakiyeleri (3 hane): SUM(fis_meblag0).
 
-    Nakit & Kârlılık'ın "param var mı / kim kime borçlu" ayağı: 10x (kasa/banka), 12x (alacaklar),
-    32x (satıcı borçları). bakiye>0 = borç bakiyesi (varlık), bakiye<0 = alacak bakiyesi (borç).
+    10x (kasa/banka), 12x (alacaklar), 32x (satıcı borçları).
+    bakiye>0 = borç bakiyesi (varlık), bakiye<0 = alacak bakiyesi (borç).
+
+    Tek üretim tüketicisi Tahmin & Projeksiyon'un BAŞLANGIÇ NAKDİ'dir
+    (`nakit_gl_ozetten`, yalnız 10x okur). 12x/32x genel bakiye özeti sözleşmesi olarak
+    duruyor; aynı indeks taramasına düştükleri için ayrıca maliyeti yok.
+
+    Kapanış fişi elemesi mizanla AYNI koşuldan gelir (`_bakiye_kosulu`); eskiden burada
+    yoktu ve 31 Aralık'ta biten dönemde bütün bakiyeler sıfır görünüyordu. Açılış
+    daraltması bilerek YOK — gerekçe `_bakiye_kosulu` docstring'inde.
     """
     asof = iso_tarih(asof, alan="tarih")
     sql = (
         "SELECT LEFT(fis_hesap_kod, 3) AS ana, SUM(fis_meblag0) AS bakiye "
         "FROM MUHASEBE_FISLERI WITH (NOLOCK) "
-        f"WHERE fis_iptal = 0 AND fis_tarih < '{_bit_son(asof)}' AND ("
+        # Hesap grubu bloğu PARANTEZLİ kalmalı: SQL'de AND, OR'dan sıkı bağlar; parantez
+        # düşerse filtre tüm tabloya açılır ve şişik ama makul bir nakit üretir.
+        f"WHERE {_bakiye_kosulu(client, asof)} AND ("
         "fis_hesap_kod LIKE '100%' OR fis_hesap_kod LIKE '101%' OR fis_hesap_kod LIKE '102%' "
         "OR fis_hesap_kod LIKE '103%' OR fis_hesap_kod LIKE '108%' "
         "OR fis_hesap_kod LIKE '120%' OR fis_hesap_kod LIKE '121%' "
@@ -661,6 +829,37 @@ def _kapanis_fis_nolari(client: MikroClient, asof: str) -> list[int]:
     return out
 
 
+def _bakiye_kosulu(client: MikroClient, asof: str) -> str:
+    """
+    Bir tarihe kadar BİRİKMİŞ bakiye okumanın ortak WHERE koşulu — DOĞRULUK kuralı.
+
+    Mizan ile nakit/alacak/borç özeti aynı şeyi okur; koşul iki yerde ayrı yazılınca
+    ayrıştı ve `fetch_bakiye_ozet` kapanış fişini ELEMİYORDU. Sonuç: 31 Aralık'ta biten
+    bir dönem seçilince (yaygın: «Bu yıl», 01.01–31.12) kapanış fişi bütün bakiyeleri
+    sıfırlıyor, Tahmin'in başlangıç nakdi ~0 çıkıyor ve bunu hiçbir yerde söylemiyordu.
+    Tek kaynak olması, bir daha ayrışmasını engelliyor (kural 3c).
+
+    AÇILIŞ DARALTMASI BURADA YOK, bilerek: o bir performans ayarı ve SEZGİSEL
+    (1 Ocak'ta 5xx içeren ≥10 satırlık fiş). Doğruluk kuralıyla aynı çuvala konunca,
+    eskiden tüm geçmişi tarayıp HER ZAMAN eksiksiz olan bakiye özetini sezgisele
+    bağımlı hâle getiriyordu — ölçülmemiş bir kazanç için ölçülü risk (kural 6).
+    Yeri `fetch_mizan`; gerekçesi orada yazılı.
+    """
+    return " ".join(p for p in (
+        f"fis_iptal = 0 AND fis_tarih < '{_bit_son(asof)}'",
+        _kapanis_elemesi(client, asof),
+    ) if p)
+
+
+def _kapanis_elemesi(client: MikroClient, asof: str) -> str:
+    """31 Aralık kapanış fişlerini dışlayan koşul parçası; fiş yoksa boş dize."""
+    haric = _kapanis_fis_nolari(client, asof)
+    if not haric:
+        return ""
+    liste = ", ".join(str(n) for n in haric)
+    return f"AND NOT (fis_tarih >= '{asof}' AND fis_yevmiye_no IN ({liste}))"
+
+
 def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     """
     Belirli tarihe (asof = 'YYYY-MM-DD') kadar kümülatif mizan: hesap başına borç/alacak.
@@ -671,26 +870,28 @@ def fetch_mizan(client: MikroClient, asof: str) -> list[dict[str, Any]]:
     Dönüş: [{'hesap_kodu','borc','alacak'}, ...] — mizan_bilanco.build_bilanco() bunu yer.
 
     İki ucuz ön sorgu (tek günlük, saniyenin altında) sorguyu şekillendirir:
-      • Yıl başında açılış fişi varsa aralık o yıla daraltılır — aksi hâlde tüm tablo
-        taranıyor ve zaman aşımına uğruyordu.
       • asof bir yıl sonuysa o günün kapanış fişleri dışlanır — yoksa bilanço sıfırlanmış
-        görünüyordu.
+        görünüyordu (`_bakiye_kosulu`, bakiye okuyan her sorguda aynı).
+      • Yıl başında açılış fişi varsa aralık o yıla daraltılır — aksi hâlde tüm tablo
+        taranıyor ve zaman aşımına uğruyordu. Bu YALNIZ mizana ait.
     İkisi de kanıt bulunamazsa eski davranışa (sınırsız tarama) düşülür: yavaş ama doğru.
     """
     asof = iso_tarih(asof, alan="tarih")
-    kosul = [f"fis_iptal = 0 AND fis_tarih < '{_bit_son(asof)}'"]
+    kosul = _bakiye_kosulu(client, asof)
     if _acilis_fisi_var(client, int(asof[:4])):
-        kosul.append(f"AND fis_tarih >= '{asof[:4]}-01-01'")
-    haric = _kapanis_fis_nolari(client, asof)
-    if haric:
-        liste = ", ".join(str(n) for n in haric)
-        kosul.append(f"AND NOT (fis_tarih >= '{asof}' AND fis_yevmiye_no IN ({liste}))")
+        # PERFORMANS, doğruluk değil: mizan TÜM hesapları tam hesap koduyla gruplar
+        # (binlerce grup) ve alt tarih sınırı olmadan canlıda 120 sn zaman aşımına
+        # düşüyordu. Açılış fişi önceki yılların bakiyesini taşır, ondan geriye gitmek
+        # gerekmez. `fetch_bakiye_ozet`e TAŞINMADI: o 9 sargable önekle ≤9 kovaya
+        # gruplar ve zaman aşımı kaydı yok — ölçülmemiş kazanç için sezgisele
+        # bağımlılık ithal edilmez (kural 6).
+        kosul += f" AND fis_tarih >= '{asof[:4]}-01-01'"
     sql = (
         "SELECT fis_hesap_kod AS hesap_kodu, "
         "SUM(CASE WHEN fis_meblag0 > 0 THEN fis_meblag0 ELSE 0 END) AS borc, "
         "SUM(CASE WHEN fis_meblag0 < 0 THEN -fis_meblag0 ELSE 0 END) AS alacak "
         "FROM MUHASEBE_FISLERI WITH (NOLOCK) "
-        f"WHERE {' '.join(kosul)} "
+        f"WHERE {kosul} "
         "GROUP BY fis_hesap_kod"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
@@ -942,7 +1143,8 @@ def _fetch_nakit_akis_sql(
     tl = _cha_tl_sql("c")
     bit_son = _bit_son(bit)
     if kredi_ayir:
-        nakit_kosul = "(c.cha_cari_cins = 4 OR (c.cha_cari_cins = 2 AND ISNULL(cb.ban_hesap_tip, 0) <> 1))"
+        nakit_kosul = ("(c.cha_cari_cins = 4 OR (c.cha_cari_cins = 2 AND NOT "
+                       f"{_kredi_banka_sql('cb')}))")
         # Karşı taraf cari satırda yoksa (doğrudan muhasebeye işlenen banka ödemesi:
         # maaş 335 / vergi 360 / SGK 361 / kredi 300 / gider 770), karşı hesap bu satırın
         # cha_kasa_hizkod alanındadır. BANKALAR ile ayrış — banka hesapları 300.02.x gibi
@@ -953,21 +1155,22 @@ def _fetch_nakit_akis_sql(
         # Tablo 51). Kod ne olursa olsun tür kazanır.
         hizkod_expr = (
             "CASE WHEN c.cha_kasa_hizmet IN (10, 11) THEN 'KRD' "
-            "WHEN hb.ban_kod IS NOT NULL AND ISNULL(hb.ban_hesap_tip, 0) = 1 THEN 'KRD' "
+            f"WHEN hb.ban_kod IS NOT NULL AND {_kredi_banka_sql('hb')} THEN 'KRD' "
             "WHEN hb.ban_kod IS NOT NULL THEN '' "
             "WHEN LTRIM(RTRIM(ISNULL(c.cha_kasa_hizkod, ''))) <> '' "
             "THEN LEFT(LTRIM(c.cha_kasa_hizkod), 3) ELSE '' END"
         )
         prefix_expr = (
-            "CASE WHEN karsi.kcins = 2 AND karsi.kban = 1 THEN 'KRD' "
+            "CASE WHEN karsi.kcins = 2 AND karsi.kkredi = 1 THEN 'KRD' "
             "WHEN karsi.kcins = 0 THEN karsi.kprefix "
             f"ELSE {hizkod_expr} END"
         )
-        ic_transfer = "(karsi.kcins = 4 OR (karsi.kcins = 2 AND karsi.kban <> 1))"
+        ic_transfer = "(karsi.kcins = 4 OR (karsi.kcins = 2 AND karsi.kkredi = 0))"
         apply_join = (
             "OUTER APPLY ("
             "SELECT TOP 1 k.cha_cari_cins AS kcins, LEFT(LTRIM(k.cha_kod), 3) AS kprefix, "
-            "ISNULL(kb.ban_hesap_tip, -1) AS kban "
+            "CASE WHEN kb.ban_kod IS NULL THEN 0 WHEN "
+            f"{_kredi_banka_sql('kb')} THEN 1 ELSE 0 END AS kkredi "
             "FROM CARI_HESAP_HAREKETLERI k WITH (NOLOCK) "
             "LEFT JOIN BANKALAR kb WITH (NOLOCK) ON kb.ban_kod = k.cha_kod "
             "WHERE k.cha_Guid <> c.cha_Guid AND k.cha_iptal = 0 AND ("
@@ -1017,7 +1220,34 @@ def _fetch_nakit_akis_sql(
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 
 
-_NAKIT_GL_ONEK = "('100', '101', '102', '108')"  # kasa + çek + banka; 103 verilen çek kontra
+# AKIŞ kümesi: «hangi fiş bir nakit HAREKETİDİR». 103 (Verilen Çekler) bilerek DIŞARIDA —
+# çek yazma anı bir nakit çıkışı değil, takas edildiğinde 102 üzerinden çıkıyor; içeri
+# alınsa aynı ödeme iki kez sayılırdı. BAKİYE sorusu farklı kümeyle cevaplanır:
+# domain/nakit_akis.py: GL_NAKIT_BAKIYE_ANA (103 DAHİL, Bilanço ile birebir olsun diye).
+_NAKIT_AKIS_ONEK = "('100', '101', '102', '108')"
+_NAKIT_GL_ONEK = _NAKIT_AKIS_ONEK          # geriye uyumluluk (eski ad)
+
+
+def _kredi_banka_sql(alias: str) -> str:
+    """
+    «Bu banka kaydı bir KREDİ hesabı mı» — SQL yüklemi. domain/ortak.py:kredi_banka_mi
+    ile AYNI kural (ban_hesap_tip=1 · 300 öneki · 320 satıcı sınıfı).
+
+    Eskiden yalnız `ban_hesap_tip = 1` sorulurdu. Canlı kurulumda kredi hesaplarının o
+    alanı 1 DEĞİL: 300.02.* hesapları mevduat gibi görünüyordu. Sonucu ağırdı — kredi
+    hesabı «nakit» sayıldığı için 102→300 kredi ödemesi nakit↔nakit İÇ TRANSFERİ olup
+    tamamen eleniyor, Nakit Akış'ta kredi ödemesi HİÇ görünmüyordu. `kredi_odeme_gl`
+    yedeği (GL 300/303'ü ayrıca okuyan) zaten bu belirti için yazılmıştı; şimdi sebep
+    düzeldi.
+    """
+    return (f"(ISNULL({alias}.ban_hesap_tip, 0) = 1 "
+            f"OR {alias}.ban_muh_kod LIKE '300%' OR {alias}.ban_muh_kod LIKE '320%' "
+            f"OR {alias}.ban_kod LIKE '300%')")
+
+
+def _hesap_like(onekler) -> str:
+    """Önek kümesinden SARGABLE filtre üretir — LEFT(LTRIM(kol),3) indeks kullandırmaz."""
+    return "(" + " OR ".join(f"fis_hesap_kod LIKE '{k}%'" for k in sorted(onekler)) + ")"
 _KREDI_GL_ONEK = "('300', '303', '304', '305', '308', '309', '400', '403')"
 
 
@@ -1103,7 +1333,7 @@ def fetch_nakit_ozet_ve_aylik(
     """
     Nakit özeti + aylık kırılımı — Nakit Akış'la aynı GL kaynağından (tek doğru).
 
-    Nakit & Kârlılık ve Trend & Oranlar bunu ortak kullanır; böylece üç tabın nakit
+    Nakit & Kârlılık ve Mukayese & Oranlar bunu ortak kullanır; böylece üç tabın nakit
     rakamı birbiriyle çelişmez. GL okunamazsa eski cari kaynağa zarafetle düşülür.
     """
     try:
@@ -1113,6 +1343,39 @@ def fetch_nakit_ozet_ve_aylik(
     except MikroAPIError:
         pass
     return fetch_nakit_ozet(client, bas, bit), fetch_nakit_aylik(client, bas, bit)
+
+
+# 0 = giriş, 1 = çıkış. İki sorguda da AYNI ifade kullanılır.
+_GL_TIP = "CASE WHEN c.net_nakit > 0 THEN 0 ELSE 1 END"
+
+
+def _gl_nakit_kirilim(bas: str, bit_son: str) -> str:
+    """
+    Nakit fişleri + karşı hesap dağıtımı — özet ve detay sorgusunun ORTAK gövdesi.
+
+    Tek yerde durması şart: özet «Müşteri tahsilatı 3M» derken detay 47 fiş gösterip
+    2,8M çıkarsa program kendi rakamını doğrulayamıyor demektir. Ayrı yazılmış iki
+    sorgu er ya da geç ayrışır; bu yüzden metin paylaşılıyor, kopyalanmıyor.
+    """
+    return (
+        "FROM ("
+        + _gl_nakit_fis_neti(bas, bit_son, having="ABS(SUM(c0.fis_meblag0)) >= 0.005") +
+        ") c "
+        "CROSS APPLY ("
+        "SELECT CASE WHEN EXISTS ("
+        "SELECT 1 FROM MUHASEBE_HESAP_PLANI hp WITH (NOLOCK) "
+        "WHERE hp.muh_hesap_kod IN (k.fis_hesap_kod, LEFT(k.fis_hesap_kod, 6)) "
+        "AND UPPER(ISNULL(hp.muh_hesap_isim1, '')) LIKE '%KRED%KART%') "
+        "THEN 'KKT' ELSE LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) END AS prefix, "
+        "LTRIM(ISNULL(k.fis_hesap_kod, '')) AS hesap, "
+        "ABS(k.fis_meblag0) / SUM(ABS(k.fis_meblag0)) OVER () AS pay "
+        "FROM MUHASEBE_FISLERI k WITH (NOLOCK) "
+        "WHERE k.fis_iptal = 0 AND k.fis_tarih = c.fis_tarih "
+        "AND k.fis_yevmiye_no = c.fis_yevmiye_no "
+        "AND SIGN(k.fis_meblag0) = -SIGN(c.net_nakit) "
+        f"AND LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) NOT IN {_NAKIT_GL_ONEK}"
+        ") karsi"
+    )
 
 
 def fetch_nakit_akis_gl(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
@@ -1138,30 +1401,40 @@ def fetch_nakit_akis_gl(client: MikroClient, bas: str, bit: str) -> list[dict[st
     ay/tip/prefix/tutar (tip: 0=giriş, 1=çıkış).
     """
     bas, bit = _aralik(bas, bit)
-    bit_son = _bit_son(bit)
     sql = (
         "SELECT CONVERT(char(7), c.fis_tarih, 23) AS ay, "
-        "CASE WHEN c.net_nakit > 0 THEN 0 ELSE 1 END AS tip, "
+        f"{_GL_TIP} AS tip, "
         "karsi.prefix AS prefix, SUM(ABS(c.net_nakit) * karsi.pay) AS tutar "
-        "FROM ("
-        + _gl_nakit_fis_neti(bas, bit_son, having="ABS(SUM(c0.fis_meblag0)) >= 0.005") +
-        ") c "
-        "CROSS APPLY ("
-        "SELECT CASE WHEN EXISTS ("
-        "SELECT 1 FROM MUHASEBE_HESAP_PLANI hp WITH (NOLOCK) "
-        "WHERE hp.muh_hesap_kod IN (k.fis_hesap_kod, LEFT(k.fis_hesap_kod, 6)) "
-        "AND UPPER(ISNULL(hp.muh_hesap_isim1, '')) LIKE '%KRED%KART%') "
-        "THEN 'KKT' ELSE LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) END AS prefix, "
-        "ABS(k.fis_meblag0) / SUM(ABS(k.fis_meblag0)) OVER () AS pay "
-        "FROM MUHASEBE_FISLERI k WITH (NOLOCK) "
-        "WHERE k.fis_iptal = 0 AND k.fis_tarih = c.fis_tarih "
-        "AND k.fis_yevmiye_no = c.fis_yevmiye_no "
-        "AND SIGN(k.fis_meblag0) = -SIGN(c.net_nakit) "
-        f"AND LEFT(LTRIM(ISNULL(k.fis_hesap_kod, '')), 3) NOT IN {_NAKIT_GL_ONEK}"
-        ") karsi "
-        "GROUP BY CONVERT(char(7), c.fis_tarih, 23), "
-        "CASE WHEN c.net_nakit > 0 THEN 0 ELSE 1 END, karsi.prefix "
+        f"{_gl_nakit_kirilim(bas, _bit_son(bit))} "
+        f"GROUP BY CONVERT(char(7), c.fis_tarih, 23), {_GL_TIP}, karsi.prefix "
         "HAVING SUM(ABS(c.net_nakit) * karsi.pay) >= 0.005"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
+
+
+def fetch_nakit_akis_detay(
+    client: MikroClient, bas: str, bit: str, tip: int, adet: int = 2000,
+) -> list[dict[str, Any]]:
+    """
+    Nakit akış özetinin ARKASINDAKİ fişler — kategori toplamının kanıtı.
+
+    AYNI ALT SORGUYU KULLANIR (`_gl_nakit_kirilim`). Bu, bu fonksiyonun en önemli
+    özelliği: detay ayrı yazılsaydı toplamı tutmaz ve durum hiç detay olmamasından
+    KÖTÜ olurdu — «kendi rakamını kendi doğrulayamıyor» demek. Tek fark GROUP BY'ın
+    olmaması; sınıflama (kategori) Python'da, özetle aynı fonksiyonla yapılır.
+
+    Canlıda bir mali müşavir «müşteri tahsilatı 3M — bu yapıldı mı?» diye sordu ve
+    gösterilecek bir şey yoktu; o rakam yüzlerce fişin toplamıydı.
+    """
+    bas, bit = _aralik(bas, bit)
+    n = max(1, min(int(adet), 5000))
+    sql = (
+        f"SELECT TOP {n} c.fis_tarih AS tarih, c.fis_yevmiye_no AS yevmiye, "
+        "karsi.hesap AS hesap, karsi.prefix AS prefix, "
+        "ABS(c.net_nakit) * karsi.pay AS tutar "
+        f"{_gl_nakit_kirilim(bas, _bit_son(bit))} "
+        f"WHERE {_GL_TIP} = {int(tip)} AND ABS(c.net_nakit) * karsi.pay >= 0.005 "
+        "ORDER BY ABS(c.net_nakit) * karsi.pay DESC"
     )
     return parse_sql_rows(client.sql_veri_oku(sql, timeout=180, max_attempts=2))
 
@@ -1213,12 +1486,23 @@ def fetch_kredi_odemeleri_gl(
 
 
 def fetch_nakit_bakiye_gl(client: MikroClient, asof: str) -> float:
-    """Nakit hesapların (100/101/102/108) GL kümülatif bakiyesi (asof dahil)."""
+    """
+    Nakit hesapların GL kümülatif bakiyesi (asof dahil) — Nakit Akış'ın kapanış nakdi.
+
+    Üç şey düzeltildi (hepsi sessizce yanlış rakam üretiyordu):
+      • KAPANIŞ FİŞİ ELENMİYORDU: 31 Aralık'ta biten dönemde bütün bakiyeler sıfırlanıyor.
+        `fetch_bakiye_ozet`'te düzeltilen hatanın ikizi; ortak `_bakiye_kosulu`ya geçti.
+      • `LEFT(LTRIM(kol),3) IN (...)` indeks kullandırmıyordu → tam tarama → zaman aşımı
+        (CLAUDE.md teknik notlarının adıyla yasakladığı desen). Sargable LIKE'a geçti.
+      • AKIŞ kümesini (103 hariç) kullanıyordu; bu bir BAKİYE sorusu. Tahmin'in başlangıç
+        nakdi `GL_NAKIT_BAKIYE_ANA` (103 dahil) okuyordu, yani Nakit Akış'ın kapanış
+        nakdi ile Tahmin'in başlangıç nakdi aynı tarihte FARKLI çıkabiliyordu.
+    """
     asof = iso_tarih(asof, alan="tarih")
     sql = (
         "SELECT SUM(fis_meblag0) AS bakiye FROM MUHASEBE_FISLERI WITH (NOLOCK) "
-        f"WHERE fis_iptal = 0 AND LEFT(LTRIM(fis_hesap_kod), 3) IN {_NAKIT_GL_ONEK} "
-        f"AND fis_tarih < '{_bit_son(asof)}'"
+        f"WHERE {_bakiye_kosulu(client, asof)} "
+        f"AND {_hesap_like(GL_NAKIT_BAKIYE_ANA)}"
     )
     rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
     if rows:
@@ -1244,6 +1528,35 @@ def fetch_nakit_delta_gl(client: MikroClient, bas: str, bit: str) -> float:
     if rows:
         return _f_local(get_row_value(rows[0], "delta", "DELTA"))
     return 0.0
+
+
+def fetch_kdv_ozet(client: MikroClient, bas: str, bit: str) -> list[dict[str, Any]]:
+    """
+    Dönem içi KDV hareketleri — ay ve hesap (191 / 391) kırılımlı.
+
+    191 İndirilecek KDV alıştan doğar ve BORÇLANIR; 391 Hesaplanan KDV satıştan doğar
+    ve ALACAKLANIR. Ay sonu mahsup fişi (391 borç / 191 alacak / 360) bu iki tarafa
+    dokunmadığı için mükerrer sayım olmaz — build_kdv_koprusu her hesabın yalnız kendi
+    doğuş tarafını okur.
+
+    Hesap kodu LIKE önekiyle süzülür (LEFT(LTRIM(...)) indeks kullandırmaz → tam tarama);
+    GROUP BY'daki LEFT ifadesi süzmeyi etkilemez.
+    """
+    bas, bit = _aralik(bas, bit)
+    sql = (
+        "SELECT CONVERT(char(7), c.fis_tarih, 23) AS ay, "
+        "LEFT(c.fis_hesap_kod, 3) AS hesap, "
+        "SUM(CASE WHEN c.fis_meblag0 > 0 THEN c.fis_meblag0 ELSE 0 END) AS borc, "
+        "SUM(CASE WHEN c.fis_meblag0 < 0 THEN -c.fis_meblag0 ELSE 0 END) AS alacak "
+        "FROM MUHASEBE_FISLERI c WITH (NOLOCK) "
+        "WHERE c.fis_iptal = 0 AND c.fis_meblag0 <> 0 "
+        "AND (c.fis_hesap_kod LIKE '191%' OR c.fis_hesap_kod LIKE '391%') "
+        f"AND c.fis_tarih >= '{bas}' AND c.fis_tarih < '{_bit_son(bit)}' "
+        f"{_gl_devir_haric('c')}"
+        "GROUP BY CONVERT(char(7), c.fis_tarih, 23), LEFT(c.fis_hesap_kod, 3) "
+        "ORDER BY ay"
+    )
+    return parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))
 
 
 def fetch_doviz_ozet(client: MikroClient, bas: str, bit: str) -> dict[str, float]:
@@ -1335,7 +1648,7 @@ def fetch_nakit_delta(client: MikroClient, bas: str, bit: str) -> float:
         "FROM CARI_HESAP_HAREKETLERI c WITH (NOLOCK) "
         "LEFT JOIN BANKALAR cb WITH (NOLOCK) ON cb.ban_kod = c.cha_kod "
         "WHERE c.cha_iptal = 0 AND ISNULL(c.cha_hidden, 0) = 0 "
-        "AND (c.cha_cari_cins = 4 OR (c.cha_cari_cins = 2 AND ISNULL(cb.ban_hesap_tip, 0) <> 1)) "
+        f"AND (c.cha_cari_cins = 4 OR (c.cha_cari_cins = 2 AND NOT {_kredi_banka_sql('cb')})) "
         f"AND c.cha_tarihi >= '{bas}' AND c.cha_tarihi < '{_bit_son(bit)}'"
     )
     rows = parse_sql_rows(client.sql_veri_oku(sql, timeout=120, max_attempts=2))

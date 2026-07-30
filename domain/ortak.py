@@ -45,6 +45,18 @@ def tl0(v: float) -> str:
     return f"{v:,.0f}".replace(",", ".")
 
 
+def tr_sayi(v: float, ondalik: int = 2) -> str:
+    """
+    Türkçe biçimli sayı — «1.234,50». Birim/etiket EKLEMEZ.
+
+    Bunun için ayrı bir yardımcı var çünkü aynı hata üç kez yapıldı: cümlenin tamamında
+    `.replace(",", ".")` çağrılınca içindeki tl() çıktısı da bozuluyor ve
+    «3.333.333.333.340,00» → «3.333.333.333.340.00» oluyordu. Sayı ayrı biçimlenir.
+    """
+    s = f"{abs(v):,.{ondalik}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{'-' if v < 0 else ''}{s}"
+
+
 def yuzde(v: float) -> str:
     """12.5 -> '%12,5' (Türkçe ondalık)."""
     return ("%" + f"{v:.1f}").replace(".", ",")
@@ -68,6 +80,39 @@ def muh_sinifi(muh_kod: str) -> str:
     if ana in ("120", "121"):
         return "customer"
     return ""
+
+
+def kredi_banka_mi(satir: dict) -> bool:
+    """
+    Bir banka kaydı KREDİ hesabı mı (yani nakit DEĞİL mi)?
+
+    TEK KURAL, TEK YER. Niyet `domain/gercek_durum_ayarlar.py` içinde yazılıydı —
+    «300.* ve ban_hesap_tip=1 nakitten hariç» — ama üç yerde üç farklı tamlıkta
+    uygulanmıştı: `_bakiye_caridan` üç testi de yapıyordu, `nakit_bakiye` ve akış
+    sorguları yalnız `ban_hesap_tip`'e bakıyordu.
+
+    Canlı kurulumda kredi hesaplarının `ban_hesap_tip`i 1 DEĞİL (300.02.* hesapları
+    mevduat gibi görünüyor). Sonuçları:
+      • `nakit_bakiye` 7 kredi hesabının net -3.744.328'ini NAKDE katıyordu. Tahmin
+        krediyi ayrıca taksit taksit modellediği için borç iki kez sayılıyordu.
+      • Akışta kredi hesabı «nakit» sayıldığı için 102→300 kredi ödemesi nakit↔nakit
+        İÇ TRANSFERİ olup tamamen eleniyordu (bkz. infra: _kredi_banka_sql).
+
+    `ban_muh_kod` kullanıcı tarafından atanır, o yüzden tek teste güvenilmez; üçü
+    birden sorulur. 300 = Banka Kredileri TDHP'de kanunla sabittir (kural 6'nın
+    yasakladığı şey iş akışı varsayımıdır, hesap planı kodu değil).
+    """
+    if to_int(satir.get("ban_hesap_tip", satir.get("BAN_HESAP_TIP"))) == 1:
+        return True
+    muh = str(
+        satir.get("muh_kod", satir.get("MUH_KOD"))
+        or satir.get("ban_muh_kod", satir.get("BAN_MUH_KOD"))
+        or ""
+    ).strip()
+    if muh_sinifi(muh) == "supplier":
+        return True
+    kod = str(satir.get("kod", satir.get("KOD")) or "").strip()
+    return muh.startswith("300") or kod.upper().startswith("300")
 
 
 def tr_buyuk(metin: str) -> str:

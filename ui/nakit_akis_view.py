@@ -3,10 +3,12 @@ Nakit Akış — yerel Qt görünümü.
 
 Banka + kasa fiili hareketlerinden nakit akış tablosu: açılış → girişler → çıkışlar → kapanış,
 kategori kırılımları (tahsilat, satıcı ödemesi, kredi, vergi…) ve dönem kredi ödeme detayı.
-Kart/satır yardımcıları diğer sekmelerle paylaşılır. (Aylık trend: Trend & Oranlar sekmesinde.)
+Kart/satır yardımcıları diğer sekmelerle paylaşılır. (Aylık trend: Mukayese & Oranlar sekmesinde.)
 """
 
 from __future__ import annotations
+
+from collections.abc import Callable
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -17,6 +19,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from domain.kdv import KdvKoprusu
 from domain.kredi import KART_BORCU_VARSAYILAN_ODEME_YUZDE, KrediOdeme, kredi_takvimi_ay
 from domain.mizan_bilanco import tl
 from domain.nakit_akis import NakitAkis, hesap_kirilim_etiketi
@@ -63,12 +66,29 @@ def _ozet_panel(na: NakitAkis) -> QFrame:
     return _card("NAKİT AKIŞ ÖZETİ", _ic(t, notlar))
 
 
+def _donem_eki(bas: str, bit: str, adet: int) -> str:
+    """
+    «· 01.01–29.07 · 412 hareket» — rakamın DÖNEM TOPLAMI olduğunu başlıkta söyler.
+
+    Canlıda mali müşavir «müşteri tahsilatı 3M, bu yapıldı mı?» diye sordu; o rakam
+    yüzlerce tahsilatın toplamıydı ama ekranda tek bir işlem gibi duruyordu. Hareket
+    sayısı bunu tek başına açıklıyor.
+    """
+    parca = []
+    if len(bas) == 10 and len(bit) == 10:
+        parca.append(f"{bas[8:10]}.{bas[5:7]}–{bit[8:10]}.{bit[5:7]}")
+    if adet:
+        parca.append(f"{adet:,} hareket".replace(",", "."))
+    return ("  ·  " + "  ·  ".join(parca)) if parca else ""
+
+
 def _kategori_panel(
     baslik: str,
     kategori: dict,
     toplam: float,
     renk: str,
     kirilimlar: dict[str, list] | None = None,
+    detay: Callable[[str, float], None] | None = None,
 ) -> QFrame:
     # Hesap kırılımları kod + ad ile gösterilir. İlk sütunu esnek bırakarak
     # uzun hesap adlarının kesilmeden okunmasını sağlarız; gösterge ve tutar
@@ -80,15 +100,32 @@ def _kategori_panel(
         return _card(baslik, _ic(t))
 
     enb = max(kategori.values(), default=0.0) or 1.0
+    # KANIT BİR TIK UZAKTA. Satırın tamamı tıklanabilir; ayrı bir «detay» düğmesi
+    # eklenmedi (kural 4). Bir uzman «bu rakam gerçek mi» dediğinde arkasındaki fişleri
+    # gösterememek, ürünün en pahalı eksiğiydi.
+    tiklanabilir: dict[int, tuple[str, float]] = {}
     for ad, tutar in kategori.items():
         it = _tsatir(t, [_c(ad), _c(""), _c(tl(tutar), renk=renk, kalin=True, sag=True)])
         t.setItemWidget(it, 1, _oran_bar(tutar / enb, renk))
+        if detay is not None:
+            tiklanabilir[t.indexOfTopLevelItem(it)] = (ad, tutar)
         # Büyük/heterojen kalemlerin karşı hesap kırılımını satır altında görünür tut.
         for prefix, kt in (kirilimlar or {}).get(ad, []):
             _tsatir(t, [_c(f"      ◦ {hesap_kirilim_etiketi(prefix)}", renk=FAINT), _c(""),
                         _c(tl(kt), renk=FAINT, sag=True)])
     _tsatir(t, [_c("Toplam", kalin=True), _c(""), _c(tl(toplam), kalin=True, sag=True)])
     _fit_height(t)
+    if detay is not None and tiklanabilir:
+        t.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        def _tik(item, _sutun, _t=t, _harita=tiklanabilir):
+            kayit = _harita.get(_t.indexOfTopLevelItem(item))
+            if kayit:
+                detay(*kayit)
+
+        t.itemClicked.connect(_tik)
+        return _card(baslik, _ic(t, [("Bir satıra tıklayınca arkasındaki fişler açılır.",
+                                      FAINT)]))
     return _card(baslik, _ic(t))
 
 
@@ -208,7 +245,9 @@ def _runway_banner(
     lay = QVBoxLayout(card)
     lay.setContentsMargins(18, 12, 18, 12)
     lay.setSpacing(2)
-    eyebrow = QLabel("6 AYLIK NAKİT ÖNGÖRÜSÜ")
+    # PROJEKSİYON: bu panel gerçekleşmiş hareketleri değil, gelecek 6 ayı gösterir.
+    # Aynı sekmede gerçekleşen ve öngörülen yan yana durduğu için ayrımı başlık taşır.
+    eyebrow = QLabel("PROJEKSİYON  ·  6 AYLIK NAKİT ÖNGÖRÜSÜ — HENÜZ GERÇEKLEŞMEDİ")
     eyebrow.setStyleSheet(
         f"color: {renk}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; "
         "background: transparent;"
@@ -277,11 +316,70 @@ def _donem_kredi_odeme_panel(odemeler: list[KrediOdeme], na: NakitAkis) -> QFram
     return _card("SEÇİLİ DÖNEM BANKA KREDİSİ ÖDEMELERİ", _ic(t, notlar))
 
 
+def _sayi(v: float | None, birim: str = "") -> str:
+    """Hesaplanamayan değer «—» — boş hücre açıklamasız bırakılmaz (bkz. panel notu)."""
+    if v is None:
+        return "—"
+    if birim == "%":
+        return f"%{v:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    if birim == "gün":
+        return f"{v:,.0f} gün".replace(",", ".")
+    return tl(v)
+
+
+def _kdv_panel(k: KdvKoprusu) -> QFrame:
+    """
+    KDV NAKİT KÖPRÜSÜ — KDV bir gider değil, finansman yüküdür.
+
+    Satışın KDV'si fatura kesilince doğar ve ertesi ay beyanla devlete ödenir; parası
+    ise alacak vadesi kadar sonra tahsil edilir. Bu fark hiçbir nakit kaleminin altında
+    görünmüyordu — kullanıcı «100 TL'lik malın 20 TL KDV'sini aynı ay ödüyoruz ama
+    parayı 90 günde alıyoruz, bu nakit akışta önemsiz bir şey mi?» diye sordu.
+
+    ORAN ÖLÇÜLÜR, VARSAYILMAZ: ürün karması %1/%10/%20 karışık olabilir, ihracatta KDV
+    hiç doğmaz. «%20'dir» demek başka bir kurulumda sessizce yanlış rakam demektir.
+    """
+    t = _agac(2, [(1, 150)])
+    _tsatir(t, [_c("Hesaplanan KDV (391 — satıştan)"),
+                _c(tl(k.hesaplanan), sag=True)])
+    _tsatir(t, [_c("İndirilecek KDV (191 — alıştan)"),
+                _c(tl(-k.indirilecek), renk=POZ, sag=True)])
+    _tsatir(t, [_c("Devlete kalan net KDV", kalin=True),
+                _c(tl(k.net_kdv), renk=NEG if k.net_kdv > 0 else POZ,
+                   kalin=True, sag=True)])
+    _tsatir(t, [_c("Ölçülen efektif KDV oranı", renk=SUBINK),
+                _c(_sayi(k.oran, "%"), renk=SUBINK, sag=True)])
+    _tsatir(t, [_c("Tahsil edilmemiş alacaktaki KDV", kalin=True),
+                _c(_sayi(k.alacaktaki_kdv), renk=ACCENT, kalin=True, sag=True)])
+    _tsatir(t, [_c("Alacağın ortalama tahsil süresi", renk=SUBINK),
+                _c(_sayi(k.tahsil_gun, "gün"), renk=SUBINK, sag=True)])
+    _fit_height(t)
+
+    notlar: list[tuple[str, str]] = []
+    kdv = k.alacaktaki_kdv
+    gun = k.tahsil_gun
+    if kdv is not None and gun is not None:
+        # Gün ayrı biçimlenir: tl() Türkçe ondalık (1.892.000,00) üretir, tüm cümlede
+        # virgül→nokta değiştirmek o rakamı bozardı.
+        gun_str = f"{gun:,.0f}".replace(",", ".")
+        notlar.append((
+            "Satışın KDV'si fatura kesilince doğar, ertesi ay beyanla ödenir; parası "
+            f"ortalama {gun_str} günde tahsil edilir. Alacağınızın içindeki "
+            f"{tl(kdv)} KDV bu süre boyunca sizin cebinizden finanse edilir.",
+            SUBINK))
+    if k.sebep:
+        notlar.append((k.sebep, "#8a5a00"))
+    return _card("KDV NAKİT KÖPRÜSÜ", _ic(t, notlar))
+
+
 def build_nakit_akis_widget(
     na: NakitAkis,
     firma: str = "",
     kredi_odemeleri: list[KrediOdeme] | None = None,
     *,
+    kdv: KdvKoprusu | None = None,
+    detay_giris: Callable[[str, float], None] | None = None,
+    detay_cikis: Callable[[str, float], None] | None = None,
     runway_na: NakitAkis | None = None,
     runway_ta: TahsilatAlacak | None = None,
     runway_referans_bas: str = "",
@@ -298,11 +396,13 @@ def build_nakit_akis_widget(
 
     firma_str = f" &nbsp;·&nbsp; <b>{firma}</b>" if firma else ""
     kaynak_metin = (
-        "Muhasebe yevmiyesinden — banka/kasa hesaplarına giren-çıkan her hareket, "
-        "karşı hesabına göre kategorize. İç transferler hariç."
+        "GERÇEKLEŞEN hareketler — muhasebe yevmiyesine işlenmiş, banka/kasa hesaplarına "
+        "giren-çıkan her fiş karşı hesabına göre kategorize. İç transferler hariç. "
+        "Rakamlar dönem TOPLAMIDIR, tek bir işlem değildir."
         if na.kaynak == "gl" else
-        "Banka ve kasadan fiilen geçen para — karşı tarafına göre kategorize "
-        "(tahsilat, satıcı ödemesi, kredi, vergi…). İç transferler hariç."
+        "GERÇEKLEŞEN hareketler — banka ve kasadan fiilen geçen para, karşı tarafına "
+        "göre kategorize (tahsilat, satıcı ödemesi, kredi, vergi…). İç transferler "
+        "hariç. Rakamlar dönem TOPLAMIDIR, tek bir işlem değildir."
     )
     head = QLabel(
         f"<span style='color:{MUTED}; font-size:11px;'>NAKİT AKIŞ &nbsp;·&nbsp; "
@@ -351,19 +451,26 @@ def build_nakit_akis_widget(
 
     row1 = QHBoxLayout()
     row1.setSpacing(20)
+    # «GERÇEKLEŞEN» kelimesi başlıkta AÇIKÇA geçer. Kaynak cümlesi üstte yazıyordu ama
+    # kimse okumuyor; canlıda bir mali müşavir bu rakamların projeksiyon olduğunu sandı.
+    # Bu sekmedeki tek ileriye dönük panel runway'dir ve o da PROJEKSİYON diye ayrışır.
     row1.addWidget(_kategori_panel(
-        "GİRİŞLER", na.giris_kategori, na.toplam_giris, POZ,
+        "GERÇEKLEŞEN GİRİŞLER" + _donem_eki(na.bas, na.bit, na.giris_adet),
+        na.giris_kategori, na.toplam_giris, POZ,
         {
             "Diğer girişler": na.diger_giris_kirilim,
             "Gider iadesi": na.gider_giris_kirilim,
         },
+        detay=detay_giris,
     ), 1)
     row1.addWidget(_kategori_panel(
-        "ÇIKIŞLAR", na.cikis_kategori, na.toplam_cikis, NEG,
+        "GERÇEKLEŞEN ÇIKIŞLAR" + _donem_eki(na.bas, na.bit, na.cikis_adet),
+        na.cikis_kategori, na.toplam_cikis, NEG,
         {
             "Diğer çıkışlar": na.diger_cikis_kirilim,
             "Genel giderler": na.gider_cikis_kirilim,
         },
+        detay=detay_cikis,
     ), 1)
     root.addLayout(row1)
 
@@ -371,6 +478,10 @@ def build_nakit_akis_widget(
     row2.setSpacing(20)
     row2.addWidget(_ozet_panel(na), 1)
     row2.addWidget(_kredi_panel(na), 1)
+    # KDV okunamadıysa panel HİÇ çizilmez: boş bir kart, olmayan bir bilgiyi varmış
+    # gibi gösterir. Okunup da hesaplanamayan hücreler «—» + sebebiyle görünür.
+    if kdv is not None and kdv.var:
+        row2.addWidget(_kdv_panel(kdv), 1)
     root.addLayout(row2)
 
     if kredi_odemeleri:

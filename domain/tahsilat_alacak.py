@@ -20,7 +20,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from domain.ortak import csv_sayi
+from domain.ortak import csv_metin, csv_sayi
 from domain.ortak import muh_sinifi as _muh_sinifi
 from domain.ortak import to_float as _f
 from domain.ortak import to_int as _i
@@ -86,6 +86,11 @@ class AcikVadeParcasi:
     sinif: str          # customer | supplier
     vade_gun: int       # asof'tan itibaren; gecikmişse 0 (bugün tahsil/ödenmesi beklenir)
     tutar: float
+    # Vade maliyetini hangi carinin büyüttüğünü söyleyebilmek için (kural 3c: rakamın
+    # arkası bir tık uzakta olmalı). Sıralama bakiyeye değil ERİMEYE göre yapılır,
+    # o yüzden «en çok alacak» listesinden farklı bir sıra çıkar.
+    kod: str = ""
+    unvan: str = ""
 
 
 @dataclass
@@ -313,6 +318,7 @@ def build_tahsilat_alacak(
             # kaybı ayrı bir gecikme/risk analizidir. Burada yalnız ileriye dönük vade etkisi var.
             ta.acik_vade_parcalari.append(AcikVadeParcasi(
                 sinif=sinif, vade_gun=max(0, -gecikme_gun), tutar=tutar,
+                kod=kod, unvan=unvan or kod,
             ))
 
         ozet = CariOzet(kod=kod, unvan=unvan or kod, sinif=sinif, net=net, gecikmis=gecikmis)
@@ -367,8 +373,10 @@ def tahsilat_alacak_csv(ta: TahsilatAlacak) -> str:
         out.append(f"PERFORMANS;Tahsilat Oranı;%{ta.tahsilat_orani:.1f}".replace(".", ","))
     out.append(f"PERFORMANS;Ort. Tahsilat Süresi (DSO);{_gun(ta.dso)}")
     out.append(f"PERFORMANS;Ort. Ödeme Süresi (DPO);{_gun(ta.dpo)}")
+    # Ünvan csv_metin'den geçer: içinde «;» olan bir ünvan satırı 4 sütuna çıkarıp
+    # 3 sütunluk başlıkla kaydırıyordu — tutar Excel'de yanlış kolona düşüyordu.
     for c in ta.top_alacak:
-        out.append(f"EN ÇOK ALACAK;{c.unvan};{s(c.net)}")
+        out.append(f"EN ÇOK ALACAK;{csv_metin(c.unvan)};{s(c.net)}")
     for c in ta.top_borc:
-        out.append(f"EN ÇOK BORÇ;{c.unvan};{s(c.net)}")
+        out.append(f"EN ÇOK BORÇ;{csv_metin(c.unvan)};{s(c.net)}")
     return "\r\n".join(out)

@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from domain.mizan_bilanco import tl
+from domain.ortak import tr_sayi
 from domain.reel_deger import DegerOzet, ReelDegerAnalizi
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _fit_height, _kpi_card
 from ui.gercek_durum_view import NEG, POZ, _agac, _c, _card, _ic, _tsatir
@@ -16,60 +17,101 @@ def _gun(v: float) -> str:
     return "—" if v < 0.05 else f"{v:.0f} gün"
 
 
-def _deger_panel(baslik: str, o: DegerOzet, *, alacak: bool) -> QFrame:
+def _deger_panel(baslik: str, o: DegerOzet, *, alacak: bool,
+                 gecikmis: float = 0.0) -> QFrame:
     t = _agac(2, [(1, 145)])
     _tsatir(t, [_c("Nominal tutar"), _c(tl(o.nominal), kalin=True, sag=True)])
     _tsatir(t, [_c("Bugünkü ekonomik değer"), _c(tl(o.bugunku_deger), renk=ACCENT, kalin=True, sag=True)])
     etiket = "Vade maliyeti" if alacak else "Vade avantajı"
     renk = NEG if alacak else POZ
     _tsatir(t, [_c(etiket, kalin=True), _c(tl(o.vade_etkisi), renk=renk, kalin=True, sag=True)])
-    _tsatir(t, [_c("Ağırlıklı vade"), _c(_gun(o.agirlikli_gun), sag=True)])
+    # ADI DÜZELTİLDİ: bu «vade süresi» değil, açık kalemlerin VADESİNE KALAN ortalama
+    # gün — ve bugünkü değer hesabının girdisi. Tahsil süresi sanılıyordu; vadesi geçmiş
+    # kalem 0 sayıldığı için geç ödeme rakamı DÜŞÜRÜYOR (sezginin tersi).
+    _tsatir(t, [_c("Vadeye kalan (ortalama)"), _c(_gun(o.agirlikli_gun), sag=True)])
     _fit_height(t)
-    aciklama = (
+    notlar = [((
         "Tahsilat bekledikçe, aynı nominal alacağın bugünkü ekonomik değeri azalır."
         if alacak else
         "Ödeme vadesi uzadıkça, aynı nominal borcun bugünkü ekonomik yükü azalır."
-    )
-    return _card(baslik, _ic(t, [(aciklama, FAINT)]))
+    ), FAINT)]
+    # Kural 3: ölçülmüş tek yönlü sınır varsa yazılır. Vadesi geçmiş kalem «bugün tahsil
+    # edilir» sayıldığı için erimesi hiç sayılmıyor → gerçek maliyet bundan AZ OLAMAZ.
+    # Eşik yok: tutar varsa koşulsuz yazılır (kural 6, «önemliyse» ölçülmemiş eşiktir).
+    if alacak and gecikmis > 0.005:
+        notlar.append((
+            f"Vade maliyeti bir <b>alt sınırdır</b>: vadesi geçmiş {tl(gecikmis)} bugün "
+            "tahsil edilebilir sayıldı, o paranın bekleyeceği süre hesaba girmedi.", NEG))
+    return _card(baslik, _ic(t, notlar))
 
 
-def _kart_panel(a: ReelDegerAnalizi) -> QFrame:
-    k = a.kart
-    t = _agac(5, [(0, 52), (1, 140), (2, 140), (3, 150), (4, 145)])
-    _tsatir(t, [
-        _c("Ay", renk=MUTED, kalin=True), _c("Açılış borcu", renk=MUTED, kalin=True, sag=True),
-        _c("Ödeme", renk=MUTED, kalin=True, sag=True),
-        _c("Finansman maliyeti", renk=MUTED, kalin=True, sag=True),
-        _c("Kapanış borcu", renk=MUTED, kalin=True, sag=True),
-    ])
-    if not k.aylar:
-        _tsatir(t, [_c("—"), _c("—"), _c("—"), _c("—"), _c("—")])
-    for ay in k.aylar:
-        _tsatir(t, [
-            _c(str(ay.sira), kalin=True), _c(tl(ay.acilis_borc), sag=True),
-            _c(tl(ay.odeme), renk=NEG if ay.odeme > 0.005 else FAINT, sag=True),
-            _c(tl(ay.finansman_maliyeti) if ay.finansman_maliyeti > 0.005 else "—",
-               renk="#b45309" if ay.finansman_maliyeti > 0.005 else FAINT, sag=True),
-            _c(tl(ay.kapanis_borc), kalin=True, sag=True),
-        ])
+def _yuzde(v: float) -> str:
+    return f"%{tr_sayi(v, 1)}"
+
+
+def _basabas_panel(a: ReelDegerAnalizi) -> QFrame:
+    """
+    Başabaş vade farkı — iskonto oranını tavsiyeye çevirir.
+
+    «%45» rakamı sahibe bir şey söylemiyor. Somut hâli: 90 gün vadeli satıyorsan peşin
+    fiyatın %9,6 üstüne çıkmazsan farkı kendi cebinden ödüyorsun.
+
+    ÇAPA DSO'DUR, «vadeye kalan» DEĞİL. Kalan gün tahsilat iyileştikçe düşüyor (FIFO en
+    eski faturayı kapatır, açık kalanlar en yeni faturalardır): 90 gün vadeyle çalışan
+    firmada canlıda 17 gün çıkıp %1,7 diyordu — doğrusu %9,6, yani 5,5 kat eksik bir
+    FİYAT TAVSİYESİ.
+    """
+    t = _agac(2, [(1, 145)])
+    for g, y in a.basabas_merdiven:
+        _tsatir(t, [_c(f"{g} gün vadeli satış"), _c(_yuzde(y), kalin=True, sag=True)])
     _fit_height(t)
 
-    if k.baslangic_borc < 0.005:
-        notlar = [("Açık kredi kartı borcu bulunamadı.", FAINT)]
-    elif k.kapandi_mi:
-        if k.toplam_finansman_maliyeti < 0.005:
-            notlar = [("Borç tam ödendiği için bu senaryoda kart finansman maliyeti oluşmuyor.", POZ)]
-        else:
-            notlar = [(
-                f"Toplam finansman maliyeti: {tl(k.toplam_finansman_maliyeti)} · "
-                f"toplam ödeme: {tl(k.toplam_odeme)}.", "#b45309")]
+    if a.basabas_olculdu:
+        notlar = [(f"Ölçülen tahsil süren <b>{_gun(a.dso or 0.0)}</b> (Alacak & Borç'taki "
+                   f"DSO) — vadeli fiyatın peşin fiyatın <b>{_yuzde(a.basabas_kendi_vaden)}</b> "
+                   "üstünde değilse vadeyi sen finanse ediyorsun.", NEG)]
+    elif a.basabas_alt_sinir:
+        # Kural 3: ölçülmüş tek yönlü sınır varsa o yazılır.
+        notlar = [(f"Seçili dönem tahsil süresini ölçmeye yetmiyor: tahsil süren "
+                   f"<b>en az {_gun(float(a.donem_gun))}</b>, yani gereken fark "
+                   f"<b>en az {_yuzde(a.basabas_kendi_vaden)}</b>. Daha uzun bir dönem "
+                   "seçersen kesin rakam çıkar.", NEG)]
     else:
-        notlar = [(
-            f"{len(k.aylar)} ay sonunda kalan borç: {tl(k.kalan_borc)}. Bu senaryoda borç kapanmıyor.", NEG)]
-    notlar.append((
-        "Faiz, her ay ödenmeyen bakiye üzerinden hesaplanır. Vergi, gecikme cezası ve yeni kart harcaması "
-        "bu ilk sürümde dahil değildir.", FAINT))
-    return _card("KREDİ KARTI FİNANSMAN SENARYOSU", _ic(t, notlar))
+        notlar = [("Dönemde kredili satış olmadığı için tahsil süresi ölçülemedi; "
+                   "yukarıdaki merdiven genel eşikleri gösterir.", FAINT)]
+    return _card("③ VADELİ SATIŞTA BAŞABAŞ FİYAT FARKI", _ic(t, notlar))
+
+
+def _erime_tablo(kayitlar: list, *, alacak: bool) -> QFrame:
+    """
+    Vade etkisini en çok büyüten cariler — kural 3c: rakamın arkası bir tık uzakta.
+
+    «Vade maliyeti 3,5M» diye bir rakam vardı ve arkasında gösterilecek hiçbir şey yoktu.
+    Sıra BAKİYEYE değil ERİMEYE göre (tutar × bekleme), o yüzden Alacak & Borç'taki
+    «en çok alacak» listesinin tekrarı değil: hızlı ödeyen büyük müşteri burada altta.
+    """
+    t = _agac(4, [(1, 118), (2, 110), (3, 118)])
+    _tsatir(t, [_c("Cari", renk=MUTED, kalin=True),
+                _c("Nominal", renk=MUTED, kalin=True, sag=True),
+                _c("Vadeye kalan", renk=MUTED, kalin=True, sag=True),
+                _c("Vade maliyeti" if alacak else "Vade avantajı",
+                   renk=MUTED, kalin=True, sag=True)])
+    for c in kayitlar:
+        _tsatir(t, [_c(c.unvan),
+                    _c(tl(c.nominal), sag=True),
+                    _c(_gun(c.agirlikli_gun), sag=True),
+                    _c(tl(c.vade_etkisi), renk=NEG if alacak else POZ, kalin=True, sag=True)])
+    _fit_height(t)
+    aciklama = (
+        "Sıra bakiyeye değil erimeye göre: büyük ama hızlı ödeyen müşteri, küçük ama "
+        "uzun vadeli müşteriden daha az eritir. Vade farkı konuşulacak ilk adresler "
+        "listenin başındakiler."
+        if alacak else
+        "Uzun vadeli satıcı lehine çalışır: ödemeyi geciktikçe borcun bugünkü yükü azalır."
+    )
+    baslik = ("④ VADE MALİYETİNİ EN ÇOK BÜYÜTEN MÜŞTERİLER" if alacak
+              else "⑤ EN ÇOK VADE AVANTAJI SAĞLAYAN SATICILAR")
+    return _card(baslik, _ic(t, [(aciklama, FAINT)]))
 
 
 def _bilgilendirme() -> QFrame:
@@ -85,8 +127,9 @@ def _bilgilendirme() -> QFrame:
     baslik.setStyleSheet("color:#1d4f91; font-size:11px; font-weight:800; background:transparent;")
     lay.addWidget(baslik)
     metin = QLabel(
-        "Nominal muhasebe tutarları değişmez. Bu analiz, vadeli alacak/borçların seçilen iskonto oranıyla "
-        "bugünkü ekonomik değerini ve kart borcunun kısmi ödenmesi halinde oluşabilecek finansman maliyetini gösterir."
+        "Nominal muhasebe tutarları değişmez. Bu analiz, vadeli alacak ve borçlarınızın "
+        "bugün kaç para ettiğini gösterir: 90 gün sonra gelecek 100 TL, bugünkü 100 TL "
+        "değildir."
     )
     metin.setWordWrap(True)
     metin.setStyleSheet("color:#365676; font-size:12px; background:transparent;")
@@ -105,11 +148,11 @@ def build_reel_deger_widget(a: ReelDegerAnalizi, *, bas: str, bit: str, firma: s
     firma_str = f" &nbsp;·&nbsp; <b>{firma}</b>" if firma else ""
     v = a.varsayim
     head = QLabel(
-        f"<span style='color:{MUTED}; font-size:11px;'>REEL DEĞER &amp; FİNANSMAN &nbsp;·&nbsp; "
+        f"<span style='color:{MUTED}; font-size:11px;'>REEL DEĞER &nbsp;·&nbsp; "
         f"{bit} itibarıyla{firma_str}</span><br>"
-        f"<span style='color:{FAINT}; font-size:11px;'>Yıllık iskonto / fırsat maliyeti: "
-        f"%{v.yillik_iskonto_yuzde:.1f} · kart aylık finansman maliyeti: "
-        f"%{v.kart_aylik_faiz_yuzde:.1f} · kart ödeme oranı: %{v.kart_odeme_yuzde:.0f}.</span>"
+        f"<span style='color:{FAINT}; font-size:11px;'>Paranın size yıllık maliyeti "
+        f"%{v.yillik_iskonto_yuzde:.1f} kabul edildi — soldaki panelden "
+        "değiştirebilirsiniz.</span>"
     )
     head.setTextFormat(Qt.TextFormat.RichText)
     head.setStyleSheet("background: transparent;")
@@ -145,9 +188,17 @@ def build_reel_deger_widget(a: ReelDegerAnalizi, *, bas: str, bit: str, firma: s
 
     row = QHBoxLayout()
     row.setSpacing(20)
-    row.addWidget(_deger_panel("ALACAKLARIN REEL DEĞERİ", a.alacak, alacak=True), 1)
-    row.addWidget(_deger_panel("BORÇLARIN REEL DEĞERİ", a.borc, alacak=False), 1)
+    row.addWidget(_deger_panel("① ALACAKLARIN REEL DEĞERİ", a.alacak, alacak=True,
+                               gecikmis=a.gecikmis_alacak), 1)
+    row.addWidget(_deger_panel("② BORÇLARIN REEL DEĞERİ", a.borc, alacak=False), 1)
     root.addLayout(row)
-    root.addWidget(_kart_panel(a))
+
+    root.addWidget(_basabas_panel(a))
+
+    if a.top_alacak_erime:
+        root.addWidget(_erime_tablo(a.top_alacak_erime, alacak=True))
+    if a.top_borc_erime:
+        root.addWidget(_erime_tablo(a.top_borc_erime, alacak=False))
+
     root.addStretch(1)
     return content

@@ -9,6 +9,7 @@ import json
 import os
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 import infra.config as config_mod
@@ -182,6 +183,27 @@ class TestSqlParsing(unittest.TestCase):
         self.assertEqual(parse_sql_rows([]), [])
         self.assertIsNone(parse_sql_first_row([]))
 
+    def test_bos_sonuc_hayalet_satir_uretmez(self) -> None:
+        """
+        Sıfır satır dönen sorgu, ZARFI veri satırı sanmamalı.
+
+        Eskiden `a.get(x) or a.get(y) or …` zinciri kullanılıyordu; boş liste falsy
+        olduğu için zincir sonuna düşüyor ve zarfın kendisi satır gibi dönüyordu.
+        Canlıda Veri Sağlığı 8 yıl tarayınca aykırı kaydı olmayan 5 yıl için birer
+        HAYALET satır üretti — tarihi ve tutarı boş kayıtlar «bozuk kayıt» diye
+        listelendi ve sayıya girdi. Sıfır satır dönebilen HER sorgu bu hataya açıktı.
+        """
+        for zarf in ({"SQLResult1": []}, {"SQLResult": []}, {"Data": []},
+                     {"Rows": []}):
+            with self.subTest(zarf=zarf):
+                self.assertEqual(parse_sql_rows([zarf]), [])
+                self.assertEqual(parse_sql_rows(zarf), [])
+                self.assertIsNone(parse_sql_first_row([zarf]))
+
+    def test_bos_liste_dolu_anahtari_golgelemez(self) -> None:
+        """İlk anahtar boşsa sonraki anahtara BAKILMAZ: şekil ilk eşleşenden belli."""
+        self.assertEqual(parse_sql_rows([{"SQLResult1": [], "Data": [{"a": 1}]}]), [])
+
     def test_get_row_value_case_insensitive(self) -> None:
         row = {"STO_KOD": "A.001"}
         self.assertEqual(get_row_value(row, "sto_kod"), "A.001")
@@ -219,6 +241,46 @@ class TestMikroClient(unittest.TestCase):
         client, _ = self._client(500, {"x": 1})
         with self.assertRaises(MikroAPIError):
             client.sql_veri_oku("SELECT 1")
+
+
+class TestZamanAsimiMesaji(unittest.TestCase):
+    """
+    Mikro yanıt vermeyince kullanıcı NE YAPACAĞINI bilmeli.
+
+    Kullanıcı «bazen çok uzun sürüyor, mikro cevap vermiyor olabilir; bu gibi durumda
+    hataları anlayıp hata verecek bir sistem lazım» dedi. Eskiden ekrana ham soket
+    metni («The read operation timed out») çıkıyordu — ne olduğu da ne yapılacağı da
+    belirsizdi.
+    """
+
+    def _client(self, hata: Exception) -> MikroClient:
+        def transport(url: str, body: str, timeout: float):
+            raise hata
+
+        cfg = MikroConfig(base_url="https://m.local", api_key="K", firma_kodu="26",
+                          calisma_yili=2026, kullanici_kodu="U", sifre_gun="S")
+        return MikroClient(cfg, transport=transport, max_attempts=1, timeout=180.0)
+
+    def test_zaman_asimi_ayri_sinif(self) -> None:
+        from infra.mikro_api import MikroZamanAsimiError
+        with self.assertRaises(MikroZamanAsimiError) as ctx:
+            self._client(TimeoutError("timed out")).sql_veri_oku("SELECT 1")
+        mesaj = str(ctx.exception)
+        self.assertIn("Mikro yanıt vermedi", mesaj)
+        self.assertIn("180", mesaj)                 # kaç saniye beklendi
+        self.assertIn("daraltıp", mesaj)            # ne yapılacağı
+
+    def test_zaman_asimi_da_mikro_hatasidir(self) -> None:
+        """Sekmelerdeki «except MikroAPIError» yolları bozulmamalı."""
+        with self.assertRaises(MikroAPIError):
+            self._client(TimeoutError("timed out")).sql_veri_oku("SELECT 1")
+
+    def test_diger_ag_hatasi_eski_mesajla_kalir(self) -> None:
+        from infra.mikro_api import MikroZamanAsimiError
+        with self.assertRaises(MikroAPIError) as ctx:
+            self._client(ConnectionRefusedError("refused")).sql_veri_oku("SELECT 1")
+        self.assertNotIsInstance(ctx.exception, MikroZamanAsimiError)
+        self.assertIn("bağlantı hatası", str(ctx.exception))
 
 
 class TestSqlParams(unittest.TestCase):
@@ -507,6 +569,187 @@ class TestMaliyetHukmu(unittest.TestCase):
         self.assertIn("Maliyet Güncelleme", cikti.getvalue())
 
 
+class TestStokBakiyeHukmu(unittest.TestCase):
+    """
+    Canlı stok değeri mizanın yerine geçebilir mi? — ölçmeden EVET denmemeli.
+
+    Canlıda tek bir doluluk oranına (%91,3) bakılıp yeşil ışık yakılıyordu. İki şey
+    ölçülmemişti:
+
+    1. KAPSAM. Stok seviyesi kümülatiftir ve Mikro yılları ayrı veritabanlarına böler.
+       Firma 26'nın stok tablosu 2025-01-10'da başlıyor, geçmiş firma 20'de. Tek
+       veritabanının kümülatifi seviye değildir; kataloğun tamamı okunmalı ve pencereler
+       ÇAKIŞMAMALI (2025 iki veritabanında birden var).
+    2. EKSİK MALİYETİN YÖNÜ. Eksik bir çıkış satırı stoğu tam da mizandaki gibi şişirir;
+       yönü bilmeden verilen karar hatayı düzeltmek yerine kopyalar.
+    """
+
+    @staticmethod
+    def _yaz(fn, *args) -> str:
+        import contextlib
+        import io
+        cikti = io.StringIO()
+        with contextlib.redirect_stdout(cikti):
+            fn(*args)
+        return cikti.getvalue()
+
+    _CFG = MikroConfig(base_url="https://m.local", api_key="K", firma_kodu="26",
+                       calisma_yili=2026, kullanici_kodu="U", sifre_gun="S")
+
+    # Canlı kurulum: firma 20 → 2020-2025, firma 26 → 2025-2026.
+    _KAPSAM_2020 = {"ilk": "2020-02-03", "adet": 96_000}
+    _KAPSAM_2026 = {"ilk": "2025-01-10", "adet": 28_078}
+    _BAKIYE_2020 = {"adet": 96_000, "maliyet_dolu": 88_000, "miktar": 120_000.0,
+                    "maliyet": 6_000_000.0, "tutar": 5_000_000.0,
+                    "aykiri_satir": 0, "aykiri_maliyet": 0.0,
+                    "temiz_maliyet": 6_000_000.0, "temiz_miktar": 120_000.0}
+    _BAKIYE_2026 = {"adet": 28_078, "maliyet_dolu": 25_635, "miktar": 276_129.45,
+                    "maliyet": 22_790_157.10, "tutar": 17_399_874.13,
+                    "aykiri_satir": 0, "aykiri_maliyet": 0.0,
+                    "temiz_maliyet": 22_790_157.10, "temiz_miktar": 276_129.45}
+    # Canlıdaki bozuk kayıt: 2 adet mala 3,3 trilyon TL (07.12.2023, yevmiye 731).
+    _BAKIYE_BOZUK = dict(_BAKIYE_2020, aykiri_satir=1,
+                         aykiri_maliyet=3_333_333_333_340.0,
+                         maliyet=3_339_333_333_340.0)
+    # Boş satırların çoğu ÇIKIŞTA: canlı rakam mizanla AYNI yönde şişik (canlı durum).
+    _YON_CIKISTA = [
+        {"tip": 0, "bos_satir": 384, "bos_miktar": 8_801.33,
+         "dolu_satir": 12_000, "dolu_miktar": 300_000.0, "dolu_maliyet": 25_902_000.0},
+        {"tip": 1, "bos_satir": 2_055, "bos_miktar": 21_159.66,
+         "dolu_satir": 13_600, "dolu_miktar": 280_000.0, "dolu_maliyet": 29_402_800.0},
+    ]
+    _YON_DENGELI = [
+        {"tip": 0, "bos_satir": 90, "bos_miktar": 900.0,
+         "dolu_satir": 12_000, "dolu_miktar": 300_000.0, "dolu_maliyet": 30_000_000.0},
+        {"tip": 1, "bos_satir": 95, "bos_miktar": 880.0,
+         "dolu_satir": 13_600, "dolu_miktar": 280_000.0, "dolu_maliyet": 28_000_000.0},
+    ]
+
+    def _calistir(self, *, kapsamlar, parcalar, bakiyeler, yon) -> str:
+        """`parcalar`: [(firma_kodu, bas, bit)] — donem_parcalari'nin döndürdüğü bölme."""
+        from unittest.mock import patch
+
+        import stok_diag_cli as cli
+        from infra.veritabani import FirmaKapsami
+
+        def _client(kod: str):
+            return MikroClient(replace(self._CFG, firma_kodu=kod),
+                               transport=lambda *a: (200, "{}"), max_attempts=1)
+
+        clientlar = {kod: _client(kod) for kod, _, _ in parcalar}
+        yamalar = [
+            patch.object(cli, "katalog", return_value=[
+                FirmaKapsami(kod, ilk, son) for kod, ilk, son in kapsamlar]),
+            patch.object(cli, "donem_parcalari",
+                         return_value=[(clientlar[k], b, e) for k, b, e in parcalar]),
+            patch.object(cli, "fetch_stok_kapsam",
+                         side_effect=lambda c, *_a, **_k: [kapsamlar_veri[c.cfg.firma_kodu]]),
+            patch.object(cli, "fetch_stok_bakiye_teshis",
+                         side_effect=lambda c, *_a, **_k: [bakiyeler[c.cfg.firma_kodu]]),
+            patch.object(cli, "fetch_stok_maliyet_yonu",
+                         side_effect=lambda c, *_a, **_k: yon[c.cfg.firma_kodu]),
+            patch.object(cli, "_dene_mizan", return_value=21_498_296.17),
+        ]
+        kapsamlar_veri = {"20": self._KAPSAM_2020, "26": self._KAPSAM_2026}
+        for y in yamalar:
+            y.start()
+        try:
+            return self._yaz(cli._bakiye_teshisi, clientlar["26"], self._CFG, "2026-07-28")
+        finally:
+            for y in yamalar:
+                y.stop()
+
+    def _iki_veritabani(self, yon26) -> str:
+        return self._calistir(
+            kapsamlar=[("20", 2020, 2025), ("26", 2025, 2026)],
+            # 2025 İKİ veritabanında birden var; pencereler çakışmadan bölünür.
+            parcalar=[("20", "2020-01-01", "2025-12-31"),
+                      ("26", "2026-01-01", "2026-07-28")],
+            bakiyeler={"20": self._BAKIYE_2020, "26": self._BAKIYE_2026},
+            yon={"20": self._YON_DENGELI, "26": yon26})
+
+    def _tek_veritabani(self, yon26) -> str:
+        """Canlı 2026 rakamları — hükmün eşiği bu ölçekte sınanır."""
+        return self._calistir(
+            kapsamlar=[("26", 2026, 2026)],
+            parcalar=[("26", "2026-01-01", "2026-07-28")],
+            bakiyeler={"26": self._BAKIYE_2026},
+            yon={"26": yon26})
+
+    def test_butun_veritabanlari_toplanir(self) -> None:
+        """Seviye tek veritabanından çıkmaz; katalogtaki her yıl okunur."""
+        metin = self._iki_veritabani(self._YON_DENGELI)
+        self.assertIn("firma   20", metin)
+        self.assertIn("firma   26", metin)
+        # 96.000 + 28.078 satır, 6.000.000 + 22.790.157,10 maliyet
+        self.assertIn("124.078", metin)
+        self.assertIn("28.790.157,10", metin)
+
+    def test_bos_satirlar_cikistaysa_baglanmaz(self) -> None:
+        """
+        Eksik çıkış satırı stoğu şişirir — mizanın hatasını kopyalamış olurduk.
+
+        Canlı ölçüm: boş satırların 2.055'i çıkışta, 384'ü girişte; net düzeltme
+        −1.461.959 TL, yani canlı değerin %6,4'ü. Doluluk %91,3 olduğu hâlde bağlanamaz.
+        """
+        metin = self._tek_veritabani(self._YON_CIKISTA)
+        self.assertIn("→ HAYIR", metin)
+        self.assertIn("net etkisi", metin)
+
+    def test_bosluk_dengeliyse_baglanabilir(self) -> None:
+        metin = self._iki_veritabani(self._YON_DENGELI)
+        self.assertIn("→ EVET", metin)
+        self.assertIn("Düzeltilmiş canlı", metin)
+
+    def test_aykiri_satir_varken_hicbir_rakam_baglanmaz(self) -> None:
+        """
+        Tek bozuk kayıt 390 bin satırın toplamını ele geçiriyor.
+
+        Canlıda net maliyet 3,28 TRİLYON çıktı; 3,3 trilyonluk tek satır yüzünden.
+        Aykırı ayrı sayılır, elenen de yazılır — ama düzeltilmeden hüküm verilmez.
+        """
+        metin = self._calistir(
+            kapsamlar=[("20", 2020, 2025), ("26", 2025, 2026)],
+            parcalar=[("20", "2020-01-01", "2025-12-31"),
+                      ("26", "2026-01-01", "2026-07-28")],
+            bakiyeler={"20": self._BAKIYE_BOZUK, "26": self._BAKIYE_2026},
+            yon={"20": self._YON_DENGELI, "26": self._YON_DENGELI})
+        self.assertIn("Aykırı satır", metin)
+        self.assertIn("→ HAYIR", metin)
+        self.assertIn("Mikro'da düzeltilmeden", metin)
+        # Temiz rakam aykırıdan arınmış olmalı; ham toplam basılsa 3 trilyon görünürdü.
+        self.assertIn("Temiz net maliyet", metin)
+
+    def test_bilinmeyen_yon_kodu_cikis_sayilmaz(self) -> None:
+        """
+        Canlıda üçüncü bir sth_tip vardı ve tabloda «çıkış» diye İKİ KEZ göründü.
+
+        Yönü bilinmeyen satırın işareti de bilinmez; net düzeltme hesaplanamaz.
+        """
+        yon = [*self._YON_DENGELI,
+               {"tip": 7, "bos_satir": 12, "bos_miktar": 40.0,
+                "dolu_satir": 5, "dolu_miktar": 100.0, "dolu_maliyet": 2_954.0}]
+        metin = self._tek_veritabani(yon)
+        self.assertIn("tip 7 (?)", metin)
+        # Tabloda tek bir «çıkış» SATIRI olmalı; bilinmeyen tip çıkış diye sayılmaz.
+        satirlar = [s for s in metin.splitlines() if s.strip().startswith("çıkış")]
+        self.assertEqual(len(satirlar), 1)
+        # GİZLEMİYORUZ: bilinen yönlerden düzeltme hesaplanır, bilinmeyen pay
+        # ölçülmüş bir sınır olarak ayrıca yazılır (CLAUDE.md kural 3).
+        self.assertIn("Ölçülen net düzeltme", metin)
+        self.assertIn("Yönü bilinmeyen pay", metin)
+
+    def test_gecmis_hareket_eksikse_uyarir(self) -> None:
+        """Katalog 2020 diyor ama en erken hareket 2025 ise kümülatif eksik olabilir."""
+        metin = self._calistir(
+            kapsamlar=[("26", 2020, 2026)],
+            parcalar=[("26", "2020-01-01", "2026-07-28")],
+            bakiyeler={"26": self._BAKIYE_2026},
+            yon={"26": self._YON_DENGELI})
+        self.assertIn("DİKKAT", metin)
+        self.assertIn("kümülatif eksik olabilir", metin)
+
+
 class TestKrediKartiSorgusu(unittest.TestCase):
     """
     Açık kart borcu sorgusu — dev fiş tablosunu taramamalı.
@@ -631,6 +874,129 @@ class TestMizanSorgusu(unittest.TestCase):
         c = self._yakala({"2025-12-31": [self._fis(20078, 38, ozkaynak=0)]})
         fetch_mizan(c, "2025-12-31")
         self.assertNotIn("fis_yevmiye_no IN", c.sorgular[-1])
+
+    def test_bakiye_ozet_de_kapanis_fisini_dislar(self) -> None:
+        """
+        fetch_bakiye_ozet'te bu eleme YOKTU — Tahmin'in başlangıç nakdi 31 Aralık'ta
+        biten dönemde (yaygın: «Bu yıl») sıfıra yakın çıkıp bunu söylemiyordu.
+        """
+        from infra.mikro_fetch import fetch_bakiye_ozet
+        c = self._yakala({"2025-12-31": [self._fis(20089, 514)]})
+        fetch_bakiye_ozet(c, "2025-12-31")
+        sql = c.sorgular[-1]
+        self.assertIn("fis_yevmiye_no IN (20089)", sql)
+        self.assertIn("NOT (fis_tarih >= '2025-12-31'", sql)
+        self.assertIn("GROUP BY LEFT(fis_hesap_kod, 3)", sql)
+
+    def test_bakiye_ozet_acilis_daraltmasi_YAPMAZ(self) -> None:
+        """
+        Açılış daraltması SEZGİSELDİR (1 Ocak'ta 5xx içeren ≥10 satırlık fiş) ve bir
+        performans ayarıdır. Bakiye özeti eskiden tüm geçmişi tarayıp her zaman
+        eksiksizdi; daraltmayı buraya taşımak, ölçülmemiş bir kazanç için Tahmin'in
+        başlangıç nakdini sezgisele bağımlı yapardı (kural 6). Mizanda kalmalı.
+        """
+        from infra.mikro_fetch import fetch_bakiye_ozet, fetch_mizan
+        fisler = {"2025-01-01": [self._fis(1, 571)]}
+        cb, cm = self._yakala(fisler), self._yakala(fisler)
+        fetch_bakiye_ozet(cb, "2025-06-30")
+        fetch_mizan(cm, "2025-06-30")
+        self.assertNotIn("fis_tarih >= '2025-01-01'", cb.sorgular[-1],
+                         "bakiye özetine açılış daraltması sızmış")
+        self.assertIn("fis_tarih >= '2025-01-01'", cm.sorgular[-1],
+                      "mizan daraltmasını kaybetmiş")
+
+    def test_mizan_ve_bakiye_ozet_kapanis_kosulunu_BIREBIR_paylasir(self) -> None:
+        """
+        Varlığı değil EŞİTLİĞİ ölçer. «assertIn ile 4 parça ara» biçimindeki bir test,
+        yalnız birine yeni koşul eklenince yeşil kalır ve ayrışma geri döner (kural 3c).
+        Ortak koşulun birebir aynı dizeyle geçtiğini doğruluyoruz.
+        """
+        from infra.mikro_fetch import _bakiye_kosulu, fetch_bakiye_ozet, fetch_mizan
+        fisler = {"2025-01-01": [self._fis(1, 571)], "2025-12-31": [self._fis(20089, 514)]}
+        ortak = _bakiye_kosulu(self._yakala(fisler), "2025-12-31")
+        self.assertIn("NOT (fis_tarih >= '2025-12-31'", ortak)   # boş dize sızmasın
+        cm, cb = self._yakala(fisler), self._yakala(fisler)
+        fetch_mizan(cm, "2025-12-31")
+        fetch_bakiye_ozet(cb, "2025-12-31")
+        self.assertIn(ortak, cm.sorgular[-1])
+        self.assertIn(ortak, cb.sorgular[-1])
+
+    def test_bakiye_ozet_hesap_grubu_parantezli_kalir(self) -> None:
+        """
+        SQL'de AND, OR'dan sıkı bağlar: parantez düşerse `A AND B OR C` → `(A AND B) OR C`
+        olur ve 101/102/103/108 satırları tarih/iptal filtresi olmadan tüm geçmişten
+        gelir. Sonuç gürültülü değil SESSİZ yanlıştır — makul görünen şişik bir nakit.
+        """
+        from infra.mikro_fetch import fetch_bakiye_ozet
+        c = self._yakala({})
+        fetch_bakiye_ozet(c, "2025-06-30")
+        self.assertIn("AND (fis_hesap_kod LIKE '100%'", c.sorgular[-1])
+        self.assertIn("LIKE '321%') GROUP BY", c.sorgular[-1])
+
+    def test_nakit_bakiye_gl_kapanis_fisini_dislar(self) -> None:
+        """
+        fetch_bakiye_ozet'te düzeltilen kapanış hatasının İKİZİ buradaydı ve atlanmıştı.
+
+        Nakit Akış'ın kapanış nakdi bu sorgudan geliyor: 31 Aralık'ta biten dönemde
+        kapanış fişi bütün bakiyeleri sıfırlıyor ve rakam sessizce çöküyordu.
+        """
+        from infra.mikro_fetch import fetch_nakit_bakiye_gl
+        c = self._yakala({"2025-12-31": [self._fis(20089, 514)]})
+        fetch_nakit_bakiye_gl(c, "2025-12-31")
+        sql = c.sorgular[-1]
+        self.assertIn("fis_yevmiye_no IN (20089)", sql)
+        self.assertIn("NOT (fis_tarih >= '2025-12-31'", sql)
+
+    def test_nakit_bakiye_gl_sargable_filtre_kullanir(self) -> None:
+        """
+        LEFT(LTRIM(kol),3) IN (...) indeks kullandırmaz → tam tarama → zaman aşımı.
+
+        CLAUDE.md teknik notlarının adıyla yasakladığı desen; bu sorguda duruyordu.
+        """
+        from infra.mikro_fetch import fetch_nakit_bakiye_gl
+        c = self._yakala({})
+        fetch_nakit_bakiye_gl(c, "2025-06-30")
+        sql = c.sorgular[-1]
+        self.assertNotIn("LEFT(LTRIM(fis_hesap_kod), 3)", sql)
+        self.assertIn("fis_hesap_kod LIKE '100%'", sql)
+
+    def test_iki_bakiye_okuyucusu_ayni_hesap_kumesini_kullanir(self) -> None:
+        """
+        Nakit Akış'ın kapanış nakdi ile Tahmin'in başlangıç nakdi AYNI soruyu soruyor;
+        farklı hesap kümesi okurlarsa aynı tarihte farklı rakam gösterirler.
+
+        Canlıda öyleydi: akış kümesi (103 hariç) bakiye sorusunda kullanılıyordu, oysa
+        Tahmin GL_NAKIT_BAKIYE_ANA (103 dahil) okuyor. 103 Verilen Çekler kontra
+        hesabıdır, eksi bakiyelidir — iki sekme sessizce ayrışıyordu.
+        """
+        from domain.nakit_akis import GL_NAKIT_BAKIYE_ANA
+        from infra.mikro_fetch import fetch_nakit_bakiye_gl
+        c = self._yakala({})
+        fetch_nakit_bakiye_gl(c, "2025-06-30")
+        sql = c.sorgular[-1]
+        for onek in GL_NAKIT_BAKIYE_ANA:
+            self.assertIn(f"fis_hesap_kod LIKE '{onek}%'", sql,
+                          f"bakiye sorgusu {onek} hesabını okumuyor")
+        self.assertIn("103", "".join(GL_NAKIT_BAKIYE_ANA),
+                      "bakiye kümesinden 103 düşmüş — Bilanço ile ayrışır")
+
+    def test_akis_sorgusu_krediyi_300_onekinden_de_ayirir(self) -> None:
+        """
+        ASIL ZARAR CARİ YOLUNDAYDI (GL yolu karşı hesabı fis_hesap_kod'dan aldığı için
+        krediyi zaten 300 önekiyle görüyor). Kredi hesabı «nakit» sayıldığı için 102→300
+        nakit↔nakit İÇ TRANSFERİ olup tamamen eleniyordu — Nakit Akış'ta kredi ödemesi
+        hiç görünmüyordu. kredi_odeme_gl yedeği zaten bu belirti için yazılmıştı.
+
+        Canlı kurulumda kredi hesaplarının ban_hesap_tip'i 1 değil, o yüzden tek teste
+        güvenen sorgu krediyi ayırt edemiyordu.
+        """
+        from infra.mikro_fetch import _fetch_nakit_akis_sql
+        c = self._yakala({})
+        _fetch_nakit_akis_sql(c, "2026-01-01", "2026-07-30", kredi_ayir=True)
+        sql = " ".join(c.sorgular)
+        self.assertIn("ban_muh_kod LIKE '300%'", sql,
+                      "akış sorgusu krediyi 300 önekinden ayırmıyor")
+        self.assertNotIn("karsi.kban", sql, "eski tek-testli kban bayrağı kalmış")
 
     def test_gun_sorgusu_patlarsa_mizan_yine_kurulur(self) -> None:
         """Yardımcı sorgu teşhis amaçlı; asıl mizanı düşürmemeli."""

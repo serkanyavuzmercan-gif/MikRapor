@@ -1,25 +1,31 @@
-"""Reel değer ve finansman etkisi — karar destek amaçlı saf hesaplama motoru.
+"""
+Vade etkisi — karar destek amaçlı saf hesaplama motoru.
 
-Nominal muhasebe tutarlarını değiştirmez. Açık alacak/borçların vadelerine göre bugünkü
-ekonomik değerini ve kredi kartı borcunun kısmi ödenmesi hâlindeki finansman maliyetini
-gösterir. Kullanılan oranlar senaryo varsayımıdır; resmî muhasebe/vergisel değer değildir.
+TEK SORUYU CEVAPLAR: vadeli satmak neye mal oluyor, vadeli almak ne kazandırıyor?
+Açık alacak/borçların vadelerine göre bugünkü ekonomik değerini hesaplar; nominal
+muhasebe tutarlarını değiştirmez. Kullanılan oran senaryo varsayımıdır, resmî
+muhasebe/vergisel değer değildir.
+
+Kredi kartı finansman senaryosu BURADAN ÇIKARILDI (Tahmin & Projeksiyon'a taşındı):
+sekmedeki dört değişkenin üçü yalnız en alttaki kart tablosunu besliyordu, panel bunu
+söylemiyordu ve aynı kart borcu iki sekmede birden görünüyordu.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from domain.ortak import csv_sayi
+from domain.ortak import csv_metin, csv_sayi
 from domain.tahsilat_alacak import TahsilatAlacak
 
 
 @dataclass
 class ReelDegerVarsayim:
+    # TEK DEĞİŞKEN. Kredi kartı senaryosu Tahmin & Projeksiyon'a taşındı: bu sekmedeki
+    # dört değişkenin ÜÇÜ yalnız en alttaki kart tablosunu besliyordu ve panel bunu
+    # hiçbir yerde söylemiyordu. Sekme artık tek soruyu cevaplıyor: vadeli satmak neye
+    # mal oluyor, vadeli almak ne kazandırıyor.
     yillik_iskonto_yuzde: float = 45.0
-    kart_aylik_faiz_yuzde: float = 4.0
-    kart_odeme_yuzde: float = 100.0
-    kart_borcu_acik: float = 0.0
-    kart_ufuk_ay: int = 12
 
 
 @dataclass
@@ -31,27 +37,17 @@ class DegerOzet:
 
 
 @dataclass
-class KartFinansmanAy:
-    sira: int
-    acilis_borc: float
-    odeme: float
-    finansman_maliyeti: float
-    kapanis_borc: float
+class CariErime:
+    """Vade maliyetini/avantajını en çok büyüten cari — sıra BAKİYEYE değil erimeye göre."""
+    kod: str
+    unvan: str
+    nominal: float
+    agirlikli_gun: float
+    vade_etkisi: float
 
 
-@dataclass
-class KartFinansman:
-    baslangic_borc: float = 0.0
-    aylik_faiz_yuzde: float = 0.0
-    odeme_yuzde: float = 0.0
-    aylar: list[KartFinansmanAy] = field(default_factory=list)
-    toplam_odeme: float = 0.0
-    toplam_finansman_maliyeti: float = 0.0
-    kalan_borc: float = 0.0
-
-    @property
-    def kapandi_mi(self) -> bool:
-        return self.kalan_borc < 0.005
+# Başabaş vade farkı merdiveninde gösterilen vadeler (gün).
+BASABAS_GUNLER: tuple[int, ...] = (30, 60, 90, 120, 180)
 
 
 @dataclass
@@ -59,7 +55,16 @@ class ReelDegerAnalizi:
     varsayim: ReelDegerVarsayim = field(default_factory=ReelDegerVarsayim)
     alacak: DegerOzet = field(default_factory=DegerOzet)
     borc: DegerOzet = field(default_factory=DegerOzet)
-    kart: KartFinansman = field(default_factory=KartFinansman)
+    # Başabaş fark artık «vadeye kalan» değil ÖLÇÜLMÜŞ TAHSİL SÜRESİNE (DSO) çapalanır.
+    # Kalan gün, tahsilat iyileştikçe düşer (FIFO en eski faturayı kapatır, açık kalanlar
+    # en yeni faturalardır) — 90 gün vadeyle çalışan firmada %70 tahsilatta 20 güne
+    # iniyordu ve başabaş tavsiyesini 5,5 kat eksik veriyordu.
+    dso: float | None = None
+    donem_gun: int = 0
+    # Vadesi geçmiş tutar «bugün tahsil edilir» sayılıyor; erime bu yüzden ALT SINIRDIR.
+    gecikmis_alacak: float = 0.0
+    top_alacak_erime: list[CariErime] = field(default_factory=list)
+    top_borc_erime: list[CariErime] = field(default_factory=list)
 
     @property
     def nominal_net_pozisyon(self) -> float:
@@ -73,6 +78,48 @@ class ReelDegerAnalizi:
     def net_vade_etkisi(self) -> float:
         """Vade nedeniyle net ekonomik pozisyondaki değişim (reel − nominal)."""
         return self.reel_net_pozisyon - self.nominal_net_pozisyon
+
+    # ---- Başabaş için dayanak: DSO ---------------------------------------------
+    # VADE MAKASI PANELİ KALDIRILDI. «Kaç gün kendi kesenden finanse ediyorsun» sorusunu
+    # Alacak & Borç sekmesi ZATEN doğru yöntemle cevaplıyor (TahsilatAlacak.dso/.dpo,
+    # «Nakit döngüsü: tahsilat Xg, ödeme Yg»). Buradaki makas iki «vadeye kalan gün»
+    # ortalamasının farkıydı: canlıda 17−18 = 1 gün çıkıyor, işareti de o sekmenin
+    # tersineydi. İki sekme aynı soruya çelişen cevap verince ikisine de güven gider
+    # (kural 5: veri tekrarı yok; kural 3c).
+
+    @property
+    def basabas_olculdu(self) -> bool:
+        """Tahsilat süresi ölçülebildi mi (satış yoksa ya da pencere kısaysa hayır)."""
+        return self.dso is not None and self.donem_gun > 0 and self.dso <= self.donem_gun
+
+    @property
+    def basabas_alt_sinir(self) -> bool:
+        """
+        DSO pencereden uzun: pencere ölçmeye yetmiyor, ancak «en az» denebilir.
+
+        Kural 3: hesaplanamıyorsa tahmin edilmez, ölçülmüş tek yönlü sınır varsa o yazılır.
+        """
+        return (self.dso is not None and self.donem_gun > 0
+                and self.dso > self.donem_gun)
+
+    @property
+    def basabas_dayanak_gun(self) -> float:
+        """Başabaş farkının çapalandığı gün — pencere yetmiyorsa pencerenin kendisi."""
+        if self.basabas_alt_sinir:
+            return float(self.donem_gun)
+        return float(self.dso or 0.0)
+
+    # ---- Başabaş vade farkı ---------------------------------------------------
+    @property
+    def basabas_kendi_vaden(self) -> float:
+        """Ölçülen tahsil süresinde başabaş kalmak için gereken fiyat farkı (%)."""
+        return basabas_vade_farki(
+            self.basabas_dayanak_gun, self.varsayim.yillik_iskonto_yuzde)
+
+    @property
+    def basabas_merdiven(self) -> list[tuple[int, float]]:
+        return [(g, basabas_vade_farki(g, self.varsayim.yillik_iskonto_yuzde))
+                for g in BASABAS_GUNLER]
 
 
 def _oran(yuzde: float) -> float:
@@ -91,6 +138,46 @@ def bugunku_deger(tutar: float, gun: float, yillik_iskonto_yuzde: float) -> floa
     return nominal / ((1.0 + oran) ** (gun / 365.0))
 
 
+def basabas_vade_farki(gun: float, yillik_iskonto_yuzde: float) -> float:
+    """
+    Vadeli satarken peşin fiyatın kaç yüzde üstüne çıkılmalı ki başabaş kalınsın.
+
+    İskonto oranı soyut kalıyor: «%45» rakamı sahibe bir şey söylemiyor. Somut hâli
+    şudur — 90 gün vadeli satıyorsan peşin fiyatın %9,6 üstüne çıkmazsan, farkı
+    kendi cebinden ödüyorsun. Bu, iskontonun tam tersi işlem (bugünkü değeri
+    nominale çıkaran çarpan), o yüzden 1/PV değil (1+oran)^(gün/365).
+    """
+    gun = max(0.0, float(gun))
+    oran = _oran(yillik_iskonto_yuzde)
+    if gun < 0.005 or oran < 0.0000001:
+        return 0.0
+    return ((1.0 + oran) ** (gun / 365.0) - 1.0) * 100.0
+
+
+def _cari_erimeleri(parcalar: list, sinif: str, yillik_iskonto_yuzde: float,
+                    top_n: int = 10) -> list[CariErime]:
+    """Cari bazında vade etkisi — en çok eriteni öne alır (bakiye sırası DEĞİL)."""
+    kova: dict[str, dict] = {}
+    for p in parcalar:
+        if getattr(p, "sinif", "") != sinif or p.tutar <= 0.005:
+            continue
+        kod = getattr(p, "kod", "") or ""
+        d = kova.setdefault(kod, {"unvan": getattr(p, "unvan", "") or kod,
+                                  "nominal": 0.0, "pv": 0.0, "gun_agirlik": 0.0})
+        d["nominal"] += p.tutar
+        d["pv"] += bugunku_deger(p.tutar, p.vade_gun, yillik_iskonto_yuzde)
+        d["gun_agirlik"] += max(0, p.vade_gun) * p.tutar
+    out = [
+        CariErime(kod=kod, unvan=d["unvan"], nominal=d["nominal"],
+                  agirlikli_gun=(d["gun_agirlik"] / d["nominal"]) if d["nominal"] > 0.005 else 0.0,
+                  vade_etkisi=d["nominal"] - d["pv"])
+        for kod, d in kova.items()
+    ]
+    out = [c for c in out if c.vade_etkisi > 0.005]
+    out.sort(key=lambda c: c.vade_etkisi, reverse=True)
+    return out[:top_n]
+
+
 def _deger_ozeti(parcalar: list, sinif: str, yillik_iskonto_yuzde: float) -> DegerOzet:
     ilgili = [p for p in parcalar if getattr(p, "sinif", "") == sinif and p.tutar > 0.005]
     nominal = sum(p.tutar for p in ilgili)
@@ -106,61 +193,29 @@ def _deger_ozeti(parcalar: list, sinif: str, yillik_iskonto_yuzde: float) -> Deg
     )
 
 
-def kart_finansmani_hesapla(v: ReelDegerVarsayim) -> KartFinansman:
-    """Açık kart borcu için ödeme/finansman senaryosu.
-
-    Ödeme oranı, ay başındaki borcun ödenen kısmıdır. Ödenmeyen kısım için aylık finansman
-    maliyeti eklenir. %100 ödeme, borcu ilk ay tamamen kapatır ve maliyet doğurmaz.
-    """
-    kalan = max(0.0, v.kart_borcu_acik)
-    odeme_orani = min(1.0, _oran(v.kart_odeme_yuzde))
-    faiz_orani = _oran(v.kart_aylik_faiz_yuzde)
-    kart = KartFinansman(
-        baslangic_borc=kalan,
-        aylik_faiz_yuzde=max(0.0, v.kart_aylik_faiz_yuzde),
-        odeme_yuzde=min(100.0, max(0.0, v.kart_odeme_yuzde)),
-    )
-    for sira in range(1, max(1, int(v.kart_ufuk_ay)) + 1):
-        if kalan < 0.005:
-            break
-        acilis = kalan
-        odeme = min(acilis, acilis * odeme_orani)
-        tasinan = acilis - odeme
-        finansman = tasinan * faiz_orani
-        kalan = tasinan + finansman
-        kart.aylar.append(KartFinansmanAy(
-            sira=sira,
-            acilis_borc=acilis,
-            odeme=odeme,
-            finansman_maliyeti=finansman,
-            kapanis_borc=kalan,
-        ))
-    kart.toplam_odeme = sum(a.odeme for a in kart.aylar)
-    kart.toplam_finansman_maliyeti = sum(a.finansman_maliyeti for a in kart.aylar)
-    kart.kalan_borc = kalan
-    return kart
-
-
 def build_reel_deger_analizi(ta: TahsilatAlacak, v: ReelDegerVarsayim) -> ReelDegerAnalizi:
-    """Açık cari kalemler + kart borcundan reel değer/finansman analizini kurar."""
+    """Açık cari kalemlerden vade etkisi analizini kurar."""
     parcalar = getattr(ta, "acik_vade_parcalari", []) or []
+    o = v.yillik_iskonto_yuzde
     return ReelDegerAnalizi(
         varsayim=v,
-        alacak=_deger_ozeti(parcalar, "customer", v.yillik_iskonto_yuzde),
-        borc=_deger_ozeti(parcalar, "supplier", v.yillik_iskonto_yuzde),
-        kart=kart_finansmani_hesapla(v),
+        alacak=_deger_ozeti(parcalar, "customer", o),
+        borc=_deger_ozeti(parcalar, "supplier", o),
+        dso=getattr(ta, "dso", None),
+        donem_gun=getattr(ta, "donem_gun", 0) or 0,
+        gecikmis_alacak=getattr(ta, "alacak_gecikmis", 0.0) or 0.0,
+        top_alacak_erime=_cari_erimeleri(parcalar, "customer", o),
+        top_borc_erime=_cari_erimeleri(parcalar, "supplier", o),
     )
 
 
 def reel_deger_csv(a: ReelDegerAnalizi) -> str:
-    """Reel değer analizini Türkçe Excel uyumlu CSV'ye çevirir."""
+    """Vade etkisi analizini Türkçe Excel uyumlu CSV'ye çevirir."""
     s = csv_sayi
     v = a.varsayim
     out = ["Bölüm;Kalem;Değer"]
     out.extend([
-        f"VARSAYIM;Yıllık iskonto / fırsat maliyeti %;{s(v.yillik_iskonto_yuzde)}",
-        f"VARSAYIM;Kart aylık finansman maliyeti %;{s(v.kart_aylik_faiz_yuzde)}",
-        f"VARSAYIM;Kart aylık ödeme oranı %;{s(v.kart_odeme_yuzde)}",
+        f"VARSAYIM;Paranın yıllık maliyeti %;{s(v.yillik_iskonto_yuzde)}",
         f"ALACAK;Nominal;{s(a.alacak.nominal)}",
         f"ALACAK;Bugünkü ekonomik değer;{s(a.alacak.bugunku_deger)}",
         f"ALACAK;Vade maliyeti;{s(a.alacak.vade_etkisi)}",
@@ -170,15 +225,21 @@ def reel_deger_csv(a: ReelDegerAnalizi) -> str:
         f"NET;Nominal pozisyon;{s(a.nominal_net_pozisyon)}",
         f"NET;Reel pozisyon;{s(a.reel_net_pozisyon)}",
         f"NET;Vade etkisi;{s(a.net_vade_etkisi)}",
-        f"KART;Başlangıç borcu;{s(a.kart.baslangic_borc)}",
-        f"KART;Toplam finansman maliyeti;{s(a.kart.toplam_finansman_maliyeti)}",
-        f"KART;Toplam ödeme;{s(a.kart.toplam_odeme)}",
-        f"KART;Kalan borç;{s(a.kart.kalan_borc)}",
     ])
-    out.append("KART TAKVİMİ;Ay;Açılış Borç;Ödeme;Finansman Maliyeti;Kapanış Borç")
-    for ay in a.kart.aylar:
-        out.append(
-            f"KART TAKVİMİ;{ay.sira};{s(ay.acilis_borc)};{s(ay.odeme)};"
-            f"{s(ay.finansman_maliyeti)};{s(ay.kapanis_borc)}"
-        )
+    if a.gecikmis_alacak > 0.005:
+        out.append(f"ALACAK;Vade maliyeti alt sınır sebebi (vadesi geçmiş);{s(a.gecikmis_alacak)}")
+    if a.basabas_olculdu:
+        out.append(f"BAŞABAŞ VADE FARKI;Tahsil süresi (DSO, gün);{s(a.dso or 0.0)}")
+        out.append(f"BAŞABAŞ VADE FARKI;Kendi tahsil sürende (%);{s(a.basabas_kendi_vaden)}")
+    elif a.basabas_alt_sinir:
+        out.append(f"BAŞABAŞ VADE FARKI;Tahsil süresi en az (gün);{s(float(a.donem_gun))}")
+        out.append(f"BAŞABAŞ VADE FARKI;Kendi tahsil sürende en az (%);{s(a.basabas_kendi_vaden)}")
+    else:
+        out.append("BAŞABAŞ VADE FARKI;Tahsil süresi ölçülemedi;dönemde kredili satış yok")
+    out.extend(f"BAŞABAŞ VADE FARKI;{g} gün (%);{s(y)}" for g, y in a.basabas_merdiven)
+    # Ünvan csv_metin'den geçer — «;» içeren ünvan sütunları kaydırıyordu.
+    out.extend(f"EN ÇOK ERİTEN MÜŞTERİ;{csv_metin(c.unvan)};{s(c.vade_etkisi)}"
+               for c in a.top_alacak_erime)
+    out.extend(f"EN ÇOK KAZANDIRAN SATICI;{csv_metin(c.unvan)};{s(c.vade_etkisi)}"
+               for c in a.top_borc_erime)
     return "\r\n".join(out)

@@ -199,6 +199,9 @@ class YilKapanis:
     fiili_satis: float = 0.0       # depodan çıkan mal (irsaliye + fatura)
     fiili_alis: float = 0.0        # depoya giren mal (fatura)
     fiili_var: bool = False        # stok hareketi okunabildi mi
+    # Toplama girmeyen aykırı satırlar — rakamın yanında sebebiyle yazılır.
+    aykiri_adet: int = 0
+    aykiri_tutar: float = 0.0
 
     @property
     def fiili_fark(self) -> float | None:
@@ -552,10 +555,38 @@ def _kiyas_degeri_yok(degerler: list[float | None]) -> bool:
     return (max(dolu) - min(dolu)) <= buyuk * _KIPIRTI_ESIGI
 
 
+def kiyas_tabani(oncekiler: list[float | None]) -> float | None:
+    """
+    Değişim sütununun tabanı: ÖNCEKİ YILLARIN ORTALAMASI.
+
+    Eskiden yalnız İLK yılla son yıl kıyaslanıyordu; sütun başlığı «2020→2026» derken
+    aradaki 2021-2025 hiç hesaba girmiyordu — kullanıcı haklı olarak «tabloda altı yıl
+    var, kıyas iki yıl» dedi. Tek bir yılı taban almak, o yılın kendi olağandışılığını
+    (tek seferlik büyük satış, kur şoku) trend sanmaya da yol açar.
+
+    Hesaplanamayan yıllar ortalamaya girmez; hiçbiri hesaplanamıyorsa taban yoktur.
+    """
+    dolu = [d for d in oncekiler if d is not None]
+    return (sum(dolu) / len(dolu)) if dolu else None
+
+
+def degisim_basligi(yillar: list[int]) -> str:
+    """
+    Değişim sütununun başlığı — neyin neye oranlandığı BAŞLIKTA yazar.
+
+    İki sütun varken ortalama tek bir yıl demektir; o zaman «2025→2026» daha dürüst.
+    """
+    if len(yillar) < 2:
+        return ""
+    if len(yillar) == 2:
+        return f"{yillar[0]}→{yillar[1]}"
+    return f"{yillar[-1]} / önceki ort."
+
+
 def _degisim(ilk: float | None, son: float | None, birim: str,
              artis_iyi: bool | None) -> tuple[str, bool | None]:
     """
-    İlk yıldan son yıla değişim.
+    Kıyas tabanından son yıla değişim.
 
     Tutarlarda YÜZDE, oranlarda PUAN farkı verilir — "cari oran %-33 düştü" demek
     yanıltıcıdır, "−0,46 puan" doğrudur. Uçlar hesaplanamıyorsa değişim de yazılmaz.
@@ -599,7 +630,7 @@ def yillar_tablosu(kapanislar: list[YilKapanis]) -> tuple[list[int], list[TabloB
         için dolar bazında oynuyormuş gibi görünür. Aynı boş bilgi, kılık değiştirmiş
         hâli — kullanıcı canlıda fark etti.
         """
-        metin, iyi = _degisim(degerler[0], degerler[-1], birim, artis_iyi)
+        metin, iyi = _degisim(kiyas_tabani(degerler[:-1]), degerler[-1], birim, artis_iyi)
         return TabloSatir(
             etiket=etiket,
             hucreler=[_oran_metni(d, birim) for d in degerler],
@@ -699,6 +730,11 @@ def yillar_arasi_csv(kapanislar: list[YilKapanis]) -> str:
         "KAYNAK;Yıllık Net Satışlar = muhasebe gelir tablosu (GL 60/61). "
         "Aylık Satış satırlarıyla aynı kaynak değildir."
     )
+    if len(sirali) > 2:
+        out.append(
+            f"NOT;Ekrandaki tabloda son sütun {sirali[-1].yil} yılını, önceki "
+            f"{len(sirali) - 1} yılın ORTALAMASINA oranlar. Sen de gidişatı tek bir "
+            "geçmiş yılla değil, geçmişin bütünüyle kıyasla.")
     for bolum in bolumler:
         if bolum.baslik:
             out.append("")
@@ -952,7 +988,7 @@ def ai_yorum_csv(y: AiYorum) -> str:
     if yillar:
         out.append("")
         out.append("MUKAYESE;Kalem;" + ";".join(str(v) for v in yillar)
-                   + f";{yillar[0]}→{yillar[-1]}")
+                   + f";{degisim_basligi(yillar)}")
         for bolum in bolumler:
             if bolum.baslik:
                 out.append(f"MUKAYESE;{bolum.baslik}")

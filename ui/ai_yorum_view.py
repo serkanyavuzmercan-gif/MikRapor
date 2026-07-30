@@ -141,7 +141,7 @@ def build_ai_yorum_widget(y: AiYorum, firma: str = "") -> QWidget:
     dipnot = QLabel(
         "Bu yorum yapay zekâ tarafından üretilmiştir; mali müşavir görüşü yerine geçmez. "
         "Karar vermeden önce rakamları ilgili sekmeden doğrulayın. "
-        "Yorumun dayandığı yıllar arası mukayese tablosu «Trend & Oranlar» sekmesindedir."
+        "Yorumun dayandığı yıllar arası mukayese tablosu «Mukayese & Oranlar» sekmesindedir."
     )
     dipnot.setWordWrap(True)
     dipnot.setStyleSheet(f"color: {FAINT}; font-size: 11px; background: transparent;")

@@ -15,6 +15,8 @@ from domain.ai_yorum import (
     ai_yorum_csv,
     ay_farki,
     build_ai_veri_paketi,
+    degisim_basligi,
+    kiyas_tabani,
     yil_araligi,
     yillar_arasi_csv,
     yillar_tablosu,
@@ -598,8 +600,31 @@ class TestMukayeseTablosu(unittest.TestCase):
     def test_dolar_bazinda_satis_dususu_gorunur(self) -> None:
         """Kullanıcının asıl istediği: TL'de büyürken dolarda küçülme."""
         satir = self._satir("DOLAR BAZINDA (USD)", "Net Satışlar")
-        self.assertEqual(satir.degisim, "%-30")
+        # Taban ÖNCEKİ YILLARIN ORTALAMASI: (1.500.430 + 1.184.243) / 2 = 1.342.336,5
+        # → 1.050.163 %-22. Yalnız ilk yılla kıyaslamak (%-30) tablodaki 2023'ü hiç
+        # saymıyordu; kullanıcı «altı yıl var, kıyas iki yıl» dedi.
+        self.assertEqual(satir.degisim, "%-22")
         self.assertFalse(satir.iyi)          # dolarda küçülme kötü → kırmızı
+
+    def test_kiyas_tabani_onceki_yillarin_ortalamasi(self) -> None:
+        self.assertAlmostEqual(kiyas_tabani([10.0, 20.0, 60.0]), 30.0)
+        # Hesaplanamayan yıl ortalamayı bozmaz, sıfır sayılmaz.
+        self.assertAlmostEqual(kiyas_tabani([10.0, None, 30.0]), 20.0)
+        self.assertIsNone(kiyas_tabani([None, None]))
+        self.assertIsNone(kiyas_tabani([]))
+
+    def test_degisim_basligi_neyi_neye_oranladigini_yazar(self) -> None:
+        """Başlık «2020→2026» derken aradaki yıllar hesaba girmiyordu — artık yazıyor."""
+        self.assertEqual(degisim_basligi([2024, 2025]), "2024→2025")
+        self.assertEqual(degisim_basligi([2021, 2023, 2025]), "2025 / önceki ort.")
+        self.assertEqual(degisim_basligi([2025]), "")
+
+    def test_iki_sutunda_ortalama_onceki_yilin_kendisidir(self) -> None:
+        """Tek geçmiş yıl varsa ortalama o yıldır; davranış değişmemeli."""
+        k = self._yillar()[1:]
+        _, bolumler = yillar_tablosu(k)
+        satir = next(r for b in bolumler for r in b.satirlar if r.etiket == "Net Satışlar")
+        self.assertEqual(satir.degisim, "%-11")     # 1.050.163 / 1.184.243 − 1
 
     def test_kar_kalemleri_ortalama_kurla_cevrilir(self) -> None:
         """Yıl boyunca oluşan tutarı yıl SONU kuruyla bölmek yanlış olurdu."""
@@ -739,7 +764,7 @@ class TestMukayeseTablosu(unittest.TestCase):
         """Excel'de kendi grafiğini çizebilsin diye CSV'ye de girer — ham rakamla."""
         csv = ai_yorum_csv(AiYorum(yil=2025, bas="2025-01-01", bit="2025-12-31",
                                    kapsam_bas="2021-01-01", kapanislar=self._yillar()))
-        self.assertIn("MUKAYESE;Kalem;2021;2023;2025;2021→2025", csv)
+        self.assertIn("MUKAYESE;Kalem;2021;2023;2025;2025 / önceki ort.", csv)
         self.assertIn("MUKAYESE;Net Satışlar;1500430,00;1184243,00;1050163,00", csv)
 
     def test_kapanissiz_yorumda_csv_bozulmaz(self) -> None:

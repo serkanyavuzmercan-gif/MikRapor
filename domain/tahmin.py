@@ -77,6 +77,10 @@ class TahminVarsayim:
     sabit_gider: float = 0.0      # aylık sabit/işletme gideri
     kart_borcu_acik: float = 0.0  # projeksiyon başlangıcında ödenmemiş kart borcu
     kart_borcu_odeme_yuzde: float = 25.0  # aylık ödeme oranı - senaryo varsayımı
+    # Ödenmeyen kart borcuna işleyen aylık faiz. Reel Değer sekmesinden BURAYA taşındı:
+    # kart borcu zaten burada modelleniyordu (bakiye + ödeme oranı + aylık ödeme sütunu),
+    # yalnız faiz eksikti. Aynı konuyu iki sekmede göstermek kural 5'e aykırıydı.
+    kart_aylik_faiz_yuzde: float = 0.0
     ufuk_ay: int = 12
 
     def ozet(self) -> str:
@@ -93,6 +97,7 @@ class AyTahmin:
     sabit_gider: float = 0.0
     kart_borcu_odeme: float = 0.0
     kart_borcu_kalan: float = 0.0
+    kart_finansman: float = 0.0     # o ay taşınan borca işleyen faiz
     net_kar: float = 0.0
     net_nakit: float = 0.0
     nakit: float = 0.0
@@ -107,7 +112,35 @@ class Tahmin:
     toplam_net: float = 0.0
     toplam_net_nakit: float = 0.0
     toplam_kart_borcu_odeme: float = 0.0
+    toplam_kart_finansman: float = 0.0
     kalan_kart_borcu: float = 0.0
+
+    @property
+    def eksi_ay_sayisi(self) -> int:
+        """Nakitin eksi olduğu ay sayısı."""
+        return sum(1 for a in self.aylar if a.nakit < 0)
+
+    @property
+    def kalici_eksi(self) -> bool:
+        """
+        Dönem SONUNDA da eksi mi?
+
+        «Bir ay eksiye düşüp toparlamak» ile «eksiyle bitirmek» aynı şey değil ve
+        kullanıcının yapacağı iş de aynı değil: ilki köprü finansman, ikincisi
+        büyüme/marj/gider kararı. Uyarı metni bunları ayırmak zorunda.
+        """
+        return bool(self.aylar) and self.aylar[-1].nakit < 0
+
+    @property
+    def dip_ayi(self):
+        """En düşük nakdin yaşandığı ay (AyTahmin) — sebebini söyleyebilmek için."""
+        return min(self.aylar, key=lambda a: a.nakit) if self.aylar else None
+
+    @property
+    def dip_sebebi_kart(self) -> bool:
+        """Dip, o ay ödenen kredi kartı borcuyla tek başına açıklanıyor mu?"""
+        ay = self.dip_ayi
+        return bool(ay and ay.nakit < 0 and ay.kart_borcu_odeme >= abs(ay.nakit))
     son_nakit: float = 0.0
     en_dusuk_nakit: float = 0.0
     en_dusuk_ay: str = ""
@@ -121,13 +154,17 @@ def build_tahmin(v: TahminVarsayim) -> Tahmin:
     nakit = v.baslangic_nakit
     kalan_kart_borcu = max(0.0, v.kart_borcu_acik)
     kart_orani = min(100.0, max(0.0, v.kart_borcu_odeme_yuzde)) / 100.0
+    kart_faiz = max(0.0, v.kart_aylik_faiz_yuzde) / 100.0
     en_dusuk = nakit
     en_dusuk_ay = v.baslangic_ay
     for n in range(1, max(0, v.ufuk_ay) + 1):
         ciro = v.baz_ciro * ((1.0 + g) ** n)
         brut = ciro * marj
         kart_odeme = min(kalan_kart_borcu, kalan_kart_borcu * kart_orani)
-        kalan_kart_borcu -= kart_odeme
+        # Ödenmeyen kısma faiz işler; %100 ödemede taşınan borç kalmaz, maliyet doğmaz.
+        tasinan = kalan_kart_borcu - kart_odeme
+        kart_faiz_tutari = tasinan * kart_faiz
+        kalan_kart_borcu = tasinan + kart_faiz_tutari
         # Kart borcu ödemesi kâr/gider değil, mevcut yükümlülüğün nakit ödemesidir.
         # Bu nedenle kârı ayrı tutup yalnızca nakit değişimine ekliyoruz.
         net = brut - v.sabit_gider
@@ -137,6 +174,7 @@ def build_tahmin(v: TahminVarsayim) -> Tahmin:
         t.aylar.append(AyTahmin(
             ay=ay, ciro=ciro, brut_kar=brut, sabit_gider=v.sabit_gider,
             kart_borcu_odeme=kart_odeme, kart_borcu_kalan=kalan_kart_borcu,
+            kart_finansman=kart_faiz_tutari,
             net_kar=net, net_nakit=net_nakit, nakit=nakit,
         ))
         if nakit < en_dusuk:
@@ -146,6 +184,7 @@ def build_tahmin(v: TahminVarsayim) -> Tahmin:
     t.toplam_net = sum(a.net_kar for a in t.aylar)
     t.toplam_net_nakit = sum(a.net_nakit for a in t.aylar)
     t.toplam_kart_borcu_odeme = sum(a.kart_borcu_odeme for a in t.aylar)
+    t.toplam_kart_finansman = sum(a.kart_finansman for a in t.aylar)
     t.kalan_kart_borcu = kalan_kart_borcu
     t.son_nakit = t.aylar[-1].nakit if t.aylar else v.baslangic_nakit
     t.en_dusuk_nakit = en_dusuk
@@ -162,6 +201,7 @@ def oner_varsayim(
     baslangic_ay: str,
     kart_borcu_acik: float = 0.0,
     kart_borcu_odeme_yuzde: float = 25.0,
+    kart_aylik_faiz_yuzde: float = 0.0,
     ufuk_ay: int = 12,
 ) -> TahminVarsayim:
     """Geçmiş aylık satış serisi + marj + nakit + gideri varsayım taslağına çevirir."""
@@ -181,6 +221,7 @@ def oner_varsayim(
         sabit_gider=max(0.0, aylik_sabit_gider),
         kart_borcu_acik=max(0.0, kart_borcu_acik),
         kart_borcu_odeme_yuzde=min(100.0, max(0.0, kart_borcu_odeme_yuzde)),
+        kart_aylik_faiz_yuzde=max(0.0, kart_aylik_faiz_yuzde),
         ufuk_ay=ufuk_ay,
     )
 
@@ -198,6 +239,7 @@ def tahmin_csv(t: Tahmin) -> str:
     out.append(f"VARSAYIM;Aylık Sabit Gider;{s(v.sabit_gider)}")
     out.append(f"VARSAYIM;Açık Kredi Kartı Borcu;{s(v.kart_borcu_acik)}")
     out.append(f"VARSAYIM;Kart Borcu Ödeme Oranı %;{s(v.kart_borcu_odeme_yuzde)}")
+    out.append(f"VARSAYIM;Kredi Kartı Aylık Faizi %;{s(v.kart_aylik_faiz_yuzde)}")
     out.append("PROJEKSİYON;Ay;Ciro;Brüt Kâr;Kart Borcu Ödemesi;Net Kâr;Net Nakit;Nakit")
     for a in t.aylar:
         out.append(
@@ -209,6 +251,7 @@ def tahmin_csv(t: Tahmin) -> str:
     out.append(f"TOPLAM;Net Kâr;{s(t.toplam_net)}")
     out.append(f"TOPLAM;Kart Borcu Ödemesi;{s(t.toplam_kart_borcu_odeme)}")
     out.append(f"TOPLAM;Net Nakit Etkisi;{s(t.toplam_net_nakit)}")
+    out.append(f"TOPLAM;Kart Finansman Maliyeti;{s(t.toplam_kart_finansman)}")
     out.append(f"TOPLAM;Kalan Kart Borcu;{s(t.kalan_kart_borcu)}")
     out.append(f"TOPLAM;Dönem Sonu Nakit;{s(t.son_nakit)}")
     out.append(f"TOPLAM;En Düşük Nakit ({t.en_dusuk_ay});{s(t.en_dusuk_nakit)}")

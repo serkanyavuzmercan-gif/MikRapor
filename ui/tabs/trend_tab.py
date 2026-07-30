@@ -1,4 +1,4 @@
-"""Trend & Oranlar sekmesi — aylık fiili trend + bilanço finansal oranları."""
+"""Mukayese & Oranlar sekmesi — aylık fiili trend + yıllar arası mukayese + oranlar."""
 
 from __future__ import annotations
 
@@ -46,14 +46,16 @@ class TrendTab(RaporTab):
     """Aylık operasyonel trend + bilanço oranları sekmesi."""
 
     EMOJI = "📈"
-    BASLIK = "Trend & Oranlar"
+    # TEK KELİME: «mukayese». Aynı şey için hem kıyas hem karşılaştırma demek, iki ayrı
+    # rapor varmış izlenimi veriyordu; ekranda, PDF'te ve CSV'de tek sözcük kullanılır.
+    BASLIK = "Mukayese & Oranlar"
     ACIKLAMA = (
         "Dönem içi aylık satış, alış, brüt kâr ve nakit trendini gösterir;<br>"
         "klasik finansal oranları (cari, asit-test, borç/özkaynak) yan yana koyar.<br>"
-        "<span style='color:#9aa0a8;'>Tarih aralığını birden çok yıla yayarsanız "
-        "TL ve dolar bazlı yıl mukayesesi de eklenir.</span>"
+        "<span style='color:#9aa0a8;'>Geçmiş yılların aynı dönemini isterseniz "
+        "dolar bazlı yıllar arası mukayese de eklenir.</span>"
     )
-    GETIR_ETIKET = "Trend / Oranları Getir"
+    GETIR_ETIKET = "Mukayese / Oranları Getir"
     BASLARKEN = "Stok, nakit ve mizan çekiliyor…"
     PDF_DESTEK = True
     HERO_ASSET = "empty-trendler.png"
@@ -76,12 +78,12 @@ class TrendTab(RaporTab):
         Buna ihtiyaç var çünkü takvim yılına bölünmüş sütunlar farklı uzunlukta olabilir:
         canlıda 2025 sütunu 5 ay, 2026 sütunu 7 aydı ve tablo «%+4 büyüme» gösteriyordu —
         aylığa indirilince satış %25 DÜŞMÜŞTÜ. Aynı uzunlukta iki pencere olmadan akış
-        kalemleri kıyaslanamaz.
+        kalemleri mukayese edilemez.
         """
         satir = QHBoxLayout()
         satir.setContentsMargins(2, 0, 0, 8)
         satir.setSpacing(8)
-        self._chk_gecen_yil = QCheckBox("Geçmiş yılların aynı dönemiyle karşılaştır")
+        self._chk_gecen_yil = QCheckBox("Geçmiş yılların aynı dönemiyle mukayese et")
         self._chk_gecen_yil.setObjectName("trGecenYil")
         self._chk_gecen_yil.setCursor(Qt.CursorShape.PointingHandCursor)
         # QSS verilince Qt tüm çizimi stil sayfasına devreder; ::indicator kuralı yoksa
@@ -98,7 +100,7 @@ class TrendTab(RaporTab):
             self._chk_gecen_yil,
             "Mukayese tablosu, seçtiğiniz dönemi geçmiş yılların AYNI dönemiyle yan "
             "yana koyar. Sütunlar eşit uzunlukta olduğu için satış ve kâr gerçekten "
-            "kıyaslanabilir; dolar sütunları enflasyondan da arınmış olur.",
+            "mukayese edilebilir; dolar sütunları enflasyondan da arınmış olur.",
             eyebrow="MUKAYESE", parent=self)
         satir.addWidget(self._chk_gecen_yil)
 
@@ -106,7 +108,10 @@ class TrendTab(RaporTab):
         self._sp_yil.setRange(1, _AZAMI_GERI_YIL)
         self._sp_yil.setValue(_VARSAYILAN_GERI_YIL)
         self._sp_yil.setSuffix(" yıl geriye")
-        self._sp_yil.setFixedWidth(112)
+        # GENİŞLİK ELLE VERİLMEZ. 112 piksel sabitlenmişti ve «10 yıl geriye» sığmıyordu
+        # (canlıda görüldü); yazı tipi/DPI değişince yine sığmaz. QSpinBox kendi
+        # sizeHint'ini en büyük değer + son ekten hesaplar, doğrusu odur. Satır sonundaki
+        # esneme fazlalığı aldığı için kutu yine de yayılmaz.
         self._sp_yil.setEnabled(False)
         self._chk_gecen_yil.toggled.connect(self._sp_yil.setEnabled)
         bagla_nav_tip(
@@ -122,6 +127,10 @@ class TrendTab(RaporTab):
         ayarlar = load_gercek_durum_ayarlar()
         # Widget durumu GUI iş parçacığında okunur; worker'a sade değerler gider.
         geri_yil = self._sp_yil.value() if self._chk_gecen_yil.isChecked() else 0
+        # TİK TAKILI KALMAZ. Her geçmiş yıl ~5 sorgu demek; işaret bir kez konulup
+        # unutulduğunda kullanıcı bir daha istemediği hâlde her rapor dakikalarca
+        # sürüyordu. Pahalı yol her seferinde AÇIKÇA seçilir.
+        self._chk_gecen_yil.setChecked(False)
 
         def is_fn(bildir) -> dict[str, Any]:
             bit_client = yil_client(cfg, int(bit[:4]))
@@ -146,7 +155,7 @@ class TrendTab(RaporTab):
             kapanislar: list[YilKapanis] = []
             if geri_yil:
                 # KULLANICI AÇIKÇA İSTEDİ: seçili dönem + geçmiş yılların aynı dönemi.
-                # Sütunlar eşit uzunlukta, o yüzden akış kalemleri kıyaslanabilir.
+                # Sütunlar eşit uzunlukta, o yüzden akış kalemleri mukayese edilebilir.
                 # Olmayan yıl sessizce düşer (donem_kapanisi None döner).
                 donemler = onceki_donemler(bas, bit, geri_yil)
                 for sira, (d_bas, d_bit) in enumerate(donemler, 1):

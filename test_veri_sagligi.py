@@ -56,31 +56,93 @@ class TestMaliyetKapanisi(unittest.TestCase):
 
 class TestBozukStokKaydi(unittest.TestCase):
     """
-    Canlıda 2 adet mala 3,3 trilyon TL yazan tek kayıt vardı (07.12.2023, yevmiye 731).
+    Canlıda 13 aykırı satır vardı; biri 2 adet mala 3,3 TRİLYON TL yazıyordu
+    (07.12.2023, yevmiye 731). O yılı içeren her rapor bundan zehirleniyordu.
 
-    O yılı içeren her rapor bundan zehirleniyordu ve bulmak için elle teşhis gerekti.
+    EŞİK BURADA DEĞİL, SORGUDA ÖLÇÜLÜR (infra.mikro_fetch.AYKIRI_KAT): satır, dönemin
+    ortalama satırının on binlerce katıysa aykırıdır. Eskiden mutlak bir sınır vardı
+    («satır başına 2 milyon TL»); bu program Mikro kullanan HER firmaya satılacak ve
+    mutlak sınır küçük firmada hiçbir şey yakalamaz, büyükte gerçek faturayı bozuk ilan
+    ederdi. Sorgu aykırıyı toplamdan çıkarıp ayrı sütunda döndürür.
     """
 
-    _BOZUK = {"sth_tip": 0, "sth_evraktip": 12, "tutar": 3_333_333_333_340.0, "adet": 2}
-    _NORMAL = {"sth_tip": 1, "sth_evraktip": 1, "tutar": 19_386_234.0, "adet": 17_914}
+    _NORMAL = {"sth_tip": 1, "sth_evraktip": 1, "tutar": 19_386_234.0, "adet": 17_914,
+               "aykiri_adet": 0, "aykiri_tutar": 0.0}
+    _AYKIRILI = {"sth_tip": 0, "sth_evraktip": 12, "tutar": 22_594_651.34, "adet": 6_592,
+                 "aykiri_adet": 1, "aykiri_tutar": 3_333_333_333_340.0}
 
-    def test_aykiri_satir_yakalanir(self) -> None:
-        vs = build_veri_sagligi(stok_rows=[self._NORMAL, self._BOZUK])
-        self.assertIn("bozuk_stok", _kodlar(vs))
+    def test_elenen_satir_bulgu_uretir(self) -> None:
+        vs = build_veri_sagligi(stok_rows=[self._NORMAL, self._AYKIRILI])
         b = next(x for x in vs.bulgular if x.kod == "bozuk_stok")
         self.assertEqual(b.onem, KRITIK)
+        self.assertIn("1 satır", b.olcum)
         # CLI komutu YOK: satılan üründe kullanıcıya terminal komutu verilmez.
         self.assertNotIn("stok_diag_cli", b.ne_yapmali)
         self.assertIn("Mikro", b.ne_yapmali)
+
+    def test_elenen_tutar_rakamin_yaninda_yazar(self) -> None:
+        """Sessizce atılan rakam, yanlış rakamdan iyi değildir."""
+        vs = build_veri_sagligi(stok_rows=[self._AYKIRILI])
+        b = next(x for x in vs.bulgular if x.kod == "bozuk_stok")
+        self.assertIn("3.333.333.333.340,00", b.olcum)
+        self.assertIn("ALINMADI", b.etkisi)
 
     def test_normal_hareket_bulgu_uretmez(self) -> None:
         vs = build_veri_sagligi(stok_rows=[self._NORMAL])
         self.assertNotIn("bozuk_stok", _kodlar(vs))
 
-    def test_sifir_adet_bolme_hatasi_vermez(self) -> None:
-        vs = build_veri_sagligi(stok_rows=[{"sth_tip": 1, "sth_evraktip": 1,
-                                            "tutar": 5.0, "adet": 0}])
+    def test_aykiri_sutunu_olmayan_satir_cokmez(self) -> None:
+        """Eski/kısmi sorgu çıktısı gelirse bulgu uydurulmaz."""
+        vs = build_veri_sagligi(stok_rows=[
+            {"sth_tip": 1, "sth_evraktip": 1, "tutar": 5.0, "adet": 0}])
         self.assertNotIn("bozuk_stok", _kodlar(vs))
+
+
+class TestBozukKayitListesi(unittest.TestCase):
+    """
+    «13 bozuk kayıt var, düzeltin» demek yetmez.
+
+    Kullanıcı 390 bin satır içinde o 13'ünü bulamaz. Bulgu, Mikro'da evrakı açmaya
+    yetecek kadar bilgi taşımalı: tarih, evrak no, stok kodu, miktar, tutar.
+    """
+
+    _STOK = [{"sth_tip": 0, "sth_evraktip": 12, "tutar": 22_594_651.34, "adet": 6_592,
+              "aykiri_adet": 2, "aykiri_tutar": 3_333_333_333_340.0}]
+    _AYKIRI = [
+        {"tarih": "2023-12-07T00:00:00", "sth_evrakno_seri": "A",
+         "sth_evrakno_sira": 731, "sth_stok_kod": "MAL.001", "sth_tip": 0,
+         "sth_evraktip": 12, "sth_miktar": 2.0, "sth_tutar": 3_333_333_333_340.0},
+        {"tarih": "2024-05-02T00:00:00", "sth_evrakno_seri": "",
+         "sth_evrakno_sira": 0, "sth_belge_no": "IRS-9", "sth_stok_kod": "MAL.002",
+         "sth_tip": 0, "sth_evraktip": 12, "sth_miktar": 1.0, "sth_tutar": 9_000_000.0},
+    ]
+
+    def _bulgu(self, **kw):
+        vs = build_veri_sagligi(stok_rows=self._STOK, **kw)
+        return next(b for b in vs.bulgular if b.kod == "bozuk_stok")
+
+    def test_kayit_satiri_evraki_bulmaya_yeter(self) -> None:
+        b = self._bulgu(aykiri_rows=self._AYKIRI)
+        self.assertEqual(len(b.kayitlar), 2)
+        ilk = b.kayitlar[0]
+        for parca in ("2023-12-07", "A731", "MAL.001", "3.333.333.333.340,00"):
+            self.assertIn(parca, ilk)
+
+    def test_evrak_serisi_yoksa_belge_no_kullanilir(self) -> None:
+        b = self._bulgu(aykiri_rows=self._AYKIRI)
+        self.assertIn("IRS-9", b.kayitlar[1])
+
+    def test_liste_cekilemezse_bulgu_yine_gosterilir(self) -> None:
+        """Kayıt listesi düşse de «2 satır, 3,3 trilyon» bilgisi kaybolmamalı."""
+        b = self._bulgu()
+        self.assertEqual(b.kayitlar, [])
+        self.assertIn("2 satır", b.olcum)
+
+    def test_kayitlar_csvye_de_girer(self) -> None:
+        vs = build_veri_sagligi(stok_rows=self._STOK, aykiri_rows=self._AYKIRI)
+        csv = veri_sagligi_csv(vs)
+        self.assertIn("BULGU;KAYIT", csv)
+        self.assertIn("MAL.001", csv)
 
 
 class TestTanimsizEvrak(unittest.TestCase):
@@ -128,12 +190,52 @@ class TestOkunamayanKaynak(unittest.TestCase):
 
     def test_verilmeyen_kaynak_icin_bulgu_uydurulmaz(self) -> None:
         vs = build_veri_sagligi(bilanco=None, stok_rows=None)
-        self.assertTrue(vs.temiz)
+        self.assertEqual(vs.bulgular, [])
+
+    def test_hic_kaynak_okunamayinca_temiz_denmez(self) -> None:
+        """
+        Canlıda ekran ve müşavire giden PDF kalın puntoyla «Veriniz sağlıklı» yazıyordu
+        — sıfır kayıt taranmışken. `temiz` yalnız `bulgular`a bakıyordu.
+        """
+        vs = build_veri_sagligi(bilanco=None, stok_rows=None)
+        self.assertFalse(vs.temiz)
+        self.assertNotIn("sağlıklı", vs.ozet())
+
+    def test_dusen_kaynagi_cagiran_bildirmek_zorunda_degil(self) -> None:
+        """Veri `None` geldiyse kaynak okunamamıştır; eleme tek yerde durur."""
+        vs = build_veri_sagligi(bilanco=None, stok_rows=[])
+        self.assertEqual(vs.okunamayan, ["Muhasebe mizanı"])
+        self.assertFalse(vs.temiz)
 
     def test_okunamayan_listesi_ozette_kalir(self) -> None:
-        vs = build_veri_sagligi(okunamayan=["Muhasebe mizanı"])
-        self.assertEqual(vs.okunamayan, ["Muhasebe mizanı"])
-        self.assertIn("Muhasebe mizanı", veri_sagligi_csv(vs))
+        vs = build_veri_sagligi(okunamayan=["Firma ünvanı"], stok_rows=[],
+                                bilanco=_bilanco(smm=700_000.0))
+        self.assertEqual(vs.okunamayan, ["Firma ünvanı"])
+        self.assertIn("Firma ünvanı", veri_sagligi_csv(vs))
+
+    def test_daralan_kapsam_temizi_engellemez(self) -> None:
+        """
+        Katalog düşünce `yil_client` bilerek seçili firmayla devam ediyor: mizan ve stok
+        OKUNUYOR, yalnız tek yıl taranıyor. Bunu «düşen kaynak» saymak, ekranda hiçbir
+        rakamı bozmayan ve kullanıcının yapacak işi olmayan bir alarm üretiyordu.
+        """
+        vs = build_veri_sagligi(bas="2026-01-01", bit="2026-07-30",
+                                bilanco=_bilanco(smm=700_000.0), stok_rows=[],
+                                kapsam_notu="Yıl kataloğu kurulamadı.")
+        self.assertTrue(vs.temiz)
+        self.assertIn("sağlıklı", vs.ozet())
+        self.assertIn("Yıl kataloğu kurulamadı.", vs.kapsam_satiri())
+
+    def test_kapsam_satiri_dusen_kaynagi_yazar(self) -> None:
+        """«Bütün kayıtlar tarandı» cümlesi, taranmamışken basılamaz."""
+        hic = build_veri_sagligi(bas="2020-01-01", bit="2026-07-30")
+        self.assertNotIn("bütün kayıtlar tarandı", hic.kapsam_satiri())
+        self.assertIn("hiçbir kayıt okunamadı", hic.kapsam_satiri())
+
+        yarim = build_veri_sagligi(bas="2020-01-01", bit="2026-07-30", stok_rows=[])
+        self.assertNotIn("bütün kayıtlar tarandı", yarim.kapsam_satiri())
+        self.assertIn("Stok hareketleri", yarim.kapsam_satiri())
+        self.assertIn("Muhasebe mizanı", yarim.kapsam_satiri())
 
 
 class TestOzet(unittest.TestCase):

@@ -23,6 +23,10 @@ Kolon VAR; peki dolu mu ve birim mi satır toplamı mı? (asıl karar bu)
 Depodaki stok, mizanın 153'üne alternatif olabilir mi? (kümülatif, canlı)
 
     .\\.venv\\Scripts\\python.exe stok_diag_cli.py 2026-01-01 2026-07-28 --bakiye
+
+Rapor toplamlarından çıkarılan bozuk kayıtların listesi (muhasebeciye gönderilecek):
+
+    .\\.venv\\Scripts\\python.exe stok_diag_cli.py 2026-01-01 2026-07-28 --aykiri
 """
 
 from __future__ import annotations
@@ -33,19 +37,25 @@ from datetime import date
 from domain.gercek_durum import _siniflandir_stok
 from domain.mizan_bilanco import tl
 from domain.ortak import to_float as _f
+from domain.ortak import tr_sayi
 from infra.config import MikroConfig, load_config, load_gercek_durum_ayarlar
 from infra.mikro_fetch import (
+    AYKIRI_KAT,
+    fetch_stok_aykiri_satirlar,
     fetch_stok_bakiye_teshis,
     fetch_stok_depo_kirilimi,
     fetch_stok_evraktip_tepe,
     fetch_stok_evraktip_yillik,
     fetch_stok_fatura_ortakligi,
     fetch_stok_faturalasma,
+    fetch_stok_kapsam,
     fetch_stok_maliyet_teshis,
+    fetch_stok_maliyet_yonu,
     fetch_stok_ozet,
     fetch_tablo_kolonlari,
 )
-from infra.mukayese_fetch import donem_satirlari, yil_client
+from infra.mukayese_fetch import donem_parcalari, donem_satirlari, yil_client
+from infra.veritabani import katalog
 
 _EVRAK_AD = {
     (0, 3): "alış faturası",
@@ -55,9 +65,11 @@ _EVRAK_AD = {
     (1, 16): "sarf fişi",
 }
 
-# Satır başına ortalama tutar bunun üzerindeyse rakam mal hareketi olamaz —
-# canlıda evraktip 12 satır başına ~238 milyon TL çıkıyordu.
-_MAKUL_SATIR_TUTARI = 2_000_000.0
+# Bir evrak türünün satır başı ortalaması, GENEL satır başı ortalamanın bu katından
+# büyükse şüphelidir. Mutlak TL sınırı («2 milyon») kurulum bağımlıdır: küçük firmada
+# hiçbir şey yakalamaz, büyük firmada gerçek faturayı bozuk ilan eder. Canlıda evraktip
+# 12'nin satır başı ~238 milyon TL, geneli ~1.100 TL idi — yaklaşık 216 bin kat.
+_AYKIRI_GRUP_KAT = 100.0
 
 SATIS_TIP = 1                      # sth_tip: 0 = giriş/alış, 1 = çıkış/satış
 _SATIS_EVRAKTIP = {1, 4}           # satış irsaliyesi, satış faturası (sarf fişi değil)
@@ -68,6 +80,9 @@ _KOPYA_ESIGI = 0.5
 # Maliyet güncellemesi çalıştırılmamışsa kolon 0'dır; 0'ı maliyet sanmak brüt marjı
 # %100 gösterir. Satırların bu kadarı dolu değilse kolon kullanılmaz.
 _ASGARI_DOLULUK = 90.0
+_SIFIR_TL = 0.005
+# Boş satırların ölçülen net etkisi canlı değerin bu payını aşıyorsa rakam bağlanmaz.
+_AZAMI_DUZELTME_PAYI = 5.0
 # Ticaret firmasında brüt marj bu aralığın dışına çıkıyorsa yorum yanlıştır:
 # eksi marj «maliyet satış tutarını aşıyor», %90 üstü «maliyet neredeyse sıfır» demek.
 _MAKUL_MARJ = (0.0, 90.0)
@@ -128,7 +143,7 @@ def _detay(cfg: MikroConfig, bas: str, bit: str, tip: int, evraktip: int) -> Non
     if tepe_toplam > 0.5 * toplam:
         print(f"\n  → Toplamın %{tepe_toplam / toplam * 100:.1f}'ini yukarıdaki birkaç satır "
               "taşıyor: BOZUK/AYKIRI KAYIT. Mikro'da o evrakı düzeltin.")
-    elif birim > _MAKUL_SATIR_TUTARI:
+    elif satir_sayisi and birim > toplam / satir_sayisi * _AYKIRI_GRUP_KAT:
         print(f"\n  → Tutar satırlara yayılmış ama satır başı {tl(birim)}: "
               "sth_tutar bu evraktipte TL tutarı olmayabilir.")
     else:
@@ -416,47 +431,216 @@ def _alis_teshisi(cfg: MikroConfig, bas: str, bit: str, kova: dict) -> None:
         print("    irsaliyeyi açıp gerçek mal mı diye bakın.")
 
 
+# sth_tip: 0 giriş, 1 çıkış. Başka bir değer çıkarsa YÖNÜ BİLİNMİYOR demektir —
+# canlıda üçüncü bir tip vardı ve «çıkış» diye etiketlenip tabloda iki kez göründü.
+_YON_AD = {0: "giriş", 1: "çıkış"}
+
+
+def _kapsam_satiri(client, bit: str, bas: str) -> tuple[str, int]:
+    """Bu PENCEREDE ilk hareket ne zaman, kaç satır var."""
+    rows = fetch_stok_kapsam(client, bit, bas)
+    if not rows:
+        return "", 0
+    r = rows[0]
+    ilk = str(r.get("ilk", r.get("ILK")) or "")[:10]
+    adet = int(_f(r.get("adet", r.get("ADET"))))
+    print(f"  firma {client.cfg.firma_kodu:>4}  {bas} → {bit}  "
+          f"ilk hareket {ilk or '—':>10}  {adet:>9,} satır".replace(",", "."))   # tl() yok
+    return ilk, adet
+
+
+def _yon_topla(client, bit: str, bas: str, birikim: dict[int, list[float]]) -> None:
+    """Maliyeti boş satırları YÖNE göre biriktirir (sth_tip: 0 giriş, 1 çıkış)."""
+    for r in fetch_stok_maliyet_yonu(client, bit, bas):
+        def al(ad: str, satir=r) -> float:
+            return _f(satir.get(ad, satir.get(ad.upper())))
+
+        t = birikim.setdefault(int(al("tip")), [0.0, 0.0, 0.0, 0.0])
+        t[0] += al("bos_satir")
+        t[1] += al("bos_miktar")
+        t[2] += al("dolu_miktar")
+        t[3] += al("dolu_maliyet")
+
+
+def _yon_dok(birikim: dict[int, list[float]]) -> float | None:
+    """
+    Boş satırların net maliyete ölçülen etkisi; yön bilinmiyorsa None.
+
+    Net maliyet = giren − çıkan olduğu için eksik bir GİRİŞ satırı stoğu düşük, eksik
+    bir ÇIKIŞ satırı YÜKSEK gösterir. Yön bilinmeden doluluk oranı bir şey söylemez:
+    canlıda boş satırların %84'ü çıkıştaydı, yani canlı rakam mizanla AYNI yönde şişikti.
+    """
+    if not birikim:
+        print("  Yön sorgusu boş döndü.")
+        return None
+    print(f"  {'yön':>10}  {'boş satır':>10}  {'boş miktar':>14}  {'birim maliyet':>16}"
+          f"  {'eksik TL (tahmin)':>20}")
+    duzeltme = 0.0
+    belirsiz = 0.0          # yönü bilinmeyen satırların TL karşılığı — işareti bilinmez
+    olculebilir = True
+    for tip in sorted(birikim):
+        bos_satir, bos_miktar, dolu_miktar, dolu_maliyet = birikim[tip]
+        ad = _YON_AD.get(tip, f"tip {tip} (?)")
+        birim = dolu_maliyet / dolu_miktar if dolu_miktar else 0.0
+        eksik = bos_miktar * birim
+        if bos_satir and not birim:
+            olculebilir = False
+        if tip in _YON_AD:
+            duzeltme += eksik if tip == 0 else -eksik
+        else:
+            belirsiz += abs(eksik)
+        # Sayılar önce biçimlenir; tl() çıktısını toplu replace bozardı.
+        satir_no = f"{int(bos_satir):,}".replace(",", ".")
+        miktar_s = f"{bos_miktar:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        print(f"  {ad:>10}  {satir_no:>10}  {miktar_s:>14}"
+              f"  {tl(birim):>16}  {tl(eksik):>20}")
+    if not olculebilir:
+        print("\n  Birim maliyeti çıkmayan satır var — net düzeltme hesaplanamıyor.")
+        return None
+    print(f"\n  Ölçülen net düzeltme  {tl(duzeltme):>18}"
+          "   (eksik giriş − eksik çıkış)")
+    if belirsiz > _SIFIR_TL:
+        # GİZLEMİYORUZ: yönü bilinmeyen kısım hesaplanamaz ama ÖLÇÜLMÜŞ bir sınırı var.
+        print(f"  Yönü bilinmeyen pay   ± {tl(belirsiz):>16}   (işareti bilinmediği için"
+              " düzeltmeye girmedi)")
+    return duzeltme
+
+
+def _aykiri_listesi(cfg: MikroConfig, bit: str) -> None:
+    """
+    Bozuk stok kayıtlarını MUHASEBECİYE GÖNDERİLECEK biçimde yazar.
+
+    Toplam («13 satır, 3,3 trilyon») bir şeyi düzeltmeye yetmez; düzeltecek kişi tarihi,
+    evrak numarasını ve stok kodunu ister. Kapsam katalogtan gelir: bozuk kayıt hangi
+    yıldaysa oradan okunur, çünkü yıllar ayrı veritabanlarında olabilir.
+    """
+    yil = int(bit[:4])
+    ilk_yil = min((k.ilk_yil for k in katalog(cfg) if k.ilk_yil <= yil), default=yil)
+    print(f"BOZUK STOK KAYITLARI — {ilk_yil}-01-01 → {bit}\n")
+    print("Satır başına tutarı, dönemin ortalama satırının "
+          f"{AYKIRI_KAT:,.0f} katını aşan kayıtlar.".replace(",", "."))
+    print("Bu satırlar rapor toplamlarına ALINMIYOR; Mikro'da düzeltilmeleri gerekiyor.\n")
+    print(f"  {'tarih':>10}  {'evrak':>14}  {'stok kodu':>20}  {'miktar':>12}"
+          f"  {'tutar':>22}  {'maliyet':>22}  tip/evrak")
+    toplam = 0
+    for c, p_bas, p_bit in donem_parcalari(cfg, f"{ilk_yil}-01-01", bit):
+        for r in fetch_stok_aykiri_satirlar(c, p_bas, p_bit):
+            toplam += 1
+            seri = _s(r, "sth_evrakno_seri").strip()
+            sira = int(_f(r.get("sth_evrakno_sira", r.get("STH_EVRAKNO_SIRA"))))
+            evrak = f"{seri}{sira}" if (seri or sira) else _s(r, "sth_belge_no") or "?"
+            miktar = _f(r.get("sth_miktar", r.get("STH_MIKTAR")))
+            print(f"  {_s(r, 'tarih')[:10]:>10}  {evrak:>14}  "
+                  f"{_s(r, 'sth_stok_kod'):>20}  {tr_sayi(miktar):>12}  "
+                  f"{tl(_f(r.get('sth_tutar', r.get('STH_TUTAR')))):>22}  "
+                  f"{tl(_f(r.get('sth_maliyet_ana', r.get('STH_MALIYET_ANA')))):>22}  "
+                  f"{int(_f(r.get('sth_tip', r.get('STH_TIP'))))}/"
+                  f"{int(_f(r.get('sth_evraktip', r.get('STH_EVRAKTIP'))))}")
+    if not toplam:
+        print("\n  Aykırı kayıt bulunamadı.")
+    else:
+        print(f"\n  Toplam {toplam} kayıt.")
+
+
 def _bakiye_teshisi(client, cfg: MikroConfig, bit: str) -> None:
     """
     Canlı stok değeri mizanın 153'üne alternatif olabilir mi?
 
-    Mizan stoğu, satışın maliyeti işlenmemişse şişik. Stok hareketlerinin kümülatifi
-    bundan bağımsız — ama kullanılabilmesi için maliyet kolonunun dolu olması şart.
-    Karar bu çıktıdan sonra verilecek; tahminle bağlanmayacak.
+    Stok SEVİYESİ kümülatiftir — şirketin ilk gününden bugüne bütün hareketlerin
+    toplamı. Mikro yılları ayrı veritabanlarına böldüğü için KATALOĞUN TAMAMI okunur ve
+    pencereler donem_parcalari ile çakışmadan bölünür (bir yıl iki veritabanında birden
+    olabilir; sınırsız okumak o yılı iki kez sayardı).
+
+    AYKIRI SATIRLAR AYRI GÖSTERİLİR: canlıda tek bir kayıt (07.12.2023, 2 adet mala
+    3,3 trilyon TL) 390 bin satırın toplamını tek başına ele geçiriyordu. Elenen de
+    yazılır — sessizce atılan bir rakam, yanlış rakamdan iyi değildir.
+
+    Şu şartların hepsi doğru olmadan cevap EVET değildir: bütün pencereler okundu,
+    aykırı satır kalmadı, maliyet kolonu yeterince dolu, boş satırların yönü biliniyor
+    ve net etkisi önemsiz.
     """
-    rows = fetch_stok_bakiye_teshis(client, bit)
-    if not rows:
-        print("\nSTOK BAKİYE TEŞHİSİ: sorgu boş döndü.")
+    yil = int(bit[:4])
+    kapsamlar = [k for k in katalog(cfg) if k.ilk_yil <= yil]
+    ilk_yil = min((k.ilk_yil for k in kapsamlar), default=yil)
+    tarih_bas = f"{ilk_yil}-01-01"
+
+    print(f"\nSTOK BAKİYE TEŞHİSİ — {bit} itibarıyla (kümülatif: {tarih_bas} →)\n")
+    print("VERİTABANLARI — stok seviyesi hepsinin toplamıdır\n")
+    alanlar = ("miktar", "maliyet", "tutar", "adet", "maliyet_dolu",
+               "aykiri_satir", "aykiri_maliyet", "temiz_maliyet", "temiz_miktar")
+    toplam = dict.fromkeys(alanlar, 0.0)
+    yon: dict[int, list[float]] = {}
+    en_erken = ""
+    okunan = 0
+    for c, p_bas, p_bit in donem_parcalari(cfg, tarih_bas, bit):
+        ilk, adet = _kapsam_satiri(c, p_bit, p_bas)
+        if ilk and (not en_erken or ilk < en_erken):
+            en_erken = ilk
+        if not adet:
+            continue
+        okunan += 1
+        for r in fetch_stok_bakiye_teshis(c, p_bit, p_bas):
+            for ad in alanlar:
+                toplam[ad] += _f(r.get(ad, r.get(ad.upper())))
+        _yon_topla(c, p_bit, p_bas, yon)
+
+    if not okunan:
+        print("\n  Hiçbir veritabanından stok hareketi okunamadı.")
         return
-    r = rows[0]
 
-    def al(ad: str) -> float:
-        return _f(r.get(ad, r.get(ad.upper())))
-
-    adet, dolu = al("adet"), al("maliyet_dolu")
-    print(f"\nSTOK BAKİYE TEŞHİSİ — {bit} itibarıyla (kümülatif, tüm hareketler)\n")
-    print(f"  Hareket satırı        {int(adet):>18,}".replace(",", "."))
+    adet, dolu = toplam["adet"], toplam["maliyet_dolu"]
+    ham, temiz = toplam["maliyet"], toplam["temiz_maliyet"]
+    aykiri_satir = int(toplam["aykiri_satir"])
+    print(f"\n  Hareket satırı        {int(adet):>18,}".replace(",", "."))
     print(f"  Maliyet kolonu dolu   {dolu / adet * 100 if adet else 0:>17.1f}%")
-    print(f"  Net miktar (giren−çıkan) {al('miktar'):>18,.2f}")
-    print(f"  Net maliyet           {tl(al('maliyet')):>18}   ← stok değeri adayı")
-    print(f"  Net sth_tutar         {tl(al('tutar')):>18}   (alışta maliyet, satışta")
+    print(f"  Net miktar (giren−çıkan) {toplam['miktar']:>18,.2f}")
+    print(f"  Net maliyet (ham)     {tl(ham):>18}")
+    print(f"  Net sth_tutar         {tl(toplam['tutar']):>18}   (alışta maliyet, satışta")
     print(f"  {'':22}{'':18}    satış fiyatı — stok değeri DEĞİL)")
+    # Sayı ayrı biçimlenir: tl() Türkçe ondalık üretir, cümlenin tamamında
+    # virgül→nokta değiştirmek o rakamı bozardı (canlıda «2.000.000.00» çıktı).
+    sayi = f"{aykiri_satir:,}".replace(",", ".")
+    print(f"\n  {f'Aykırı satır (>{AYKIRI_KAT:,.0f}× ortalama)':<24}{sayi:>16}"
+          .replace(",", "."))
+    print(f"  {'Aykırıların net etkisi':<24}{tl(toplam['aykiri_maliyet']):>16}")
+    print(f"  {'Temiz net maliyet':<24}{tl(temiz):>16}   ← stok değeri adayı")
+
+    print("\nEKSİK MALİYETİN YÖNÜ  (aykırılar birim maliyete girmez)\n")
+    duzeltme = _yon_dok(yon)
 
     mizan = _dene_mizan(client, bit)
     if mizan is not None:
         print(f"\n  Mizan 15x stoğu       {tl(mizan):>18}")
-        fark = mizan - al("maliyet")
-        print(f"  Fark                  {tl(fark):>18}")
+        print(f"  Fark (mizan − temiz)  {tl(mizan - temiz):>18}")
+        if duzeltme is not None:
+            print(f"  Düzeltilmiş canlı     {tl(temiz + duzeltme):>18}")
+            print(f"  Düzeltilmiş fark      {tl(mizan - temiz - duzeltme):>18}")
+
     print()
+    if en_erken and en_erken[:4] > str(ilk_yil):
+        print(f"  → DİKKAT: katalog {ilk_yil}'den başlıyor ama en erken stok hareketi")
+        print(f"    {en_erken}. Öncesi ya yok ya da başka bir veritabanında —")
+        print("    kümülatif eksik olabilir.")
+    if aykiri_satir:
+        print(f"  → HAYIR: {aykiri_satir} aykırı satır var (net etkisi "
+              f"{tl(toplam['aykiri_maliyet'])}).")
+        print("    Bunlar Mikro'da düzeltilmeden hiçbir stok rakamı güvenilir değil.")
+        return
     oran = dolu / adet * 100 if adet else 0.0
     if oran < _ASGARI_DOLULUK:
-        print(f"  → Maliyet kolonu %{oran:.1f} dolu: eksik satırlar hem girişte hem")
-        print("    çıkışta olduğu için net değerin yönü bile kestirilemez. Bu rakam")
-        print("    mizanın yerine KONULAMAZ; stok satırı «—» kalmaya devam etmeli.")
-    else:
-        print(f"  → Maliyet kolonu %{oran:.1f} dolu. Yukarıdaki «net maliyet» canlı stok")
-        print("    değeridir; mizanla farkı işlenmemiş maliyetin ölçüsüdür. Bildirin,")
-        print("    mukayese tablosundaki stok satırı buna bağlanacak.")
+        print(f"  → HAYIR: maliyet kolonu %{oran:.1f} dolu; eksik satırlar hem girişte hem")
+        print("    çıkışta olduğu için net değerin yönü kestirilemez. Stok satırı «—» kalmalı.")
+        return
+    if duzeltme is None:
+        print("  → HAYIR: boş satırların net etkisi ölçülemedi.")
+        return
+    pay = abs(duzeltme) / abs(temiz) * 100 if abs(temiz) > _SIFIR_TL else 100.0
+    if pay > _AZAMI_DUZELTME_PAYI:
+        print(f"  → HAYIR: boş satırların net etkisi {tl(duzeltme)}, temiz değerin %{pay:.1f}'i.")
+        print("    Bu kadar oynayan bir rakam mizanın yerine konulamaz.")
+        return
+    print(f"  → EVET: aykırı satır yok, maliyet %{oran:.1f} dolu ve boş satırların net")
+    print(f"    etkisi temiz değerin yalnız %{pay:.1f}'i. «Düzeltilmiş canlı» bağlanabilir.")
 
 
 def _dene_mizan(client, bit: str) -> float | None:
@@ -570,6 +754,9 @@ def main() -> None:
     if "--fatura" in sys.argv:
         _faturalasma_teshisi(cfg, bas, bit)
         return
+    if "--aykiri" in sys.argv:
+        _aykiri_listesi(cfg, bit)
+        return
     if "--bakiye" in sys.argv:
         _bakiye_teshisi(client, cfg, bit)
         return
@@ -593,18 +780,23 @@ def main() -> None:
 
     print("EVRAKTİP KIRILIMI (ham):")
     print(f"  {'tip':>3} {'evrak':>5}  {'adet':>8}  {'tutar':>22}  {'satır başı':>16}  açıklama")
+    # Ölçü verinin kendisinden: genel satır başı ortalama.
+    genel_tutar = sum(v[0] for v in kirilim.values())
+    genel_adet = sum(v[1] for v in kirilim.values())
+    esik = (genel_tutar / genel_adet * _AYKIRI_GRUP_KAT) if genel_adet else 0.0
     supheli: list[tuple[int, int]] = []
     for (tip, ev), (tutar, adet_f) in sorted(kirilim.items(), key=lambda kv: -kv[1][0]):
         adet = int(adet_f)
         ad = _EVRAK_AD.get((tip, ev), "?")
         # Satır başı ortalama: bir mal hareketi satırının makul büyüklüğü.
         birim = tutar / adet if adet else 0.0
-        if birim > _MAKUL_SATIR_TUTARI:
+        if esik > 0 and birim > esik:
             ad += "  ← ŞÜPHELİ"
             supheli.append((tip, ev))
         print(f"  {tip:>3} {ev:>5}  {adet:>8}  {tl(tutar):>22}  {tl(birim):>16}  {ad}")
     for tip, ev in supheli:
-        print(f"\nUYARI: tip={tip}/evraktip={ev} satır başına {tl(_MAKUL_SATIR_TUTARI)} üstü —")
+        print(f"\nUYARI: tip={tip}/evraktip={ev} satır başı ortalaması genelin "
+              f"{_AYKIRI_GRUP_KAT:.0f} katından fazla ({tl(esik)} üstü) —")
         print(f"       bu bir mal tutarı olamaz. Aç:  stok_diag_cli.py {bas} {bit} {tip} {ev}")
 
     for baz in ("sevk", "fatura"):

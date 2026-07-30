@@ -1,4 +1,4 @@
-"""Trend & Oranlar — PDF dışa aktarım."""
+"""Mukayese & Oranlar — PDF dışa aktarım."""
 
 from __future__ import annotations
 
@@ -32,7 +32,12 @@ from ui.pdf_ortak import (
 def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "",
                      kapanislar: list | None = None) -> Path:
     out = Path(path)
-    doc = pdf_doc(out, title="Trend & Oranlar", firma=firma)
+    # SAYFA YATAY. Mukayese tablosu on yıla kadar sütun alabiliyor; dikey A4'te sütun
+    # 11 mm'ye düşüp hücreler üst üste biniyordu (kullanıcı «pdf sığmıyor» dedi).
+    # Genişlikler artık sabit milimetre değil, doc.width'ten pay alır — sayfa boyu
+    # değişirse tablolar da onunla değişir.
+    doc = pdf_doc(out, title="Mukayese & Oranlar", firma=firma, yatay=True)
+    en = doc.width
     elems: list = []
     letterhead_sade(elems, firma=firma, bas=tr.bas, bit=tr.bit)
 
@@ -45,7 +50,7 @@ def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "",
             Paragraph(o.metin(), sty_row()),
             Paragraph(o.aciklama, sty_row()),
         ])
-    ot = Table(oran_rows, colWidths=[45 * mm, 25 * mm, 100 * mm])
+    ot = Table(oran_rows, colWidths=[52 * mm, 26 * mm, en - 78 * mm], repeatRows=1)
     ot.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), FONT),
         ("FONTSIZE", (0, 0), (-1, -1), 8),
@@ -66,7 +71,7 @@ def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "",
         [Paragraph("Alacak", sty_row()), tl(tr.alacak)],
         [Paragraph("Stok" + (" ⚠" if tr.maliyet_eksik else ""), sty_row()), tl(tr.stok)],
     ]
-    oz = Table(ozet, colWidths=[120 * mm, 50 * mm])
+    oz = Table(ozet, colWidths=[en - 50 * mm, 50 * mm])
     oz.setStyle(TableStyle([
         ("ALIGN", (1, 0), (1, -1), "RIGHT"),
         ("FONTNAME", (1, 0), (1, -1), FONT_B),
@@ -116,7 +121,9 @@ def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "",
                 _td(tl(a.brut)),
                 _td(tl(a.nakit_net)),
             ])
-        tt = Table(rows, colWidths=[28 * mm, 36 * mm, 36 * mm, 36 * mm, 38 * mm])
+        # Aylık trend dört tutar sütunu; kalan en eşit paylaşılır.
+        tutar_en = (en - 30 * mm) / 4
+        tt = Table(rows, colWidths=[30 * mm] + [tutar_en] * 4, repeatRows=1)
         tt.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("TOPPADDING", (0, 0), (-1, -1), 3),
@@ -128,17 +135,18 @@ def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "",
         ]))
         elems.append(tt)
 
-    tablo = mukayese_tablosu(kapanislar or [])
+    tablo = mukayese_tablosu(kapanislar or [], en=en)
     if tablo is not None:
         elems.append(Paragraph("YILLAR ARASI MUKAYESE", sty_sec()))
         elems.append(Spacer(1, 4))
         elems.append(tablo)
-        elems.append(mukayese_notu())
+        elems.append(mukayese_notu(kapanislar or []))
 
     dipnot_ekle(
         elems,
         belge="Trend ve finansal oran özeti",
         kaynak="Mikro GL mizan / cari hareketler · Hesap planı: TDHP",
+        en=en,
     )
-    pdf_ciz(doc, elems, baslik="TREND & ORANLAR")
+    pdf_ciz(doc, elems, baslik="MUKAYESE & ORANLAR")
     return out

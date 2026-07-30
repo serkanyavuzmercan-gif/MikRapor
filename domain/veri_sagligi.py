@@ -29,16 +29,13 @@ from dataclasses import dataclass, field
 
 from domain.mizan_bilanco import Bilanco, tl
 from domain.ortak import to_float as _f
+from domain.ortak import tr_sayi
 
 KRITIK = "kritik"
 UYARI = "uyari"
 BILGI = "bilgi"
 
 _ONEM_SIRA = {KRITIK: 0, UYARI: 1, BILGI: 2}
-
-# Bir mal hareketi satırının makul üst sınırı. Canlıda tek bir kayıt (2 adet mala
-# 3,3 trilyon TL) bütün 2023 raporunu zehirliyordu.
-_MAKUL_SATIR_TUTARI = 2_000_000.0
 
 # Aktif ile pasif bu orandan fazla ayrışıyorsa mizan kendi içinde tutarsızdır.
 # Bilinçli olarak GENİŞ: mizan sorgusu kapanış/açılış fişlerini eliyor, bu da küçük
@@ -52,6 +49,11 @@ _BILINEN_EVRAK = {(0, 3), (0, 12), (1, 1), (1, 4), (1, 16)}
 # Canlıda %1'di; kullanıcının yapabileceği bir şey yok ve gerçek bulguyu gölgeliyor.
 _ONEMLI_PAY = 5.0
 
+# Bulgu çıkarmak için veri gereken kaynaklar: (ad, build_veri_sagligi parametresi).
+# `None` = OKUNAMADI, boş liste/None-olmayan = okundu. Bu ayrımı ÇAĞIRAN DEĞİL bu modül
+# yapar; gerekçesi build_veri_sagligi docstring'inde.
+_KAYNAKLAR = ("Muhasebe mizanı", "Stok hareketleri")
+
 
 @dataclass
 class Bulgu:
@@ -63,14 +65,35 @@ class Bulgu:
     etkisi: str          # hangi rakamlar bundan etkileniyor
     ne_yapmali: str
     olcum: str = ""      # varsa rakam
+    # «Düzeltin» demek yetmez: hangi kayıt olduğu yazmazsa kullanıcı yüz binlerce satır
+    # içinde onu bulamaz. Her satır Mikro'da evrakı açmaya yetecek kadar bilgi taşır.
+    kayitlar: list[str] = field(default_factory=list)
 
 
 @dataclass
 class VeriSagligi:
+    """
+    Tarama sonucu.
+
+    OKUNAMAYAN ile KAPSAM NOTU AYNI ŞEY DEĞİLDİR, karıştırılmaz:
+
+    • `okunamayan` — kaynak DÜŞTÜ, bulgular onun içinde saklı olabilir. «Temiz»
+      demeyi engeller.
+    • `kapsam_notu` — kaynak okundu, yalnız daha DAR bir aralık tarandı (ör. yıl
+      kataloğu kurulamadığı için tek yıl). Okunan neyse temizdir; «temiz» demeyi
+      engellemez, yalnız kapsam satırında yazar.
+
+    İkisi tek listede tutulunca ters yönde yanlış alarm çıkıyordu: katalog geçici bir
+    ağ hatasıyla düştüğünde `yil_client` bilerek seçili firmayla devam ediyor (mizan ve
+    stok BAŞARIYLA okunuyor), ama sonuç «kontrol tamamlanamadı» diye görünüyordu —
+    ekranda hiçbir rakamı bozmayan, kullanıcının yapacak işi olmayan bir uyarı.
+    """
+
     bas: str = ""
     bit: str = ""
     bulgular: list[Bulgu] = field(default_factory=list)
-    okunamayan: list[str] = field(default_factory=list)   # kontrol edilemeyen alanlar
+    okunamayan: list[str] = field(default_factory=list)   # DÜŞEN kaynaklar
+    kapsam_notu: str = ""                                 # daralan kapsam açıklaması
 
     @property
     def kritik(self) -> int:
@@ -82,12 +105,24 @@ class VeriSagligi:
 
     @property
     def temiz(self) -> bool:
-        return not self.bulgular
+        """
+        Bulgu YOK **ve** bakılamayan kaynak yok.
+
+        Bakılamayanı temiz saymak hatanın kendisinden kötüdür: canlıda mizan ve stok
+        ikisi de düştüğünde ekran ve müşavire giden PDF kalın puntoyla «Veriniz
+        sağlıklı» yazıyordu — sıfır kayıt taranmışken.
+        """
+        return not self.bulgular and not self.okunamayan
 
     def ozet(self) -> str:
         """Üst şeritte tek satır — idareci başka bir şey okumasa bile bunu okur."""
         if self.temiz:
             return "Veriniz sağlıklı — rakamları bozacak bir şey bulunamadı."
+        # Düşen kaynak SAYILMAZ, ADLANDIRILIR: «2 kaynak okunamadı» kullanıcıya kaçının
+        # düştüğünü söylemez, üstelik toplam kaç kaynak olduğunu bilmediği için hepsinin
+        # düştüğünü de anlamaz.
+        if not self.bulgular:
+            return "Kontrol yapılamadı — " + " ve ".join(self.okunamayan) + " okunamadı."
         parcalar = []
         if self.kritik:
             parcalar.append(f"{self.kritik} kritik")
@@ -96,7 +131,39 @@ class VeriSagligi:
         bilgi = len(self.bulgular) - self.kritik - self.uyari
         if bilgi:
             parcalar.append(f"{bilgi} not")
-        return f"{len(self.bulgular)} bulgu: " + " · ".join(parcalar)
+        ozet = f"{len(self.bulgular)} bulgu: " + " · ".join(parcalar)
+        if self.okunamayan:
+            ozet += f" · {' ve '.join(self.okunamayan)} okunamadı"
+        return ozet
+
+    def kapsam_satiri(self) -> str:
+        """
+        NEYİN tarandığı — ekran ve PDF AYNI cümleyi kullanır.
+
+        «Temiz» sonucu, neye bakıldığı bilinmeden sahte bir güven verir; bu yüzden
+        kapsam hiçbir durumda silinmez, yalnız doğrusu yazılır. İki yere ayrı yazılan
+        cümle er ya da geç ayrışır — biri «bütün kayıtlar tarandı» derken öteki
+        düşen kaynağı biliyor olurdu.
+        """
+        aralik = f"{_gun(self.bas)} – {_gun(self.bit)}"
+        if self.okunamayan:
+            okunan = [a for a in _KAYNAKLAR if a not in self.okunamayan]
+            if not okunan:
+                return (f"{aralik} aralığında hiçbir kayıt okunamadı — "
+                        "bağlantı ya da yetki sorunu olabilir.")
+            return (f"{aralik} aralığında yalnız {' · '.join(okunan)} tarandı; "
+                    f"{' · '.join(self.okunamayan)} okunamadı — bağlantı ya da yetki "
+                    "sorunu olabilir.")
+        # «BÜTÜN» kelimesi yalnız gerçekten bütünken yazılır: kapsam notu varken
+        # «bütün kayıtlar tarandı» demek, hemen ardından gelen «yalnız şu kadarı
+        # tarandı» cümlesiyle çelişiyordu.
+        if self.kapsam_notu:
+            return f"{aralik} arası kayıtlar tarandı. {self.kapsam_notu}"
+        return f"{aralik} arası bütün kayıtlar tarandı."
+
+
+def _gun(iso: str) -> str:
+    return f"{iso[8:10]}.{iso[5:7]}.{iso[:4]}" if len(iso) == 10 else iso
 
 
 def _sirala(bulgular: list[Bulgu]) -> list[Bulgu]:
@@ -142,35 +209,67 @@ def _mizan_dengesi(b: Bilanco) -> Bulgu | None:
               f"fark {tl(fark)}")
 
 
-def _bozuk_stok_kaydi(stok_rows: list[dict]) -> Bulgu | None:
-    """
-    Satır başı tutarı mal olamayacak kadar büyük bir hareket türü.
+def _aykiri_satir_metni(r: dict) -> str:
+    """Bir aykırı satırı Mikro'da bulunabilecek şekilde tek satıra yazar."""
+    def al(*adlar: str):
+        for ad in adlar:
+            v = r.get(ad, r.get(ad.upper()))
+            if v not in (None, ""):
+                return v
+        return ""
 
-    Canlıda tek bir kayıt (07.12.2023, yevmiye 731) 3,3 trilyon TL taşıyordu ve o
-    yılı içeren her rapor bundan zehirleniyordu.
+    tarih = str(al("tarih"))[:10]
+    # Seri boş + sıra 0 ise evrak no yok demektir; "0" yazmak kullanıcıyı yanıltır.
+    seri = str(al("sth_evrakno_seri")).strip()
+    sira = int(_f(al("sth_evrakno_sira")))
+    evrak = f"{seri}{sira}" if (seri or sira) else str(al("sth_belge_no")).strip() or "?"
+    stok = str(al("sth_stok_kod")) or "?"
+    tip, ev = int(_f(al("sth_tip"))), int(_f(al("sth_evraktip")))
+    # HANGİ ALAN aykırı, açıkça yazar. Canlıda «150 adet · 8.250 TL» satırı listeye
+    # girdi (maliyet kolonu aykırıydı) ve bakan kişi haklı olarak «bunun nesi bozuk»
+    # dedi. İşaretlenen alan söylenmeden liste güvenilirliğini kaybediyor.
+    aykiri = [ad for ad, anahtar in (("tutar", "tutar_aykiri"),
+                                     ("maliyet", "maliyet_aykiri"))
+              if _f(al(anahtar)) >= 1]
+    isaret = f"  ←  {' + '.join(aykiri)} aykırı" if aykiri else ""
+    # Sayılar TEK TEK biçimlenir; cümlenin tamamında virgül→nokta değişimi
+    # tl() çıktısını bozardı (bkz. domain.ortak.tr_sayi).
+    return (f"{tarih}  ·  evrak {evrak}  ·  {stok}  ·  "
+            f"{tr_sayi(_f(al('sth_miktar')))} adet  ·  tutar {tl(_f(al('sth_tutar')))}"
+            f"  ·  maliyet {tl(_f(al('sth_maliyet_ana')))}  "
+            f"(tip {tip}/evrak {ev}){isaret}")
+
+
+def _bozuk_stok_kaydi(stok_rows: list[dict],
+                      aykiri_rows: list[dict] | None = None) -> Bulgu | None:
     """
-    supheli: list[tuple[float, int, int]] = []
-    for r in stok_rows or []:
-        adet = _f(r.get("adet", r.get("ADET")))
-        tutar = _f(r.get("tutar", r.get("TUTAR")))
-        if adet <= 0:
-            continue
-        birim = tutar / adet
-        if birim > _MAKUL_SATIR_TUTARI:
-            supheli.append((birim, int(_f(r.get("sth_tip", r.get("STH_TIP")))),
-                            int(_f(r.get("sth_evraktip", r.get("STH_EVRAKTIP"))))))
-    if not supheli:
+    Mal olamayacak kadar büyük stok hareketi satırı.
+
+    Canlıda 13 böyle satır vardı; biri (07.12.2023, yevmiye 731) 2 adet mala 3,3
+    TRİLYON TL taşıyordu ve o yılı içeren her rapor bundan zehirleniyordu.
+
+    EŞİK BURADA DEĞİL, SORGUDA VE ÖLÇÜLEREK belirlenir (infra.mikro_fetch.AYKIRI_KAT):
+    satır, dönemin ORTALAMA satırının on binlerce katıysa aykırıdır. Eskiden burada
+    mutlak bir sınır vardı («satır başına 2 milyon TL») — bu program Mikro kullanan HER
+    firmaya satılacak ve mutlak sınır küçük firmada hiçbir şey yakalamaz, büyük firmada
+    gerçek faturayı bozuk ilan ederdi.
+    """
+    # Toplamlar sth_tutar'dan gelir; liste sth_maliyet_ana'da bozuk olanları da bulur.
+    # Hangisi daha çok satır görüyorsa o yazılır — eksik saymak, saymamaktan kötüdür.
+    ozet_adet = sum(_f(r.get("aykiri_adet", r.get("AYKIRI_ADET"))) for r in stok_rows or [])
+    tutar = sum(_f(r.get("aykiri_tutar", r.get("AYKIRI_TUTAR"))) for r in stok_rows or [])
+    adet = max(ozet_adet, len(aykiri_rows or []))
+    if adet < 1:
         return None
-    supheli.sort(reverse=True)
-    birim, _tip, _ev = supheli[0]
     return Bulgu(
         kod="bozuk_stok", onem=KRITIK,
-        baslik="Stok hareketlerinde hatalı bir kayıt var",
-        etkisi=("Satış ya da alış toplamınız gerçekte olmadığı kadar büyük görünüyor; "
-                "kârlılık ve stok rakamları bu tek kayıt yüzünden anlamsızlaşıyor."),
-        ne_yapmali=("Mikro'da bu evrak tipindeki en büyük kaydı bulup düzeltin — "
-                    "tek bir hatalı satır bütün dönemi bozuyor."),
-        olcum=f"Satır başına ortalama {tl(birim)} — bir mal hareketi bu kadar olamaz")
+        baslik="Stok hareketlerinde hatalı kayıt var",
+        etkisi=("Bu satırlar rapor toplamlarına ALINMADI — alınsaydı satış, alış ve "
+                "kârlılık rakamlarınız gerçekte olmadığı kadar büyük görünürdü."),
+        ne_yapmali=("Mikro'da bu kayıtları bulup düzeltin; düzeltilene kadar o dönemin "
+                    "stok değeri hesaplanamaz."),
+        olcum=f"{int(adet)} satır, toplam {tl(tutar)} — bir mal hareketi bu kadar olamaz",
+        kayitlar=[_aykiri_satir_metni(r) for r in (aykiri_rows or [])])
 
 
 def _tanimsiz_evrak(stok_rows: list[dict]) -> Bulgu | None:
@@ -210,21 +309,33 @@ def build_veri_sagligi(
     bit: str = "",
     bilanco: Bilanco | None = None,
     stok_rows: list[dict] | None = None,
+    aykiri_rows: list[dict] | None = None,
     okunamayan: list[str] | None = None,
+    kapsam_notu: str = "",
 ) -> VeriSagligi:
     """
     Çekilmiş satırlardan bulguları kurar (saf).
 
-    Okunamayan kaynak SESSİZCE ATLANMAZ: `okunamayan` listesine yazılır ve ekranda
-    «kontrol edilemedi» diye görünür. Yoksa kullanıcı, bakılamayan bir şeyi temiz
-    sanar — bu, hatanın kendisinden daha kötüdür.
+    Okunamayan kaynak SESSİZCE ATLANMAZ ve bunu ÇAĞIRANIN BİLDİRMESİ GEREKMEZ: veri
+    `None` geldiyse o kaynak okunamamış demektir, burada görülüyor. Doğruluğu çağıranın
+    `okunamayan`a eklemeyi hatırlamasına bağlamak, aynı elemeyi iki yere yazmak olurdu —
+    biri güncellenir, öteki unutulur (bkz. `_bakiye_kosulu`, `kredi_banka_mi`).
+    `okunamayan` parametresi yalnız buradan görünmeyen düşüşler için (ör. firma ünvanı).
+
+    `stok_rows=[]` ile `stok_rows=None` FARKLIDIR: birincisi «okundu, içinde bir şey
+    yoktu», ikincisi «okunamadı».
     """
-    vs = VeriSagligi(bas=bas, bit=bit, okunamayan=list(okunamayan or []))
+    vs = VeriSagligi(bas=bas, bit=bit, okunamayan=list(okunamayan or []),
+                     kapsam_notu=kapsam_notu)
+    for ad, veri in zip(_KAYNAKLAR, (bilanco, stok_rows), strict=True):
+        if veri is None and ad not in vs.okunamayan:
+            vs.okunamayan.append(ad)
     bulgular: list[Bulgu | None] = []
     if bilanco is not None:
         bulgular += [_maliyet_kapanisi(bilanco), _mizan_dengesi(bilanco)]
     if stok_rows is not None:
-        bulgular += [_bozuk_stok_kaydi(stok_rows), _tanimsiz_evrak(stok_rows)]
+        bulgular += [_bozuk_stok_kaydi(stok_rows, aykiri_rows),
+                     _tanimsiz_evrak(stok_rows)]
     vs.bulgular = _sirala([b for b in bulgular if b is not None])
     return vs
 
@@ -237,4 +348,12 @@ def veri_sagligi_csv(vs: VeriSagligi) -> str:
                             (b.onem, b.baslik, b.olcum, b.etkisi, b.ne_yapmali)))
     for ad in vs.okunamayan:
         out.append(f"kontrol edilemedi;{ad};;;")
+    # Tek tek kayıtlar CSV'ye de girer: kullanıcı Excel'de süzüp Mikro'da açabilsin.
+    kayitli = [b for b in vs.bulgular if b.kayitlar]
+    if kayitli:
+        out.append("")
+        out.append("BULGU;KAYIT")
+        for b in kayitli:
+            for satir in b.kayitlar:
+                out.append(f"{b.baslik.replace(';', ',')};{satir.replace(';', ',')}")
     return "\r\n".join(out)

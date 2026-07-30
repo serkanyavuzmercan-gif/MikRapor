@@ -78,9 +78,9 @@ class HeaderTabBar(QTabBar):
         self._delay.setInterval(220)
         self._delay.timeout.connect(self._reveal_tip)
 
-    # "Gelir Tablosu" (index 1) ile "Nakit & Kârlılık" (index 2) arasına grup ayracı:
-    # resmî (GL) tablar | canlı (fatura/stok) tablar.
-    _AYRAC_SONRASI = 1
+    # Grup ayraçları: CANLI sekmeler | RESMÎ (GL) sekmeler | Yapay Zekâ.
+    # Tek sayı değil demet: üç gruplu düzende iki ayraç gerekiyor.
+    _AYRAC_SONRASI: tuple[int, ...] = (5, 7)
 
     def minimumSizeHint(self) -> QSize:
         s = super().minimumSizeHint()
@@ -89,21 +89,20 @@ class HeaderTabBar(QTabBar):
 
     def paintEvent(self, event) -> None:  # noqa: N802 — Qt API
         super().paintEvent(event)
-        i = self._AYRAC_SONRASI
-        if self.count() <= i + 1:
-            return
         from PyQt6.QtGui import QColor, QPainter, QPen
-        r = self.tabRect(i)
-        if not r.isValid():
+        cizilecek = [i for i in self._AYRAC_SONRASI
+                     if self.count() > i + 1 and self.tabRect(i).isValid()]
+        if not cizilecek:
             return
-        x = r.right() + 1
-        inset = int(r.height() * 0.24)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         pen = QPen(QColor("#c3ccd8"))
         pen.setWidth(1)
         p.setPen(pen)
-        p.drawLine(x, r.top() + inset, x, r.bottom() - inset)
+        for i in cizilecek:
+            r = self.tabRect(i)
+            inset = int(r.height() * 0.24)
+            p.drawLine(r.right() + 1, r.top() + inset, r.right() + 1, r.bottom() - inset)
         p.end()
 
     # Dar pencerede denenecek (font px, yatay dolgu px) adayları — genişten dara.
@@ -321,16 +320,24 @@ class MikRaporWindow(QMainWindow):
         self._stack = QStackedWidget()
         self._stack.setObjectName("raporStack")
 
+        # SIRA, KİME GÖSTERİLDİĞİNE GÖRE. Program Bilanço ile açılıyordu: mali
+        # müşavirin zaten her ay ürettiği, sahibi en az ilgilendiren tablo. Demo oradan
+        # başlayınca ürün «bir muhasebe programı daha» gibi duruyor. Önce sahibin
+        # sorduğu sorular gelir: kim bana borçlu, para nereden girip nereye çıktı.
+        # Resmî iki tablo (kural 1b) sona alındı — ayrımın kendisi korunuyor, yalnız
+        # sıralama tersine döndü.
         sekme_siniflari = (
-            BilancoTab,
-            GelirTablosuTab,
+            TahsilatAlacakTab,     # kim bana ne zaman ne kadar borçlu
+            NakitAkisTab,          # para nereden girdi, nereye çıktı
             GercekDurumTab,
-            TahsilatAlacakTab,
-            NakitAkisTab,
+            TrendTab,
             TahminTab,
             ReelDegerTab,
-            TrendTab,
-            AiYorumTab,   # final: dışarıya veri gönderen tek sekme
+            # ——— ayraç: buradan sonrası RESMÎ kayda dayanır (kural 1b)
+            BilancoTab,
+            GelirTablosuTab,
+            # ——— ayraç: dışarıya veri gönderen tek sekme
+            AiYorumTab,
         )
         for cls in sekme_siniflari:
             w = cls(self._donem)

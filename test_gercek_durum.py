@@ -7,7 +7,12 @@ from __future__ import annotations
 import unittest
 
 from domain.gelir_tablosu import build_gelir_tablosu
-from domain.gercek_durum import build_gercek_durum, gercek_durum_csv, yuzde
+from domain.gercek_durum import (
+    _siniflandir_stok,
+    build_gercek_durum,
+    gercek_durum_csv,
+    yuzde,
+)
 from domain.gercek_durum_ayarlar import GercekDurumAyarlar
 from domain.mizan_bilanco import build_bilanco
 
@@ -339,3 +344,41 @@ class TestAlisIrsaliyeMakul(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAykiriStokSatiri(unittest.TestCase):
+    """
+    Bozuk stok satırı toplamlara GİRMEZ ama görünmez de olmaz.
+
+    Canlıda 07.12.2023 tarihli tek bir kayıt 2 adet mala 3,3 TRİLYON TL yazıyordu;
+    o yılı içeren her rapor bundan zehirleniyordu. Eleme SQL'de, dönemin kendi ortalama
+    satırından ölçülen eşikle yapılır (infra.mikro_fetch.AYKIRI_KAT) — mutlak bir TL
+    sınırı bu programı yalnız tek bir firmaya göre doğru yapardı.
+    """
+
+    _ROWS = [
+        {"sth_tip": 1, "sth_evraktip": 1, "tutar": 18_551_641.73, "adet": 17_430,
+         "aykiri_adet": 0, "aykiri_tutar": 0.0},
+        {"sth_tip": 0, "sth_evraktip": 3, "tutar": 14_665_701.10, "adet": 2_492,
+         "aykiri_adet": 2, "aykiri_tutar": 3_333_333_333_340.0},
+    ]
+
+    def test_aykiri_tutar_toplama_girmez(self) -> None:
+        s = _siniflandir_stok(self._ROWS, "sevk", "fatura")
+        self.assertAlmostEqual(s["satis"], 18_551_641.73)
+        self.assertAlmostEqual(s["alis"], 14_665_701.10)
+
+    def test_elenen_miktar_tasinir(self) -> None:
+        """Sessizce atılan rakam, yanlış rakamdan iyi değildir — sebebi yazılabilsin."""
+        s = _siniflandir_stok(self._ROWS, "sevk", "fatura")
+        self.assertEqual(s["aykiri_adet"], 2.0)
+        self.assertAlmostEqual(s["aykiri_tutar"], 3_333_333_333_340.0)
+
+    def test_temiz_veride_eleme_yok(self) -> None:
+        s = _siniflandir_stok([self._ROWS[0]], "sevk", "fatura")
+        self.assertEqual(s["aykiri_adet"], 0.0)
+
+    def test_gercek_durum_alanlari_dolar(self) -> None:
+        gd = build_gercek_durum(stok_rows=self._ROWS, bas="2023-01-01", bit="2023-12-31")
+        self.assertEqual(gd.aykiri_adet, 2)
+        self.assertAlmostEqual(gd.aykiri_tutar, 3_333_333_333_340.0)
