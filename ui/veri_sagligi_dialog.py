@@ -52,6 +52,7 @@ from infra.mikro_fetch import (
 from infra.mukayese_fetch import YilVeritabaniHatasi, donem_satirlari, yil_client
 from infra.veritabani import katalog
 from ui.bilesenler import csv_kaydet, varsayilan_kayit_yolu
+from ui.mikro_settings_dialog import AYARLAR_ADI
 from ui.styles import MUTED, NAVY, SURFACE
 from ui.veri_sagligi_pdf import export_veri_sagligi_pdf
 from ui.worker import RaporWorker
@@ -137,8 +138,8 @@ class VeriSagligiDialog(QDialog):
     def _basla(self) -> None:
         cfg = load_config()
         if not cfg.is_complete():
-            self._ozet.setText("Mikro bağlantı ayarları eksik")
-            self._not("Önce Mikro Ayarları'nı doldurun: " + ", ".join(cfg.eksik_alanlar()))
+            self._ozet.setText(f"«{AYARLAR_ADI}» eksik")
+            self._not(f"Önce «{AYARLAR_ADI}»'nı doldurun: " + ", ".join(cfg.eksik_alanlar()))
             return
         bit = date.today().isoformat()
 
@@ -153,7 +154,7 @@ class VeriSagligiDialog(QDialog):
             yillar = [k.ilk_yil for k in katalog(cfg)]
             kapsam_notu = "" if yillar else (
                 "Yıl kataloğu kurulamadığı için geçmiş yıllar taranamadı — "
-                "Mikro Ayarları'nda firma kodlarını kontrol edin.")
+                f"«{AYARLAR_ADI}»'nda firma kodlarını kontrol edin.")
             ilk_yil = min(yillar, default=int(bit[:4]))
             bas = f"{ilk_yil}-01-01"
             # Her kaynak AYRI denenir; düşen kaynak sessizce atlanmaz. Listeye ELLE

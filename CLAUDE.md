@@ -231,6 +231,23 @@ Her tabloda satır vurgusu (row hover) standarttır, ayrıca istenmesi gerekmez.
 `Mukayese & Oranlar`. (Yalnız modele giden yönerge metni serbesttir; oradaki sözcük
 kullanıcıya doğrudan görünmez.)
 
+**Ayarlar ekranının da tek adı var: «MİKRO AYARLARI»** (`ui/mikro_settings_dialog.py:
+AYARLAR_ADI`). Üç ad birden kullanılıyordu — marka barında «Ayarlar», pencere
+başlığında «Mikro Bağlantı Ayarları», hata metinlerinde «Mikro Ayarları». Kullanıcı
+*«üstteki Mikro Ayarları'ndan doldurun»* yazısını okuyup o adda bir düğme arıyordu ve
+bulamıyordu. Düğme metni, pencere başlığı ve metinlerdeki ad tek sabitten gelir.
+
+**KALDIRILAN AYARA YÖNLENDİREN METİN BIRAKILMAZ.** Üç sekmenin «veri bulunamadı»
+uyarısı *«Mikro Ayarları'ndaki **çalışma yılı** ile dönem tarihleri aynı olmalı»*
+diyordu; oysa `calisma_yili` ayarı kaldırılmış, yıl seçili tarih aralığından türüyor.
+Kullanıcı olmayan bir alanı arayıp programı bozuk sanır. Kural 4'teki «Tutarlar TL'dir»
+notunun aynısı: kaldırılan şeye işaret etmeye devam eden bayat metin. Doğrusu
+yazıldı — «o yılın veritabanı tanımlı değilse Mikro Ayarları → Yılları Tara».
+
+Bekçi (`test_ui_smoke.TestAyarlarTekAd`) satır grep'lemez, **AST'den yalnız kullanıcıya
+giden dizgileri** okur: yorum ve docstring'ler elenir, yoksa bir düzeltmeyi anlatan
+yorum kendi bekçisini kırmızıya düşürüyordu.
+
 **Uzun tablo başlığı sabit kalır.** Yıl sütunları QTreeWidget'ın gerçek header'ındadır,
 normal satır değil; tablo ekrana sığmıyorsa kendi içinde kayar ki aşağı inerken hangi
 rakamın hangi yıl olduğu görünsün. PDF karşılığı `repeatRows=1`.

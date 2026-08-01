@@ -300,11 +300,12 @@ class GercekDurumAyarlarDialog(QDialog):
         from infra.config import load_config
         from infra.mikro_fetch import fetch_stok_depo_kirilimi, fetch_stok_faturalasma
         from infra.mukayese_fetch import donem_satirlari
+        from ui.mikro_settings_dialog import AYARLAR_ADI
 
         cfg = load_config()
         if not cfg.is_complete():
             self._algila_sonuc.setText(
-                "Önce Mikro bağlantı ayarları gerekli: " + ", ".join(cfg.eksik_alanlar()))
+                f"Önce «{AYARLAR_ADI}» doldurulmalı: " + ", ".join(cfg.eksik_alanlar()))
             self._algila_sonuc.setStyleSheet("color: #b45309; font-size: 11px;")
             return
         bit = date.today()

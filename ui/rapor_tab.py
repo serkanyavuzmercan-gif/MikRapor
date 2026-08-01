@@ -242,11 +242,12 @@ class RaporTab(QWidget):
         if cfg.is_complete():
             return cfg
         from ui.bilesenler import soru_evet_hayir
+        from ui.mikro_settings_dialog import AYARLAR_ADI
 
         if soru_evet_hayir(
-            self, "Mikro Ayarları Eksik",
-            "Mikro bağlantı bilgileri eksik. Üstteki «Mikro Ayarları»'ndan doldurun.\n\n"
-            "Şimdi açmak ister misiniz?",
+            self, f"«{AYARLAR_ADI}» Eksik",
+            f"Mikro bağlantı bilgileri eksik. Üstteki «{AYARLAR_ADI}» düğmesinden "
+            "doldurun.\n\nŞimdi açmak ister misiniz?",
         ):
             MikroAyarlarDialog(self).exec()
         return None

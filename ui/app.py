@@ -32,7 +32,7 @@ from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
 from ui.hakkinda_dialog import HakkindaDialog
 from ui.icons import icon_gear, icon_info
-from ui.mikro_settings_dialog import MikroAyarlarDialog
+from ui.mikro_settings_dialog import AYARLAR_ADI, MikroAyarlarDialog
 from ui.nav_tip import NavTip, bagla_nav_tip
 from ui.rapor_tab import RaporTab
 from ui.resources import app_icon, app_logo_pixmap
@@ -358,7 +358,10 @@ class MikRaporWindow(QMainWindow):
 
         header.addStretch(1)
 
-        btn_ayar = QPushButton(" Ayarlar")
+        # Düğme adı = pencere başlığı = metinlerde geçen ad. Üç ayrı ad («Ayarlar»,
+        # «Mikro Bağlantı Ayarları», «Mikro Ayarları») kullanıcıya üç ayrı ekran
+        # varmış izlenimi veriyordu (kural 5).
+        btn_ayar = QPushButton(f" {AYARLAR_ADI}")
         btn_ayar.setObjectName("ghostBtn")
         btn_ayar.setIcon(icon_gear(14))
         btn_ayar.setIconSize(QSize(14, 14))
