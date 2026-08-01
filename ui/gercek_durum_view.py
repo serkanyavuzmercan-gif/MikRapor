@@ -314,9 +314,8 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
 
     if gd.stok_kirilim_sayisi == 0:
         uyari = QLabel(
-            "⚠ <b>Bu dönemde stok hareketi bulunamadı.</b> Mikro'da veri olan yılı/dönemi seçin "
-            "(ör. 2025 tam yıl). Mikro Ayarları'ndaki <b>çalışma yılı</b> ile dönem tarihleri "
-            "aynı olmalı."
+            "⚠ <b>Bu dönemde stok hareketi bulunamadı.</b> Mikro'da veri olan dönemi seçin; "
+            "o yılın veritabanı tanımlı değilse «Mikro Ayarları» → <b>Yılları Tara</b>."
         )
         uyari.setWordWrap(True)
         uyari.setTextFormat(Qt.TextFormat.RichText)

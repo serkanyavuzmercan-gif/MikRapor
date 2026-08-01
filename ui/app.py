@@ -32,7 +32,7 @@ from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
 from ui.hakkinda_dialog import HakkindaDialog
 from ui.icons import icon_gear, icon_info
-from ui.mikro_settings_dialog import MikroAyarlarDialog
+from ui.mikro_settings_dialog import AYARLAR_ADI, MikroAyarlarDialog
 from ui.nav_tip import NavTip, bagla_nav_tip
 from ui.rapor_tab import RaporTab
 from ui.resources import app_icon, app_logo_pixmap
@@ -342,7 +342,12 @@ class MikRaporWindow(QMainWindow):
         for cls in sekme_siniflari:
             w = cls(self._donem)
             self._stack.addWidget(w)
-            self._tab_bar.addTab(cls.BASLIK.replace("&", "&&"))
+            idx = self._tab_bar.addTab(cls.BASLIK.replace("&", "&&"))
+            # Sekme adı ne yaptığını söylemiyor: «Reel Değer» ilk görende karşılık
+            # bulmuyor. Açıklama zaten var (boş ekranda gösteriliyor) ve HeaderTabBar'ın
+            # balon mekanizması yazılmıştı — ama setTabToolTip hiç çağrılmadığı için
+            # metin boş kalıyor, balon hiç açılmıyordu. Tek kaynak: cls.ACIKLAMA.
+            self._tab_bar.setTabToolTip(idx, cls.ACIKLAMA)
 
         self._tab_bar.currentChanged.connect(self._on_tab_degisti)
 
@@ -358,7 +363,10 @@ class MikRaporWindow(QMainWindow):
 
         header.addStretch(1)
 
-        btn_ayar = QPushButton(" Ayarlar")
+        # Düğme adı = pencere başlığı = metinlerde geçen ad. Üç ayrı ad («Ayarlar»,
+        # «Mikro Bağlantı Ayarları», «Mikro Ayarları») kullanıcıya üç ayrı ekran
+        # varmış izlenimi veriyordu (kural 5).
+        btn_ayar = QPushButton(f" {AYARLAR_ADI}")
         btn_ayar.setObjectName("ghostBtn")
         btn_ayar.setIcon(icon_gear(14))
         btn_ayar.setIconSize(QSize(14, 14))
@@ -474,8 +482,13 @@ class MikRaporWindow(QMainWindow):
         self._set_conn("●  Bağlı", True,
                        tooltip=ad or "Veritabanı rapor dönemine göre seçilir.")
 
-    def _on_ping_hata(self, _msg: str) -> None:
-        self._set_conn("○  Bağlanılamadı", False)
+    def _on_ping_hata(self, msg: str) -> None:
+        # SEBEP ATILMAZ. Rozet yalnız «Bağlanılamadı» deyince kullanıcı şifre mi, TLS
+        # mi, ağ mı bilemiyordu; oysa ping sebebi zaten döndürüyor ve rozetin balon
+        # mekanizması bağlıyken firma adı için kullanılıyor (kural 2).
+        sebep = (msg or "").strip()
+        self._set_conn("○  Bağlanılamadı", False,
+                       tooltip=sebep or "Mikro sunucusuna ulaşılamadı.")
 
     def _on_ping_bitti(self, worker: RaporWorker) -> None:
         if worker is self._ping_worker:

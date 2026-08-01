@@ -416,8 +416,8 @@ def build_nakit_akis_widget(
 
     if na.hareket_sayisi == 0:
         uyari = QLabel(
-            "⚠ <b>Bu dönemde banka/kasa hareketi bulunamadı.</b> Mikro'da veri olan dönemi seçin; "
-            "«Mikro Ayarları»'ndaki çalışma yılı ile dönem tarihleri uyumlu olmalı."
+            "⚠ <b>Bu dönemde banka/kasa hareketi bulunamadı.</b> Mikro'da veri olan dönemi "
+            "seçin; o yılın veritabanı tanımlı değilse «Mikro Ayarları» → <b>Yılları Tara</b>."
         )
         uyari.setWordWrap(True)
         uyari.setTextFormat(Qt.TextFormat.RichText)

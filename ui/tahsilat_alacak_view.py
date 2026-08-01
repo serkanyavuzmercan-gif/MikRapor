@@ -179,8 +179,8 @@ def build_tahsilat_alacak_widget(ta: TahsilatAlacak, firma: str = "") -> QWidget
 
     if ta.cari_sayisi == 0:
         uyari = QLabel(
-            "⚠ <b>Bu tarihte açık cari bakiye bulunamadı.</b> Mikro'da veri olan dönemi/yılı seçin; "
-            "«Mikro Ayarları»'ndaki çalışma yılı ile bitiş tarihi uyumlu olmalı."
+            "⚠ <b>Bu tarihte açık cari bakiye bulunamadı.</b> Mikro'da veri olan dönemi "
+            "seçin; o yılın veritabanı tanımlı değilse «Mikro Ayarları» → <b>Yılları Tara</b>."
         )
         uyari.setWordWrap(True)
         uyari.setTextFormat(Qt.TextFormat.RichText)

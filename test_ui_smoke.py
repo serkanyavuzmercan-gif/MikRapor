@@ -14,7 +14,7 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
-    from PyQt6.QtWidgets import QApplication, QLabel, QTreeWidget
+    from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QTreeWidget
     _PYQT = True
 except ImportError:
     _PYQT = False
@@ -1117,6 +1117,201 @@ class TestEmptyStateOkunabilirlik(unittest.TestCase):
         w = EmptyState("Başlık", "açıklama", hero_asset="ai.png")
         w.set_arka_plan_modu(True)
         self.assertFalse(w._cluster.isVisible())
+
+
+@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+class TestAyarlarTekAdWidget(unittest.TestCase):
+    """Düğme metni ile pencere başlığı aynı olmalı (kural 5)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_pencere_basligi_ile_dugme_ayni(self) -> None:
+        from ui.app import MikRaporWindow
+        from ui.mikro_settings_dialog import AYARLAR_ADI, MikroAyarlarDialog
+
+        w = MikRaporWindow()
+        try:
+            dugmeler = [b.text().strip() for b in w.findChildren(QPushButton)]
+            self.assertIn(AYARLAR_ADI, dugmeler,
+                          f"marka barında «{AYARLAR_ADI}» düğmesi yok: {dugmeler}")
+            d = MikroAyarlarDialog(w)
+            try:
+                self.assertEqual(d.windowTitle(), AYARLAR_ADI)
+            finally:
+                d.deleteLater()
+        finally:
+            w.close()
+            w.deleteLater()
+
+
+@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+class TestSekmeBalonlari(unittest.TestCase):
+    """
+    Sekme üstüne gelince ne işe yaradığı yazmalı.
+
+    Balon mekanizması (gecikme, kart, «RAPOR» üst etiketi) yazılmıştı ama
+    `setTabToolTip` hiç çağrılmadığı için metin boş kalıyor, balon hiç açılmıyordu —
+    üstelik `event()` native tooltip'i de bastırdığı için hover'da HİÇBİR ŞEY
+    görünmüyordu. 48 satır ölü kod + açıklaması hazır dokuz sekme.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_her_sekmenin_balon_metni_var(self) -> None:
+        from ui.app import MikRaporWindow
+
+        w = MikRaporWindow()
+        try:
+            bar = w._tab_bar
+            self.assertGreater(bar.count(), 0)
+            for i in range(bar.count()):
+                ad = bar.tabText(i).replace("&&", "&")
+                tip = bar.tabToolTip(i).strip()
+                with self.subTest(sekme=ad):
+                    self.assertTrue(tip, f"«{ad}» sekmesinin balon metni boş")
+                    # Balon, adı tekrar etmemeli — mekanizma onu zaten eliyor.
+                    self.assertNotEqual(tip, ad)
+        finally:
+            w.close()
+            w.deleteLater()
+
+
+@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+class TestBaglantiHatasiSebebi(unittest.TestCase):
+    """Rozet «Bağlanılamadı» derken sebebi de taşımalı (kural 2)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_ping_hatasinin_sebebi_kaybolmaz(self) -> None:
+        from ui.app import MikRaporWindow
+
+        w = MikRaporWindow()
+        try:
+            w._on_ping_hata("401 Unauthorized — kullanıcı kodu ya da şifre hatalı")
+            self.assertIn("Bağlanılamadı", w._conn.text())
+            self.assertIn("şifre hatalı", w._conn_tip._text)
+        finally:
+            w.close()
+            w.deleteLater()
+
+    def test_sebep_bossa_da_bir_sey_yazar(self) -> None:
+        from ui.app import MikRaporWindow
+
+        w = MikRaporWindow()
+        try:
+            w._on_ping_hata("")
+            self.assertTrue(w._conn_tip._text.strip())
+        finally:
+            w.close()
+            w.deleteLater()
+
+
+@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+class TestHakkindaKopyala(unittest.TestCase):
+    """«Kopyalandı ✓» kalıcı olmamalı — düğmenin ne yaptığını gizliyor."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_etiket_eski_adina_doner(self) -> None:
+        """
+        Geri alma ZAMANLAYICISININ kurulduğu sınanır, yalnız metodun çalıştığı değil.
+
+        İlk hâlinde test `_kopyala_etiketini_geri_al()`i doğrudan çağırıyordu; o zaman
+        `start()` satırı silinse bile test yeşil kalıyordu — kabloyu değil ucu sınamak.
+        """
+        from ui.hakkinda_dialog import KOPYALA_ETIKET, HakkindaDialog
+
+        d = HakkindaDialog()
+        try:
+            self.assertEqual(d._btn_kopyala.text(), KOPYALA_ETIKET)
+            d._on_kopyala()
+            self.assertEqual(d._btn_kopyala.text(), "Kopyalandı ✓")
+            self.assertTrue(d._geri_al.isActive(), "geri alma zamanlayıcısı başlamadı")
+            # Zamanlayıcıyı beklemeden ateşle — testte 1,8 sn uyumanın anlamı yok.
+            d._geri_al.setInterval(0)
+            self.app.processEvents()
+            self.assertEqual(d._btn_kopyala.text(), KOPYALA_ETIKET)
+        finally:
+            d.deleteLater()
+
+    def test_zamanlayici_diyaloga_parentli(self) -> None:
+        """Pencere kapanınca zamanlayıcı da ölmeli; yoksa silinmiş nesneye setText."""
+        from ui.hakkinda_dialog import HakkindaDialog
+
+        d = HakkindaDialog()
+        try:
+            self.assertIs(d._geri_al.parent(), d)
+        finally:
+            d.deleteLater()
+
+
+class TestAyarlarTekAd(unittest.TestCase):
+    """
+    Aynı ekranın tek adı olur (kural 5). Saf metin taraması — Qt gerektirmez.
+
+    Üç ad birden kullanılıyordu: marka barında «Ayarlar», pencere başlığında «Mikro
+    Bağlantı Ayarları», hata metinlerinde «Mikro Ayarları». Kullanıcı «üstteki Mikro
+    Ayarları'ndan doldurun» yazısını okuyup o adda bir düğme arıyordu.
+    """
+
+    _ESKI_ADLAR = ("Mikro Bağlantı Ayarları", "Mikro bağlantı ayarları")
+
+    @staticmethod
+    def _arayuz_metinleri():
+        """
+        ui/ altındaki KULLANICIYA GİDEN metinler — (dosya, satır, metin).
+
+        Satır bazlı grep YETMEZ: yorumlar ve docstring'ler de eşleşiyor, üstelik bir
+        düzeltmeyi anlatan yorum («eskiden «Mikro Bağlantı Ayarları» deniyordu») kendi
+        bekçisini kırmızıya düşürüyordu. AST yalnız gerçek dizgileri verir; yorumları
+        zaten ayıklar, docstring'leri burada eliyoruz. f-string'lerin sabit parçaları
+        da Constant olduğu için kapsama giriyor.
+        """
+        import ast
+        import pathlib
+
+        kok = pathlib.Path(__file__).resolve().parent
+        for yol in sorted((kok / "ui").rglob("*.py")):
+            agac = ast.parse(yol.read_text(encoding="utf-8"))
+            docstringler = set()
+            for dugum in ast.walk(agac):
+                if not isinstance(dugum, ast.Module | ast.ClassDef
+                                  | ast.FunctionDef | ast.AsyncFunctionDef):
+                    continue
+                ilk = next(iter(dugum.body), None)
+                if isinstance(ilk, ast.Expr) and isinstance(ilk.value, ast.Constant) \
+                        and isinstance(ilk.value.value, str):
+                    docstringler.add(id(ilk.value))
+            for dugum in ast.walk(agac):
+                if isinstance(dugum, ast.Constant) and isinstance(dugum.value, str) \
+                        and id(dugum) not in docstringler:
+                    yield yol.relative_to(kok), dugum.lineno, dugum.value
+
+    def test_eski_adlar_arayuzde_kalmadi(self) -> None:
+        """Kullanıcıya görünen metinlerde eski varyantlar geçmemeli."""
+        kirli = [f"{y}:{n}" for y, n, metin in self._arayuz_metinleri()
+                 if any(ad in metin for ad in self._ESKI_ADLAR)]
+        self.assertEqual(kirli, [], f"eski ayar adı kalmış: {kirli}")
+
+    def test_olmayan_ayara_yonlendirilmiyor(self) -> None:
+        """
+        «Çalışma yılı» ayarı KALDIRILDI — yıl seçili tarih aralığından türüyor.
+
+        Üç sekmenin «veri bulunamadı» uyarısı kullanıcıyı Mikro Ayarları'nda o adda
+        bir alan aramaya gönderiyordu; bulamayınca program bozuk sanılır. (Kural 4'teki
+        «Tutarlar TL'dir» notunun aynısı: kaldırılan şeye işaret eden bayat metin.)
+        """
+        kirli = [f"{y}:{n}" for y, n, metin in self._arayuz_metinleri()
+                 if "çalışma yılı" in metin.lower() and "Ayarlar" in metin]
+        self.assertEqual(kirli, [], f"olmayan «çalışma yılı» ayarına yönlendirme: {kirli}")
 
 
 if __name__ == "__main__":

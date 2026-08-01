@@ -1,5 +1,5 @@
 """
-Mikro bağlantı ayarları ekranı (PyQt6).
+Mikro Ayarları ekranı (PyQt6).
 
 Kullanıcı kendi Mikro sunucusunun bilgilerini girer; "Bağlantıyı Test Et" ile auth+ağ
 doğrulanır, "Kaydet" ile yerel diske yazılır (config.save_config). Bilgiler makineden çıkmaz.
@@ -29,11 +29,17 @@ from infra.mikro_fetch import fetch_firma_adi
 from infra.veritabani import FirmaKapsami, firma_kodlari, katalog, onbellegi_temizle
 from ui.worker import RaporWorker
 
+# TEK AD, TEK KAYNAK. Aynı ekran üç ayrı isimle anılıyordu — marka barında «Ayarlar»,
+# pencere başlığında «Mikro Bağlantı Ayarları», hata metinlerinde «Mikro Ayarları».
+# Kullanıcı «üstteki Mikro Ayarları'ndan doldurun» yazısını okuyup o adda bir düğme
+# arıyordu (kural 5: aynı şeye tek isim).
+AYARLAR_ADI = "Mikro Ayarları"
+
 
 class MikroAyarlarDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Mikro Bağlantı Ayarları")
+        self.setWindowTitle(AYARLAR_ADI)
         self.setMinimumWidth(520)
         self._cfg = load_config()
         self._worker: RaporWorker | None = None
