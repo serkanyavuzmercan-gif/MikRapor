@@ -142,6 +142,14 @@ anlamaz.
 İhlali engelleyen testler: `test_veri_sagligi.TestOkunamayanKaynak`,
 `test_ui_smoke.test_katalog_okunamazsa_daralma_yazilir`.
 
+### HATA SEBEBİ ATILMAZ
+
+Bağlantı rozeti yalnız «Bağlanılamadı» deyip susuyordu; `_on_ping_hata` sebebi
+parametre olarak alıyor ama kullanmıyordu (`_msg`). Kullanıcı şifre mi, TLS mi, ağ mı
+bilemiyor. Rozetin balon mekanizması zaten vardı ve bağlıyken firma adı için
+kullanılıyordu — sebep oraya yazılır. Bir hata mesajı elinizdeyse onu göstermemenin
+gerekçesi olamaz.
+
 ## 3. Hesaplayabiliyorsak gizlemeyiz
 
 Gizlemek çare değil. Bir rakam canlı veriden hesaplanabiliyorsa hesaplanır. Ama
@@ -247,6 +255,20 @@ yazıldı — «o yılın veritabanı tanımlı değilse Mikro Ayarları → Yı
 Bekçi (`test_ui_smoke.TestAyarlarTekAd`) satır grep'lemez, **AST'den yalnız kullanıcıya
 giden dizgileri** okur: yorum ve docstring'ler elenir, yoksa bir düzeltmeyi anlatan
 yorum kendi bekçisini kırmızıya düşürüyordu.
+
+**Sekme balonu `ACIKLAMA`'dan gelir, ayrıca yazılmaz.** Balon mekanizması (gecikme,
+kart, «RAPOR» üst etiketi) yazılmıştı ama `setTabToolTip` hiç çağrılmadığı için metin
+boş kalıyor, balon hiç açılmıyordu — üstelik `HeaderTabBar.event()` native tooltip'i
+de bastırdığı için hover'da HİÇBİR ŞEY görünmüyordu. Metin boş ekrandakiyle aynı
+kaynaktan (`cls.ACIKLAMA`) gelir; ikinci bir metin yazmak ikisinin ayrışması demektir.
+
+**Geri bildirim etiketi kalıcı olmaz.** «Kopyalandı ✓» düğmede öylece kalıyordu;
+düğmenin ne yaptığını gizliyor ve ikinci kez basmak isteyen kullanıcı arayacak bir şey
+bulamıyor. Geri alma zamanlayıcısı **widget'a parent'lanır** — serbest
+`QTimer.singleShot` pencere kapandıktan sonra ateşleyip silinmiş C++ nesnesine
+`setText` çağırır. (PyQt6'da 3 argümanlı `singleShot(msec, context, slot)` YOKTUR;
+o PySide imzasıdır.) Testi zamanlayıcının **başladığını** sınamalı; geri alma metodunu
+doğrudan çağıran test, `start()` silinse bile yeşil kalıyordu.
 
 **Uzun tablo başlığı sabit kalır.** Yıl sütunları QTreeWidget'ın gerçek header'ındadır,
 normal satır değil; tablo ekrana sığmıyorsa kendi içinde kayar ki aşağı inerken hangi

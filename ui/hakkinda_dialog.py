@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import html
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import (
     QDialog,
@@ -37,6 +37,9 @@ from infra.surum import (
 )
 from ui.resources import app_logo_pixmap
 from ui.styles import ACCENT, BORDER, FAINT, INK, MUTED, PANEL_BG, SUBINK
+
+# Düğmenin asıl adı — kopyalandı geri bildiriminden sonra buraya döner.
+KOPYALA_ETIKET = "Sistem bilgisini kopyala"
 
 
 class HakkindaDialog(QDialog):
@@ -148,7 +151,10 @@ class HakkindaDialog(QDialog):
         satir.addStretch(1)
 
         # E-posta istemcisi açılmayan makinelerde kullanıcı künyeyi elle yapıştırabilsin.
-        self._btn_kopyala = QPushButton("Sistem bilgisini kopyala")
+        self._geri_al = QTimer(self)
+        self._geri_al.setSingleShot(True)
+        self._geri_al.timeout.connect(self._kopyala_etiketini_geri_al)
+        self._btn_kopyala = QPushButton(KOPYALA_ETIKET)
         self._btn_kopyala.setObjectName("ghostBtn")
         self._btn_kopyala.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_kopyala.clicked.connect(self._on_kopyala)
@@ -166,3 +172,12 @@ class HakkindaDialog(QDialog):
         if pano is not None:
             pano.setText(sistem_bilgisi())
         self._btn_kopyala.setText("Kopyalandı ✓")
+        # Etiket eski adına DÖNER: kalıcı «Kopyalandı ✓» düğmenin ne yaptığını
+        # gizliyor, ikinci kez kopyalamak isteyen kullanıcı basacak bir şey bulamıyor.
+        # Zamanlayıcı diyaloga PARENT'lı: pencere kapanınca birlikte yok olur.
+        # QTimer.singleShot serbest çalışırdı ve silinmiş bir C++ nesnesine setText
+        # çağırmak süreci düşürürdü. (PyQt6'da 3 argümanlı singleShot yok.)
+        self._geri_al.start(1800)
+
+    def _kopyala_etiketini_geri_al(self) -> None:
+        self._btn_kopyala.setText(KOPYALA_ETIKET)

@@ -342,7 +342,12 @@ class MikRaporWindow(QMainWindow):
         for cls in sekme_siniflari:
             w = cls(self._donem)
             self._stack.addWidget(w)
-            self._tab_bar.addTab(cls.BASLIK.replace("&", "&&"))
+            idx = self._tab_bar.addTab(cls.BASLIK.replace("&", "&&"))
+            # Sekme adı ne yaptığını söylemiyor: «Reel Değer» ilk görende karşılık
+            # bulmuyor. Açıklama zaten var (boş ekranda gösteriliyor) ve HeaderTabBar'ın
+            # balon mekanizması yazılmıştı — ama setTabToolTip hiç çağrılmadığı için
+            # metin boş kalıyor, balon hiç açılmıyordu. Tek kaynak: cls.ACIKLAMA.
+            self._tab_bar.setTabToolTip(idx, cls.ACIKLAMA)
 
         self._tab_bar.currentChanged.connect(self._on_tab_degisti)
 
@@ -477,8 +482,13 @@ class MikRaporWindow(QMainWindow):
         self._set_conn("●  Bağlı", True,
                        tooltip=ad or "Veritabanı rapor dönemine göre seçilir.")
 
-    def _on_ping_hata(self, _msg: str) -> None:
-        self._set_conn("○  Bağlanılamadı", False)
+    def _on_ping_hata(self, msg: str) -> None:
+        # SEBEP ATILMAZ. Rozet yalnız «Bağlanılamadı» deyince kullanıcı şifre mi, TLS
+        # mi, ağ mı bilemiyordu; oysa ping sebebi zaten döndürüyor ve rozetin balon
+        # mekanizması bağlıyken firma adı için kullanılıyor (kural 2).
+        sebep = (msg or "").strip()
+        self._set_conn("○  Bağlanılamadı", False,
+                       tooltip=sebep or "Mikro sunucusuna ulaşılamadı.")
 
     def _on_ping_bitti(self, worker: RaporWorker) -> None:
         if worker is self._ping_worker:

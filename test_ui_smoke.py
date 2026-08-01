@@ -1146,6 +1146,113 @@ class TestAyarlarTekAdWidget(unittest.TestCase):
             w.deleteLater()
 
 
+@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+class TestSekmeBalonlari(unittest.TestCase):
+    """
+    Sekme üstüne gelince ne işe yaradığı yazmalı.
+
+    Balon mekanizması (gecikme, kart, «RAPOR» üst etiketi) yazılmıştı ama
+    `setTabToolTip` hiç çağrılmadığı için metin boş kalıyor, balon hiç açılmıyordu —
+    üstelik `event()` native tooltip'i de bastırdığı için hover'da HİÇBİR ŞEY
+    görünmüyordu. 48 satır ölü kod + açıklaması hazır dokuz sekme.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_her_sekmenin_balon_metni_var(self) -> None:
+        from ui.app import MikRaporWindow
+
+        w = MikRaporWindow()
+        try:
+            bar = w._tab_bar
+            self.assertGreater(bar.count(), 0)
+            for i in range(bar.count()):
+                ad = bar.tabText(i).replace("&&", "&")
+                tip = bar.tabToolTip(i).strip()
+                with self.subTest(sekme=ad):
+                    self.assertTrue(tip, f"«{ad}» sekmesinin balon metni boş")
+                    # Balon, adı tekrar etmemeli — mekanizma onu zaten eliyor.
+                    self.assertNotEqual(tip, ad)
+        finally:
+            w.close()
+            w.deleteLater()
+
+
+@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+class TestBaglantiHatasiSebebi(unittest.TestCase):
+    """Rozet «Bağlanılamadı» derken sebebi de taşımalı (kural 2)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_ping_hatasinin_sebebi_kaybolmaz(self) -> None:
+        from ui.app import MikRaporWindow
+
+        w = MikRaporWindow()
+        try:
+            w._on_ping_hata("401 Unauthorized — kullanıcı kodu ya da şifre hatalı")
+            self.assertIn("Bağlanılamadı", w._conn.text())
+            self.assertIn("şifre hatalı", w._conn_tip._text)
+        finally:
+            w.close()
+            w.deleteLater()
+
+    def test_sebep_bossa_da_bir_sey_yazar(self) -> None:
+        from ui.app import MikRaporWindow
+
+        w = MikRaporWindow()
+        try:
+            w._on_ping_hata("")
+            self.assertTrue(w._conn_tip._text.strip())
+        finally:
+            w.close()
+            w.deleteLater()
+
+
+@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+class TestHakkindaKopyala(unittest.TestCase):
+    """«Kopyalandı ✓» kalıcı olmamalı — düğmenin ne yaptığını gizliyor."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_etiket_eski_adina_doner(self) -> None:
+        """
+        Geri alma ZAMANLAYICISININ kurulduğu sınanır, yalnız metodun çalıştığı değil.
+
+        İlk hâlinde test `_kopyala_etiketini_geri_al()`i doğrudan çağırıyordu; o zaman
+        `start()` satırı silinse bile test yeşil kalıyordu — kabloyu değil ucu sınamak.
+        """
+        from ui.hakkinda_dialog import KOPYALA_ETIKET, HakkindaDialog
+
+        d = HakkindaDialog()
+        try:
+            self.assertEqual(d._btn_kopyala.text(), KOPYALA_ETIKET)
+            d._on_kopyala()
+            self.assertEqual(d._btn_kopyala.text(), "Kopyalandı ✓")
+            self.assertTrue(d._geri_al.isActive(), "geri alma zamanlayıcısı başlamadı")
+            # Zamanlayıcıyı beklemeden ateşle — testte 1,8 sn uyumanın anlamı yok.
+            d._geri_al.setInterval(0)
+            self.app.processEvents()
+            self.assertEqual(d._btn_kopyala.text(), KOPYALA_ETIKET)
+        finally:
+            d.deleteLater()
+
+    def test_zamanlayici_diyaloga_parentli(self) -> None:
+        """Pencere kapanınca zamanlayıcı da ölmeli; yoksa silinmiş nesneye setText."""
+        from ui.hakkinda_dialog import HakkindaDialog
+
+        d = HakkindaDialog()
+        try:
+            self.assertIs(d._geri_al.parent(), d)
+        finally:
+            d.deleteLater()
+
+
 class TestAyarlarTekAd(unittest.TestCase):
     """
     Aynı ekranın tek adı olur (kural 5). Saf metin taraması — Qt gerektirmez.
