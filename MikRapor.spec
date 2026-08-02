@@ -1,5 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
 # Tek kaynak: build_exe.ps1 bu spec'i çağırır. Asset / hiddenimport / exclude buradan yönetilir.
+#
+# İKİ ÇIKTI BİÇİMİ, TEK SPEC:
+#   • onefile (varsayılan)  — doğrudan indirilen tek dosya MikRapor.exe
+#   • onedir  (MIKRAPOR_ONEDIR=1) — MSIX'in içine giren klasör
+# MSIX'e onefile koymak her açılışta paketi geçici klasöre açtırır: yavaş açılış ve
+# mağaza sertifikasyonunda risk. Biçimi ortam değişkeni seçer ki `datas` listesi TEK
+# yerde kalsın — ikinci bir spec dosyası, asset listesinin sessizce ayrışması demekti
+# (bkz. test_paketleme).
+import os
+
+ONEDIR = os.environ.get("MIKRAPOR_ONEDIR") == "1"
 
 a = Analysis(
     ['main.py'],
@@ -19,6 +30,9 @@ a = Analysis(
         ('assets\\empty-trendler.png', 'assets'),
         ('assets\\ai.png', 'assets'),
         ('assets\\anasayfalogo.png', 'assets'),
+        # Açılır kutu oku — ARTIK ÇALIŞMA ANINDA ÜRETİLMİYOR. MSIX'te kurulum dizini
+        # salt-okunur olduğu için üretim sessizce başarısız olup oku siliyordu.
+        ('assets\\chevron-down-teal.png', 'assets'),
         ('assets\\mikrapor-hero-illustration.png', 'assets'),
         ('assets\\fonts\\DejaVuSans.ttf', 'assets\\fonts'),
         ('assets\\fonts\\DejaVuSans-Bold.ttf', 'assets\\fonts'),
@@ -53,12 +67,15 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+# onedir'de binaries/datas EXE'ye GÖMÜLMEZ, COLLECT ile klasöre yazılır.
+_govde = [] if ONEDIR else [a.binaries, a.datas]
+
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
+    *_govde,
     [],
+    exclude_binaries=ONEDIR,
     name='MikRapor',
     debug=False,
     bootloader_ignore_signals=False,
@@ -74,3 +91,14 @@ exe = EXE(
     entitlements_file=None,
     icon=['assets\\icon.ico'],
 )
+
+if ONEDIR:
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.datas,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        name='MikRapor',
+    )

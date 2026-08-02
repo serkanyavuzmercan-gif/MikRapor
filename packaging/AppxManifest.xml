@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MikRapor — MSIX paket bildirimi (Microsoft Store).
+
+  KİMLİK PARTNER CENTER'DAN GELİR, UYDURULMAZ. Name/Publisher birebir eşleşmezse
+  Partner Center paketi reddeder:
+      Package/Identity/Name              Hidroteknik.Mikrapor
+      Package/Identity/Publisher         CN=119D3611-306D-4F5E-B28C-3904B4C07374
+      Package/Properties/PublisherDisplayName  Hidroteknik
+  (Store ID 9NB421K1Z0GB · PFN Hidroteknik.Mikrapor_6pstm0akswvb8)
+
+  SÜRÜM BURADA TUTULMAZ. `0.0.0.0` bilerek geçersiz bir yer tutucudur; derleme
+  sırasında `infra/surum.py: SURUM`'dan yazılır. Buraya gerçek sürüm yazmak,
+  pyproject.toml ↔ infra/surum.py ikilisini koruyan test_surum.py'nin yanına ÜÇÜNCÜ
+  bir sürüm kopyası koymak olurdu — ikisi er ya da geç ayrışır.
+  MSIX sürümü dört parçalıdır ve Store son parçayı kendine ayırdığı için o 0 kalmalıdır.
+
+  EntryPoint="Windows.FullTrustApplication" + rescap:runFullTrust: bu bir masaüstü
+  (Win32) uygulamasıdır, kum havuzunda çalışmaz — Mikro sunucusuna erişmesi gerekiyor.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="Hidroteknik.Mikrapor"
+    Publisher="CN=119D3611-306D-4F5E-B28C-3904B4C07374"
+    Version="0.0.0.0"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>MikRapor</DisplayName>
+    <PublisherDisplayName>Hidroteknik</PublisherDisplayName>
+    <Logo>assets\StoreLogo.png</Logo>
+    <Description>Mikro ERP verinizden bilanço, nakit akışı, alacak yaşlandırma ve kârlılık raporları üretir.</Description>
+  </Properties>
+
+  <Dependencies>
+    <!-- Windows 10 1809 (17763): PyQt6'nın desteklediği en eski makul taban. -->
+    <TargetDeviceFamily
+      Name="Windows.Desktop"
+      MinVersion="10.0.17763.0"
+      MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <!-- Arayüz %100 Türkçe; İngilizce sürüm planı yok (CLAUDE.md kural 6). -->
+    <Resource Language="tr-TR" />
+  </Resources>
+
+  <Applications>
+    <Application
+      Id="MikRapor"
+      Executable="MikRapor.exe"
+      EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="MikRapor"
+        Description="Mikro ERP verinizden bilanço, nakit akışı, alacak yaşlandırma ve kârlılık raporları üretir."
+        BackgroundColor="transparent"
+        Square150x150Logo="assets\Square150x150Logo.png"
+        Square44x44Logo="assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          Wide310x150Logo="assets\Wide310x150Logo.png"
+          Square71x71Logo="assets\Square71x71Logo.png"
+          Square310x310Logo="assets\Square310x310Logo.png" />
+        <uap:SplashScreen Image="assets\Square310x310Logo.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- Masaüstü uygulaması: tam güven. Mikro sunucusuna HTTPS ile bağlanır;
+         veri yalnız kullanıcının kendi sunucusuyla bu bilgisayar arasında kalır
+         (tek istisna Yapay Zekâ Yorumu sekmesi, açık onayla). -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

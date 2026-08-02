@@ -147,6 +147,61 @@ def build_logo_assets(source: Path) -> None:
     print(f"OK: {OUTPUT_PNG.name} ({CANVAS_SIZE}px), {OUTPUT_ICO.name} "
           f"({len(ICO_SIZES)} boyut), {OUTPUT_MARK.name} (plakasız)")
 
+    build_store_assets(mark)
+    build_chevron()
+
+
+# --------------------------------------------------------------------- MSIX
+# Microsoft Store'un beklediği kutucuk boyutları. Kaynak yine logo_source.png —
+# mağazadaki ikon ile programdaki ikon TEK kaynaktan gelsin (kural 5: aynı şeye
+# tek isim, aynı marka için tek çizim).
+STORE_DIR = ASSETS / "store"
+STORE_BOYUTLARI = {
+    "Square44x44Logo.png": (44, 44),
+    "Square71x71Logo.png": (71, 71),
+    "Square150x150Logo.png": (150, 150),
+    "Square310x310Logo.png": (310, 310),
+    "Wide310x150Logo.png": (310, 150),
+    "StoreLogo.png": (50, 50),
+}
+
+
+def build_store_assets(mark: Image.Image) -> None:
+    """MSIX kutucukları — plakasız marka, şeffaf zemin üzerinde ortalanmış."""
+    STORE_DIR.mkdir(parents=True, exist_ok=True)
+    kaynak = _crop_to_content(mark, padding=0)
+    for ad, (en, boy) in STORE_BOYUTLARI.items():
+        tuval = Image.new("RGBA", (en, boy), (0, 0, 0, 0))
+        # Kare olmayan kutucukta (Wide310x150) kısa kenara göre ölçekle
+        kenar = int(min(en, boy) * 0.86)
+        kopya = kaynak.copy()
+        kopya.thumbnail((kenar, kenar), Image.LANCZOS)
+        tuval.paste(kopya, ((en - kopya.width) // 2, (boy - kopya.height) // 2), kopya)
+        tuval.save(STORE_DIR / ad, format="PNG", optimize=True)
+    print(f"OK: store/ ({len(STORE_BOYUTLARI)} MSIX kutucuğu)")
+
+
+# ------------------------------------------------------------------ chevron
+# Açılır kutu oku ARTIK ÇALIŞMA ANINDA ÜRETİLMİYOR. Eskiden yoksa uygulama kendi
+# çiziyordu; MSIX'te kurulum dizini salt-okunur olduğu için bu sessizce başarısız
+# olup oku büsbütün siliyordu. Statik asset olarak burada üretilip pakete giriyor.
+CHEVRON_PNG = ASSETS / "chevron-down-teal.png"
+_ACCENT = (15, 118, 110, 255)   # ui.styles: ACCENT #0f766e
+
+
+def build_chevron(boyut: int = 12) -> None:
+    from PIL import ImageDraw
+
+    olcek = 4  # süper örnekleme — 12px'te kenarlar tırtıklı çıkmasın
+    buyuk = Image.new("RGBA", (boyut * olcek, boyut * olcek), (0, 0, 0, 0))
+    ciz = ImageDraw.Draw(buyuk)
+    b = boyut * olcek
+    ciz.line([(b * 0.22, b * 0.38), (b * 0.5, b * 0.66), (b * 0.78, b * 0.38)],
+             fill=_ACCENT, width=max(2, int(b * 0.11)), joint="curve")
+    buyuk.resize((boyut, boyut), Image.LANCZOS).save(CHEVRON_PNG, format="PNG",
+                                                     optimize=True)
+    print(f"OK: {CHEVRON_PNG.name} ({boyut}px)")
+
 
 if __name__ == "__main__":
     src = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_SOURCE
