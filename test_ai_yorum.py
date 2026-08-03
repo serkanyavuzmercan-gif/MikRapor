@@ -34,6 +34,17 @@ from infra.ai_saglayici import (
 )
 from infra.mikro_fetch import _kur_makul
 
+# Bu dosyadaki testlerin çoğu saftır; birkaçı `ui/` içindeki yardımcıları çağırıyor ve
+# o modüller PyQt6'yı modül düzeyinde import ediyor. CI'ın headless «test» işi PyQt6
+# KURMUYOR — koruma olmadan bu testler hata veriyordu. Atlananlar «smoke» işinde
+# (PyQt6 kurulu) tam takım koşarken gerçekten çalışır.
+try:
+    import PyQt6  # noqa: F401
+    _PYQT = True
+except ImportError:
+    _PYQT = False
+_QT_GEREKLI = unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+
 
 def _paket(bolumler=None):
     return build_ai_veri_paketi(
@@ -209,6 +220,7 @@ class TestHataMesajlari(unittest.TestCase):
         self.assertIn("GEMINI", m)
         self.assertIn("models/GEMINI is not found", m)
 
+    @_QT_GEREKLI
     def test_turkce_kucuk_harf_eslesmesi(self) -> None:
         """'İyi'.lower() birleşik nokta üretir; bölüm rengi bu yüzden yanlış çıkıyordu."""
         from domain.ortak import tr_kucuk
@@ -925,6 +937,7 @@ class TestVeriPaketi(unittest.TestCase):
 
 
 class TestYorumAyristirma(unittest.TestCase):
+    @_QT_GEREKLI
     def test_bolumlere_ayirma(self) -> None:
         from ui.ai_yorum_view import bolumlere_ayir
         bolumler = bolumlere_ayir(
@@ -932,6 +945,7 @@ class TestYorumAyristirma(unittest.TestCase):
         self.assertEqual([b for b, _ in bolumler], ["Özet", "Dikkat"])
         self.assertEqual(len(bolumler[1][1]), 2)
 
+    @_QT_GEREKLI
     def test_baslik_yoksa_metin_kaybolmaz(self) -> None:
         from ui.ai_yorum_view import bolumlere_ayir
         bolumler = bolumlere_ayir("Model başlık kullanmadı ama yine de bir şey yazdı.")

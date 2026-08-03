@@ -15,6 +15,17 @@ from unittest.mock import patch
 from infra.config import MikroConfig
 from infra.mukayese_fetch import yil_client, yillari_cek
 
+# Bu dosyadaki testlerin çoğu saftır; birkaçı `ui/` içindeki yardımcıları çağırıyor ve
+# o modüller PyQt6'yı modül düzeyinde import ediyor. CI'ın headless «test» işi PyQt6
+# KURMUYOR — koruma olmadan bu testler hata veriyordu. Atlananlar «smoke» işinde
+# (PyQt6 kurulu) tam takım koşarken gerçekten çalışır.
+try:
+    import PyQt6  # noqa: F401
+    _PYQT = True
+except ImportError:
+    _PYQT = False
+_QT_GEREKLI = unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+
 _CFG = MikroConfig(
     base_url="https://ornek.local", api_key="k", firma_kodu="20",
     calisma_yili=2025, kullanici_kodu="u", sifre_gun="s",
@@ -331,6 +342,7 @@ class TestYardimciPencereKirpma(unittest.TestCase):
         from domain.tahmin import ogrenme_penceresi_bas
         self.assertEqual(ogrenme_penceresi_bas("2024-01-01", "2026-09-30"), "2025-09-30")
 
+    @_QT_GEREKLI
     def test_runway_penceresi_bastan_geriye_gitmez(self) -> None:
         from ui.tabs.nakit_akis_tab import _runway_referans_bas
         self.assertEqual(_runway_referans_bas("2026-07-01", "2026-07-28"), "2026-07-01")
