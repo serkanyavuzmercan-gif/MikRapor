@@ -33,7 +33,6 @@ from domain.gercek_durum_ayarlar import (
     GercekDurumAyarlar,
 )
 from infra.config import config_path, load_gercek_durum_ayarlar, save_gercek_durum_ayarlar
-from ui.icons import icon_chevron_down
 from ui.styles import ACCENT, ACCENT_SOFT, BORDER, BORDER_STRONG, MUTED, NAVY, NAVY_SOFT, SURFACE
 from ui.worker import RaporWorker
 
@@ -41,12 +40,19 @@ _CHEVRON_PNG = Path(__file__).resolve().parent.parent / "assets" / "chevron-down
 
 
 def _chevron_qss_url() -> str:
-    """QSS image: yolu oluştur (yoksa çiz)."""
-    if not _CHEVRON_PNG.exists():
-        _CHEVRON_PNG.parent.mkdir(parents=True, exist_ok=True)
-        icon_chevron_down(12, ACCENT).pixmap(12, 12).save(str(_CHEVRON_PNG), "PNG")
-    # QSS Windows’ta forward slash ister
-    return _CHEVRON_PNG.as_posix()
+    """
+    QSS `image:` yolu — dosya YALNIZ OKUNUR, çalışma anında ÜRETİLMEZ.
+
+    Eskiden yoksa buraya çiziliyordu. Kurulum dizinine yazmak MSIX'te imkânsızdır
+    (`C:\\Program Files\\WindowsApps` salt-okunur) ve sessizce başarısız olurdu:
+    `QPixmap.save()` istisna atmaz, `False` döner — QSS var olmayan bir dosyaya
+    işaret eder ve açılır kutunun oku tamamen kaybolurdu. Asset artık derleme
+    anında üretiliyor (`assets/generate_icons.py`) ve pakete giriyor.
+
+    Bulunamazsa boş döner; çağıran `image:` kuralını hiç koymaz, Qt kendi okunu çizer.
+    """
+    # QSS Windows'ta forward slash ister
+    return _CHEVRON_PNG.as_posix() if _CHEVRON_PNG.is_file() else ""
 
 
 def _combo_secenekler(combo: QComboBox, secenekler: list[tuple[str, str]], secili: str) -> None:
@@ -200,6 +206,14 @@ class GercekDurumAyarlarDialog(QDialog):
 
     def _uygula_stil(self) -> None:
         ok_url = _chevron_qss_url()
+        # Asset yoksa `image:` kuralı HİÇ konmaz. Boş url («image: url();») geçersizdir
+        # ve oku büsbütün siler; kuralı atlayınca Qt kendi okunu çizer.
+        ok_kurali = (f"""
+            QComboBox#gdAyarCombo::down-arrow {{
+                image: url({ok_url});
+                width: 12px;
+                height: 12px;
+            }}""" if ok_url else "")
         self.setStyleSheet(
             f"""
             QDialog#gdAyarDialog {{ background: {SURFACE}; }}
@@ -257,11 +271,7 @@ class GercekDurumAyarlarDialog(QDialog):
                 border-top-right-radius: 7px;
                 border-bottom-right-radius: 7px;
             }}
-            QComboBox#gdAyarCombo::down-arrow {{
-                image: url({ok_url});
-                width: 12px;
-                height: 12px;
-            }}
+            {ok_kurali}
             QCheckBox#gdAyarCheck {{
                 color: {NAVY};
                 font-size: 12px;

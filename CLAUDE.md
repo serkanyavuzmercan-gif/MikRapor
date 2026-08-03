@@ -410,6 +410,52 @@ Gerekçesi ölçülü: eleştirmen ilk üç koşuşunda üç gerçek kusur buldu
 Teşhis araçları: `stok_diag_cli.py` (`--kolonlar`, `--maliyet`, `--fatura`),
 `bilanco_cli.py --teshis`, `cari_diag_cli.py`.
 
+## Paketleme (MSIX / Microsoft Store)
+
+**KURULUM DİZİNİNE ÇALIŞMA ANINDA YAZILMAZ.** MSIX'te uygulama
+`C:\Program Files\WindowsApps\…` altına kurulur ve orası yönetici için bile
+salt-okunurdur. Bu hata geliştirmede ve tek-dosya .exe'de **hiç görünmez**: PyInstaller
+onefile'da `__file__` geçici çıkarma klasörünü gösterir, orası yazılabilir. Yalnız
+mağaza paketinde ortaya çıkar. Açılır kutu oku (`chevron-down-teal.png`) yoksa uygulama
+kendi çiziyordu; MSIX'te `QPixmap.save()` **istisna atmadan `False` döner**, QSS var
+olmayan dosyaya işaret eder ve ok büsbütün kaybolurdu. Statik asset'ler derleme anında
+üretilir (`assets/generate_icons.py`), uygulama yalnız okur. Yazılabilir tek yer
+`%APPDATA%` — `infra/config.py: config_dir()`.
+Bekçi: `test_paketleme.TestKurulumDiziniSaltOkunur` — `Path(__file__)`'dan türeyen
+isimlere yazan çağrıları AST'den bulur.
+
+**MAĞAZA KİMLİĞİ PARTNER CENTER'DAN GELİR, UYDURULMAZ.** `Name` / `Publisher` birebir
+eşleşmezse yükleme reddedilir ve sebebi manifest'te **tek karakterlik** bir farktır
+(`Mikrapor` ≠ `MikRapor`). Değerler gizli değildir (PFN ve Store ID zaten açık),
+repoda dururlar ama bekçiyle sabitlenir.
+
+**MANİFEST ÜÇÜNCÜ SÜRÜM KAYNAĞI OLMAZ.** `pyproject.toml` ↔ `infra/surum.py` ikilisini
+`test_surum.py` koruyor. Manifest'teki `Version="0.0.0.0"` bilerek geçersiz bir yer
+tutucudur; gerçek sürüm derlemede `infra/surum.py`'den yazılır. MSIX sürümü dört
+parçalıdır ve son parçayı Store kendine ayırdığı için 0 kalır.
+
+**TEK SPEC, İKİ BİÇİM.** `MIKRAPOR_ONEDIR=1` → MSIX gövdesi (onedir), yoksa doğrudan
+indirilen tek dosya (onefile). MSIX'e onefile koymak her açılışta paketi geçici klasöre
+açtırır. İkinci bir spec dosyası açmak asset listesinin sessizce ayrışması demekti —
+tam da `test_paketleme`'nin var olma sebebi.
+
+**İKİ ARTEFAKT, İKİ AMAÇ — KARIŞTIRILMAZ.**
+
+| dosya | imza | kim kurar |
+|---|---|---|
+| `…-store.msix` | **yok** — Microsoft imzalar | Partner Center'a yüklenir |
+| `…-yanyukleme.msix` | kendinden imzalı | sertifika Trusted Root'a eklenmeden **kurulmaz** |
+
+Tek dosya üretip ikisine birden koşmak, indiren kullanıcının «yayıncıya güvenilmiyor»
+duvarına çarpması demekti.
+
+**WACK ÖNDEN KOŞAR.** Store zaten `appcert.exe` koşturuyor; önden koşmazsak geri
+bildirim günler sonra Partner Center üzerinden gelir. 600+ testi olan bir kod tabanında
+paketin kendisini test etmemek açıklanamaz.
+
+**Etiket en sona.** Workflow önce `workflow_dispatch` ile elle koşturulur, çıktı
+doğrulanır, sonra `v*` etiketi kesilir. Etiketi bozuk artefakta bağlamak geri alınamaz.
+
 ## Dal ve deploy
 
 Geliştirme `claude/microproject-code-review-b4g4jy` dalında. Kullanıcı **"deploy"**

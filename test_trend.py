@@ -11,6 +11,17 @@ from domain.mizan_bilanco import build_bilanco
 from domain.trend import build_finansal_oranlar, build_trend, trend_csv
 from infra.mukayese_fetch import yil_donemleri
 
+# Bu dosyadaki testlerin çoğu saftır; birkaçı `ui/` içindeki yardımcıları çağırıyor ve
+# o modüller PyQt6'yı modül düzeyinde import ediyor. CI'ın headless «test» işi PyQt6
+# KURMUYOR — koruma olmadan bu testler hata veriyordu. Atlananlar «smoke» işinde
+# (PyQt6 kurulu) tam takım koşarken gerçekten çalışır.
+try:
+    import PyQt6  # noqa: F401
+    _PYQT = True
+except ImportError:
+    _PYQT = False
+_QT_GEREKLI = unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+
 
 class TestTrend(unittest.TestCase):
     def test_cok_yilli_donem_yillara_bolunur(self) -> None:
@@ -96,6 +107,7 @@ class TestTrend(unittest.TestCase):
         self.assertEqual(tr.aylik_gecmis, [])
 
 
+@_QT_GEREKLI
 class TestTrendGrafikYardimcilari(unittest.TestCase):
     def test_ay_etiketi_turkce(self) -> None:
         from ui.trend_view import _ay_etiket
