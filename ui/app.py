@@ -193,6 +193,26 @@ class HeaderTabBar(QTabBar):
             if toplam <= mevcut:
                 secim = (px, dolgu)
                 break
+        self._uygula(secim)
+        # GERÇEĞE BAK, MODELE DEĞİL. `_sekme_genisligi` bizim tahminimiz; Qt'nin
+        # gerçekten çizdiği genişlik platform stiline göre daha büyük olabiliyor —
+        # Windows'ta hesap 932px derken sekmeler 1042px yer kaplıyordu ve son sekme
+        # görünmez oluyordu. Uyguladıktan sonra ÖLÇÜLEN taşma varsa bir basamak daha
+        # daraltılır. Böylece platform farkını modellemek zorunda kalmıyoruz.
+        for px, dolgu in self._OLCEK_ADAYLARI[self._OLCEK_ADAYLARI.index(secim) + 1:]:
+            if not self._tasiyor(mevcut):
+                break
+            self._uygula((px, dolgu))
+
+    def _tasiyor(self, mevcut: int) -> bool:
+        """Uygulanan ölçekle sekmeler gerçekten taşıyor mu? (ölçülen tabRect'lerden)"""
+        son = self.count() - 1
+        if son < 0:
+            return False
+        sag = self.tabRect(son).right()
+        return sag > max(mevcut, self.width())
+
+    def _uygula(self, secim: tuple[int, int]) -> None:
         if secim == (self._font_px, self._dolgu):
             return
         self._font_px, self._dolgu = secim
