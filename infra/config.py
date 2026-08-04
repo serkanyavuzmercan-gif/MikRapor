@@ -236,3 +236,22 @@ def save_gercek_durum_ayarlar(ayarlar: GercekDurumAyarlar) -> None:
     data = _read_config_data()
     data["gercek_durum"] = asdict(ayarlar)
     save_config_data(data)
+
+
+def premium_onbellek() -> bool:
+    """
+    Premium daha önce DOĞRULANDI mı?
+
+    Store lisansı her açılışta okunamayabilir (çevrimdışı, hesap oturumu, servis
+    hatası). Bu bayrak yalnız POZİTİF bir doğrulamayla yazılır ve kendiliğinden
+    silinmez — bkz. `domain/lisans.py`: ödemiş müşteriyi bir API hıçkırığı yüzünden
+    kilitlemek, birkaç kişinin fazladan erişmesinden pahalıdır.
+    """
+    return bool(_read_config_data().get("lisans", {}).get("premium", False))
+
+
+def premium_onbellek_yaz() -> None:
+    """Store premium'u doğruladı — bir daha sorulamasa bile açık kalsın."""
+    data = _read_config_data()
+    data["lisans"] = {"premium": True}
+    save_config_data(data)

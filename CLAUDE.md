@@ -331,6 +331,39 @@ yalnız sıralama tersine döndü.
 MikRapor'un dışarıya veri gönderdiği **tek** yer Yapay Zekâ Yorumu sekmesidir; API
 anahtarı **ve** açık onay kutusu birlikte olmadan hiçbir ağ çağrısı yapılmaz.
 
+Store lisans kontrolü (`infra/store_lisans.py`) bu kuralın istisnası DEĞİLDİR: Windows'un
+kendi Store servisiyle konuşur, MikRapor'un okuduğu hiçbir mali veri o yoldan geçmez.
+
+## 8. Premium: şüphede kalınca AÇ
+
+Uygulama ücretsiz kurulur; «ne yapmalıyım» sekmeleri (Nakit & Kârlılık, Mukayese,
+Tahmin, Reel Değer, Yapay Zekâ) tek seferlik Store eklentisiyle açılır. Bilanço ve
+Gelir Tablosu bilerek ücretsiz: resmî tablolar, müşavir zaten üretiyor — komoditeye
+para istemek ürünü ucuzlatır. Alacak & Borç da ücretsiz, alışkanlık orada kuruluyor.
+
+**KİLİT KENDİLİĞİNDEN GERİ GELMEZ.** `Store hayır dedi` ile `Store cevap veremedi`
+pratikte ayrılamıyor: Microsoft hesabına giriş yapmamış ya da lisansı henüz
+senkronlanmamış kullanıcıda da olumsuz cevap dönüyor. İkisini karıştırıp otomatik
+kilitlemek, ödemiş müşteriyi kalıcı olarak dışarıda bırakır. Önbellek yalnız POZİTİF
+doğrulamayla açılır (`infra/config.py: premium_onbellek_yaz`) ve bir daha kapanmaz.
+Kabul edilen bedel: config kopyalanabilir — B2B'de korsanlık teşviki, kilitlenen
+müşterinin bedelinden küçüktür.
+
+**UYGULAMA İÇİ ÖDEME PENCERESİ YOK.** `RequestPurchaseAsync` masaüstü uygulamasında
+HWND bağlaması ister; bunu Python'dan COM dönüşümüyle yapmak sürüme bağlı ve kırılgan,
+bozulursa sonuç «kimse ödeme yapamıyor» olur. Satın alma Store ürün sayfasında
+tamamlanır (`MAGAZA_URL`). Bekçi: `test_lisans.TestStoreKoprusu` — AST'den bakar,
+metin araması modülün *neden kullanmadığımızı anlatan* docstring'ine takılıyordu.
+
+**KİLİTLİ SEKME AÇILIR, İÇİ UYDURULMAZ.** Kullanıcı ne kaçırdığını görsün diye sekme
+girilebilir ve kendi `ACIKLAMA`'sını gösterir; bulanık ya da sahte rakam GÖSTERİLMEZ
+(kural 2). Değişen tek şey düğmedir. Kilit **iki kapıda** tutulur: boş ekranın CTA'sı
+ve `_on_getir` — chrome toolbar'daki «Raporu Getir» de oraya geliyor.
+
+Sekmenin premium olup olmadığı tek yerde (`domain/lisans.py`); dokuz BASLIK'ın her biri
+ya ücretsiz ya premium listesinde olmak zorunda ve bunu `test_lisans.TestBolunme`
+sınıyor — listeye yazılmayan yeni bir sekme sessizce bedava dağıtılırdı.
+
 ---
 
 ## Teknik notlar

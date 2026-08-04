@@ -74,7 +74,7 @@ from infra.mukayese_fetch import (
     donem_toplami,
     yil_client,
 )
-from ui.bilesenler import hos_geldin, para_spin, varsayilan_kayit_yolu, yuzde_spin
+from ui.bilesenler import para_spin, varsayilan_kayit_yolu, yuzde_spin
 from ui.empty_state import DEFAULT_HERO_ASSET, HERO_SOLUK_OPACITY, build_soluk_arka_plan
 from ui.rapor_tab import RaporTab, firma_getir
 from ui.tahmin_pdf import export_tahmin_pdf
@@ -185,16 +185,9 @@ class TahminTab(RaporTab):
         self._stack = QStackedWidget()
         hero = (self.HERO_ASSET or "").strip() or DEFAULT_HERO_ASSET
         hero_fit = (self.HERO_FIT or "cover").strip() or "cover"
-        self._empty = hos_geldin(
-            self.EMOJI,
-            self.BASLIK,
-            self.ACIKLAMA,
-            self.IPUCU,
-            on_cta=self._on_getir,
-            cta=self.GETIR_ETIKET,
-            hero_asset=hero,
-            hero_fit=hero_fit,
-        )
+        # Boş ekran RaporTab'den gelir — premium kilidi burada da geçerli olsun diye
+        # ikinci bir kopya kurulmuyor (kilitliyken düğme «Premium'a geç» olur).
+        self._empty = self._bos_ekran()
         self._stack.addWidget(self._empty)
 
         self._icerik_sayfa = QWidget()

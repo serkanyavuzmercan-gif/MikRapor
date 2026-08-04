@@ -20,6 +20,17 @@ ILETISIM = "mikrapor@hidroteknik.com.tr"
 PROJE_SORUMLUSU = "Serkan Yavuz Mercan"
 GELISTIRICILER = ("Alper Alyaz", "Berra Kaya")
 
+# Microsoft Store — dağıtımın TEK yeri. Premium sekmeler buradan alınan eklentiyle
+# açılır; satın alma uygulama içinde değil, bu sayfada tamamlanır (bkz.
+# infra/store_lisans.py: neden uygulama içi ödeme penceresi yok).
+MAGAZA_STORE_ID = "9NB421K1Z0GB"
+MAGAZA_URL = f"ms-windows-store://pdp/?productid={MAGAZA_STORE_ID}"
+
+# Premium eklentisinin Partner Center'daki kimliği. HENÜZ TANIMLANMADI: boş kaldığı
+# sürece lisans okuyucu «etkin tek eklenti premium'dur» varsayımıyla çalışır, satın
+# alma yine Store sayfasına yönlendirir. Eklenti oluşturulunca buraya yazılacak.
+PREMIUM_ADDON_STORE_ID = ""
+
 TANITIM = (
     "MikRapor, Mikro ERP verinizi mali müşavir raporu beklemeden okunur hâle getirir. "
     "Bilanço ve gelir tablosundan nakit akışına, alacak yaşlandırmasından yıllar arası "

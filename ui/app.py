@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from domain.lisans import sekme_etiketi
 from infra.config import MikroConfig, load_config
 from infra.mikro_api import MikroClient
 from infra.surum import ALT_BASLIK, UYGULAMA_ADI
@@ -34,6 +35,7 @@ from ui.hakkinda_dialog import HakkindaDialog
 from ui.icons import icon_gear, icon_info
 from ui.mikro_settings_dialog import AYARLAR_ADI, MikroAyarlarDialog
 from ui.nav_tip import NavTip, bagla_nav_tip
+from ui.premium import premium_durumu, satin_alma_bekleniyor
 from ui.rapor_tab import RaporTab
 from ui.resources import app_icon, app_logo_pixmap
 from ui.styles import APP_STYLESHEET
@@ -339,10 +341,14 @@ class MikRaporWindow(QMainWindow):
             # ——— ayraç: dışarıya veri gönderen tek sekme
             AiYorumTab,
         )
+        acik = premium_durumu().acik
         for cls in sekme_siniflari:
             w = cls(self._donem)
             self._stack.addWidget(w)
-            idx = self._tab_bar.addTab(cls.BASLIK.replace("&", "&&"))
+            # Premium sekmeler işaretli görünür; satın alındıktan sonra işaret kalkar —
+            # ödemiş kullanıcıya hâlâ kilit rozeti göstermek kabul edilemez.
+            etiket = sekme_etiketi(cls.BASLIK, acik)
+            idx = self._tab_bar.addTab(etiket.replace("&", "&&"))
             # Sekme adı ne yaptığını söylemiyor: «Reel Değer» ilk görende karşılık
             # bulmuyor. Açıklama zaten var (boş ekranda gösteriliyor) ve HeaderTabBar'ın
             # balon mekanizması yazılmıştı — ama setTabToolTip hiç çağrılmadığı için
@@ -498,6 +504,30 @@ class MikRaporWindow(QMainWindow):
     def _on_ayarlar(self) -> None:
         if MikroAyarlarDialog(self).exec():
             self._refresh_conn_status()
+
+    def changeEvent(self, event) -> None:  # noqa: N802 — Qt API
+        """
+        Store'dan dönüldüğünde kilidi tazeler — yeniden başlatma istenmez.
+
+        Lisans YALNIZ kullanıcı satın almaya gittiyse sorulur; her odak değişiminde
+        Store'a sormak gereksiz yavaşlık olurdu.
+        """
+        super().changeEvent(event)
+        if (event.type() == QEvent.Type.ActivationChange and self.isActiveWindow()
+                and satin_alma_bekleniyor()):
+            self._premium_tazele()
+
+    def _premium_tazele(self) -> None:
+        if not premium_durumu(yenile=True).acik:
+            return
+        for i in range(self._stack.count()):
+            w = self._stack.widget(i)
+            if isinstance(w, RaporTab):
+                w.premium_tazele()
+                self._tab_bar.setTabText(i, w.BASLIK.replace("&", "&&"))
+        tab = self._aktif_tab()
+        if tab is not None:
+            tab.bagla_chrome(self._chrome)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 — Qt API
         if self._ping_worker is not None and self._ping_worker.isRunning():
