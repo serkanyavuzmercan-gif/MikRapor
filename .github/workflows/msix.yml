@@ -21,6 +21,13 @@ permissions:
 jobs:
   msix:
     runs-on: windows-latest
+    # TÜRKÇE ÇIKTI WINDOWS KONSOLUNU DÜŞÜRÜYOR. Runner'ın kod sayfası cp1252;
+    # bir 'ı' harfi UnicodeEncodeError atıp adımı öldürüyor — kendi başarı mesajını
+    # basarken çöken bir derleme betiği. Adım adım yamamak yerine iş düzeyinde:
+    # arayüz %100 Türkçe olduğu için bundan sonra eklenecek her Python adımı da
+    # aynı tuzağa düşerdi.
+    env:
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
 
