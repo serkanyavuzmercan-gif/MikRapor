@@ -70,6 +70,7 @@ class HeaderTabBar(QTabBar):
         self.setElideMode(Qt.TextElideMode.ElideNone)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self._font_px, self._dolgu = self._OLCEK_ADAYLARI[0]
+        self._izlenen: QWidget | None = None
         self._uyarlaniyor = False
         self._tip = NavTip()
         self._tip_idx = -1
@@ -180,10 +181,16 @@ class HeaderTabBar(QTabBar):
         if self._uyarlaniyor or self.count() == 0:
             return
         mevcut = self._kullanilabilir_en()
+        # GENİŞLİK BİLİNMİYORSA DOKUNMA. Eskiden `mevcut <= 0` durumunda döngü ilk
+        # adayda kırılıyordu, yani EN GENİŞ ölçek seçiliyordu — ve o an bir daha
+        # ölçüm tetiklenmezse sekmeler öyle kalıp çubuğu taşırıyordu. Windows'ta
+        # olay sırası farklı olduğu için orada ortaya çıktı (Linux'ta gizli kaldı).
+        if mevcut <= 0:
+            return
         secim = self._OLCEK_ADAYLARI[-1]
         for px, dolgu in self._OLCEK_ADAYLARI:
             toplam = sum(self._sekme_genisligi(i, px, dolgu) for i in range(self.count()))
-            if mevcut <= 0 or toplam <= mevcut:
+            if toplam <= mevcut:
                 secim = (px, dolgu)
                 break
         if secim == (self._font_px, self._dolgu):
@@ -208,7 +215,27 @@ class HeaderTabBar(QTabBar):
         # Gösterim anında kapsayıcı nihai genişliğine ulaşmış olur; ilk ölçüm burada
         # kesinleşir (yalnız resizeEvent'e güvenmek dar pencerede taşmaya yol açıyordu).
         super().showEvent(event)
+        self._kapsayiciyi_izle()
         self._uyarla()
+
+    def _kapsayiciyi_izle(self) -> None:
+        """
+        ASIL SİNYAL KAPSAYICININ BOYUTU, çubuğun kendisininki değil.
+
+        Çubuğun genişliği kendi sizeHint'inden, o da seçilen fonttan türüyor —
+        döngüsel. Yalnız kendi `resizeEvent`ine güvenmek, pencere küçüldüğünde
+        yeniden ölçümün hiç tetiklenmemesine yol açabiliyordu: ölçek geniş kalıyor,
+        son sekme ekrandan taşıyordu. Kapsayıcı yeniden boyutlanınca yeniden ölçeriz.
+        """
+        ust = self.parentWidget()
+        if ust is not None and getattr(self, "_izlenen", None) is not ust:
+            ust.installEventFilter(self)
+            self._izlenen = ust
+
+    def eventFilter(self, nesne, olay) -> bool:  # noqa: N802 — Qt API
+        if olay.type() == QEvent.Type.Resize and nesne is self.parentWidget():
+            self._uyarla()
+        return super().eventFilter(nesne, olay)
 
     def tabSizeHint(self, index: int) -> QSize:  # noqa: N802 — Qt API
         # Genişlik etiket metninden hesaplanır (eşit-genişlik DEĞİL): eşitte "Bilanço"
