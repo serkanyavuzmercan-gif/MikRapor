@@ -197,10 +197,18 @@ jobs:
           name: MikRapor-${{ steps.surum.outputs.surum }}
           path: out/*
 
+      # HİÇBİR ŞEY YAPMAYAN KUTU BIRAKILMAZ. `release` girdisi «Çıktıları GitHub
+      # Release'e yükle» diyordu ama tek bir adım bile onu okumuyordu: işaretleyen
+      # kullanıcı yine artifact zip'i indiriyordu. Etiket adı sürümden türetiliyor,
+      # böylece elle koşuda da gerçek bir Release çıkıyor.
+      #
+      # «Etiket en sona» kuralı korunuyor: varsayılan KAPALI. Etiket, çıktı
+      # doğrulandıktan sonra bilerek kesilir — kendiliğinden değil.
       - name: GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.surum.outputs.surum }}
           files: out/*
           body: |
             ## MikRapor ${{ steps.surum.outputs.surum }}
