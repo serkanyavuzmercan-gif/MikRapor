@@ -41,6 +41,8 @@ jobs:
       # denemeden sonra tahmin etmeyi bırakıp runner'a soruyoruz.
       - name: Sekme çubuğu teşhisi
         continue-on-error: true
+        env:
+          PYTHONIOENCODING: utf-8
         run: python sekme_tani.py
 
       - name: Testler
