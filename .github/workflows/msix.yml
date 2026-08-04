@@ -36,15 +36,7 @@ jobs:
           pip install "pyinstaller>=6.3.0" pillow
 
       # Testler burada da koşar: mağazaya gidecek paketi doğrulanmamış koddan
-      # üretmek, 594 testin varlık sebebini boşa çıkarır.
-      # GEÇİCİ TEŞHİS: sekme çubuğu Windows'ta neden taşıyor? Altı körlemesine
-      # denemeden sonra tahmin etmeyi bırakıp runner'a soruyoruz.
-      - name: Sekme çubuğu teşhisi
-        continue-on-error: true
-        env:
-          PYTHONIOENCODING: utf-8
-        run: python sekme_tani.py
-
+      # üretmek, 600+ testin varlık sebebini boşa çıkarır.
       - name: Testler
         run: python -m unittest discover -s . -p "test_*.py" -q
 

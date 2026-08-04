@@ -545,12 +545,19 @@ class TestUiSmoke(unittest.TestCase):
             w.close()
 
     def test_tum_sekmeler_gorunur(self) -> None:
-        """Her sekme etiketi tam sığmalı — hiçbiri kırpılmamalı/taşmamalı.
+        """Hiçbir sekme çubuğu taşmamalı — taşan sekme TIKLANAMAZ, yani rapor kayıptır.
 
         Regresyon: 8. sekme eklenince «Reel Değer» ve «Mukayese & Oranlar» marka barına
         sığmayıp tamamen görünmez olmuştu (kullanıcı o iki rapora erişemiyordu).
-        Yeni sekme eklenirse bu test dar pencerede de uyarır.
+
+        SIĞMAMA HER ZAMAN HATA DEĞİL: sistem fontu platforma göre değişiyor (ölçüldü,
+        Windows Linux'un 1,59 katı) ve 960px'te dokuz sekme orada hiçbir ölçekte
+        sığmıyor. Orada doğru davranış etiketi kısaltmaktır. Bu yüzden «kırpılmıyor»
+        yalnız kısaltma KAPALIYKEN aranır; her koşulda aranan şey erişilebilirlik.
+        Geniş ekranda kısaltma AÇILMAMALI — açılıyorsa ölçüm bozulmuş demektir.
         """
+        from PyQt6.QtCore import Qt
+
         from ui.app import MikRaporWindow
         for genislik in (960, 1220, 1920):  # minimum · varsayılan · tam ekran
             w = MikRaporWindow()
@@ -563,18 +570,71 @@ class TestUiSmoke(unittest.TestCase):
                     self.app.sendPostedEvents()
                     self.app.processEvents()
                 tb = w._tab_bar
+                kisaltiyor = tb.elideMode() != Qt.TextElideMode.ElideNone
+                if genislik == 1920:
+                    self.assertFalse(
+                        kisaltiyor,
+                        "1920px'te sekmeler bol bol sığmalı — kısaltma açıksa ölçüm bozuk")
                 for i in range(tb.count()):
                     etiket = tb.tabText(i).replace("&&", "&")
                     r = tb.tabRect(i)
                     gerekli = tb._olcu_fontu(tb._font_px).horizontalAdvance(etiket)
-                    self.assertGreaterEqual(
-                        r.width(), gerekli,
-                        f"{genislik}px pencerede «{etiket}» sekmesi kırpılıyor")
+                    if kisaltiyor:
+                        self.assertGreaterEqual(
+                            r.width(), 30,
+                            f"{genislik}px pencerede «{etiket}» tıklanamayacak kadar dar")
+                    else:
+                        self.assertGreaterEqual(
+                            r.width(), gerekli,
+                            f"{genislik}px pencerede «{etiket}» sekmesi kırpılıyor")
                     self.assertLessEqual(
                         r.right(), tb.width() + 1,
                         f"{genislik}px pencerede «{etiket}» sekmesi taşıyor (görünmez)")
             finally:
                 w.close()
+
+    def test_sigmayan_sekme_daraltilir_kaybolmaz(self) -> None:
+        """Hiçbir ölçek sığmadığında sekmeler daraltılır — hiçbiri ekran dışında kalmaz.
+
+        BU YOL LINUX'TA KENDİLİĞİNDEN KOŞMAZ: burada dokuz sekme 960px'e rahat sığıyor,
+        Windows'ta sığmıyor (sistem fontu 1,59 kat geniş — runner'da ölçüldü). Yalnız
+        gerçek pencereye bakan bir test, daraltma kodunun bozulduğunu hiç görmezdi;
+        CI yeşil kalır, mağazadaki paket son sekmeyi yutardı. Fontun geniş olduğu
+        platform burada TAKLİT edilir.
+
+        `setElideMode` tek başına yetmez — Qt metni sekmenin kendi genişliğine göre
+        kısaltır, o genişlik de bizim `tabSizeHint`imizden gelir. Daraltma düşerse bu
+        test kırmızıya döner.
+        """
+        from PyQt6.QtCore import Qt
+
+        from ui.app import HeaderTabBar, MikRaporWindow
+        gercek = HeaderTabBar._sekme_genisligi
+        HeaderTabBar._sekme_genisligi = (
+            lambda self, i, px, dolgu: int(gercek(self, i, px, dolgu) * 1.59))
+        try:
+            w = MikRaporWindow()
+            try:
+                w.resize(960, 840)
+                w.show()
+                for _ in range(12):
+                    self.app.sendPostedEvents()
+                    self.app.processEvents()
+                tb = w._tab_bar
+                self.assertEqual(tb.elideMode(), Qt.TextElideMode.ElideRight,
+                                 "sığmayan çubukta kısaltma açılmamış")
+                self.assertLess(tb._daralma, 1.0, "sekmeler daraltılmamış")
+                for i in range(tb.count()):
+                    etiket = tb.tabText(i).replace("&&", "&")
+                    r = tb.tabRect(i)
+                    self.assertLessEqual(r.right(), tb.width() + 1,
+                                         f"«{etiket}» ekran dışında kaldı")
+                    self.assertGreaterEqual(r.width(), 30,
+                                            f"«{etiket}» tıklanamayacak kadar dar")
+            finally:
+                w.close()
+        finally:
+            HeaderTabBar._sekme_genisligi = gercek
 
     def test_mukayese_kutusu_takili_kalmaz(self) -> None:
         """

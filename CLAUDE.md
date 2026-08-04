@@ -274,6 +274,26 @@ doğrudan çağıran test, `start()` silinse bile yeşil kalıyordu.
 normal satır değil; tablo ekrana sığmıyorsa kendi içinde kayar ki aşağı inerken hangi
 rakamın hangi yıl olduğu görünsün. PDF karşılığı `repeatRows=1`.
 
+**SIĞMAYAN SEKME KISALTILIR, GİZLENMEZ.** Sekme çubuğu dar pencerede font/dolgu
+merdiveninden sığan en okunaklı basamağı seçer; **hiçbiri sığmazsa** sekmeler oranla
+daraltılır ve etiket kısaltılır («Tahmin & Proj…»). Çirkin ama tıklanabilir, görünmezden
+iyidir: `setUsesScrollButtons(False)` olduğu için taşan sekme büsbütün ekran dışında
+kalıyor, o rapora hiç erişilemiyordu.
+
+Merdiveni uzatmak bunu ÇÖZMEZ, çünkü sorun ölçekte değil platformda: Windows runner'ında
+sistem fontu Linux'un **1,59 katı** genişlikte çiziyor, 960px pencerede dokuz sekme orada
+hiçbir ölçekte sığmıyor (en dar aday 1206px istiyor, alan 932px). Altı kez körlemesine
+tahmin edildi; ancak runner'a ölçüm koyunca görüldü. **İkinci başarısızlıkta tahmin
+bırakılır, ölçüm konur.**
+
+`setElideMode` TEK BAŞINA YETMEZ — Qt metni sekmenin kendi genişliğine göre kısaltır,
+o genişlik de `tabSizeHint`ten gelir; tam istediğini alan sekmede kısaltacak bir şey
+olmaz. Daraltma oranı `_daralt`ta hesaplanır, `tabSizeHint` uygular.
+
+Bekçi `test_ui_smoke.test_sigmayan_sekme_daraltilir_kaybolmaz` geniş fontu **taklit
+eder**: yalnız gerçek pencereye bakan test bu yolu Linux CI'da hiç koşturmaz, kod
+bozulur ve yeşil kalır (bkz. «bakılamayan, temiz sayılmaz»).
+
 ## 6. Bu program yalnız bize göre yazılmaz
 
 Hedef, Mikro ERP kullanan HER firmaya satmak. Bir kurulumun iş akışını varsayılan

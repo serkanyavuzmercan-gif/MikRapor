@@ -70,6 +70,7 @@ class HeaderTabBar(QTabBar):
         self.setElideMode(Qt.TextElideMode.ElideNone)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self._font_px, self._dolgu = self._OLCEK_ADAYLARI[0]
+        self._daralma = 1.0
         self._izlenen: QWidget | None = None
         self._uyarlaniyor = False
         self._tip = NavTip()
@@ -194,23 +195,37 @@ class HeaderTabBar(QTabBar):
                 secim = (px, dolgu)
                 break
         self._uygula(secim)
-        # GERÇEĞE BAK, MODELE DEĞİL. `_sekme_genisligi` bizim tahminimiz; Qt'nin
-        # gerçekten çizdiği genişlik platform stiline göre daha büyük olabiliyor —
-        # Windows'ta hesap 932px derken sekmeler 1042px yer kaplıyordu ve son sekme
-        # görünmez oluyordu. Uyguladıktan sonra ÖLÇÜLEN taşma varsa bir basamak daha
-        # daraltılır. Böylece platform farkını modellemek zorunda kalmıyoruz.
-        for px, dolgu in self._OLCEK_ADAYLARI[self._OLCEK_ADAYLARI.index(secim) + 1:]:
-            if not self._tasiyor(mevcut):
-                break
-            self._uygula((px, dolgu))
+        gerekli = sum(self._sekme_genisligi(i, *secim) for i in range(self.count()))
+        self._daralt(mevcut, gerekli)
 
-    def _tasiyor(self, mevcut: int) -> bool:
-        """Uygulanan ölçekle sekmeler gerçekten taşıyor mu? (ölçülen tabRect'lerden)"""
-        son = self.count() - 1
-        if son < 0:
-            return False
-        sag = self.tabRect(son).right()
-        return sag > max(mevcut, self.width())
+    def _daralt(self, mevcut: int, gerekli: int) -> None:
+        """
+        EN DAR BASAMAK BİLE SIĞMAYABİLİR — o zaman sekmeler oranla daraltılır.
+
+        Ölçüldü (runner teşhisi): Windows'ta sistem fontu Linux'un 1,59 katı genişlikte
+        çiziyor; 960px pencerede dokuz sekme HİÇBİR ölçekte sığmıyor (en dar aday 1206px
+        istiyor, alan 932px). Merdiveni uzatmak bunu çözmez, çünkü sorun ölçekte değil.
+
+        `setElideMode` TEK BAŞINA YETMEZ: Qt metni sekmenin KENDİ genişliğine göre kısaltır,
+        o genişlik de bizim `tabSizeHint`imizden geliyor — tam istediğini alan sekmede
+        kısaltacak bir şey olmaz. Daraltma oranı burada hesaplanır, `tabSizeHint` uygular;
+        elide yalnız sonucu okunur kılar («Tahmin & Proj…»).
+
+        Kırpmayı reddedip olduğu gibi bırakmak, son sekmeyi büsbütün ekran dışında
+        bırakıyordu (`setUsesScrollButtons(False)`): o rapora hiç erişilemiyordu.
+        Çirkin ama tıklanabilir, görünmezden iyidir.
+        """
+        oran = 1.0 if gerekli <= mevcut or gerekli <= 0 else mevcut / gerekli
+        if abs(oran - self._daralma) < 0.001:
+            return
+        self._daralma = oran
+        self.setElideMode(Qt.TextElideMode.ElideRight if oran < 1.0
+                          else Qt.TextElideMode.ElideNone)
+        self._uyarlaniyor = True
+        try:
+            self.updateGeometry()
+        finally:
+            self._uyarlaniyor = False
 
     def _uygula(self, secim: tuple[int, int]) -> None:
         if secim == (self._font_px, self._dolgu):
@@ -272,7 +287,12 @@ class HeaderTabBar(QTabBar):
         # döndürüyor; max onu tutunca sekmeler çubuğu aşıyordu — dar pencerede son
         # sekme görünmez oluyordu (testte ara ara yakalanan gerçek regresyon).
         base = super().tabSizeHint(index)
-        base.setWidth(self._sekme_genisligi(index, self._font_px, self._dolgu))
+        en = self._sekme_genisligi(index, self._font_px, self._dolgu)
+        if self._daralma < 1.0:
+            # Aşağı yuvarlanır: toplamın kullanılabilir alanı aşmadığından emin olmak
+            # için. Asgari 30px, sekme tıklanabilir kalsın diye.
+            en = max(30, int(en * self._daralma))
+        base.setWidth(en)
         return base
 
     def event(self, event: QEvent) -> bool:  # noqa: N802 — Qt API
