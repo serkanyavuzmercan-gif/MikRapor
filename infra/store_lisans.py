@@ -24,7 +24,7 @@ import logging
 import sys
 
 from domain.lisans import LisansDurumu
-from infra.surum import PREMIUM_ADDON_STORE_ID, satin_alma_url
+from infra.surum import PREMIUM_ADDON_URUN_ID, satin_alma_url
 
 _log = logging.getLogger(__name__)
 
@@ -66,13 +66,16 @@ def lisans_durumu() -> LisansDurumu:
     if lisans is None:
         return LisansDurumu.BILINMIYOR
     try:
-        for ek in lisans.add_on_licenses.values():
-            if ek.is_active and ek.in_app_offer_token == PREMIUM_ADDON_STORE_ID:
-                return LisansDurumu.SAHIP
-        # Eklenti kimliği henüz tanımlanmadıysa token eşleşmesi yapılamaz; tek bir
-        # etkin eklenti varsa onu premium sayarız (Partner Center'da başka eklenti yok).
-        if not PREMIUM_ADDON_STORE_ID and any(
-                ek.is_active for ek in lisans.add_on_licenses.values()):
+        etkin = [ek for ek in lisans.add_on_licenses.values() if ek.is_active]
+        # `InAppOfferToken` Partner Center'daki ÜRÜN KİMLİĞİNİ döndürür («mikrapor-premium»),
+        # Store ID'yi değil. İkisini karıştırmak hiçbir zaman eşleşmemek demekti:
+        # kullanıcı ödediği hâlde kilitli kalırdı.
+        if any(ek.in_app_offer_token == PREMIUM_ADDON_URUN_ID for ek in etkin):
+            return LisansDurumu.SAHIP
+        # Tek eklentisi olan bir üründe token okunamasa bile etkin lisans premium'dur.
+        # Şüphede kalınca AÇ (domain/lisans.py): kilitlemenin bedeli daha büyük.
+        if etkin:
+            _log.debug("Etkin eklenti var ama token eşleşmedi — premium sayıldı")
             return LisansDurumu.SAHIP
     except Exception as exc:  # noqa: BLE001
         _log.debug("Eklenti lisansı ayrıştırılamadı: %s", exc)
