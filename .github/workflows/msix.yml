@@ -121,14 +121,34 @@ jobs:
 
       # --------------------------------------------------- SERTİFİKASYON KONTROLÜ
       # Store zaten bunu koşturuyor; önden koşmazsak geri bildirim günler sonra
-      # Partner Center üzerinden gelir.
+      # Partner Center üzerinden gelir. Asıl risk yasaklı API taraması: PyInstaller
+      # + Qt ikilileri o listeye takılabilir ve bunu ancak WACK söyler.
+      #
+      # WACK SDK'nın AYRI BİR ÖZELLİĞİDİR ve hosted runner'da kurulu DEĞİL — adım
+      # sessizce atlanıyor, iş yeşil görünüyor, hiçbir şey denetlenmemiş oluyordu.
+      # «Bakılamayan, temiz sayılmaz»: önce kurmayı deneriz, kurulamazsa GÖRÜNÜR
+      # uyarı bırakırız.
+      - name: WACK'ı kur (SDK'nın ayrı özelliği)
+        id: wack_kur
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $appcert = "C:/Program Files (x86)/Windows Kits/10/App Certification Kit/appcert.exe"
+          if (Test-Path $appcert) { "var=1" >> $env:GITHUB_OUTPUT; exit 0 }
+          $exe = "$env:RUNNER_TEMP/winsdksetup.exe"
+          # fwlink 2196241 = Windows SDK yükleyicisi (Microsoft'un kalıcı bağlantısı).
+          Invoke-WebRequest -UseBasicParsing -Uri "https://go.microsoft.com/fwlink/?linkid=2196241" -OutFile $exe
+          Start-Process $exe -Wait -ArgumentList `
+            "/features OptionId.WindowsSoftwareLogoToolkit /quiet /norestart /ceip off"
+          if (Test-Path $appcert) { "var=1" >> $env:GITHUB_OUTPUT }
+
       - name: Windows App Certification Kit
         continue-on-error: true
         shell: pwsh
         run: |
           $appcert = "C:/Program Files (x86)/Windows Kits/10/App Certification Kit/appcert.exe"
           if (-not (Test-Path $appcert)) {
-            Write-Warning "appcert.exe runner'da yok — WACK atlandı."
+            Write-Host "::warning::WACK KOŞMADI — appcert.exe runner'da yok ve kurulamadı. Paket sertifikasyon açısından DENETLENMEMİŞTİR; ilk geri bildirim Partner Center'dan gelecek."
             exit 0
           }
           & $appcert reset
@@ -140,11 +160,14 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          if (-not (Test-Path "out/wack-raporu.xml")) { Write-Host "WACK raporu yok."; exit 0 }
-          $x = [xml](Get-Content "out/wack-raporu.xml")
-          $x.SelectNodes("//*[@RESULT='FAIL']") | ForEach-Object {
-            Write-Host "::warning::WACK FAIL — $($_.NAME)"
+          if (-not (Test-Path "out/wack-raporu.xml")) {
+            Write-Host "::warning::WACK raporu üretilmedi — denetim yapılmadı."
+            exit 0
           }
+          $x = [xml](Get-Content "out/wack-raporu.xml")
+          $fail = $x.SelectNodes("//*[@RESULT='FAIL']")
+          $fail | ForEach-Object { Write-Host "::warning::WACK FAIL — $($_.NAME)" }
+          if ($fail.Count -eq 0) { Write-Host "WACK: FAIL yok." }
 
       # ---------------------------------------------------- YAN YÜKLEME ARTEFAKTI
       # AYRI DOSYA, AYRI AMAÇ. Store paketiyle karıştırılmaz: bu imzalıdır ve
