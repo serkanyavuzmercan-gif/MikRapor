@@ -84,4 +84,4 @@ yukarıdaki tarih güncellenir.
 ## 9. İletişim
 
 Hidroteknik
-E-posta: <!-- BURAYA DOLDURULACAK -->
+E-posta: mikrapor@hidroteknik.com.tr
