@@ -119,56 +119,6 @@ jobs:
               /d msix-root /p "out/MikRapor-${{ steps.surum.outputs.surum }}-store.msix" /o
           if ($LASTEXITCODE -ne 0) { throw "makeappx başarısız ($LASTEXITCODE)" }
 
-      # --------------------------------------------------- SERTİFİKASYON KONTROLÜ
-      # Store zaten bunu koşturuyor; önden koşmazsak geri bildirim günler sonra
-      # Partner Center üzerinden gelir. Asıl risk yasaklı API taraması: PyInstaller
-      # + Qt ikilileri o listeye takılabilir ve bunu ancak WACK söyler.
-      #
-      # WACK SDK'nın AYRI BİR ÖZELLİĞİDİR ve hosted runner'da kurulu DEĞİL — adım
-      # sessizce atlanıyor, iş yeşil görünüyor, hiçbir şey denetlenmemiş oluyordu.
-      # «Bakılamayan, temiz sayılmaz»: önce kurmayı deneriz, kurulamazsa GÖRÜNÜR
-      # uyarı bırakırız.
-      - name: WACK'ı kur (SDK'nın ayrı özelliği)
-        id: wack_kur
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $appcert = "C:/Program Files (x86)/Windows Kits/10/App Certification Kit/appcert.exe"
-          if (Test-Path $appcert) { "var=1" >> $env:GITHUB_OUTPUT; exit 0 }
-          $exe = "$env:RUNNER_TEMP/winsdksetup.exe"
-          # fwlink 2196241 = Windows SDK yükleyicisi (Microsoft'un kalıcı bağlantısı).
-          Invoke-WebRequest -UseBasicParsing -Uri "https://go.microsoft.com/fwlink/?linkid=2196241" -OutFile $exe
-          Start-Process $exe -Wait -ArgumentList `
-            "/features OptionId.WindowsSoftwareLogoToolkit /quiet /norestart /ceip off"
-          if (Test-Path $appcert) { "var=1" >> $env:GITHUB_OUTPUT }
-
-      - name: Windows App Certification Kit
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $appcert = "C:/Program Files (x86)/Windows Kits/10/App Certification Kit/appcert.exe"
-          if (-not (Test-Path $appcert)) {
-            Write-Host "::warning::WACK KOŞMADI — appcert.exe runner'da yok ve kurulamadı. Paket sertifikasyon açısından DENETLENMEMİŞTİR; ilk geri bildirim Partner Center'dan gelecek."
-            exit 0
-          }
-          & $appcert reset
-          & $appcert test -appxpackagepath "out/MikRapor-${{ steps.surum.outputs.surum }}-store.msix" `
-                          -reportoutputpath "out/wack-raporu.xml"
-          Write-Host "WACK çıkış kodu: $LASTEXITCODE"
-
-      - name: WACK sonucunu özetle
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          if (-not (Test-Path "out/wack-raporu.xml")) {
-            Write-Host "::warning::WACK raporu üretilmedi — denetim yapılmadı."
-            exit 0
-          }
-          $x = [xml](Get-Content "out/wack-raporu.xml")
-          $fail = $x.SelectNodes("//*[@RESULT='FAIL']")
-          $fail | ForEach-Object { Write-Host "::warning::WACK FAIL — $($_.NAME)" }
-          if ($fail.Count -eq 0) { Write-Host "WACK: FAIL yok." }
-
       # ---------------------------------------------------- YAN YÜKLEME ARTEFAKTI
       # AYRI DOSYA, AYRI AMAÇ. Store paketiyle karıştırılmaz: bu imzalıdır ve
       # kurulabilmesi için sertifikanın hedef makinede Trusted Root'a eklenmesi
@@ -195,6 +145,51 @@ jobs:
                  [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pw))) $yan
           if ($LASTEXITCODE -ne 0) { throw "signtool başarısız ($LASTEXITCODE)" }
           Remove-Item $pfx -Force
+          # WACK paketi KURARAK test ediyor; kurulum için imzanın güvenilmesi gerekir.
+          # Bu yalnız runner'ın kendi mağazasına yazar, artefakta dokunmaz.
+          Import-Certificate -FilePath "out/MikRapor-yan-yukleme.cer" `
+                             -CertStoreLocation "Cert:\LocalMachine\Root" | Out-Null
+
+      # --------------------------------------------------- SERTİFİKASYON KONTROLÜ
+      # Store zaten bunu koşturuyor; önden koşmazsak geri bildirim günler sonra
+      # Partner Center üzerinden gelir. Asıl risk yasaklı API taraması: PyInstaller
+      # + Qt ikilileri o listeye takılabilir ve bunu ancak WACK söyler.
+      #
+      # İMZALI KOPYA ÜZERİNDE koşar, imzasız Store paketi üzerinde değil: WACK paketi
+      # kurup çalıştırıyor, imzasız MSIX kurulamaz. İkisinin İÇERİĞİ aynı.
+      #
+      # YOLLAR MUTLAK OLMAK ZORUNDA. Göreli yol verilince appcert «The
+      # '/reportoutputpath' argument must be valid path to the report file» deyip
+      # -1 dönüyordu; adım `continue-on-error` yüzünden yeşil kalıyor, rapor hiç
+      # üretilmiyordu. Yani araç vardı, çalışmıyordu — teşhisi «runner'da WACK yok»
+      # sanmıştık. Ölçüm düzeltti.
+      - name: Windows App Certification Kit
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $appcert = "C:/Program Files (x86)/Windows Kits/10/App Certification Kit/appcert.exe"
+          if (-not (Test-Path $appcert)) {
+            Write-Host "::warning::WACK KOŞMADI — appcert.exe runner'da yok. Paket sertifikasyon açısından DENETLENMEMİŞTİR."
+            exit 0
+          }
+          $paket = (Resolve-Path "out/MikRapor-${{ steps.surum.outputs.surum }}-yanyukleme.msix").Path
+          $rapor = Join-Path (Resolve-Path "out").Path "wack-raporu.xml"
+          & $appcert reset
+          & $appcert test -appxpackagepath $paket -reportoutputpath $rapor
+          Write-Host "WACK çıkış kodu: $LASTEXITCODE"
+
+      - name: WACK sonucunu özetle
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "out/wack-raporu.xml")) {
+            Write-Host "::warning::WACK raporu üretilmedi — denetim YAPILMADI, «geçti» diye okunmasın."
+            exit 0
+          }
+          $x = [xml](Get-Content "out/wack-raporu.xml")
+          $fail = @($x.SelectNodes("//*[@RESULT='FAIL']"))
+          $fail | ForEach-Object { Write-Host "::warning::WACK FAIL — $($_.NAME)" }
+          if ($fail.Count -eq 0) { Write-Host "WACK koştu, FAIL yok." }
 
       - name: Artefaktları yükle
         uses: actions/upload-artifact@v4
