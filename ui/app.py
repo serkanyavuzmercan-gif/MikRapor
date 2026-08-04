@@ -142,7 +142,14 @@ class HeaderTabBar(QTabBar):
 
     # Dar pencerede denenecek (font px, yatay dolgu px) adayları — genişten dara.
     # İlk sığan seçilir; hiçbiri sığmazsa en dar olanla devam edilir (asla kırpılmaz).
-    _OLCEK_ADAYLARI = ((13, 12), (13, 9), (12, 9), (12, 7), (11, 7), (11, 5), (10, 5))
+    #
+    # MERDİVEN (10,5)'te BİTİYORDU ve Windows'ta yetmiyordu: asgari pencerede (960px)
+    # dokuz sekme 953px istiyor, kullanılabilir alan 935px — son sekme görünmez
+    # oluyordu. Linux'ta aynı ölçüm 868px çıktığı için ubuntu CI bunu hiç görmedi;
+    # tam takım Windows'ta koşmaya başlayınca ortaya çıktı. Merdivenin dar ucu
+    # uzatıldı — 9px okunaklılığın sınırı, ama görünmeyen sekmeden iyidir.
+    _OLCEK_ADAYLARI = ((13, 12), (13, 9), (12, 9), (12, 7), (11, 7), (11, 5),
+                       (10, 5), (10, 4), (10, 3), (9, 4), (9, 3))
     _MARJ = 4  # QSS 'margin: 0 2px' → sekme başına 4px
 
     def _olcu_fontu(self, px: int) -> QFontMetrics:
