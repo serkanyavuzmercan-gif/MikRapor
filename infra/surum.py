@@ -26,30 +26,33 @@ GELISTIRICILER = ("Alper Alyaz", "Berra Kaya")
 MAGAZA_STORE_ID = "9NB421K1Z0GB"
 MAGAZA_URL = f"ms-windows-store://pdp/?productid={MAGAZA_STORE_ID}"
 
-# Premium eklentisinin Partner Center'daki kimliği. HENÜZ TANIMLANMADI.
+# Premium eklentisi — İKİ AYRI KİMLİK, KARIŞTIRILMAZ:
 #
-# NEDEN ÖNEMLİ: eklentinin Store'da KENDİ ürün sayfası var ve satın alma düğmesi
-# orada. Uygulamanın sayfasına gönderirsek kullanıcı «Yüklü / Aç» görür ve premium'u
-# nereden alacağını anlamaz — satın alma yolu fiilen kapalı olur.
-PREMIUM_ADDON_STORE_ID = ""
+#   PREMIUM_ADDON_URUN_ID  «mikrapor-premium»  — Partner Center'da BİZİM yazdığımız ad.
+#       Lisans okurken `StoreLicense.InAppOfferToken` BUNU döndürür; sahiplik kontrolü
+#       bununla yapılır. Oluşturulduktan sonra değiştirilemez.
+#
+#   PREMIUM_ADDON_STORE_ID «9PF68PSTZNTP»      — Microsoft'un verdiği kimlik.
+#       Eklentinin KENDİ ürün sayfasının adresi bundan kurulur; «Satın Al» düğmesi
+#       orada. Uygulamanın sayfasına göndermek işe yaramaz: kullanıcı orada
+#       «Yüklü / Aç» görür ve premium'u nereden alacağını anlamaz.
+#
+# İkisini birbirinin yerine kullanmak sessiz arıza üretir: lisans hiç eşleşmez
+# (kullanıcı ödediği hâlde kilitli kalır) ya da link boş sayfa açar.
+PREMIUM_ADDON_URUN_ID = "mikrapor-premium"
+PREMIUM_ADDON_STORE_ID = "9PF68PSTZNTP"
 
 
 def satin_alma_url() -> str:
-    """
-    «Premium'a geç» düğmesinin açacağı Store sayfası.
-
-    Eklenti kimliği biliniyorsa doğrudan EKLENTİNİN sayfası (fiyat + «Satın Al»
-    düğmesi orada). Bilinmiyorsa uygulamanın sayfasına düşülür — kullanıcı en azından
-    doğru listelemede olur, ama satın alma düğmesini kendi bulmak zorunda kalır.
-    """
+    """«Premium'a geç» düğmesinin açacağı sayfa — EKLENTİNİN kendi Store sayfası."""
     if PREMIUM_ADDON_STORE_ID:
         return f"ms-windows-store://pdp/?productid={PREMIUM_ADDON_STORE_ID}"
     return MAGAZA_URL
 
 
 def eklenti_tanimli() -> bool:
-    """Eklenti kimliği yazıldı mı? Yazılmadan satın alma akışı EKSİKTİR."""
-    return bool(PREMIUM_ADDON_STORE_ID)
+    """Her iki kimlik de yazıldı mı? Biri eksikse satın alma akışı EKSİKTİR."""
+    return bool(PREMIUM_ADDON_STORE_ID and PREMIUM_ADDON_URUN_ID)
 
 TANITIM = (
     "MikRapor, Mikro ERP verinizi mali müşavir raporu beklemeden okunur hâle getirir. "

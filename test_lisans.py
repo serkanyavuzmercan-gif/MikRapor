@@ -144,20 +144,36 @@ class TestStoreKoprusu(unittest.TestCase):
     def test_satin_alma_eklentinin_sayfasina_gider(self) -> None:
         """
         Uygulamanın sayfasında «Yüklü / Aç» yazar — satın alma düğmesi EKLENTİNİN
-        kendi sayfasındadır. Kimlik yazılmadan kullanıcı premium'u nereden alacağını
-        bulamaz; kimlik yazılınca link oraya gitmek ZORUNDA.
+        kendi sayfasındadır ve adresi EKLENTİNİN Store ID'sinden kurulur.
         """
-        from unittest.mock import patch
+        from infra.surum import (
+            MAGAZA_STORE_ID,
+            PREMIUM_ADDON_STORE_ID,
+            eklenti_tanimli,
+            satin_alma_url,
+        )
+        self.assertTrue(eklenti_tanimli())
+        self.assertIn(PREMIUM_ADDON_STORE_ID, satin_alma_url())
+        self.assertNotIn(MAGAZA_STORE_ID, satin_alma_url())
 
-        import infra.surum as surum
+    def test_iki_kimlik_karistirilmamis(self) -> None:
+        """
+        Lisans eşleşmesi ÜRÜN KİMLİĞİNE, satın alma linki STORE ID'ye bakar.
+        İkisini karıştırmak sessiz arıza: kullanıcı öder, premium açılmaz.
+        """
+        import ast
 
-        with patch.object(surum, "PREMIUM_ADDON_STORE_ID", "9XYZTESTADDON"):
-            self.assertIn("9XYZTESTADDON", surum.satin_alma_url())
-            self.assertTrue(surum.eklenti_tanimli())
-        # Kimlik yokken uygulamanın sayfasına düşülür (eksik ama kırık değil).
-        with patch.object(surum, "PREMIUM_ADDON_STORE_ID", ""):
-            self.assertEqual(surum.satin_alma_url(), surum.MAGAZA_URL)
-            self.assertFalse(surum.eklenti_tanimli())
+        from infra.surum import PREMIUM_ADDON_STORE_ID, PREMIUM_ADDON_URUN_ID
+
+        self.assertEqual(PREMIUM_ADDON_URUN_ID, "mikrapor-premium")
+        self.assertEqual(PREMIUM_ADDON_STORE_ID, "9PF68PSTZNTP")
+        self.assertNotEqual(PREMIUM_ADDON_URUN_ID, PREMIUM_ADDON_STORE_ID)
+        # Lisans okuyucu Store ID'yi HİÇ kullanmamalı.
+        kaynak = (_KOK / "infra" / "store_lisans.py").read_text(encoding="utf-8")
+        adlar = {d.id for d in ast.walk(ast.parse(kaynak)) if isinstance(d, ast.Name)}
+        self.assertNotIn("PREMIUM_ADDON_STORE_ID", adlar,
+                         "lisans eşleşmesinde Store ID kullanılmış — hiç eşleşmez")
+        self.assertIn("PREMIUM_ADDON_URUN_ID", adlar)
 
 
 try:
