@@ -11,9 +11,10 @@ Aylık trend grafiği ek bağımlılık olmadan QPainter ile çizilir.
 from __future__ import annotations
 
 from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QBrush, QColor
+from PyQt6.QtGui import QBrush, QColor, QFont, QFontMetrics
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -77,6 +78,24 @@ def _satir_label(text: str, *, renk: str = "#374151", bold: bool = False,
     if sag:
         lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
     return lbl
+
+
+def basliga_gore_en(metin: str, asgari: int = 0) -> int:
+    """
+    Bir sütun başlığının SIĞMASI için gereken genişlik — çalışma anında ölçülür.
+
+    SABİT PİKSEL YAZILMAZ. Genişlikler geliştirme makinesinde (Linux) ölçülüp
+    sabitleniyordu; Windows'ta aynı metin belirgin şekilde daha geniş çiziliyor ve
+    başlık kesiliyordu — «Vadeye kalan» için 110px yeterken Windows 152px istedi.
+    Kullanıcının makinesindeki fontu bilemeyiz, o yüzden ölçüp öyle veriyoruz.
+
+    `asgari` yalnız taban: rakam sütunu başlığından geniş olabilir (ör. «Nominal»
+    kısa ama altındaki tutar uzun).
+    """
+    f = QFont(QApplication.font())
+    f.setBold(True)
+    # QSS: QTreeWidget::item padding 6px 4px → sağ+sol 8px, üstüne küçük bir pay.
+    return max(asgari, QFontMetrics(f).horizontalAdvance(metin) + 12)
 
 
 def _agac(kolon: int, sabit: list[tuple[int, int]], *, esnek: int = 0,

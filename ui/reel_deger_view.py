@@ -9,7 +9,16 @@ from domain.mizan_bilanco import tl
 from domain.ortak import tr_sayi
 from domain.reel_deger import DegerOzet, ReelDegerAnalizi
 from ui.bilanco_view import ACCENT, FAINT, MUTED, PAGE_BG, _fit_height, _kpi_card
-from ui.gercek_durum_view import NEG, POZ, _agac, _c, _card, _ic, _tsatir
+from ui.gercek_durum_view import (
+    NEG,
+    POZ,
+    _agac,
+    _c,
+    _card,
+    _ic,
+    _tsatir,
+    basliga_gore_en,
+)
 from ui.styles import PRIMARY_SOFT
 
 
@@ -90,7 +99,12 @@ def _erime_tablo(kayitlar: list, *, alacak: bool) -> QFrame:
     Sıra BAKİYEYE değil ERİMEYE göre (tutar × bekleme), o yüzden Alacak & Borç'taki
     «en çok alacak» listesinin tekrarı değil: hızlı ödeyen büyük müşteri burada altta.
     """
-    t = _agac(4, [(1, 118), (2, 110), (3, 118)])
+    # Genişlikler ÖLÇÜLÜR, sabit yazılmaz: «Vadeye kalan» için Linux'ta 110px yeterken
+    # Windows 152px istiyordu ve başlık kesiliyordu (MSIX koşusu yakaladı).
+    son = "Vade maliyeti" if alacak else "Vade avantajı"
+    t = _agac(4, [(1, basliga_gore_en("Nominal", 118)),
+                  (2, basliga_gore_en("Vadeye kalan", 110)),
+                  (3, basliga_gore_en(son, 118))])
     _tsatir(t, [_c("Cari", renk=MUTED, kalin=True),
                 _c("Nominal", renk=MUTED, kalin=True, sag=True),
                 _c("Vadeye kalan", renk=MUTED, kalin=True, sag=True),
