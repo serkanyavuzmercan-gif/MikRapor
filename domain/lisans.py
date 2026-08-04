@@ -47,9 +47,12 @@ PREMIUM_SEKMELER = frozenset({
     "Yapay Zekâ Yorumu",
 })
 
-# Sekme çubuğunda premium sekmelerin yanına konan işaret. Satın alındıktan sonra
-# kaldırılır — ödemiş kullanıcıya hâlâ «kilitli» rozeti göstermek kabul edilemez.
-PREMIUM_ISARET = "✦"
+# Premium işareti sekme METNİNE EKLENMEZ, çizilir (ui/app.py: HeaderTabBar).
+#
+# Metne « ✦» eklemek denendi ve 960px pencerede sekme çubuğunu taşırdı: dokuz sekmenin
+# beşi ~19px genişleyince toplam 1033px'e çıkıyor, kullanılabilir alan 935px — son
+# sekme görünmez oluyordu (`test_ui_smoke.test_tum_sekmeler_gorunur` yakaladı).
+# Çizilen nokta mevcut dolgunun içine düşer, layout'a hiç genişlik eklemez.
 
 
 class LisansDurumu(StrEnum):
@@ -84,6 +87,11 @@ def sekme_kilitli(baslik: str, premium_acik_mi: bool) -> bool:
     return baslik in PREMIUM_SEKMELER
 
 
-def sekme_etiketi(baslik: str, premium_acik_mi: bool) -> str:
-    """Sekme çubuğunda görünecek metin — kilitliyse premium işaretiyle."""
-    return f"{baslik} {PREMIUM_ISARET}" if sekme_kilitli(baslik, premium_acik_mi) else baslik
+def premium_isaretli(baslik: str, premium_acik_mi: bool) -> bool:
+    """
+    Sekme çubuğunda premium noktası çizilsin mi?
+
+    Kilitli olmakla aynı koşul — ayrı bir kural DEĞİL. Satın alındıktan sonra işaret
+    kalkar; ödemiş kullanıcıya hâlâ kilit rozeti göstermek kabul edilemez.
+    """
+    return sekme_kilitli(baslik, premium_acik_mi)

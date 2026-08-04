@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 
 from PyQt6.QtCore import QEvent, QSize, Qt, QTimer
-from PyQt6.QtGui import QCloseEvent, QFont, QFontMetrics
+from PyQt6.QtGui import QCloseEvent, QColor, QFont, QFontMetrics, QPainter, QPen
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.lisans import sekme_etiketi
+from domain.lisans import premium_isaretli
 from infra.config import MikroConfig, load_config
 from infra.mikro_api import MikroClient
 from infra.surum import ALT_BASLIK, UYGULAMA_ADI
@@ -84,6 +84,12 @@ class HeaderTabBar(QTabBar):
     # Tek sayı değil demet: üç gruplu düzende iki ayraç gerekiyor.
     _AYRAC_SONRASI: tuple[int, ...] = (5, 7)
 
+    # Premium (kilitli) sekmelerin indeksleri — app.py doldurur, satın alınınca boşalır.
+    # SINIF DÜZEYİ VARSAYILAN: yarı kurulmuş QObject'te getattr varsayılanı döndürmez.
+    premium_indeksleri: set[int] = frozenset()  # type: ignore[assignment]
+    _PREMIUM_NOKTA = "#c9a227"   # amber — kilit değil, «ek özellik» hissi
+    _NOKTA_CAP = 5
+
     def minimumSizeHint(self) -> QSize:
         s = super().minimumSizeHint()
         s.setWidth(0)
@@ -91,21 +97,48 @@ class HeaderTabBar(QTabBar):
 
     def paintEvent(self, event) -> None:  # noqa: N802 — Qt API
         super().paintEvent(event)
-        from PyQt6.QtGui import QColor, QPainter, QPen
+        p = QPainter(self)
+        try:
+            self._ciz_ayraclar(p)
+            self._ciz_premium_noktalari(p)
+        finally:
+            p.end()
+
+    def _ciz_ayraclar(self, p: QPainter) -> None:
         cizilecek = [i for i in self._AYRAC_SONRASI
                      if self.count() > i + 1 and self.tabRect(i).isValid()]
         if not cizilecek:
             return
-        p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         pen = QPen(QColor("#c3ccd8"))
         pen.setWidth(1)
         p.setPen(pen)
+        p.setBrush(Qt.BrushStyle.NoBrush)
         for i in cizilecek:
             r = self.tabRect(i)
             inset = int(r.height() * 0.24)
             p.drawLine(r.right() + 1, r.top() + inset, r.right() + 1, r.bottom() - inset)
-        p.end()
+
+    def _ciz_premium_noktalari(self, p: QPainter) -> None:
+        """
+        Premium sekmelerin üst sağ köşesine küçük nokta.
+
+        ÇİZİLİR, metne eklenmez: « ✦» eklemek 960px pencerede çubuğu taşırıyor ve son
+        sekme görünmez oluyordu (`test_ui_smoke.test_tum_sekmeler_gorunur` yakaladı).
+        Nokta mevcut dolgunun içine düşüyor, layout'a hiç genişlik eklemiyor.
+        """
+        if not self.premium_indeksleri:
+            return
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(self._PREMIUM_NOKTA))
+        cap = self._NOKTA_CAP
+        for i in sorted(self.premium_indeksleri):
+            if i >= self.count():
+                continue
+            r = self.tabRect(i)
+            if r.isValid():
+                p.drawEllipse(r.right() - cap - 4, r.top() + 6, cap, cap)
 
     # Dar pencerede denenecek (font px, yatay dolgu px) adayları — genişten dara.
     # İlk sığan seçilir; hiçbiri sığmazsa en dar olanla devam edilir (asla kırpılmaz).
@@ -342,18 +375,21 @@ class MikRaporWindow(QMainWindow):
             AiYorumTab,
         )
         acik = premium_durumu().acik
+        premium_idx: set[int] = set()
         for cls in sekme_siniflari:
             w = cls(self._donem)
             self._stack.addWidget(w)
-            # Premium sekmeler işaretli görünür; satın alındıktan sonra işaret kalkar —
-            # ödemiş kullanıcıya hâlâ kilit rozeti göstermek kabul edilemez.
-            etiket = sekme_etiketi(cls.BASLIK, acik)
-            idx = self._tab_bar.addTab(etiket.replace("&", "&&"))
+            idx = self._tab_bar.addTab(cls.BASLIK.replace("&", "&&"))
+            # İşaret METNE eklenmez, çizilir: « ✦» eklemek 960px pencerede çubuğu
+            # taşırıyordu (son sekme görünmez oluyordu).
+            if premium_isaretli(cls.BASLIK, acik):
+                premium_idx.add(idx)
             # Sekme adı ne yaptığını söylemiyor: «Reel Değer» ilk görende karşılık
             # bulmuyor. Açıklama zaten var (boş ekranda gösteriliyor) ve HeaderTabBar'ın
             # balon mekanizması yazılmıştı — ama setTabToolTip hiç çağrılmadığı için
             # metin boş kalıyor, balon hiç açılmıyordu. Tek kaynak: cls.ACIKLAMA.
             self._tab_bar.setTabToolTip(idx, cls.ACIKLAMA)
+        self._tab_bar.premium_indeksleri = premium_idx
 
         self._tab_bar.currentChanged.connect(self._on_tab_degisti)
 
@@ -524,7 +560,9 @@ class MikRaporWindow(QMainWindow):
             w = self._stack.widget(i)
             if isinstance(w, RaporTab):
                 w.premium_tazele()
-                self._tab_bar.setTabText(i, w.BASLIK.replace("&", "&&"))
+        # Nokta işaretleri kalkar — ödemiş kullanıcıya kilit rozeti göstermek olmaz.
+        self._tab_bar.premium_indeksleri = set()
+        self._tab_bar.update()
         tab = self._aktif_tab()
         if tab is not None:
             tab.bagla_chrome(self._chrome)

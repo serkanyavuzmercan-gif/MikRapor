@@ -13,12 +13,11 @@ import unittest
 from pathlib import Path
 
 from domain.lisans import (
-    PREMIUM_ISARET,
     PREMIUM_SEKMELER,
     UCRETSIZ_SEKMELER,
     LisansDurumu,
     premium_acik,
-    sekme_etiketi,
+    premium_isaretli,
     sekme_kilitli,
 )
 
@@ -103,12 +102,11 @@ class TestKilitVeEtiket(unittest.TestCase):
 
     def test_isaret_satin_alinca_kalkar(self) -> None:
         """Ödemiş kullanıcıya hâlâ kilit rozeti göstermek kabul edilemez."""
-        ad = "Reel Değer"
-        self.assertIn(PREMIUM_ISARET, sekme_etiketi(ad, premium_acik_mi=False))
-        self.assertEqual(sekme_etiketi(ad, premium_acik_mi=True), ad)
+        self.assertTrue(premium_isaretli("Reel Değer", premium_acik_mi=False))
+        self.assertFalse(premium_isaretli("Reel Değer", premium_acik_mi=True))
 
     def test_ucretsiz_sekmede_isaret_yok(self) -> None:
-        self.assertEqual(sekme_etiketi("Nakit Akış", premium_acik_mi=False), "Nakit Akış")
+        self.assertFalse(premium_isaretli("Nakit Akış", premium_acik_mi=False))
 
 
 class TestStoreKoprusu(unittest.TestCase):
