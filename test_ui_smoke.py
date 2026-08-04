@@ -223,10 +223,7 @@ class TestUiSmoke(unittest.TestCase):
         from ui.app import MikRaporWindow
         w = MikRaporWindow()
         try:
-            # Premium işareti sıradan bağımsız; bu test SIRAYI sınıyor, etiketi değil.
-            from domain.lisans import PREMIUM_ISARET
             adlar = [w._tab_bar.tabText(i).replace("&&", "&")
-                     .removesuffix(f" {PREMIUM_ISARET}")
                      for i in range(w._tab_bar.count())]
             self.assertEqual(adlar[0], "Alacak & Borç")
             self.assertEqual(adlar[1], "Nakit Akış")
