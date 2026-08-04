@@ -43,17 +43,24 @@
       "url": "https://mikrapor.hidroteknik.com.tr/",
       "image": "https://mikrapor.hidroteknik.com.tr/og-mikrapor.png",
       "description": "Mikro ERP verisinden anlık bilanço, gelir tablosu, nakit akışı, alacak yaşlandırma ve yıllar arası mukayese üreten masaüstü finansal raporlama programı.",
-      "softwareVersion": "1.0.0",
+      "softwareVersion": "1.1.0",
       "publisher": { "@id": "https://mikrapor.hidroteknik.com.tr/#kurulus" },
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "TRY",
+        "description": "Uygulama ücretsiz kurulur; bir bölüm rapor tek seferlik Microsoft Store eklentisiyle açılır."
+      },
       "featureList": [
-        "Anlık bilanço",
-        "Gelir tablosu ve gelir/gider dağılımı",
-        "Nakit akışı",
-        "Alacak yaşlandırma",
-        "Nakit ve kârlılık mutabakatı",
-        "Nakit projeksiyonu",
-        "Yıllar arası dolar bazlı mukayese",
-        "Yapay zekâ yorumu"
+        "Alacak & Borç — vade yaşlandırma ve nakit döngüsü",
+        "Nakit Akış — gerçekleşen giriş/çıkış ve KDV nakit köprüsü",
+        "Nakit & Kârlılık — stok hareketinden fiili al-sat farkı",
+        "Mukayese & Oranlar — yıllar arası mukayese ve finansal oranlar",
+        "Tahmin & Projeksiyon — vade takvimine dayalı nakit projeksiyonu",
+        "Reel Değer — enflasyon ve vade karşısında bugünkü karşılık",
+        "Bilanço — TDHP formatında anlık bilanço",
+        "Gelir Tablosu — TDHP şelalesi ve hesap bazında dağılım",
+        "Yapay Zekâ Yorumu — kendi API anahtarınızla dönem yorumu"
       ]
     },
     {
@@ -91,6 +98,21 @@
           "@type": "Question",
           "name": "Hangi işletim sistemlerinde çalışıyor?",
           "acceptedAnswer": { "@type": "Answer", "text": "Windows 10 ve Windows 11. Microsoft Store sürümü çok yakında yayında olacak." }
+        },
+        {
+          "@type": "Question",
+          "name": "MikRapor ücretli mi?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Uygulama ücretsiz kurulur. Alacak & Borç, Nakit Akış, Bilanço ve Gelir Tablosu her zaman ücretsizdir. Nakit & Kârlılık, Mukayese & Oranlar, Tahmin & Projeksiyon, Reel Değer ve Yapay Zekâ Yorumu, Microsoft Store'dan alınan tek seferlik bir eklentiyle açılır. Abonelik yoktur." }
+        },
+        {
+          "@type": "Question",
+          "name": "Premium sekmeleri satın almadan görebilir miyim?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Sekmeye girebilir ve ne yaptığını okuyabilirsiniz; yalnız rapor getirilmez. Bulanık ya da örnek rakam göstermiyoruz — gerçek olmayan bir sayı göstermektense hiç göstermemeyi tercih ediyoruz." }
+        },
+        {
+          "@type": "Question",
+          "name": "Ödeme kime yapılıyor?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Microsoft'a. Tahsilat Microsoft Store üzerinden yapılır; kart bilgileriniz bize hiç ulaşmaz. Satın alma Store'un kendi ürün sayfasında tamamlanır." }
         }
       ]
     }
@@ -110,6 +132,7 @@
     </a>
     <nav aria-label="Ana menü">
       <a href="#neler-yapar">Neler yapar</a>
+      <a href="#fiyat">Ücretsiz &amp; premium</a>
       <a href="#gizlilik">Gizlilik</a>
       <a href="#nasil">Nasıl çalışır</a>
       <a href="#sss">S.S.S.</a>
@@ -127,13 +150,13 @@
     <p class="giris">
       MikRapor, Mikro ERP kayıtlarınızdan anlık bilanço, gelir tablosu, nakit akışı ve
       alacak yaşlandırması üretir. Rakamlar mali müşavirinizin raporunu beklemeden,
-      doğrudan kendi sunucunuzdaki veriden gelir.
+      doğrudan kendi sunucunuzdaki veriden gelir. Uygulama ücretsiz kurulur.
     </p>
     <div class="dugmeler">
       <a class="dugme" href="mailto:mikrapor@hidroteknik.com.tr?subject=MikRapor%20bilgi%20talebi">Bilgi alın</a>
       <a class="dugme dugme-sade" href="#neler-yapar">Neler yaptığını görün</a>
     </div>
-    <p class="kucuk-not">Windows 10 ve 11 · Türkçe · Mikro ERP REST arayüzü ile çalışır</p>
+    <p class="kucuk-not">Windows 10 ve 11 · Türkçe · Mikro ERP REST arayüzü ile çalışır · Ücretsiz kurulum</p>
   </div>
 </section>
 
@@ -144,21 +167,62 @@
     <p class="bolum-giris">
       Her sekme aynı kaynaktan — Mikro'daki kendi kayıtlarınızdan — beslenir.
       Ekranda gördüğünüz rakamı PDF ve CSV olarak dışarı alabilirsiniz.
+      <span class="isaret-not"><span class="isaret" aria-hidden="true"></span> işaretli sekmeler premium eklentiyle açılır.</span>
     </p>
     <ul class="kartlar">
+      <li><h3>Alacak &amp; Borç</h3><p>Müşteri ve satıcı bakiyeleri, vade yaşlandırması, gecikmiş alacaklar. Tahsilat ve ödeme süreniz gün olarak ölçülür.</p></li>
+      <li><h3>Nakit Akış</h3><p>Kasaya gerçekten giren ve çıkan para; muhasebeden okunur, çek ve EFT kaçmaz. Satır tıklanınca arkasındaki fişler açılır.</p></li>
+      <li class="premium"><h3>Nakit &amp; Kârlılık</h3><p>Stok hareketinden fiili al-sat farkı. Resmî kârla arasındaki köprü kalem kalem gösterilir.</p></li>
+      <li class="premium"><h3>Mukayese &amp; Oranlar</h3><p>Geçmiş yıllarla mukayese ve klasik finansal oranlar. Her sütun seçtiğiniz aralığın o yıla düşen kısmıdır.</p></li>
+      <li class="premium"><h3>Tahmin &amp; Projeksiyon</h3><p>Vade takvimine dayalı nakit projeksiyonu ve senaryo varsayımları.</p></li>
+      <li class="premium"><h3>Reel Değer</h3><p>Vade ve enflasyon karşısında alacağınızın bugünkü karşılığı; en çok eriten cariler sırayla.</p></li>
       <li><h3>Bilanço</h3><p>Seçtiğiniz tarih itibarıyla varlık ve borç durumu. Yıl sonu kapanış fişi hesaba katılır, bakiyeler sıfırlanmış görünmez.</p></li>
-      <li><h3>Gelir tablosu</h3><p>Tek düzen hesap planı şelalesi; yanında gelirin ve giderin hesap bazında dağılımı.</p></li>
-      <li><h3>Nakit &amp; kârlılık</h3><p>Stok hareketinden fiili al-sat farkı. Resmi kârla arasındaki köprü kalem kalem gösterilir.</p></li>
-      <li><h3>Alacak &amp; borç</h3><p>Müşteri ve satıcı bakiyeleri, vade yaşlandırması, gecikmiş alacaklar.</p></li>
-      <li><h3>Nakit akış</h3><p>Kasaya gerçekten giren ve çıkan para; muhasebeden okunur, çek ve EFT kaçmaz.</p></li>
-      <li><h3>Tahmin &amp; projeksiyon</h3><p>Vade takvimine dayalı nakit projeksiyonu ve senaryo varsayımları.</p></li>
-      <li><h3>Reel değer</h3><p>Enflasyon ve kur karşısında rakamların bugünkü karşılığı.</p></li>
-      <li><h3>Trend &amp; oranlar</h3><p>Aylık satış/alış trendi, klasik finansal oranlar ve yıllar arası dolar bazlı mukayese.</p></li>
-      <li><h3>Yapay zekâ yorumu</h3><p>İsteğe bağlı. Kendi API anahtarınızla, dönemin sade Türkçe yönetim yorumu.</p></li>
+      <li><h3>Gelir Tablosu</h3><p>Tek düzen hesap planı şelalesi; yanında gelirin ve giderin hesap bazında dağılımı.</p></li>
+      <li class="premium"><h3>Yapay Zekâ Yorumu</h3><p>İsteğe bağlı. Kendi API anahtarınızla, dönemin sade Türkçe yönetim yorumu.</p></li>
     </ul>
   </div>
 </section>
 
+
+<section id="fiyat" class="bolum bolum-acik">
+  <div class="kap dar">
+    <h2>Ücretsiz kurulur, ihtiyacınız olursa büyür</h2>
+    <p class="bolum-giris">
+      Bölünme basit: <strong>ne olduğunu</strong> gösteren raporlar ücretsiz,
+      <strong>ne yapmalıyım</strong> sorusuna cevap verenler premium.
+      Abonelik yok — tek seferlik.
+    </p>
+    <div class="paketler">
+      <div class="paket">
+        <h3>Ücretsiz</h3>
+        <ul>
+          <li>Alacak &amp; Borç</li>
+          <li>Nakit Akış</li>
+          <li>Bilanço</li>
+          <li>Gelir Tablosu</li>
+        </ul>
+        <p class="paket-not">Süre sınırı yok, kayıt gerekmez.</p>
+      </div>
+      <div class="paket paket-premium">
+        <h3>Premium</h3>
+        <ul>
+          <li>Nakit &amp; Kârlılık</li>
+          <li>Mukayese &amp; Oranlar</li>
+          <li>Tahmin &amp; Projeksiyon</li>
+          <li>Reel Değer</li>
+          <li>Yapay Zekâ Yorumu</li>
+        </ul>
+        <p class="paket-not">Microsoft Store'dan tek seferlik eklenti. Ödeme Microsoft'a
+          yapılır; kart bilgileriniz bize ulaşmaz.</p>
+      </div>
+    </div>
+    <p class="kucuk-not">
+      Bilanço ve Gelir Tablosu bilerek ücretsiz: onlar resmî tablolar ve mali müşaviriniz
+      zaten üretiyor. Premium sekmeler kilitliyken de girilebilir — ne kaçırdığınızı
+      okursunuz, ama uydurma rakam göstermeyiz.
+    </p>
+  </div>
+</section>
 
 <section id="gizlilik" class="bolum bolum-koyu">
   <div class="kap dar">
@@ -175,6 +239,7 @@
       neyin gönderildiği ekranda açıkça yazılıdır. Onayı kaldırdığınızda hiçbir veri
       dışarı çıkmaz.
     </p>
+    <p><a class="dugme dugme-sade" href="/gizlilik-politikasi">Gizlilik Politikası</a></p>
   </div>
 </section>
 
@@ -207,6 +272,21 @@
 
       <dt>Hangi işletim sistemlerinde çalışıyor?</dt>
       <dd>Windows 10 ve Windows 11. Microsoft Store sürümü çok yakında yayında olacak.</dd>
+
+      <dt>MikRapor ücretli mi?</dt>
+      <dd>Uygulama ücretsiz kurulur. Alacak &amp; Borç, Nakit Akış, Bilanço ve Gelir Tablosu
+        her zaman ücretsizdir. Nakit &amp; Kârlılık, Mukayese &amp; Oranlar, Tahmin &amp; Projeksiyon,
+        Reel Değer ve Yapay Zekâ Yorumu, Microsoft Store'dan alınan tek seferlik bir
+        eklentiyle açılır. Abonelik yoktur.</dd>
+
+      <dt>Premium sekmeleri satın almadan görebilir miyim?</dt>
+      <dd>Sekmeye girebilir ve ne yaptığını okuyabilirsiniz; yalnız rapor getirilmez.
+        Bulanık ya da örnek rakam göstermiyoruz — gerçek olmayan bir sayı göstermektense
+        hiç göstermemeyi tercih ediyoruz.</dd>
+
+      <dt>Ödeme kime yapılıyor?</dt>
+      <dd>Microsoft'a. Tahsilat Microsoft Store üzerinden yapılır; kart bilgileriniz bize
+        hiç ulaşmaz. Satın alma Store'un kendi ürün sayfasında tamamlanır.</dd>
     </dl>
   </div>
 </section>
@@ -225,10 +305,10 @@
   <div class="kap alt-ic">
     <div>
       <p class="alt-marka">MikRapor</p>
-      <p>Mikro ERP finansal raporlama · Sürüm 1.0.0</p>
+      <p>Mikro ERP finansal raporlama · Sürüm 1.1.0</p>
     </div>
     <div>
-      <p><a href="mailto:mikrapor@hidroteknik.com.tr">mikrapor@hidroteknik.com.tr</a></p>
+      <p><a href="mailto:mikrapor@hidroteknik.com.tr">mikrapor@hidroteknik.com.tr</a> · <a href="/gizlilik-politikasi">Gizlilik Politikası</a></p>
       <p class="kunye">Proje sorumlusu: Serkan Yavuz Mercan · Geliştirme: Alper Alyaz, Berra Kaya</p>
       <p class="telif">© 2026 Hidroteknik A.Ş. Tüm hakları saklıdır.</p>
     </div>

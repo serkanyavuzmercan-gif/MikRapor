@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gizlilik Politikası — MikRapor</title>
+<meta name="description" content="MikRapor gizlilik politikası: veriniz bilgisayarınızdan çıkmaz. Ne topluyoruz, nerede saklanıyor, tek dış çıkış hangisi.">
+<link rel="canonical" href="https://mikrapor.hidroteknik.com.tr/gizlilik-politikasi">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#0f766e">
+<link rel="icon" href="/logo.png" type="image/png">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<a class="atla" href="#icerik">İçeriğe atla</a>
+
+<header class="ust">
+  <div class="kap ust-ic">
+    <a class="marka" href="/">
+      <img src="/logo.png" width="36" height="36" alt="MikRapor logosu" decoding="async">
+      <span>MikRapor</span>
+    </a>
+    <nav aria-label="Ana menü">
+      <a href="/#neler-yapar">Neler yapar</a>
+      <a href="/#fiyat">Ücretsiz &amp; premium</a>
+      <a href="/#sss">S.S.S.</a>
+      <a class="dugme-kucuk" href="mailto:mikrapor@hidroteknik.com.tr">İletişim</a>
+    </nav>
+  </div>
+</header>
+
+<main id="icerik" class="metin">
+<div class="kap dar">
+
+<h1>Gizlilik Politikası</h1>
+<p class="tarih">Son güncelleme: 4 Ağustos 2026</p>
+
+<h2>Özet</h2>
+<p>
+  MikRapor, kendi bilgisayarınızda çalışan bir masaüstü uygulamasıdır. Mali verileriniz
+  kendi Mikro ERP sisteminizden okunur ve bilgisayarınızda kalır. MikRapor'un bir sunucusu
+  yoktur; verilerinizi toplamıyor, saklamıyor, göremiyoruz.
+</p>
+<p>
+  Verinin bilgisayarınızdan çıktığı tek yer, sizin açıkça başlattığınız
+  «Yapay Zekâ Yorumu» işlemidir.
+</p>
+
+<h2>1. Topladığımız veriler</h2>
+<p>Hiçbiri. MikRapor:</p>
+<ul>
+  <li>hesap açmanızı istemez, kayıt tutmaz;</li>
+  <li>kullanım istatistiği, telemetri, çökme raporu ya da analitik göndermez;</li>
+  <li>reklam ağı veya izleyici içermez.</li>
+</ul>
+
+<h2>2. Bilgisayarınızda saklananlar</h2>
+<p>
+  Ayarlarınız yalnız kendi kullanıcı klasörünüzde tutulur:
+  <code>%APPDATA%\MikRapor\config.json</code>
+</p>
+<p>
+  İçinde Mikro sunucu adresi, firma kodu, kullanıcı kodu, rapor tercihleri ve —
+  girdiyseniz — yapay zekâ API anahtarınız bulunur.
+</p>
+<p>
+  Mikro şifreniz ve API anahtarınız düz metin olarak yazılmaz; Windows'un DPAPI
+  şifrelemesiyle korunur, yalnız aynı Windows kullanıcısı çözebilir. Dosyayı istediğiniz
+  zaman silebilirsiniz; uygulama bilgileri yeniden sorar.
+</p>
+<p>Ürettiğiniz PDF ve CSV raporları yalnız sizin seçtiğiniz klasöre yazılır.</p>
+
+<h2>3. Mali verileriniz</h2>
+<p>
+  MikRapor kendi ağınızdaki Mikro ERP sistemine bağlanır ve raporu bilgisayarınızda
+  hesaplar. Bu veri hiçbir aşamada bize ya da üçüncü bir tarafa iletilmez.
+</p>
+
+<h2>4. Yapay Zekâ Yorumu — tek dış çıkış</h2>
+<p>
+  Bu sekme, seçtiğiniz dönemin rapor içeriğini bir yapay zekâ sağlayıcısına gönderip
+  yorum ister. <strong>İki koşul birlikte sağlanmadan hiçbir ağ çağrısı yapılmaz:</strong>
+</p>
+<ol>
+  <li>kendi API anahtarınızı girmiş olmanız,</li>
+  <li>ekrandaki onay kutusunu işaretlemeniz.</li>
+</ol>
+<p>
+  <strong>Gönderilen veri</strong>, ekranda gördüğünüz rapor içeriğidir — tutarlar,
+  oranlar ve cari ünvanları dâhil. Ekranda olmayan bir şey gönderilmez.
+</p>
+<p>
+  <strong>Nereye gider:</strong> sizin seçtiğiniz sağlayıcıya — Anthropic, OpenAI, Google,
+  DeepSeek, xAI ya da girdiğiniz özel adres. İstek doğrudan sizin bilgisayarınızdan o
+  sağlayıcıya gider; arada MikRapor'a ait bir sunucu yoktur. Verinin sağlayıcıda nasıl
+  işlendiği o sağlayıcının gizlilik politikasına tabidir ve anahtar sizin olduğu için
+  sizin hesabınızın koşulları geçerlidir.
+</p>
+<p>
+  Onay kutusunu kaldırdığınızda ya da anahtarı sildiğinizde bu yol tamamen kapanır;
+  uygulamanın geri kalanı etkilenmez.
+</p>
+
+<h2>5. Lisans doğrulaması</h2>
+<p>
+  Premium eklentisine sahip olup olmadığınız, Windows'un kendi Microsoft Store servisine
+  sorularak öğrenilir. Bu sorguda hiçbir mali veriniz yer almaz, yalnız lisans bilgisi
+  okunur. Microsoft hesabınız ve satın alma işlemleriniz Microsoft'un gizlilik koşullarına
+  tabidir.
+</p>
+
+<h2>6. Kişisel veriler (KVKK)</h2>
+<p>
+  Mikro veritabanınızdaki cari kayıtlar kişisel veri içerebilir (örneğin şahıs firmaları).
+  Bu verilerin veri sorumlusu, veritabanının sahibi olan firmanızdır. MikRapor bu verileri
+  bize aktarmadığı için veri işleyen sıfatını taşımayız. Tek istisna 4. maddede tarif
+  edilen ve sizin başlattığınız gönderimdir; orada da alıcı, doğrudan sözleşme kurduğunuz
+  yapay zekâ sağlayıcısıdır.
+</p>
+
+<h2>7. Çocuklar</h2>
+<p>
+  MikRapor bir işletme raporlama aracıdır; çocuklara yönelik değildir ve yaş verisi
+  toplamaz.
+</p>
+
+<h2>8. Değişiklikler</h2>
+<p>
+  Bu politika değişirse güncel metin bu sayfada ve uygulamanın Microsoft Store sayfasında
+  yayımlanır, yukarıdaki tarih güncellenir.
+</p>
+
+<h2>9. İletişim</h2>
+<p>
+  Hidroteknik A.Ş.<br>
+  E-posta: <a href="mailto:mikrapor@hidroteknik.com.tr">mikrapor@hidroteknik.com.tr</a>
+</p>
+
+</div>
+</main>
+
+<footer class="alt">
+  <div class="kap alt-ic">
+    <div>
+      <p class="alt-marka">MikRapor</p>
+      <p>Mikro ERP finansal raporlama · Sürüm 1.1.0</p>
+    </div>
+    <div>
+      <p><a href="mailto:mikrapor@hidroteknik.com.tr">mikrapor@hidroteknik.com.tr</a>
+         · <a href="/">Ana sayfa</a></p>
+      <p class="telif">© 2026 Hidroteknik A.Ş. Tüm hakları saklıdır.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -206,3 +206,39 @@ a { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
 }
+
+/* --- premium işareti ve paket kutuları ------------------------------------ */
+/* Nokta uygulamadaki premium işaretiyle aynı amber; sekme çubuğunda da metne
+   eklenmez, çizilir. Sayfada da metne yazmıyoruz ki sekme adı tek kalsın. */
+.isaret-not { display: block; margin-top: 10px; font-size: 14.5px; color: var(--muted); }
+.isaret {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: #c9a227; vertical-align: 1px;
+}
+.kartlar li.premium { position: relative; }
+.kartlar li.premium::after {
+  content: ""; position: absolute; top: 14px; right: 14px;
+  width: 8px; height: 8px; border-radius: 50%; background: #c9a227;
+}
+
+.paketler { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.paket {
+  background: #fff; border: 1px solid var(--kenar); border-radius: 12px; padding: 22px 24px;
+}
+.paket-premium { border-color: #c9a227; box-shadow: 0 1px 0 #c9a227 inset; }
+.paket h3 { margin: 0 0 12px; font-size: 18px; font-weight: 800; color: var(--accent); }
+.paket-premium h3 { color: #8a6d15; }
+.paket ul { margin: 0; padding-left: 20px; }
+.paket li { font-size: 15.5px; color: var(--ink-soft); margin-bottom: 4px; }
+.paket-not { margin: 14px 0 0; font-size: 14px; color: var(--muted); }
+
+/* --- hukuki metin sayfası -------------------------------------------------- */
+.metin { padding: 56px 0 76px; }
+.metin h1 { font-size: clamp(26px, 4vw, 34px); margin: 0 0 6px; color: var(--ink); }
+.metin .tarih { margin: 0 0 34px; color: var(--muted); font-size: 15px; }
+.metin h2 { font-size: 20px; margin: 34px 0 10px; color: var(--accent); }
+.metin p, .metin li { color: var(--mid); font-size: 16px; }
+.metin code {
+  background: var(--panel); border: 1px solid var(--kenar); border-radius: 5px;
+  padding: 1px 6px; font-size: 14.5px; color: var(--ink-soft);
+}
