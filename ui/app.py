@@ -217,6 +217,12 @@ class HeaderTabBar(QTabBar):
         super().showEvent(event)
         self._kapsayiciyi_izle()
         self._uyarla()
+        # ERTELENMİŞ İKİNCİ ÖLÇÜM. Gösterim anında düzen henüz oturmamış olabiliyor:
+        # pencere 960px'e küçültülmüş olsa bile kapsayıcı hâlâ eski (geniş) boyutunu
+        # bildiriyor, geniş ölçek seçiliyor ve sonrasında yeniden ölçüm tetiklenmezse
+        # sekmeler taşıyordu. Windows'ta her koşuda AYNI sayı çıkması bunun yarış
+        # değil, sıralama sorunu olduğunu gösterdi.
+        QTimer.singleShot(0, self._uyarla)
 
     def _kapsayiciyi_izle(self) -> None:
         """
