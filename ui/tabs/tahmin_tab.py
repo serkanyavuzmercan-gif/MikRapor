@@ -91,6 +91,9 @@ _KART_AYLIK_FAIZ_VARSAYILAN = 4.0
 # sıfır pay. Biraz daha geniş çizen bir sistem fontunda yatayda kırpılırdı.
 _PANEL_GENISLIK = 256
 _RAIL_GENISLIK = 36
+# Alanın istediği genişliğin üstüne etiket/kenar payı — panel gövdesi
+# alanlardan biraz geniş olmalı ki rakamlar kenara yapışmasın.
+_ALAN_KENAR_PAYI = 34
 
 
 def _kaydirma_genisligi() -> int:
@@ -465,10 +468,23 @@ class TahminTab(RaporTab):
 class _SenaryoSolPanel(QFrame):
     """Sol rail + senaryo gövdesi. Varsayılan açık; dar navy–teal panel."""
 
+    @staticmethod
+    def _alanlarin_istedigi(alanlar: tuple[tuple[str, QWidget], ...]) -> int:
+        """
+        Alanların yatayda kırpılmadan sığması için gereken genişlik — ÖLÇÜLÜR.
+
+        Sabit piksel geliştirme makinesinin fontuna göre kalıyordu: 256px Linux'ta
+        yeterken Windows'ta alanlar 288px istiyor ve rakamlar kırpılıyordu. Etiket
+        sütunu ve kenar boşlukları için sabit bir pay eklenir.
+        """
+        en = max((w.sizeHint().width() for _ad, w in alanlar), default=0)
+        return en + _ALAN_KENAR_PAYI
+
     def __init__(self, alanlar: tuple[tuple[str, QWidget], ...]) -> None:
         super().__init__()
         self.setObjectName("tahminSolHost")
         self._acik = True
+        self._istenen_en = self._alanlarin_istedigi(alanlar)
 
         host = QHBoxLayout(self)
         host.setContentsMargins(0, 0, 0, 0)
@@ -489,7 +505,11 @@ class _SenaryoSolPanel(QFrame):
         # Dikey kaydırma çubuğu alanlardan yatayda yer çalar; genişliği platforma
         # ve temaya göre değişir, o yüzden VARSAYILMAZ, Qt'den ölçülüp panele
         # eklenir (kural 6). Yoksa çubuk çıktığı an rakamlar yatayda kırpılırdı.
-        self._govde.setFixedWidth(_PANEL_GENISLIK + _kaydirma_genisligi())
+        # Panel genişliği ALANLARIN KENDİ İSTEDİĞİNDEN türer, sabit yazılmaz: 256px
+        # geliştirme makinesinde (Linux) yeterken Windows'ta alanlar 288px istiyor ve
+        # rakamlar yatayda kırpılıyordu. `_PANEL_GENISLIK` yalnız taban.
+        self._govde.setFixedWidth(
+            max(_PANEL_GENISLIK, self._istenen_en) + _kaydirma_genisligi())
         self._govde.setVisible(True)
         gl = QVBoxLayout(self._govde)
         gl.setContentsMargins(0, 0, 0, 0)
