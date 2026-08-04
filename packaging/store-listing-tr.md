@@ -26,6 +26,34 @@ değiştirir — birincil adı değiştirmeyin.
 
 ---
 
+## ⚠ ÖNCE ŞUNU KARARA BAĞLA: premium bölünmesi değişiyor
+
+Aşağıdaki açıklamada «ÜCRETSİZ NE VAR, EKLENTİ NE AÇIYOR» paragrafı **bugünkü**
+bölünmeyi anlatıyor (beş sekme premium). Paralel bir çalışmada bölünme **yalnız Yapay
+Zekâ Yorumu + PDF/CSV çıktısı** premium olacak şekilde değişiyor.
+
+**Mağaza metni uygulamanın davranışını yanlış anlatamaz** — hem sertifikasyonda
+gerekçe olur hem de ödeyen müşteri beklediğini bulamaz. Hangisi yayına girecekse o
+paragraf kullanılır:
+
+**A) Bugünkü bölünme** (açıklamanın içindeki hâli — beş sekme premium)
+
+**B) Yeni bölünme** — değişiklik indiğinde o paragrafın yerine bunu koy:
+
+```
+ÜCRETSİZ NE VAR, EKLENTİ NE AÇIYOR
+
+Uygulama ücretsiz kurulur ve sekiz raporun tamamı ücretsiz açılır: Alacak & Borç, Nakit Akış, Nakit & Kârlılık, Mukayese & Oranlar, Tahmin & Projeksiyon, Reel Değer, Bilanço ve Gelir Tablosu. Süre sınırı yoktur, rapor sayısı sınırı yoktur, veri kısıtlanmaz.
+
+Tek seferlik eklenti iki şeyi açar: Yapay Zekâ Yorumu sekmesi ve raporların kurumsal PDF / Excel uyumlu CSV olarak dışa aktarımı. Abonelik değildir.
+```
+
+Bu değişirse **Product features listesindeki** «Her rapor kurumsal PDF ve Excel uyumlu
+CSV olarak dışa aktarılır» maddesi de şöyle olmalı: *«Kurumsal PDF ve Excel uyumlu CSV
+dışa aktarım (eklenti ile)»* — yoksa ücretsiz sanılır.
+
+---
+
 ## Description *(zorunlu · en fazla 10.000 karakter)*
 
 ```
@@ -210,18 +238,33 @@ En az bir masaüstü ekran görüntüsü zorunlu (form kırmızı uyarı veriyor
 | dosya | 50 MB'den küçük, en çok 10 adet |
 | önerilen | cihaz ailesi başına en az 4 |
 
-Depodaki tek ekran görüntüsü `web/ekran-gelir-tablosu.png` **760 × 483** — sınırın
-altında, yüklenmez. Yenileri üretilecek.
+Depodaki eski ekran görüntüsü `web/ekran-gelir-tablosu.png` **760 × 483** — sınırın
+altında, yüklenmez.
 
-Rakamlar **kurgu demo verisi** olmalı, firma adı `ÖRNEK SANAYİ VE TİCARET A.Ş.`
-(`web/README.md`de kurulan usul). Gerçek cari ünvanı ya da gerçek ciro mağaza sayfasına
-konmaz.
+**Kareler artık betikle üretiliyor** (Mikro sunucusu gerekmez):
 
-Önerilen dört kare, satın alma kararını veren sırayla:
-1. Alacak & Borç (ücretsiz, günlük açılan sekme)
-2. Nakit Akış (kategori kırılımı + aylık trend)
-3. Bilanço (resmî tablo, TDHP)
-4. Mukayese & Oranlar (yıllar arası tablo)
+```
+python -m demo.ekran_goruntusu ekran-goruntuleri
+```
+
+Sekiz kare, 1600 × 1000, kurgu firma `ÖRNEK SANAYİ VE TİCARET A.Ş.` — sıra satın alma
+kararını veren sekmelerle başlar: Alacak & Borç → Nakit Akış → Bilanço → Mukayese &
+Oranlar → Nakit & Kârlılık → Gelir Tablosu → Tahmin → Reel Değer. İlk dördü yüklemek
+yeter; Store cihaz ailesi başına en az 4 öneriyor, en çok 10 kabul ediyor.
+
+Gerçek cari ünvanı ya da gerçek ciro mağaza sayfasına **konmaz**; defter tamamen
+kurgudur (`demo/defter.py`).
+
+Uygulamayı elle gezip kendi karelerini almak istersen:
+
+```
+python -m demo.calistir                        # 1600×1000
+MIKRAPOR_DEMO_BOYUT=1920x1080 python -m demo.calistir
+```
+
+Demo modunda premium kilitleri açıktır; uygulamanın kendi öntanımlı penceresi
+(1220 × 840) Store asgarisinin **altında** olduğu için elle çekerken pencereyi
+küçültme.
 
 ---
 
