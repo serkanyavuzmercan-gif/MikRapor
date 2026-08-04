@@ -24,7 +24,7 @@ import logging
 import sys
 
 from domain.lisans import LisansDurumu
-from infra.surum import MAGAZA_URL, PREMIUM_ADDON_STORE_ID
+from infra.surum import PREMIUM_ADDON_STORE_ID, satin_alma_url
 
 _log = logging.getLogger(__name__)
 
@@ -86,11 +86,11 @@ async def _lisans_getir(magaza):
 
 def magaza_sayfasi_ac() -> bool:
     """
-    Store'daki ürün sayfasını açar — satın alma orada tamamlanır.
+    Satın alma sayfasını açar — eklenti kimliği biliniyorsa doğrudan EKLENTİNİN sayfası.
 
     Uygulama içi ödeme penceresi bilerek yok (modül docstring'i). Dönüş: açılabildi mi.
     """
     from PyQt6.QtCore import QUrl
     from PyQt6.QtGui import QDesktopServices
 
-    return bool(QDesktopServices.openUrl(QUrl(MAGAZA_URL)))
+    return bool(QDesktopServices.openUrl(QUrl(satin_alma_url())))

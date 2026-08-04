@@ -26,10 +26,30 @@ GELISTIRICILER = ("Alper Alyaz", "Berra Kaya")
 MAGAZA_STORE_ID = "9NB421K1Z0GB"
 MAGAZA_URL = f"ms-windows-store://pdp/?productid={MAGAZA_STORE_ID}"
 
-# Premium eklentisinin Partner Center'daki kimliği. HENÜZ TANIMLANMADI: boş kaldığı
-# sürece lisans okuyucu «etkin tek eklenti premium'dur» varsayımıyla çalışır, satın
-# alma yine Store sayfasına yönlendirir. Eklenti oluşturulunca buraya yazılacak.
+# Premium eklentisinin Partner Center'daki kimliği. HENÜZ TANIMLANMADI.
+#
+# NEDEN ÖNEMLİ: eklentinin Store'da KENDİ ürün sayfası var ve satın alma düğmesi
+# orada. Uygulamanın sayfasına gönderirsek kullanıcı «Yüklü / Aç» görür ve premium'u
+# nereden alacağını anlamaz — satın alma yolu fiilen kapalı olur.
 PREMIUM_ADDON_STORE_ID = ""
+
+
+def satin_alma_url() -> str:
+    """
+    «Premium'a geç» düğmesinin açacağı Store sayfası.
+
+    Eklenti kimliği biliniyorsa doğrudan EKLENTİNİN sayfası (fiyat + «Satın Al»
+    düğmesi orada). Bilinmiyorsa uygulamanın sayfasına düşülür — kullanıcı en azından
+    doğru listelemede olur, ama satın alma düğmesini kendi bulmak zorunda kalır.
+    """
+    if PREMIUM_ADDON_STORE_ID:
+        return f"ms-windows-store://pdp/?productid={PREMIUM_ADDON_STORE_ID}"
+    return MAGAZA_URL
+
+
+def eklenti_tanimli() -> bool:
+    """Eklenti kimliği yazıldı mı? Yazılmadan satın alma akışı EKSİKTİR."""
+    return bool(PREMIUM_ADDON_STORE_ID)
 
 TANITIM = (
     "MikRapor, Mikro ERP verinizi mali müşavir raporu beklemeden okunur hâle getirir. "

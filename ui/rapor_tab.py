@@ -155,10 +155,17 @@ class RaporTab(QWidget):
         return sekme_kilitli(self.BASLIK, premium_durumu().acik)
 
     def _kilit_aciklamasi(self) -> str:
-        """Sekmenin kendi ACIKLAMA'sı + neden kilitli olduğu. İkinci metin YAZILMAZ."""
+        """
+        Sekmenin kendi ACIKLAMA'sı + neden kilitli olduğu. İkinci metin YAZILMAZ.
+
+        Düğmenin NEREYE götürdüğü de yazar: kullanıcı Microsoft Store'a atlayınca ne
+        arayacağını bilmeli, yoksa uygulamanın listelemesinde kaybolur.
+        """
         return (f"{self.ACIKLAMA}<br><br>"
-                "<b>Bu sekme Premium'a dâhildir.</b> Tek seferlik satın alma ile "
-                "bu sekme ve diğer premium raporlar kalıcı olarak açılır.")
+                "<b>Bu sekme Premium'a dâhildir.</b> Tek seferlik satın alma ile bu "
+                "sekme ve diğer premium raporlar kalıcı olarak açılır. Düğme "
+                "Microsoft Store'daki satın alma sayfasını açar; ödeme tamamlanınca "
+                "MikRapor'a dönmeniz yeterli.")
 
     def _on_premium(self) -> None:
         """Store ürün sayfasını açar; satın alma orada tamamlanır."""

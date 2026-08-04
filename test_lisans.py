@@ -143,6 +143,24 @@ class TestStoreKoprusu(unittest.TestCase):
         self.assertIn(MAGAZA_STORE_ID, MAGAZA_URL)
         self.assertTrue(MAGAZA_URL.startswith("ms-windows-store://"))
 
+    def test_satin_alma_eklentinin_sayfasina_gider(self) -> None:
+        """
+        Uygulamanın sayfasında «Yüklü / Aç» yazar — satın alma düğmesi EKLENTİNİN
+        kendi sayfasındadır. Kimlik yazılmadan kullanıcı premium'u nereden alacağını
+        bulamaz; kimlik yazılınca link oraya gitmek ZORUNDA.
+        """
+        from unittest.mock import patch
+
+        import infra.surum as surum
+
+        with patch.object(surum, "PREMIUM_ADDON_STORE_ID", "9XYZTESTADDON"):
+            self.assertIn("9XYZTESTADDON", surum.satin_alma_url())
+            self.assertTrue(surum.eklenti_tanimli())
+        # Kimlik yokken uygulamanın sayfasına düşülür (eksik ama kırık değil).
+        with patch.object(surum, "PREMIUM_ADDON_STORE_ID", ""):
+            self.assertEqual(surum.satin_alma_url(), surum.MAGAZA_URL)
+            self.assertFalse(surum.eklenti_tanimli())
+
 
 try:
     from PyQt6.QtWidgets import QApplication
