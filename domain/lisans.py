@@ -6,15 +6,25 @@ bir eklentiyle («add-on») açılır. Bu modülde ağ çağrısı ve Windows AP
 lisansı okumak `infra/store_lisans.py`nin işi, burası yalnız «ne yapmalı» sorusunu
 cevaplar. Böylece kural Windows olmadan da test edilebilir.
 
-BÖLÜNMENİN MANTIĞI — «ne oldu» ücretsiz, «ne yapmalıyım» ücretli:
+PREMIUM OLAN ŞEY «ÜRETİLEN ÇIKTI»DIR, sekmeler değil.
 
-    ücretsiz : Alacak & Borç · Nakit Akış · Bilanço · Gelir Tablosu
-    premium  : Nakit & Kârlılık · Mukayese & Oranlar · Tahmin & Projeksiyon ·
-               Reel Değer · Yapay Zekâ Yorumu
+    ücretsiz : dokuz raporun tamamı, ekranda, eksiksiz
+    premium  : PDF / CSV dışa aktarma  +  Yapay Zekâ Yorumu
 
-Bilanço ve Gelir Tablosu bilerek ÜCRETSİZ: onlar resmî tablolar ve mali müşavir zaten
-her ay üretiyor. Komodite olan kısma para istemek ürünü ucuzlatır. Alacak & Borç da
-ücretsiz çünkü günlük açılan sekme o — alışkanlık orada kuruluyor.
+Önce beş sekme kilitleniyordu. Ekranda dokuz sekmenin beşinde amber nokta vardı ve
+ürün «yarısı kilitli» görünüyordu — kullanıcının ilk tepkisi de bu oldu. Oysa değer
+anı raporu OKUMAK değil, onu müşavire göndermek ya da saklamak: ödeme isteği tam
+oraya konunca kimseden bir şey alınmıyor ve kural tek cümleyle anlatılıyor —
+«ekranda her şey ücretsiz, dışarı almak premium».
+
+Kilit de tek yere iniyor (dışa aktarma kapısı), dokuz sekmeye dağılmıyor.
+
+VERİLMİŞ SEKME GERİ ALINMAZ. Yeni bir sekmeyi premium doğurtmak sorunsuzdur; bugün
+ücretsiz kurup Nakit Akış'ı kullanan müşteriden yarın onu geri almak, hiç vermemekten
+kötü karşılanır. Bu yüzden liste dar başlıyor — genişletmek kolay, daraltmak değil.
+
+Yapay Zekâ'nın premium olması ayrıca kendi içinde tutarlı: tek dış çıkış o, tek
+değişken maliyet orada.
 
 ŞÜPHEDE KALINCA AÇ. Lisans okunamadığında kilit BASILMAZ; en son bilinen durum
 kullanılır. Gerekçe ölçülü: bir hata yüzünden ödemiş müşteriyi kilitlemenin bedeli,
@@ -35,24 +45,36 @@ from enum import StrEnum
 UCRETSIZ_SEKMELER = frozenset({
     "Alacak & Borç",
     "Nakit Akış",
+    "Nakit & Kârlılık",
+    "Mukayese & Oranlar",
+    "Tahmin & Projeksiyon",
+    "Reel Değer",
     "Bilanço",
     "Gelir Tablosu",
 })
 
 PREMIUM_SEKMELER = frozenset({
-    "Nakit & Kârlılık",
-    "Mukayese & Oranlar",
-    "Tahmin & Projeksiyon",
-    "Reel Değer",
     "Yapay Zekâ Yorumu",
 })
 
-# Premium işareti sekme METNİNE EKLENMEZ, çizilir (ui/app.py: HeaderTabBar).
+
+def disa_aktarim_kilitli(premium_acik_mi: bool) -> bool:
+    """
+    PDF/CSV dışa aktarma premium mu?
+
+    Veri Sağlığı penceresi BUNA TABİ DEĞİL: o bir rapor değil, kurulumun hâlini
+    gösteren bir kontrol. Bozuk kaydı düzeltmeyi sağlayan çıktıyı kilitlemek,
+    programın doğru çalışmasını parayla şarta bağlamak olurdu.
+    """
+    return not premium_acik_mi
+
+# SEKME ÇUBUĞUNDA PREMIUM İŞARETİ YOK.
 #
-# Metne « ✦» eklemek denendi ve 960px pencerede sekme çubuğunu taşırdı: dokuz sekmenin
-# beşi ~19px genişleyince toplam 1033px'e çıkıyor, kullanılabilir alan 935px — son
-# sekme görünmez oluyordu (`test_ui_smoke.test_tum_sekmeler_gorunur` yakaladı).
-# Çizilen nokta mevcut dolgunun içine düşer, layout'a hiç genişlik eklemez.
+# Önce metne « ✦» eklendi: 960px pencerede çubuğu taşırdı, son sekme görünmez oldu.
+# Sonra çizilen nokta denendi — genişlik eklemiyordu ama dokuz sekmenin beşinde amber
+# nokta, ekranı «yarısı kilitli» gibi gösteriyordu. Tek premium sekme kalınca işaretin
+# kendisi de gereksizleşti: kilit zaten sekmenin İÇİNDE, kendi diliyle anlatılıyor.
+# Bir işaret ancak kullanıcının yapabileceği bir şeye işaret ediyorsa değer taşır.
 
 
 class LisansDurumu(StrEnum):

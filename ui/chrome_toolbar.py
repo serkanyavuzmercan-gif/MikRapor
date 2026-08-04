@@ -33,6 +33,10 @@ _DURUM_RENK = {
 }
 _KISA_MAX = 44
 _EXPORT_PASIF_TIP = "Önce «Raporu Getir» ile raporu yükleyin"
+# Kilitliyken düğme PASİF YAPILMAZ, tıklanabilir kalır: kullanıcı ne kaçırdığını
+# görsün ve tek tıkla satın almaya gidebilsin. Sebep balonda yazar — tıklayınca
+# çıkan pencere de aynı şeyi söylüyor ama düğmenin üstünde okumak daha ucuz.
+_EXPORT_PREMIUM_TIP = "PDF ve CSV dışa aktarma premium — ekrandaki rapor ücretsiz"
 
 
 def _kisalt(metin: str, maks: int = _KISA_MAX) -> str:
@@ -191,7 +195,7 @@ class ChromeToolbar(QFrame):
     def set_pdf_aktif(self, aktif: bool) -> None:
         self._pdf_hazir = aktif
         self._btn_pdf.setProperty("hazir", "true" if aktif else "false")
-        self._pdf_tip.set_text("PDF olarak kaydet" if aktif else _EXPORT_PASIF_TIP)
+        self._pdf_tip.set_text(self._export_tip("PDF olarak kaydet", aktif))
         self._btn_pdf.setCursor(
             Qt.CursorShape.PointingHandCursor if aktif else Qt.CursorShape.ForbiddenCursor)
         self._btn_pdf.style().unpolish(self._btn_pdf)
@@ -200,11 +204,23 @@ class ChromeToolbar(QFrame):
     def set_csv_aktif(self, aktif: bool) -> None:
         self._csv_hazir = aktif
         self._btn_csv.setProperty("hazir", "true" if aktif else "false")
-        self._csv_tip.set_text("CSV olarak kaydet" if aktif else _EXPORT_PASIF_TIP)
+        self._csv_tip.set_text(self._export_tip("CSV olarak kaydet", aktif))
         self._btn_csv.setCursor(
             Qt.CursorShape.PointingHandCursor if aktif else Qt.CursorShape.ForbiddenCursor)
         self._btn_csv.style().unpolish(self._btn_csv)
         self._btn_csv.style().polish(self._btn_csv)
+
+    @staticmethod
+    def _export_tip(hazir_metin: str, aktif: bool) -> str:
+        """Balon metni: rapor yüklü değilse o, premium kilitliyse o, yoksa normal."""
+        from domain.lisans import disa_aktarim_kilitli
+        from ui.premium import premium_durumu
+
+        if not aktif:
+            return _EXPORT_PASIF_TIP
+        if disa_aktarim_kilitli(premium_durumu().acik):
+            return _EXPORT_PREMIUM_TIP
+        return hazir_metin
 
     def _pdf_tikla(self) -> None:
         if not self._pdf_hazir:

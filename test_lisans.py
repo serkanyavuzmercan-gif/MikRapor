@@ -102,8 +102,8 @@ class TestKilitVeEtiket(unittest.TestCase):
 
     def test_isaret_satin_alinca_kalkar(self) -> None:
         """Ödemiş kullanıcıya hâlâ kilit rozeti göstermek kabul edilemez."""
-        self.assertTrue(premium_isaretli("Reel Değer", premium_acik_mi=False))
-        self.assertFalse(premium_isaretli("Reel Değer", premium_acik_mi=True))
+        self.assertTrue(premium_isaretli("Yapay Zekâ Yorumu", premium_acik_mi=False))
+        self.assertFalse(premium_isaretli("Yapay Zekâ Yorumu", premium_acik_mi=True))
 
     def test_ucretsiz_sekmede_isaret_yok(self) -> None:
         self.assertFalse(premium_isaretli("Nakit Akış", premium_acik_mi=False))
@@ -210,36 +210,38 @@ class TestKilitliSekmeEkrani(unittest.TestCase):
 
     def test_kilitli_sekmede_cta_premium(self) -> None:
         from ui.premium import PREMIUM_CTA
-        from ui.tabs.reel_deger_tab import ReelDegerTab
+        from ui.tabs.ai_yorum_tab import AiYorumTab
 
-        sekme = self._sekme(ReelDegerTab, lisansli=False)
+        sekme = self._sekme(AiYorumTab, lisansli=False)
         self.assertTrue(sekme.kilitli())
         self.assertEqual(self._cta(sekme), PREMIUM_CTA)
 
     def test_lisansliyken_normal_cta(self) -> None:
-        from ui.tabs.reel_deger_tab import ReelDegerTab
+        from ui.tabs.ai_yorum_tab import AiYorumTab
 
-        sekme = self._sekme(ReelDegerTab, lisansli=True)
+        sekme = self._sekme(AiYorumTab, lisansli=True)
         self.assertFalse(sekme.kilitli())
         self.assertNotEqual(self._cta(sekme), "")
         self.assertNotIn("Premium", self._cta(sekme))
 
     def test_ucretsiz_sekme_hic_kilitlenmez(self) -> None:
+        """Sekiz rapor lisanssız da tam çalışır — ekranda hiçbir şey eksilmez."""
         from ui.tabs.nakit_akis_tab import NakitAkisTab
+        from ui.tabs.reel_deger_tab import ReelDegerTab
 
-        self.assertFalse(self._sekme(NakitAkisTab, lisansli=False).kilitli())
+        for cls in (NakitAkisTab, ReelDegerTab):
+            with self.subTest(sekme=cls.BASLIK):
+                self.assertFalse(self._sekme(cls, lisansli=False).kilitli())
 
-    def test_kendi_build_yazan_sekme_de_kilitleniyor(self) -> None:
+    def test_kendi_build_yazan_sekme_de_calisir(self) -> None:
         """
-        Tahmin kendi `_build`'ini yazıyor ve boş ekranı ayrı kuruyordu — kilit orada
-        atlanıyor, üstelik `premium_tazele` AttributeError veriyordu.
+        Tahmin kendi `_build`'ini yazıyor ve boş ekranı ayrı kuruyordu — `premium_tazele`
+        orada AttributeError veriyordu. Sekme artık ücretsiz ama yol hâlâ koşmalı.
         """
-        from ui.premium import PREMIUM_CTA
         from ui.tabs.tahmin_tab import TahminTab
 
         sekme = self._sekme(TahminTab, lisansli=False)
-        self.assertTrue(sekme.kilitli())
-        self.assertEqual(self._cta(sekme), PREMIUM_CTA)
+        self.assertFalse(sekme.kilitli())
         sekme.premium_tazele()  # patlamamalı
 
     def test_kilitli_sekmede_getir_sorgu_baslatmaz(self) -> None:
@@ -249,9 +251,9 @@ class TestKilitliSekmeEkrani(unittest.TestCase):
         """
         from unittest.mock import patch
 
-        from ui.tabs.reel_deger_tab import ReelDegerTab
+        from ui.tabs.ai_yorum_tab import AiYorumTab
 
-        sekme = self._sekme(ReelDegerTab, lisansli=False)
+        sekme = self._sekme(AiYorumTab, lisansli=False)
         with patch.object(sekme, "_ayarlar_tamam") as ayarlar, \
              patch.object(sekme, "_on_premium") as premium_cagrisi:
             sekme._on_getir()
@@ -259,5 +261,111 @@ class TestKilitliSekmeEkrani(unittest.TestCase):
         premium_cagrisi.assert_called_once()
 
 
+@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+class TestCiktiKilidi(unittest.TestCase):
+    """
+    PDF/CSV premium — ASIL KİLİT BURADA.
+
+    Sekme kilidi tek sekmeye indi; gelir modelinin taşıyıcısı dışa aktarma oldu.
+    Kapı tek: `RaporTab.disa_aktar`. `_on_pdf` alt sınıflarda eziliyor, kilidi oraya
+    koymak dokuz sekmede dokuz kez yazmak demekti — biri unutulunca sessizce bedava.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import os
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        cls.app = QApplication.instance() or QApplication([])
+
+    def _sekme(self, cls, lisansli: bool):
+        return TestKilitliSekmeEkrani._sekme(self, cls, lisansli)
+
+    def test_karar_saf_fonksiyonda(self) -> None:
+        from domain.lisans import disa_aktarim_kilitli
+
+        self.assertTrue(disa_aktarim_kilitli(premium_acik_mi=False))
+        self.assertFalse(disa_aktarim_kilitli(premium_acik_mi=True))
+
+    def test_ucretsiz_sekmeden_de_pdf_alinamaz(self) -> None:
+        """Sekme ücretsiz olsa bile ÇIKTI kilitli — kilit sekmeye değil çıktıya bağlı."""
+        from unittest.mock import patch
+
+        from ui.tabs.nakit_akis_tab import NakitAkisTab
+
+        sekme = self._sekme(NakitAkisTab, lisansli=False)
+        self.assertFalse(sekme.kilitli())
+        with patch.object(sekme, "_on_pdf") as pdf, \
+             patch.object(sekme, "_on_premium") as premium_cagrisi:
+            sekme.disa_aktar("pdf")
+        pdf.assert_not_called()
+        premium_cagrisi.assert_called_once()
+
+    def test_csv_de_ayni_kapidan_gecer(self) -> None:
+        from unittest.mock import patch
+
+        from ui.tabs.nakit_akis_tab import NakitAkisTab
+
+        sekme = self._sekme(NakitAkisTab, lisansli=False)
+        with patch.object(sekme, "_on_csv") as csv, \
+             patch.object(sekme, "_on_premium") as premium_cagrisi:
+            sekme.disa_aktar("csv")
+        csv.assert_not_called()
+        premium_cagrisi.assert_called_once()
+
+    def test_lisansliyken_cikti_gecer(self) -> None:
+        from unittest.mock import patch
+
+        from ui.tabs.nakit_akis_tab import NakitAkisTab
+
+        sekme = self._sekme(NakitAkisTab, lisansli=True)
+        with patch.object(sekme, "_on_pdf") as pdf:
+            sekme.disa_aktar("pdf")
+        pdf.assert_called_once()
+
+    def test_chrome_disa_aktar_kapisindan_gecer(self) -> None:
+        """
+        Toolbar `_on_pdf`i DOĞRUDAN çağırmamalı; çağırırsa kilit büsbütün baypas olur.
+        """
+        import ast
+        import inspect
+
+        import ui.app as app_mod
+
+        agac = ast.parse(inspect.getsource(app_mod))
+        cagrilar = {
+            n.func.attr for n in ast.walk(agac)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+        }
+        self.assertIn("disa_aktar", cagrilar)
+        self.assertNotIn("_on_pdf", cagrilar)
+        self.assertNotIn("_on_csv", cagrilar)
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+class TestGetirKapisiMuhurlu(unittest.TestCase):
+    """
+    `_on_getir` alt sınıflarda EZİLMEZ — premium kilidi orada.
+
+    Gerçek arıza: Yapay Zekâ sekmesi eziyordu ve kendi ön koşullarını `super()`den
+    ÖNCE koşturuyordu. Kilitli kullanıcı «Raporu Getir»e basınca premium penceresi
+    değil «yapay zekâ ayarları eksik» uyarısı alıyordu; tek premium sekmenin kilidi
+    büsbütün baypas oluyordu. Ön koşul artık `_getir_on_kosul`a yazılır.
+    """
+
+    def test_hicbir_sekme_on_getiri_ezmiyor(self) -> None:
+        import ast
+        import pathlib
+
+        kok = pathlib.Path(__file__).resolve().parent / "ui" / "tabs"
+        ezenler = []
+        for yol in sorted(kok.glob("*_tab.py")):
+            agac = ast.parse(yol.read_text(encoding="utf-8"))
+            for d in ast.walk(agac):
+                if isinstance(d, ast.FunctionDef) and d.name == "_on_getir":
+                    ezenler.append(yol.name)
+        self.assertEqual(ezenler, [],
+                         "premium kilidi baypas olur — ön koşulu _getir_on_kosul'a yazın")

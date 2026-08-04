@@ -49,7 +49,7 @@
         "@type": "Offer",
         "price": "0",
         "priceCurrency": "TRY",
-        "description": "Uygulama ücretsiz kurulur; bir bölüm rapor tek seferlik Microsoft Store eklentisiyle açılır."
+        "description": "Uygulama ve dokuz raporun tamamı ücretsiz; PDF/CSV dışa aktarma ve Yapay Zekâ Yorumu tek seferlik Microsoft Store eklentisiyle açılır."
       },
       "featureList": [
         "Alacak & Borç — vade yaşlandırma ve nakit döngüsü",
@@ -102,12 +102,12 @@
         {
           "@type": "Question",
           "name": "MikRapor ücretli mi?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Uygulama ücretsiz kurulur. Alacak & Borç, Nakit Akış, Bilanço ve Gelir Tablosu her zaman ücretsizdir. Nakit & Kârlılık, Mukayese & Oranlar, Tahmin & Projeksiyon, Reel Değer ve Yapay Zekâ Yorumu, Microsoft Store'dan alınan tek seferlik bir eklentiyle açılır. Abonelik yoktur." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Uygulama ücretsiz kurulur ve dokuz raporun tamamı ekranda eksiksiz çalışır. Premium olan iki şey var: raporu PDF ya da CSV olarak dışarı almak, bir de Yapay Zekâ Yorumu. Microsoft Store'dan tek seferlik alınır, abonelik yoktur." }
         },
         {
           "@type": "Question",
-          "name": "Premium sekmeleri satın almadan görebilir miyim?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Sekmeye girebilir ve ne yaptığını okuyabilirsiniz; yalnız rapor getirilmez. Bulanık ya da örnek rakam göstermiyoruz — gerçek olmayan bir sayı göstermektense hiç göstermemeyi tercih ediyoruz." }
+          "name": "Ücretsiz sürümde rapor kısıtlı mı görünüyor?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Hayır. Bulanık, örnek ya da eksik rakam göstermiyoruz — ekranda ne varsa gerçektir ve tamdır. Değişen tek şey, o ekranı dosya olarak dışarı alabilmeniz." }
         },
         {
           "@type": "Question",
@@ -166,19 +166,18 @@
     <h2>Dokuz rapor, tek pencerede</h2>
     <p class="bolum-giris">
       Her sekme aynı kaynaktan — Mikro'daki kendi kayıtlarınızdan — beslenir.
-      Ekranda gördüğünüz rakamı PDF ve CSV olarak dışarı alabilirsiniz.
-      <span class="isaret-not"><span class="isaret" aria-hidden="true"></span> işaretli sekmeler premium eklentiyle açılır.</span>
+      Dokuz raporun tamamı ekranda, eksiksiz ve ücretsiz çalışır.
     </p>
     <ul class="kartlar">
       <li><h3>Alacak &amp; Borç</h3><p>Müşteri ve satıcı bakiyeleri, vade yaşlandırması, gecikmiş alacaklar. Tahsilat ve ödeme süreniz gün olarak ölçülür.</p></li>
       <li><h3>Nakit Akış</h3><p>Kasaya gerçekten giren ve çıkan para; muhasebeden okunur, çek ve EFT kaçmaz. Satır tıklanınca arkasındaki fişler açılır.</p></li>
-      <li class="premium"><h3>Nakit &amp; Kârlılık</h3><p>Stok hareketinden fiili al-sat farkı. Resmî kârla arasındaki köprü kalem kalem gösterilir.</p></li>
-      <li class="premium"><h3>Mukayese &amp; Oranlar</h3><p>Geçmiş yıllarla mukayese ve klasik finansal oranlar. Her sütun seçtiğiniz aralığın o yıla düşen kısmıdır.</p></li>
-      <li class="premium"><h3>Tahmin &amp; Projeksiyon</h3><p>Vade takvimine dayalı nakit projeksiyonu ve senaryo varsayımları.</p></li>
-      <li class="premium"><h3>Reel Değer</h3><p>Vade ve enflasyon karşısında alacağınızın bugünkü karşılığı; en çok eriten cariler sırayla.</p></li>
+      <li><h3>Nakit &amp; Kârlılık</h3><p>Stok hareketinden fiili al-sat farkı. Resmî kârla arasındaki köprü kalem kalem gösterilir.</p></li>
+      <li><h3>Mukayese &amp; Oranlar</h3><p>Geçmiş yıllarla mukayese ve klasik finansal oranlar. Her sütun seçtiğiniz aralığın o yıla düşen kısmıdır.</p></li>
+      <li><h3>Tahmin &amp; Projeksiyon</h3><p>Vade takvimine dayalı nakit projeksiyonu ve senaryo varsayımları.</p></li>
+      <li><h3>Reel Değer</h3><p>Vade ve enflasyon karşısında alacağınızın bugünkü karşılığı; en çok eriten cariler sırayla.</p></li>
       <li><h3>Bilanço</h3><p>Seçtiğiniz tarih itibarıyla varlık ve borç durumu. Yıl sonu kapanış fişi hesaba katılır, bakiyeler sıfırlanmış görünmez.</p></li>
       <li><h3>Gelir Tablosu</h3><p>Tek düzen hesap planı şelalesi; yanında gelirin ve giderin hesap bazında dağılımı.</p></li>
-      <li class="premium"><h3>Yapay Zekâ Yorumu</h3><p>İsteğe bağlı. Kendi API anahtarınızla, dönemin sade Türkçe yönetim yorumu.</p></li>
+      <li><h3>Yapay Zekâ Yorumu</h3><p>İsteğe bağlı. Kendi API anahtarınızla, dönemin sade Türkçe yönetim yorumu.</p></li>
     </ul>
   </div>
 </section>
@@ -186,30 +185,27 @@
 
 <section id="fiyat" class="bolum bolum-acik">
   <div class="kap dar">
-    <h2>Ücretsiz kurulur, ihtiyacınız olursa büyür</h2>
+    <h2>Ekranda her şey ücretsiz, dışarı almak premium</h2>
     <p class="bolum-giris">
-      Bölünme basit: <strong>ne olduğunu</strong> gösteren raporlar ücretsiz,
-      <strong>ne yapmalıyım</strong> sorusuna cevap verenler premium.
-      Abonelik yok — tek seferlik.
+      Kural tek cümle. Dokuz raporun tamamını süresiz, eksiksiz kullanırsınız;
+      sonucu PDF ya da CSV olarak dışarı almak premium. Abonelik yok — tek seferlik.
     </p>
     <div class="paketler">
       <div class="paket">
         <h3>Ücretsiz</h3>
         <ul>
-          <li>Alacak &amp; Borç</li>
-          <li>Nakit Akış</li>
-          <li>Bilanço</li>
-          <li>Gelir Tablosu</li>
+          <li>Dokuz raporun tamamı, ekranda</li>
+          <li>Rakamın arkasındaki fiş dökümü</li>
+          <li>Veri Sağlığı kontrolü ve raporu</li>
+          <li>Süre sınırı yok, kayıt gerekmez</li>
         </ul>
-        <p class="paket-not">Süre sınırı yok, kayıt gerekmez.</p>
+        <p class="paket-not">Hiçbir rapor kısıtlı ya da bulanık değildir.</p>
       </div>
       <div class="paket paket-premium">
         <h3>Premium</h3>
         <ul>
-          <li>Nakit &amp; Kârlılık</li>
-          <li>Mukayese &amp; Oranlar</li>
-          <li>Tahmin &amp; Projeksiyon</li>
-          <li>Reel Değer</li>
+          <li>PDF olarak dışa aktarma</li>
+          <li>CSV olarak dışa aktarma</li>
           <li>Yapay Zekâ Yorumu</li>
         </ul>
         <p class="paket-not">Microsoft Store'dan tek seferlik eklenti. Ödeme Microsoft'a
@@ -217,9 +213,8 @@
       </div>
     </div>
     <p class="kucuk-not">
-      Bilanço ve Gelir Tablosu bilerek ücretsiz: onlar resmî tablolar ve mali müşaviriniz
-      zaten üretiyor. Premium sekmeler kilitliyken de girilebilir — ne kaçırdığınızı
-      okursunuz, ama uydurma rakam göstermeyiz.
+      Veri Sağlığı raporu bilerek ücretsiz: bozuk kaydı düzeltmenizi sağlayan çıktıyı
+      kilitlemek, programın doğru çalışmasını parayla şarta bağlamak olurdu.
     </p>
   </div>
 </section>
@@ -274,15 +269,13 @@
       <dd>Windows 10 ve Windows 11. Microsoft Store sürümü çok yakında yayında olacak.</dd>
 
       <dt>MikRapor ücretli mi?</dt>
-      <dd>Uygulama ücretsiz kurulur. Alacak &amp; Borç, Nakit Akış, Bilanço ve Gelir Tablosu
-        her zaman ücretsizdir. Nakit &amp; Kârlılık, Mukayese &amp; Oranlar, Tahmin &amp; Projeksiyon,
-        Reel Değer ve Yapay Zekâ Yorumu, Microsoft Store'dan alınan tek seferlik bir
-        eklentiyle açılır. Abonelik yoktur.</dd>
+      <dd>Uygulama ücretsiz kurulur ve dokuz raporun tamamı ekranda eksiksiz çalışır.
+        Premium olan iki şey var: raporu PDF ya da CSV olarak dışarı almak, bir de
+        Yapay Zekâ Yorumu. Microsoft Store'dan tek seferlik alınır, abonelik yoktur.</dd>
 
-      <dt>Premium sekmeleri satın almadan görebilir miyim?</dt>
-      <dd>Sekmeye girebilir ve ne yaptığını okuyabilirsiniz; yalnız rapor getirilmez.
-        Bulanık ya da örnek rakam göstermiyoruz — gerçek olmayan bir sayı göstermektense
-        hiç göstermemeyi tercih ediyoruz.</dd>
+      <dt>Ücretsiz sürümde rapor kısıtlı mı görünüyor?</dt>
+      <dd>Hayır. Bulanık, örnek ya da eksik rakam göstermiyoruz — ekranda ne varsa
+        gerçektir ve tamdır. Değişen tek şey, o ekranı dosya olarak dışarı alabilmeniz.</dd>
 
       <dt>Ödeme kime yapılıyor?</dt>
       <dd>Microsoft'a. Tahsilat Microsoft Store üzerinden yapılır; kart bilgileriniz bize

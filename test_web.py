@@ -6,8 +6,8 @@ sekmenin adı «Mukayese & Oranlar»dı. Kural 5 («aynı rapor, tek isim») kod
 ama siteye kimse bakmıyordu. Satış sayfasının, ürünün kendisinde olmayan bir rapordan
 bahsetmesi en pahalı türden tutarsızlıktır: müşteri onu arar, bulamaz.
 
-Aynı şey ücretsiz/premium bölünmesi için de geçerli — sayfada yanlış tarafta duran bir
-sekme, ödeme yapıldıktan sonra ortaya çıkacak bir vaattir.
+Aynı şey ücretsiz/premium ayrımı için de geçerli — sayfada yanlış tarafta duran bir
+kalem, ödeme yapıldıktan sonra ortaya çıkacak bir vaattir.
 """
 
 from __future__ import annotations
@@ -49,23 +49,43 @@ class TestSekmeAdlari(unittest.TestCase):
 
 
 class TestPaketBolunmesi(unittest.TestCase):
-    def test_premium_kartlar_isaretli(self) -> None:
-        """`class="premium"` taşıyan kartlar tam olarak premium sekmeler olmalı."""
-        govde = _metin()
-        isaretli = set(re.findall(r'<li class="premium"><h3>(.*?)</h3>', govde))
-        self.assertEqual(isaretli, set(PREMIUM_SEKMELER))
+    """
+    Sayfa, ürünün SATTIĞI şeyi söylemeli: kilit sekmede değil dışa aktarmada.
 
-    def test_paket_listeleri_kodla_ayni(self) -> None:
-        """«Ücretsiz» ve «Premium» kutularındaki liste, domain/lisans.py ile birebir."""
+    Rapor kartlarında premium işareti olmamalı — dokuz raporun hepsi ücretsiz.
+    Sayfada bir raporu premium göstermek, kullanıcının parayla açmaya çalışacağı
+    ama zaten açık olan bir şeyi vaat etmektir.
+    """
+
+    def _kutular(self) -> tuple[set[str], set[str]]:
         govde = _metin()
         bolum = re.search(r'<div class="paketler">(.*?)\n    </div>', govde, re.S)
         self.assertIsNotNone(bolum, "paketler bölümü bulunamadı")
         kutular = re.findall(r'<div class="paket[^"]*">(.*?)\n      </div>',
                              bolum.group(1), re.S)
         self.assertEqual(len(kutular), 2, "iki paket kutusu bekleniyordu")
-        ucretsiz, premium = (set(re.findall(r'<li>(.*?)</li>', k)) for k in kutular)
-        self.assertEqual(ucretsiz, set(UCRETSIZ_SEKMELER))
-        self.assertEqual(premium, set(PREMIUM_SEKMELER))
+        return tuple(set(re.findall(r'<li>(.*?)</li>', k)) for k in kutular)
+
+    def test_rapor_karti_premium_isaretlenmemis(self) -> None:
+        self.assertNotIn('class="premium"', _metin(),
+                         "dokuz raporun hepsi ücretsiz — kartta premium işareti olmaz")
+
+    def test_premium_kutusu_ucretsiz_sekme_vaat_etmiyor(self) -> None:
+        _, premium = self._kutular()
+        for ad in UCRETSIZ_SEKMELER:
+            self.assertNotIn(ad, premium, f"«{ad}» ücretsiz ama premium kutusunda")
+
+    def test_premium_sekme_premium_kutusunda(self) -> None:
+        _, premium = self._kutular()
+        for ad in PREMIUM_SEKMELER:
+            self.assertIn(ad, premium, f"«{ad}» premium ama kutuda yok")
+
+    def test_disa_aktarim_premium_yaziyor(self) -> None:
+        """Gelirin taşıyıcısı bu; sayfada yazmıyorsa kullanıcı sürprizle karşılaşır."""
+        _, premium = self._kutular()
+        birlesik = " ".join(premium)
+        self.assertIn("PDF", birlesik)
+        self.assertIn("CSV", birlesik)
 
 
 class TestSurumVeMetinler(unittest.TestCase):

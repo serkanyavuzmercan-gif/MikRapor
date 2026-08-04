@@ -207,20 +207,9 @@ a { color: var(--accent); }
   html { scroll-behavior: auto; }
 }
 
-/* --- premium işareti ve paket kutuları ------------------------------------ */
-/* Nokta uygulamadaki premium işaretiyle aynı amber; sekme çubuğunda da metne
-   eklenmez, çizilir. Sayfada da metne yazmıyoruz ki sekme adı tek kalsın. */
-.isaret-not { display: block; margin-top: 10px; font-size: 14.5px; color: var(--muted); }
-.isaret {
-  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-  background: #c9a227; vertical-align: 1px;
-}
-.kartlar li.premium { position: relative; }
-.kartlar li.premium::after {
-  content: ""; position: absolute; top: 14px; right: 14px;
-  width: 8px; height: 8px; border-radius: 50%; background: #c9a227;
-}
-
+/* --- paket kutuları ------------------------------------------------------- */
+/* Rapor kartlarında premium işareti YOK: dokuz raporun hepsi ücretsiz, kilit
+   yalnız dışa aktarmada. Uygulamada da sekme çubuğunda işaret yok (aynı sebep). */
 .paketler { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 .paket {
   background: #fff; border: 1px solid var(--kenar); border-radius: 12px; padding: 22px 24px;

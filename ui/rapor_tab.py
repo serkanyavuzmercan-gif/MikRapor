@@ -264,6 +264,29 @@ class RaporTab(QWidget):
     def _csv_icerik(self) -> str | None:
         return None
 
+    def cikti_kilitli(self) -> bool:
+        """PDF/CSV premium mu? Karar tek yerde (`domain/lisans.py`)."""
+        from domain.lisans import disa_aktarim_kilitli
+        from ui.premium import premium_durumu
+
+        return disa_aktarim_kilitli(premium_durumu().acik)
+
+    def disa_aktar(self, tur: str) -> None:
+        """
+        PDF ve CSV'nin TEK kapısı — kilit iki ayrı yere yazılmaz.
+
+        `_on_pdf` alt sınıflarda eziliyor; kilidi oraya koymak dokuz sekmede dokuz kez
+        yazmak demekti ve biri unutulunca sessizce bedava dağıtılırdı (bkz. kural:
+        aynı eleme iki yere yazılmaz).
+        """
+        if self.cikti_kilitli():
+            self._on_premium()
+            return
+        if tur == "pdf":
+            self._on_pdf()
+        else:
+            self._on_csv()
+
     def _on_pdf(self) -> None:
         raise NotImplementedError
 
@@ -330,12 +353,29 @@ class RaporTab(QWidget):
         return False
 
     def _on_getir(self) -> None:
-        # İKİNCİ KAPI. Ekrandaki düğmeyi değiştirmek yetmez: chrome toolbar'daki
-        # «Raporu Getir» de buraya geliyor ve kilitli sekmede sorgu başlatmamalı.
-        # Aynı elemeyi iki yere yazmamak için karar yine `kilitli()`den geliyor.
+        """
+        MÜHÜRLÜ KAPI — alt sınıflar BUNU EZMEZ, `_getir_on_kosul`u yazar.
+
+        Yapay Zekâ sekmesi bunu eziyor ve kendi ön koşullarını `super()`den ÖNCE
+        çalıştırıyordu: kilitli kullanıcı «Raporu Getir»e basınca premium penceresi
+        değil «yapay zekâ ayarları eksik» uyarısı alıyordu — yani tek premium
+        sekmenin kilidi büsbütün baypas oluyordu. Kilit en başta, tek yerde.
+
+        Ekrandaki düğmeyi değiştirmek de yetmez: chrome toolbar'daki «Raporu Getir»
+        de buraya geliyor.
+        """
         if self.kilitli():
             self._on_premium()
             return
+        if not self._getir_on_kosul():
+            return
+        self._getir_baslat()
+
+    def _getir_on_kosul(self) -> bool:
+        """Alt sınıfın kendi ön koşulu (ayar eksik mi, onay alındı mı…). Varsayılan: yok."""
+        return True
+
+    def _getir_baslat(self) -> None:
         cfg = self._ayarlar_tamam()
         if cfg is None:
             return

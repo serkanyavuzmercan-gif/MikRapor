@@ -238,8 +238,14 @@ class AiYorumTab(RaporTab):
                     "uyari" if not cfg.hazir else "iyi")
 
     # ------------------------------------------------------------------------ iş
-    def _on_getir(self) -> None:
-        """Anahtar/onay yoksa hiç başlama — tek dış çıkış noktasının kapısı burası."""
+    def _getir_on_kosul(self) -> bool:
+        """
+        Anahtar/onay yoksa hiç başlama — tek dış çıkış noktasının kapısı burası.
+
+        `_on_getir` EZİLMEZ (bkz. RaporTab): eskiden eziliyordu ve bu kontroller
+        premium kilidinden ÖNCE koşuyordu; kilitli kullanıcı premium penceresi yerine
+        «ayarlar eksik» uyarısı alıyordu.
+        """
         ai_cfg = self._ayarlar()
         if not ai_cfg.hazir:
             QMessageBox.warning(
@@ -248,10 +254,8 @@ class AiYorumTab(RaporTab):
                 + "\n\nÜstteki alandan API anahtarınızı girin ve veri paylaşım "
                   "onayını işaretleyin. Onay verilmeden hiçbir veri dışarı gönderilmez.")
             self._durum(ai_cfg.eksik(), "uyari")
-            return
-        if not self._aralik_onayi():
-            return
-        super()._on_getir()
+            return False
+        return self._aralik_onayi()
 
     def _aralik_onayi(self) -> bool:
         """Aralık AZAMI_YIL'i aşıyorsa kullanıcıya sorar; kırpma _is_hazirla'da aynen olur."""

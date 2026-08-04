@@ -354,12 +354,40 @@ anahtarı **ve** açık onay kutusu birlikte olmadan hiçbir ağ çağrısı yap
 Store lisans kontrolü (`infra/store_lisans.py`) bu kuralın istisnası DEĞİLDİR: Windows'un
 kendi Store servisiyle konuşur, MikRapor'un okuduğu hiçbir mali veri o yoldan geçmez.
 
-## 8. Premium: şüphede kalınca AÇ
+## 8. Premium: ÇIKTI ücretli, EKRAN değil
 
-Uygulama ücretsiz kurulur; «ne yapmalıyım» sekmeleri (Nakit & Kârlılık, Mukayese,
-Tahmin, Reel Değer, Yapay Zekâ) tek seferlik Store eklentisiyle açılır. Bilanço ve
-Gelir Tablosu bilerek ücretsiz: resmî tablolar, müşavir zaten üretiyor — komoditeye
-para istemek ürünü ucuzlatır. Alacak & Borç da ücretsiz, alışkanlık orada kuruluyor.
+Uygulama ücretsiz kurulur ve **dokuz raporun tamamı ekranda eksiksiz çalışır.** Premium
+olan iki şey vardır: **PDF/CSV dışa aktarma** ve **Yapay Zekâ Yorumu.**
+
+Önce beş sekme kilitleniyordu (Nakit & Kârlılık, Mukayese, Tahmin, Reel Değer, YZ).
+Sekme çubuğunda beş amber nokta belirince ürün «yarısı kilitli» göründü ve kullanıcının
+ilk tepkisi bu oldu. Değer anı raporu OKUMAK değil, onu müşavire göndermek ya da
+saklamak: ödeme isteği oraya konunca kimseden bir şey alınmıyor ve kural tek cümleyle
+anlatılıyor — **«ekranda her şey ücretsiz, dışarı almak premium»**.
+
+**VERİLMİŞ SEKME GERİ ALINMAZ.** Yeni bir sekmeyi premium doğurtmak sorunsuzdur; bugün
+ücretsiz kurup Nakit Akış'ı kullanan müşteriden yarın onu geri almak, hiç vermemekten
+kötü karşılanır. Liste bu yüzden dar başlar.
+
+**Veri Sağlığı çıktısı ücretsizdir** (`disa_aktarim_kilitli` docstring'i): bozuk kaydı
+düzeltmeyi sağlayan raporu kilitlemek, programın doğru çalışmasını parayla şarta
+bağlamak olurdu.
+
+**KİLİT TEK KAPIDA.** `_on_pdf` alt sınıflarda eziliyor; kilidi oraya koymak dokuz
+sekmede dokuz kez yazmak demekti ve biri unutulunca sessizce bedava dağıtılırdı. Kapı
+`RaporTab.disa_aktar`; `ui/app.py` `_on_pdf`/`_on_csv`'yi DOĞRUDAN çağırmaz ve bunu
+`test_lisans.TestCiktiKilidi` AST'den sınar.
+
+**`_on_getir` MÜHÜRLÜDÜR, alt sınıf ezmez** — ön koşulunu `_getir_on_kosul`a yazar.
+Yapay Zekâ sekmesi eziyor ve kendi kontrollerini `super()`den ÖNCE koşturuyordu:
+kilitli kullanıcı «Raporu Getir»e basınca premium penceresi değil «yapay zekâ ayarları
+eksik» uyarısı alıyordu, yani tek premium sekmenin kilidi büsbütün baypas oluyordu.
+Bekçi: `test_lisans.TestGetirKapisiMuhurlu`.
+
+**SEKME ÇUBUĞUNDA PREMIUM İŞARETİ YOK.** Önce metne « ✦» eklendi, 960px'te çubuğu
+taşırdı. Sonra nokta çizildi — genişlik eklemiyordu ama ekranı «yarısı kilitli»
+gösteriyordu. Bir işaret ancak kullanıcının yapabileceği bir şeye işaret ediyorsa değer
+taşır (kural 3b); kilit zaten sekmenin İÇİNDE anlatılıyor.
 
 **KİLİT KENDİLİĞİNDEN GERİ GELMEZ.** `Store hayır dedi` ile `Store cevap veremedi`
 pratikte ayrılamıyor: Microsoft hesabına giriş yapmamış ya da lisansı henüz
@@ -377,12 +405,14 @@ metin araması modülün *neden kullanmadığımızı anlatan* docstring'ine tak
 
 **KİLİTLİ SEKME AÇILIR, İÇİ UYDURULMAZ.** Kullanıcı ne kaçırdığını görsün diye sekme
 girilebilir ve kendi `ACIKLAMA`'sını gösterir; bulanık ya da sahte rakam GÖSTERİLMEZ
-(kural 2). Değişen tek şey düğmedir. Kilit **iki kapıda** tutulur: boş ekranın CTA'sı
-ve `_on_getir` — chrome toolbar'daki «Raporu Getir» de oraya geliyor.
+(kural 2). Kilit **iki kapıda** tutulur: boş ekranın CTA'sı ve `_on_getir`.
 
 Sekmenin premium olup olmadığı tek yerde (`domain/lisans.py`); dokuz BASLIK'ın her biri
 ya ücretsiz ya premium listesinde olmak zorunda ve bunu `test_lisans.TestBolunme`
 sınıyor — listeye yazılmayan yeni bir sekme sessizce bedava dağıtılırdı.
+
+Tanıtım sayfası da aynı kaynaktan sınanır (`test_web`): ücretsiz bir sekme premium
+kutusunda görünürse test kırmızıya döner.
 
 ---
 
