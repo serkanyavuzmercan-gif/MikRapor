@@ -34,6 +34,7 @@ from ui.chrome_toolbar import ChromeToolbar
 from ui.donem import DonemDurumu
 from ui.empty_state import DEFAULT_HERO_ASSET, HERO_SOLUK_OPACITY, build_soluk_arka_plan
 from ui.mikro_settings_dialog import MikroAyarlarDialog
+from ui.premium import PREMIUM_CTA, premium_durumu
 from ui.styles import PAGE_BG
 from ui.worker import IsFonksiyonu, RaporWorker
 from ui.yukleniyor import YukleniyorEkrani
@@ -111,6 +112,73 @@ class RaporTab(QWidget):
         chrome.set_getir_aktif(self._worker is None)
         chrome.set_iptal_gorunur(self._worker is not None)
 
+    # ------------------------------------------------------------------ premium
+    def _bos_ekran(self) -> QWidget:
+        """
+        Sekme boşken görünen ekran — kilitliyken de AYNISI.
+
+        Kullanıcı ne kaçırdığını okusun diye sekme açılıyor ve ne yaptığını anlatan
+        metin (`ACIKLAMA`) gösteriliyor. Bulanık ya da uydurma rakam GÖSTERİLMEZ
+        (kural 2): sahtesi kandırmak olur, gerçeğini göstermek için veriyi zaten
+        çekmek gerekirdi. Değişen tek şey düğme.
+        """
+        # Görsel BURADA hesaplanır, __init__'te saklanmaz: Tahmin kendi `_build`'ini
+        # yazıyor ve saklanan alanı hiç kurmuyordu — `premium_tazele` orada AttributeError
+        # veriyordu. Tek kaynak sınıf sabitleri.
+        kilit = self.kilitli()
+        return hos_geldin(
+            self.EMOJI,
+            self.BASLIK,
+            self._kilit_aciklamasi() if kilit else self.ACIKLAMA,
+            self.IPUCU,
+            on_cta=self._on_premium if kilit else self._on_getir,
+            cta=PREMIUM_CTA if kilit else self.GETIR_ETIKET,
+            hero_asset=(self.HERO_ASSET or "").strip() or DEFAULT_HERO_ASSET,
+            hero_fit=(self.HERO_FIT or "cover").strip() or "cover",
+        )
+
+    def premium_tazele(self) -> None:
+        """Satın alma sonrası kilit kalktıysa boş ekranı yeniden kurar."""
+        yeni = self._bos_ekran()
+        eski = self._empty
+        self._stack.insertWidget(0, yeni)
+        self._stack.removeWidget(eski)
+        eski.deleteLater()
+        self._empty = yeni
+        if not self._rapor_var:
+            self._stack.setCurrentIndex(0)
+
+    def kilitli(self) -> bool:
+        """Bu sekme premium ve lisans yoksa True. Karar `domain/lisans.py`de."""
+        from domain.lisans import sekme_kilitli
+
+        return sekme_kilitli(self.BASLIK, premium_durumu().acik)
+
+    def _kilit_aciklamasi(self) -> str:
+        """
+        Sekmenin kendi ACIKLAMA'sı + neden kilitli olduğu. İkinci metin YAZILMAZ.
+
+        Düğmenin NEREYE götürdüğü de yazar: kullanıcı Microsoft Store'a atlayınca ne
+        arayacağını bilmeli, yoksa uygulamanın listelemesinde kaybolur.
+        """
+        return (f"{self.ACIKLAMA}<br><br>"
+                "<b>Bu sekme Premium'a dâhildir.</b> Tek seferlik satın alma ile bu "
+                "sekme ve diğer premium raporlar kalıcı olarak açılır. Düğme "
+                "Microsoft Store'daki satın alma sayfasını açar; ödeme tamamlanınca "
+                "MikRapor'a dönmeniz yeterli.")
+
+    def _on_premium(self) -> None:
+        """Store ürün sayfasını açar; satın alma orada tamamlanır."""
+        from infra.store_lisans import magaza_sayfasi_ac
+        from ui.premium import satin_almaya_gidildi
+
+        satin_almaya_gidildi()
+        if not magaza_sayfasi_ac():
+            QMessageBox.information(
+                self, "Microsoft Store açılamadı",
+                "Store uygulaması açılamadı. MikRapor'u Microsoft Store'da arayıp "
+                "premium eklentisini oradan satın alabilirsiniz.")
+
     def _rapor_acik(self) -> bool:
         return getattr(self, "_stack", None) is not None and self._stack.currentIndex() == 1
 
@@ -129,16 +197,7 @@ class RaporTab(QWidget):
         self._stack = QStackedWidget()
         hero = (self.HERO_ASSET or "").strip() or DEFAULT_HERO_ASSET
         hero_fit = (self.HERO_FIT or "cover").strip() or "cover"
-        self._empty = hos_geldin(
-            self.EMOJI,
-            self.BASLIK,
-            self.ACIKLAMA,
-            self.IPUCU,
-            on_cta=self._on_getir,
-            cta=self.GETIR_ETIKET,
-            hero_asset=hero,
-            hero_fit=hero_fit,
-        )
+        self._empty = self._bos_ekran()
         self._stack.addWidget(self._empty)
 
         self._icerik_sayfa = QWidget()
@@ -271,6 +330,12 @@ class RaporTab(QWidget):
         return False
 
     def _on_getir(self) -> None:
+        # İKİNCİ KAPI. Ekrandaki düğmeyi değiştirmek yetmez: chrome toolbar'daki
+        # «Raporu Getir» de buraya geliyor ve kilitli sekmede sorgu başlatmamalı.
+        # Aynı elemeyi iki yere yazmamak için karar yine `kilitli()`den geliyor.
+        if self.kilitli():
+            self._on_premium()
+            return
         cfg = self._ayarlar_tamam()
         if cfg is None:
             return
