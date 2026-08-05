@@ -88,6 +88,44 @@ class TestPaketBolunmesi(unittest.TestCase):
         self.assertIn("CSV", birlesik)
 
 
+class TestGorseller(unittest.TestCase):
+    """
+    Sayfanın gösterdiği her görsel gerçekten var olmalı.
+
+    Yaşandı: elle yapılan bir deploy'da logo ve paylaşım kartı eksik kaldı; sayfa
+    açılıyordu, başlıktaki logo kırık görünüyordu ve bunu kimse otomatik yakalamadı.
+    Bir de boyut: 1,8 MB'lık ham görseller yüklendiği gibi sayfaya konursa tanıtım
+    sayfası ilk açılışta megabaytlarca indirir.
+    """
+
+    _AZAMI_KB = 400
+
+    def _gorseller(self) -> list[str]:
+        govde = _SAYFA.read_text(encoding="utf-8")
+        return re.findall(r'src="/([^"]+)"', govde)
+
+    def test_her_gorsel_var(self) -> None:
+        for ad in self._gorseller():
+            with self.subTest(gorsel=ad):
+                self.assertTrue((_KOK / ad).is_file(), f"{ad} yok — kırık resim")
+
+    def test_gorseller_makul_boyutta(self) -> None:
+        for ad in self._gorseller():
+            with self.subTest(gorsel=ad):
+                kb = (_KOK / ad).stat().st_size / 1024
+                self.assertLess(kb, self._AZAMI_KB,
+                                f"{ad} {kb:.0f} KB — sayfaya konmadan küçültülmeli")
+
+    def test_her_gorselin_alt_metni_var(self) -> None:
+        """Ekran okuyucu ve görsel yüklenmediğinde tek bilgi kaynağı alt metni."""
+        govde = _SAYFA.read_text(encoding="utf-8")
+        for etiket in re.findall(r"<img\b[^>]*>", govde):
+            with self.subTest(img=etiket[:60]):
+                alt = re.search(r'alt="([^"]*)"', etiket)
+                self.assertIsNotNone(alt, "alt metni yok")
+                self.assertGreater(len(alt.group(1).strip()), 3, "alt metni boş")
+
+
 class TestSurumVeMetinler(unittest.TestCase):
     def test_surum_kodla_ayni(self) -> None:
         from infra.surum import SURUM

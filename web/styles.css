@@ -231,3 +231,10 @@ a { color: var(--accent); }
   background: var(--panel); border: 1px solid var(--kenar); border-radius: 5px;
   padding: 1px 6px; font-size: 14.5px; color: var(--ink-soft);
 }
+
+/* --- ürün görselleri ------------------------------------------------------ */
+/* Banner'lar 16:9 ve içlerinde okunması gereken tablo var: yan yana koyunca
+   rakamlar okunmaz hâle geliyordu. Alt alta, tam genişlikte. */
+.ekranlar { display: grid; gap: 30px; }
+.ekranlar figure { margin: 0; }
+.serit-not { margin: 20px 0 0; text-align: center; font-size: 13.5px; color: var(--muted); }

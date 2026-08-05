@@ -13,10 +13,11 @@ Statik tek sayfa; derleme adımı yok. Vercel projesi: **mikrapor**
 | `robots.txt`, `sitemap.xml` | arama motoru |
 | `og-mikrapor.png` | paylaşım önizlemesi (1200×630) |
 | `logo.png` | favicon + başlık logosu |
-| `ekran-*.png` | uygulama ekran görüntüleri — rakamlar KURGU demo verisidir |
+| `tanitim-genel.jpg`, `ekran-*.jpg` | ürün görselleri — rakamlar KURGU demo verisidir |
 
-Ekran görüntüleri `assets/` içindeki uygulamadan offscreen üretildi; gerçek firma
-verisi kullanılmaz, firma adı «ÖRNEK SANAYİ VE TİCARET A.Ş.» olarak verilir.
+Görsellerde gerçek firma verisi kullanılmaz. Ham dosyalar 1,8 MB civarındaydı;
+sayfaya konmadan 1400px genişliğe indirilip JPEG'e çevrilir (~150 KB). `test_web`
+bunu 400 KB üst sınırıyla sınar — büyük dosya sessizce sayfaya giremesin.
 
 ## Yayına alma
 
