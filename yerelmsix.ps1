@@ -35,23 +35,83 @@ function Dogrula([bool]$sart, [string]$mesaj) {
 Dogrula (Test-Path 'MikRapor.spec') 'Repo kokunde degilsiniz (MikRapor.spec yok).'
 Dogrula (Test-Path 'packaging/AppxManifest.xml') 'packaging/AppxManifest.xml yok.'
 
-Adim 1 'Bagimliliklar'
-python -m pip install --upgrade pip
+# --------------------------------------------------------------------------
+Adim 1 'Uygun Python ile sanal ortam kur'
+# winsdk 1.0.0b10 YALNIZCA cp38-cp312 icin hazir wheel yayinliyor. Daha yeni bir
+# Python'da pip kaynaktan derlemeye kalkiyor, o da Visual Studio + CMake + nmake
+# istiyor ve "Failed building wheel for winsdk" ile duruyor. Workflow Python 3.11
+# kullandigi icin CI'da hic gorulmedi.
+#
+# winsdk ATLANAMAZ: paketlenmezse Store lisansi hic okunamaz ve premium ODEYEN
+# musteride bile acilmaz (bkz. test_paketleme.TestStoreKoprusuPaketleniyor).
+#
+# Sanal ortam kullaniliyor ki sistem Python'unuz degismesin; ikinci kosuda
+# yeniden kurulmaz.
+$venv = '.venv-msix'
+if (-not (Test-Path $venv)) {
+    $kuruldu = $false
+    foreach ($s in @('3.12', '3.11')) {
+        if (Test-Path $venv) { Remove-Item -Recurse -Force $venv }
+        & py ('-' + $s) -m venv $venv 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host ('    Python ' + $s + ' (py launcher)')
+            $kuruldu = $true
+            break
+        }
+    }
+    if (-not $kuruldu) {
+        if (Test-Path $venv) { Remove-Item -Recurse -Force $venv }
+        $sur = & python -c "import sys; print('%d.%d' % sys.version_info[:2])"
+        if (($LASTEXITCODE -eq 0) -and (@('3.11', '3.12') -contains $sur)) {
+            & python -m venv $venv
+            $kuruldu = ($LASTEXITCODE -eq 0)
+            Write-Host ('    Python ' + $sur + ' (varsayilan)')
+        }
+        else {
+            Write-Host ''
+            Write-Host 'Python 3.11 veya 3.12 bulunamadi.' -ForegroundColor Red
+            Write-Host ('Mevcut varsayilan surum: ' + $sur)
+            Write-Host 'winsdk daha yeni Python icin hazir paket yayinlamiyor;'
+            Write-Host 'kaynaktan derlemek Visual Studio gerektirir.'
+            Write-Host 'Kurulum: https://www.python.org/downloads/release/python-31109/'
+            Write-Host '(kurarken "py launcher" secili olsun, mevcut surumunuz silinmez)'
+            throw 'Uygun Python surumu yok.'
+        }
+    }
+    Dogrula $kuruldu 'Sanal ortam kurulamadi.'
+}
+else {
+    Write-Host '    Mevcut .venv-msix kullaniliyor'
+}
+$py = Join-Path (Resolve-Path $venv).Path 'Scripts\python.exe'
+Dogrula (Test-Path $py) 'Sanal ortamda python.exe yok - .venv-msix klasorunu silip tekrar deneyin.'
+& $py -c "import sys; print('    Yorumlayici: %d.%d.%d' % sys.version_info[:3])"
+
+# --------------------------------------------------------------------------
+Adim 2 'Bagimliliklar'
+& $py -m pip install --upgrade pip
 Dogrula ($LASTEXITCODE -eq 0) 'pip guncellenemedi'
-pip install -r requirements.txt
+& $py -m pip install -r requirements.txt
 Dogrula ($LASTEXITCODE -eq 0) 'requirements.txt kurulamadi'
-pip install 'pyinstaller>=6.3.0' pillow
+& $py -m pip install 'pyinstaller>=6.3.0' pillow
 Dogrula ($LASTEXITCODE -eq 0) 'pyinstaller/pillow kurulamadi'
 
-Adim 2 'Testler (magazaya dogrulanmamis kod gitmez)'
-python -m unittest discover -s . -p 'test_*.py' -q
+# winsdk gercekten kuruldu mu: sessizce eksik kalirsa premium hic acilmaz.
+& $py -c "import winsdk; print('    winsdk tamam')"
+Dogrula ($LASTEXITCODE -eq 0) 'winsdk kurulamadi - paket premium acamaz, uretim durduruldu.'
+
+# --------------------------------------------------------------------------
+Adim 3 'Testler (magazaya dogrulanmamis kod gitmez)'
+& $py -m unittest discover -s . -p 'test_*.py' -q
 Dogrula ($LASTEXITCODE -eq 0) 'TESTLER DUSTU - paket uretilmedi.'
 
-Adim 3 'Asset uret (logo, ikon, MSIX kutuciklari, chevron)'
-python assets/generate_icons.py
+# --------------------------------------------------------------------------
+Adim 4 'Asset uret (logo, ikon, MSIX kutuciklari, chevron)'
+& $py assets/generate_icons.py
 Dogrula ($LASTEXITCODE -eq 0) 'assets/generate_icons.py dustu'
 
-Adim 4 'Surumu oku'
+# --------------------------------------------------------------------------
+Adim 5 'Surumu oku'
 $esles = Select-String -Path 'infra/surum.py' -Pattern '^SURUM = "(.+)"'
 Dogrula ($null -ne $esles) 'infra/surum.py icinde SURUM satiri bulunamadi'
 $surum = $esles.Matches[0].Groups[1].Value
@@ -59,15 +119,17 @@ $surum = $esles.Matches[0].Groups[1].Value
 $msixSurum = $surum + '.0'
 Write-Host ('    Surum: ' + $surum + ' -> MSIX ' + $msixSurum)
 
-Adim 5 'Derle (onedir, MSIX govdesi)'
+# --------------------------------------------------------------------------
+Adim 6 'Derle (onedir, MSIX govdesi)'
 # onefile MSIX'e KONMAZ: her acilista paketi gecici klasore actirir.
 $env:MIKRAPOR_ONEDIR = '1'
-pyinstaller --clean --noconfirm MikRapor.spec
+& $py -m PyInstaller --clean --noconfirm MikRapor.spec
 $pyKod = $LASTEXITCODE
 Remove-Item Env:\MIKRAPOR_ONEDIR
 Dogrula ($pyKod -eq 0) 'pyinstaller dustu'
 
-Adim 6 'Paket klasorunu kur'
+# --------------------------------------------------------------------------
+Adim 7 'Paket klasorunu kur'
 $pkg = 'msix-root'
 if (Test-Path $pkg) { Remove-Item -Recurse -Force $pkg }
 Copy-Item -Recurse 'dist/MikRapor' $pkg
@@ -87,7 +149,8 @@ $kontrol = Get-Content $m -Raw
 Dogrula ($kontrol.Contains($yeni)) 'Manifest surumu yazilamadi.'
 Dogrula (Test-Path ($pkg + '/MikRapor.exe')) 'msix-root/MikRapor.exe yok.'
 
-Adim 7 'Windows SDK araclarini bul'
+# --------------------------------------------------------------------------
+Adim 8 'Windows SDK araclarini bul'
 $kits = 'C:/Program Files (x86)/Windows Kits/10/bin'
 $bin = $null
 if (Test-Path $kits) {
@@ -97,6 +160,7 @@ if (Test-Path $kits) {
            Select-Object -First 1
 }
 if ($null -eq $bin) {
+    Write-Host ''
     Write-Host 'makeappx.exe bulunamadi - Windows SDK kurulu degil.' -ForegroundColor Red
     Write-Host 'Indirme: https://developer.microsoft.com/windows/downloads/windows-sdk/'
     Write-Host 'Kurarken "Windows SDK Signing Tools for Desktop Apps" secili olsun.'
@@ -105,7 +169,8 @@ if ($null -eq $bin) {
 $sdk = $bin.FullName + '/x64'
 Write-Host ('    SDK: ' + $sdk)
 
-Adim 8 'MSIX paketle (Store icin, IMZASIZ)'
+# --------------------------------------------------------------------------
+Adim 9 'MSIX paketle (Store icin, IMZASIZ)'
 New-Item -ItemType Directory -Force -Path 'out' | Out-Null
 $cikti = 'out/MikRapor-' + $surum + '-store.msix'
 & ($sdk + '/makeappx.exe') pack /d $pkg /p $cikti /o
