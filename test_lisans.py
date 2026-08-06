@@ -177,7 +177,7 @@ class TestStoreKoprusu(unittest.TestCase):
 
         govde = {f.name: f for f in ast.walk(agac) if isinstance(f, ast.FunctionDef)}
         self.assertIn("_pencereye_bagla", govde, "HWND bağlama adımı yok")
-        satin_al = govde.get("satin_al")
+        satin_al = govde.get("satin_al_baslat")
         self.assertIsNotNone(satin_al)
         cagrilanlar = {c.func.id for c in ast.walk(satin_al)
                        if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
@@ -247,7 +247,7 @@ class TestStoreKoprusu(unittest.TestCase):
         self.assertIn("PREMIUM_ADDON_URUN_ID", okuma)
         self.assertNotIn("PREMIUM_ADDON_STORE_ID", okuma,
                          "lisans eşleşmesinde Store ID kullanılmış — hiç eşleşmez")
-        alma = {d.id for d in ast.walk(govde["satin_al"]) if isinstance(d, ast.Name)}
+        alma = {d.id for d in ast.walk(govde["satin_al_baslat"]) if isinstance(d, ast.Name)}
         self.assertIn("PREMIUM_ADDON_STORE_ID", alma)
 
 
@@ -510,15 +510,44 @@ class TestSatinAlmaSonucu(unittest.TestCase):
         for kotu in ("YANIT_YOK", "PENCERE_ACILMADI"):
             self.assertNotIn(f"{kotu}:\n", kaynak)
 
-    def test_satin_alma_zaman_asimi_insan_hizinda(self) -> None:
+    def test_satin_alma_ui_thread_ini_bloklamiyor(self) -> None:
         """
-        Lisans okuma sınırı satın almaya UYGULANAMAZ: biri makine, diğeri insan
-        hızında. Aynı sabiti paylaşmak kullanıcının elinden ödeme penceresini aldı.
-        """
-        from infra.store_lisans import _SATIN_ALMA_ASIMI, _ZAMAN_ASIMI
+        SATIN ALMA BEKLENMEZ — bu bir konfor tercihi değil, zorunluluk.
 
-        self.assertGreater(_SATIN_ALMA_ASIMI, 300,
-                           "satın alma sınırı insan işlemi için çok kısa")
+        CANLIDA YAŞANDI: çağrı `asyncio.run` ile UI thread'inde bekleniyordu.
+        Ödeme penceresi MikRapor'un üstünde değil MASAÜSTÜNDE, her şeyin
+        arkasında açıldı; uygulama «(Yanıt Vermiyor)» oldu. `RequestPurchaseAsync`
+        bizim HWND'ye bağlı MODAL bir pencere açıyor ve o pencerenin sahibi mesaj
+        pompalamadan ne çizilebiliyor ne öne gelebiliyor.
+
+        Zaman aşımını uzatmak çare değildi (900 sn denendi): sorun beklemenin
+        SÜRESİ değil, kendisiydi. Bekçi bu yüzden süreye değil, BEKLEME OLMADIĞINA
+        bakar.
+        """
+        import ast
+
+        govde = _fonksiyonlar("infra", "store_lisans.py")["satin_al_baslat"]
+        # DOCSTRING ELENİR, yoksa arızayı ANLATAN metin kendi bekçisini kırmızıya
+        # düşürür: buradaki açıklama «asyncio.run ile bekleniyordu» diye yazıyor.
+        # Aynı ders `test_ui_smoke.TestAyarlarTekAd`de de öğrenilmişti.
+        adlar, nitelikler, cagrilar = set(), set(), set()
+        for d in ast.walk(govde):
+            if isinstance(d, ast.Name):
+                adlar.add(d.id)
+            elif isinstance(d, ast.Attribute):
+                nitelikler.add(d.attr)
+            elif isinstance(d, ast.Call) and isinstance(d.func, ast.Name):
+                cagrilar.add(d.func.id)
+
+        self.assertNotIn("_bekle", cagrilar,
+                         "satın alma UI thread'inde bekleniyor — pencere donar")
+        self.assertNotIn("asyncio", adlar,
+                         "satın alma yolunda asyncio beklemesi var")
+        self.assertIn("completed", nitelikler, "sonuç geri çağrısı bağlanmıyor")
+        self.assertIn("request_purchase_async", nitelikler)
+
+        from infra.store_lisans import _ZAMAN_ASIMI
+
         self.assertLess(_ZAMAN_ASIMI, 60, "lisans okuma sınırı gereksiz uzun")
 
     def test_tamamlanmadi_mesaji_suclamiyor(self) -> None:
@@ -558,7 +587,7 @@ class TestSatinAlmaSonucu(unittest.TestCase):
         """
         import ast
 
-        govde = _fonksiyonlar("ui", "rapor_tab.py")["_on_premium"]
+        govde = _fonksiyonlar("ui", "rapor_tab.py")["_satin_alma_bitti"]
         cagrilar = {c.func.id for c in ast.walk(govde)
                     if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
         self.assertIn("premium_ac", cagrilar, "satın alma sonrası premium açılmıyor")

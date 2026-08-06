@@ -10,7 +10,7 @@ from __future__ import annotations
 import platform
 import sys
 
-SURUM = "1.3.1"
+SURUM = "1.3.2"
 UYGULAMA_ADI = "MikRapor"
 ALT_BASLIK = "Finansal Raporlama"
 FIRMA = "Hidroteknik Fabr. Malz. San. Tic. A.Ş."

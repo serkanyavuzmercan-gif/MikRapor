@@ -6,8 +6,14 @@ SATIN ALMA BURADA — ölçümle mecbur kalındı. Eklentinin Store sayfası YOK
 bir add-on için bile 404/ProductNotFound döner. Kullanıcıyı oraya göndermek onu
 kırık bir sayfaya göndermekti. Tek yol `RequestPurchaseAsync`.
 
-ZAMAN AŞIMI ZORUNLU: WinRT çağrıları asılabilir ve bu çağrılar UI thread'inden
-yapılıyor. `asyncio.wait_for` olmadan Store'un takılması uygulamayı kilitler.
+UI THREAD'İ BLOKLANMAZ. Satın alma bir zamanlar burada beklenirken canlıda ödeme
+penceresi MikRapor'un üstünde değil MASAÜSTÜNDE açıldı ve uygulama «(Yanıt
+Vermiyor)» oldu: modal pencerenin sahibi bizim pencereydi, sahibi mesaj
+işlemeyince pencere ne öne gelebildi ne odaklanabildi. `satin_al_baslat` işlemi
+başlatıp hemen döner, sonucu `completed` geri çağrısıyla verir.
+
+Lisans OKUMASI hâlâ zaman aşımlı bekleniyor: etkileşimsiz, kısa ve arka plan
+thread'inden çağrılıyor (`ui/app.py: _lisansi_arkaplanda_oku`).
 
 Hiçbir fonksiyon istisna ATMAZ: okunamazsa `BILINMIYOR`, satın alınamazsa
 `BASLATILAMADI`/`YANIT_YOK` döner ve kararı `domain/lisans.py` verir.
@@ -29,12 +35,11 @@ from infra.surum import (
     PREMIUM_ADDON_URUN_ID,
 )
 
-# İKİ AYRI SINIR. Aynı sayıyı ikisine de vermek canlıda satın alma penceresini
-# kullanıcının elinden aldı: lisans okuması için makul olan 20 sn, insanın kart
-# bilgisi girip onayladığı bir akışta çok kısa. `wait_for` beklemeyi iptal edince
-# Store penceresi kapandı ve kullanıcı yanlış bir hata mesajıyla baş başa kaldı.
+# SINIR YALNIZ LİSANS OKUMASINDA. Satın almaya zaman aşımı KOYULMAZ, çünkü artık
+# beklenmiyor: `satin_al_baslat` işlemi başlatıp hemen dönüyor, sonuç geri çağrıyla
+# geliyor. Bir zamanlar buraya 900 sn'lik ikinci bir sınır konmuştu; o da UI'yi
+# bloklayan tasarımın yamasıydı ve asıl arızayı gizliyordu.
 _ZAMAN_ASIMI = 20.0          # lisans okuma — etkileşim yok, hızlı olmalı
-_SATIN_ALMA_ASIMI = 900.0    # satın alma — insan işlemi; sınır yalnız asılmaya karşı
 
 _log = logging.getLogger(__name__)
 
@@ -148,15 +153,30 @@ def _pencereye_bagla(magaza, hwnd: int) -> bool:
     return True
 
 
-def satin_al(hwnd: int) -> SatinAlmaSonucu:
+# Tamamlanana kadar CANLI TUTULUR. WinRT işlemi ve geri çağrısı yalnız yerel
+# değişkende tutulsaydı çöp toplayıcı ikisini de silebilir, sonuç hiç gelmezdi.
+_bekleyen_satin_alma: list = []
+
+
+def satin_al_baslat(hwnd: int, geri_cagir) -> SatinAlmaSonucu | None:
     """
-    Premium eklentisini uygulama içinde satın alır.
+    Satın almayı BAŞLATIR ve HEMEN döner; sonuç `geri_cagir(SatinAlmaSonucu)` ile gelir.
 
-    `hwnd` ana pencerenin tanıtıcısıdır ve ZORUNLUDUR: masaüstü uygulamasında Store
-    satın alma penceresi bir sahip pencereye bağlanmadan açılmaz — bağlanmazsa çağrı
-    sessizce başarısız olur ya da asılır.
+    UI THREAD'İ BLOKLANMAZ — bu bir konfor tercihi değil, zorunluluk. Eskiden çağrı
+    `asyncio.run` ile burada beklenirken canlıda şu yaşandı: Store'un ödeme penceresi
+    HİÇ AÇILMADI, pencere başlığı «(Yanıt Vermiyor)» oldu, uygulama gri kaldı.
 
-    Dönüş İSTİSNA DEĞİL enum: `StorePurchaseStatus`in her dalı ayrı ele alınır.
+    Sebep: `RequestPurchaseAsync` bizim HWND'ye bağlı MODAL bir pencere açıyor ve o
+    pencerenin çizilebilmesi için SAHİP THREAD'İN Windows mesajlarını işlemesi
+    gerekiyor. Beklerken o thread'i kilitlediğimiz için pencere doğamıyordu bile.
+    Zaman aşımını uzatmak çare değildi: sorun beklemenin SÜRESİ değil, kendisiydi.
+
+    Çağrı yine UI thread'inden yapılır (bağlama STA sahip pencere ister), ama
+    sonuç `completed` geri çağrısıyla alınır ve kontrol Qt'ye anında geri döner.
+
+    DÖNÜŞ: başlatılamadıysa hatanın kendisi; başladıysa `None` — sonucu bekleyin.
+    `geri_cagir` WinRT'nin havuz THREAD'İNDEN çağrılır; arayüze dokunan taraf
+    sonucu kendi thread'ine taşımak zorundadır (`ui/rapor_tab.py` sinyalle taşıyor).
     """
     magaza = _winrt_magaza()
     if magaza is None:
@@ -164,14 +184,32 @@ def satin_al(hwnd: int) -> SatinAlmaSonucu:
     if not _pencereye_bagla(magaza, hwnd):
         return SatinAlmaSonucu.PENCERE_ACILMADI
     try:
-        sonuc = _bekle(magaza.request_purchase_async(PREMIUM_ADDON_STORE_ID),
-                       sinir=_SATIN_ALMA_ASIMI)
+        islem = magaza.request_purchase_async(PREMIUM_ADDON_STORE_ID)
     except Exception as exc:  # noqa: BLE001 — WinRT her türlü hatayı atabilir
+        _log.debug("Satın alma başlatılamadı: %s", exc)
+        return SatinAlmaSonucu.YANIT_YOK
+
+    def _bitti(op, durum) -> None:
+        try:
+            # AsyncStatus: 0 Started, 1 Completed, 2 Canceled, 3 Error
+            sonuc = op.get_results() if int(durum) == 1 else None
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("Satın alma sonucu okunamadı: %s", exc)
+            sonuc = None
+        finally:
+            _bekleyen_satin_alma.clear()
         # BAŞLADI ama cevap gelmedi. «Başlatılamadı» DEMEYİZ: pencere açılmış,
         # kullanıcı ödemiş bile olabilir.
-        _log.debug("Satın alma sonucu alınamadı: %s", exc)
+        geri_cagir(_durum_esle(sonuc))
+
+    _bekleyen_satin_alma.append((islem, _bitti))
+    try:
+        islem.completed = _bitti
+    except Exception as exc:  # noqa: BLE001
+        _bekleyen_satin_alma.clear()
+        _log.debug("Satın alma geri çağrısı bağlanamadı: %s", exc)
         return SatinAlmaSonucu.YANIT_YOK
-    return _durum_esle(sonuc)
+    return None
 
 
 def _durum_esle(sonuc) -> SatinAlmaSonucu:

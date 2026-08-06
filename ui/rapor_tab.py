@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -45,6 +45,21 @@ YIL_ALT = 1990
 
 # İçerik kökü yarı saydam beyaz — altındaki soluk illüstrasyon hafifçe görünsün
 _PAGE_BG_SOLUK = "rgba(255, 255, 255, 0.72)"
+
+
+class _SatinAlmaKoprusu(QObject):
+    """Store'un geri çağrısını UI thread'ine taşır.
+
+    `completed` WinRT'nin HAVUZ THREAD'İNDEN çağrılıyor; oradan `QMessageBox`
+    açmak ya da widget'a dokunmak Qt'de tanımsız davranıştır. Sinyal/slot
+    bağlantısı varsayılan olarak kuyruğa alınır ve slot alıcının thread'inde
+    koşar — dönüştürme burada, tek yerde.
+    """
+
+    sonuclandi = pyqtSignal(object)
+
+    def bildir(self, sonuc) -> None:
+        self.sonuclandi.emit(sonuc)
 
 
 def firma_getir(cfg: MikroConfig, client: MikroClient) -> str:
@@ -90,6 +105,7 @@ class RaporTab(QWidget):
         self._chrome: ChromeToolbar | None = None
         self._status: QLabel | None = None
         self._rapor_var = False
+        self._satin_alma_koprusu: _SatinAlmaKoprusu | None = None
         self._build()
 
     def bagla_chrome(self, chrome: ChromeToolbar) -> None:
@@ -170,47 +186,64 @@ class RaporTab(QWidget):
                 "PDF/CSV dışa aktarmayı kalıcı olarak açar; ödeme Microsoft Store "
                 "penceresinde tamamlanır.")
 
-    # Satın alma sürerken düğme yeniden tetiklenmesin — modal Store penceresi
-    # açıkken Qt olay döngüsü bloke ve ikinci bir akış başlatmak kilitlenme üretir.
+    # Satın alma sürerken düğme yeniden tetiklenmesin. Artık Qt döngüsü BLOKE
+    # DEĞİL, yani kullanıcı gerçekten ikinci kez basabilir; kilit sonuç gelene
+    # kadar tutulur.
     _satin_aliniyor = False
 
     def _on_premium(self) -> None:
         """
-        Premium satın alma — UYGULAMA İÇİNDE, Store penceresiyle.
+        Premium satın alma — UYGULAMA İÇİNDE, Store penceresiyle. UI BLOKLANMAZ.
 
         Eklentinin web sayfasına GÖNDERİLMİYOR: öyle bir sayfa yok. Yayındaki,
         eksiksiz yapılandırılmış bir add-on için bile `apps.microsoft.com/detail/
         <eklenti store id>` 404 döner (ölçüldü). Tek yol `RequestPurchaseAsync`.
-        """
-        from PyQt6.QtCore import Qt as _Qt
-        from PyQt6.QtGui import QCursor
-        from PyQt6.QtWidgets import QApplication
 
-        from domain.lisans import (
-            SatinAlmaSonucu,
-            premium_acildi_mi,
-            satin_alma_mesaji,
-        )
-        from infra.store_lisans import magaza_sayfasi_ac, satin_al
-        from ui.premium import premium_ac
+        CANLIDA YAŞANDI: çağrı burada bloke bekleniyordu; ödeme penceresi
+        MikRapor'un üstünde değil MASAÜSTÜNDE, her şeyin arkasında açıldı ve
+        uygulama «(Yanıt Vermiyor)» oldu. Modal pencerenin sahibi bizim
+        pencereydi ve sahibi mesaj işlemeyince pencere ne öne gelebiliyor ne
+        odaklanabiliyordu. Sonuç artık geri çağrıyla alınıyor (bkz.
+        `infra/store_lisans.satin_al_baslat`), Qt döngüsü çalışmaya devam ediyor.
+        """
+        from domain.lisans import SatinAlmaSonucu, satin_alma_mesaji
+        from infra.store_lisans import magaza_sayfasi_ac, satin_al_baslat
 
         if RaporTab._satin_aliniyor:
             return
         RaporTab._satin_aliniyor = True
-        # Store penceresi modal; Qt döngüsü o sırada bloke olacak. Meşgul imleci,
-        # kullanıcıya donmadığını değil BEKLEDİĞİNİ söyler.
-        # Store penceresi birkaç saniye sonra açılabiliyor; o sırada Qt döngüsü
-        # bloke olduğu için ekranda hiçbir şey değişmiyordu. En azından ne
-        # beklendiği yazsın.
-        self._durum("Microsoft Store satın alma penceresi açılıyor…", "notr")
-        QApplication.setOverrideCursor(QCursor(_Qt.CursorShape.WaitCursor))
-        try:
-            hwnd = int(self.window().winId())
-            sonuc = satin_al(hwnd)
-        finally:
-            QApplication.restoreOverrideCursor()
+        self._durum("Microsoft Store ödeme penceresi açılıyor…", "notr")
+
+        kopru = _SatinAlmaKoprusu(self)
+        kopru.sonuclandi.connect(self._satin_alma_bitti)
+        self._satin_alma_koprusu = kopru        # sinyal gelene kadar yaşasın
+
+        hwnd = int(self.window().winId())
+        hata = satin_al_baslat(hwnd, kopru.bildir)
+        if hata is not None:                     # hiç başlayamadı
             RaporTab._satin_aliniyor = False
             self._durum("", "notr")
+            baslik, govde = satin_alma_mesaji(hata)
+            QMessageBox.information(self, baslik, govde)
+            if hata is SatinAlmaSonucu.BASLATILAMADI:
+                # YALNIZ Store'dan kurulmamış sürümde: orada sayfa «Al/Yükle»
+                # gösterir. Store SÜRÜMÜNDE oraya göndermek çıkmaz — uygulama
+                # kurulu olduğu için sayfada «Aç» yazar, satın alma düğmesi
+                # yoktur (canlıda görüldü). Diğer dallar buraya GİRMEZ.
+                magaza_sayfasi_ac()
+            return
+        # Pencere Store sürecinde çiziliyor ve arkada kalabiliyor; kullanıcı
+        # nereye bakacağını bilsin.
+        self._durum("Ödeme penceresi açıldı — işlemi orada tamamlayın.", "notr")
+
+    def _satin_alma_bitti(self, sonuc) -> None:
+        """Geri çağrı UI thread'ine taşındıktan sonra çalışır."""
+        from domain.lisans import premium_acildi_mi, satin_alma_mesaji
+        from ui.premium import premium_ac
+
+        RaporTab._satin_aliniyor = False
+        self._satin_alma_koprusu = None
+        self._durum("", "notr")
 
         baslik, govde = satin_alma_mesaji(sonuc)
         if premium_acildi_mi(sonuc):
@@ -218,16 +251,7 @@ class RaporTab(QWidget):
             pencere = self.window()
             if hasattr(pencere, "premium_hepsini_tazele"):
                 pencere.premium_hepsini_tazele()
-            QMessageBox.information(self, baslik, govde)
-            return
-
         QMessageBox.information(self, baslik, govde)
-        if sonuc is SatinAlmaSonucu.BASLATILAMADI:
-            # YALNIZ Store'dan kurulmamış sürümde: orada sayfa «Al/Yükle» gösterir.
-            # Store SÜRÜMÜNDE oraya göndermek çıkmaz — uygulama kurulu olduğu için
-            # sayfada «Aç» yazar, satın alma düğmesi yoktur (canlıda görüldü).
-            # Zaman aşımı ve pencere hatası bu dala GİRMEZ.
-            magaza_sayfasi_ac()
 
     def _rapor_acik(self) -> bool:
         return getattr(self, "_stack", None) is not None and self._stack.currentIndex() == 1
