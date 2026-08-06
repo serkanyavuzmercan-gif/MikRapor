@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MikRapor — Mikro ERP Finansal Raporlama Programı</title>
-<meta name="description" content="MikRapor, Mikro ERP verinizi mali müşavir raporu beklemeden okunur hâle getirir: anlık bilanço, gelir tablosu, nakit akışı, alacak yaşlandırma ve yıllar arası mukayese. Veriniz kendi sunucunuzdan çıkmaz.">
+<meta name="description" content="MikRapor, Mikro ERP'nin ham tablolarını okunur bir yönetim ekranına çevirir: bilanço, gelir tablosu, nakit akışı, alacak yaşlandırma, yorumlanmış oranlar ve rakamın arkasındaki fiş dökümü. Veriniz kendi sunucunuzdan çıkmaz.">
 <link rel="canonical" href="https://mikrapor.hidroteknik.com.tr/">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="author" content="Hidroteknik A.Ş.">
@@ -14,7 +14,7 @@
 <meta property="og:locale" content="tr_TR">
 <meta property="og:site_name" content="MikRapor">
 <meta property="og:title" content="MikRapor — Mikro ERP Finansal Raporlama Programı">
-<meta property="og:description" content="Mikro ERP verinizi mali müşavir raporu beklemeden okuyun: anlık bilanço, gelir tablosu, nakit akışı, alacak yaşlandırma. Veriniz kendi sunucunuzdan çıkmaz.">
+<meta property="og:description" content="MikRapor, Mikro ERP'nin ham tablolarını okunur bir yönetim ekranına çevirir: bilanço, gelir tablosu, nakit akışı, alacak yaşlandırma, yorumlanmış oranlar ve rakamın arkasındaki fiş dökümü. Veriniz kendi sunucunuzdan çıkmaz.">
 <meta property="og:url" content="https://mikrapor.hidroteknik.com.tr/">
 <meta property="og:image" content="https://mikrapor.hidroteknik.com.tr/og-mikrapor.png">
 <meta property="og:image:width" content="1200">
@@ -22,7 +22,7 @@
 <meta property="og:image:alt" content="MikRapor — Mikro ERP finansal raporlama">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="MikRapor — Mikro ERP Finansal Raporlama Programı">
-<meta name="twitter:description" content="Mikro ERP verinizi mali müşavir raporu beklemeden okuyun. Veriniz kendi sunucunuzdan çıkmaz.">
+<meta name="twitter:description" content="Ham ERP tabloları rakam verir, cevap vermez. MikRapor aynı veriden okunur bir yönetim ekranı kurar. Veriniz kendi sunucunuzdan çıkmaz.">
 <meta name="twitter:image" content="https://mikrapor.hidroteknik.com.tr/og-mikrapor.png">
 
 <link rel="icon" href="/logo.png" type="image/png">
@@ -42,7 +42,7 @@
       "inLanguage": "tr-TR",
       "url": "https://mikrapor.hidroteknik.com.tr/",
       "image": "https://mikrapor.hidroteknik.com.tr/og-mikrapor.png",
-      "description": "Mikro ERP verisinden anlık bilanço, gelir tablosu, nakit akışı, alacak yaşlandırma ve yıllar arası mukayese üreten masaüstü finansal raporlama programı.",
+      "description": "Mikro ERP'nin ham tablolarını okunur bir yönetim ekranına çeviren masaüstü program: bilanço, gelir tablosu, nakit akışı, alacak yaşlandırma, yorumlanmış oranlar ve rakamın arkasındaki fiş dökümü.",
       "softwareVersion": "1.3.0",
       "publisher": { "@id": "https://mikrapor.hidroteknik.com.tr/#kurulus" },
       "downloadUrl": "https://apps.microsoft.com/detail/9NB421K1Z0GB",
@@ -88,7 +88,7 @@
         {
           "@type": "Question",
           "name": "Mali müşavirimin raporlarının yerine mi geçiyor?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Hayır, onun yerine geçmez. MikRapor resmi beyan üretmez; kendi kayıtlarınızı ay sonunu beklemeden görmenizi sağlar. Resmi tablolarınız yine mali müşavirinizden gelir." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Hayır, onun yerine geçmez. MikRapor resmi beyan üretmez; kendi kayıtlarınızı istediğiniz an okunur hâlde görmenizi sağlar. Resmi tablolarınız yine mali müşavirinizden gelir." }
         },
         {
           "@type": "Question",
@@ -147,11 +147,12 @@
 <section class="kahraman">
   <div class="kap">
     <p class="rozet"><span class="nokta"></span> Microsoft Store'da yayında</p>
-    <h1>Mikro ERP verinizi <em>ay sonunu beklemeden</em> okuyun</h1>
+    <h1>Mikro ERP verinizi <em>anlaşılır</em> hâle getirin</h1>
     <p class="giris">
-      MikRapor, Mikro ERP kayıtlarınızdan anlık bilanço, gelir tablosu, nakit akışı ve
-      alacak yaşlandırması üretir. Rakamlar mali müşavirinizin raporunu beklemeden,
-      doğrudan kendi sunucunuzdaki veriden gelir. Uygulama ücretsiz kurulur.
+      Ham ERP tabloları rakam verir, cevap vermez. MikRapor aynı kayıtlardan bilanço,
+      nakit akışı, alacak yaşlandırma ve yorumlanmış oranlar üretir — her rakamın
+      arkasındaki fişe tek tıkla inebildiğiniz, okunur bir ekranda.
+      Uygulama ücretsiz kurulur.
     </p>
     <div class="dugmeler">
       <a class="dugme" href="https://apps.microsoft.com/detail/9NB421K1Z0GB">Microsoft Store'dan indirin</a>
@@ -294,7 +295,7 @@
       <dd>Hayır. MikRapor, Mikro'nun kendi REST arayüzünden yalnızca okur. Veritabanınıza hiçbir şey yazmaz, hiçbir kayıt değiştirmez.</dd>
 
       <dt>Mali müşavirimin raporlarının yerine mi geçiyor?</dt>
-      <dd>Hayır, onun yerine geçmez. MikRapor resmi beyan üretmez; kendi kayıtlarınızı ay sonunu beklemeden görmenizi sağlar. Resmi tablolarınız yine mali müşavirinizden gelir.</dd>
+      <dd>Hayır, onun yerine geçmez. MikRapor resmi beyan üretmez; kendi kayıtlarınızı istediğiniz an okunur hâlde görmenizi sağlar. Resmi tablolarınız yine mali müşavirinizden gelir.</dd>
 
       <dt>Birden fazla yıl ve veritabanıyla çalışıyor mu?</dt>
       <dd>Evet. Yılları farklı veritabanlarında tutan kurulumlarda program hangi yılın nerede olduğunu kendi bulur ve yıllar arası mukayeseyi doğru veritabanlarından kurar.</dd>
