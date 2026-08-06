@@ -91,7 +91,15 @@ class SatinAlmaSonucu(StrEnum):
     TAMAMLANMADI = "tamamlanmadi"  # NotPurchased — vazgeçme VE ret aynı kod
     AG_HATASI = "ag_hatasi"      # NetworkError
     SUNUCU_HATASI = "sunucu"     # ServerError
-    YAPILAMADI = "yapilamadi"    # Store yok / paket kimliksiz / istisna
+    # «HİÇ BAŞLAYAMADI» ile «BAŞLADI, CEVAP GELMEDİ» AYRI TUTULUR.
+    # İkisi tek koda toplanınca canlıda şu oldu: Store'un satın alma penceresi
+    # AÇILDI, kullanıcı ödemeyi yaparken bizim zaman aşımımız bekleyişi iptal etti,
+    # pencere yok oldu ve ekrana «yalnız Store'dan kurulan sürümde satın alınabilir»
+    # yazdık — kullanıcı zaten Store sürümündeydi. Yanlış şeyi suçlayan mesaj,
+    # hiç mesaj vermemekten kötüdür.
+    BASLATILAMADI = "baslatilamadi"  # StoreContext yok — Store'dan kurulmamış sürüm
+    PENCERE_ACILMADI = "pencere_acilmadi"  # Store var ama satın alma penceresi bağlanamadı
+    YANIT_YOK = "yanit_yok"          # başladı ama sonuç alınamadı (zaman aşımı/istisna)
 
 
 def premium_acildi_mi(sonuc: SatinAlmaSonucu) -> bool:
@@ -132,6 +140,19 @@ def satin_alma_mesaji(sonuc: SatinAlmaSonucu) -> tuple[str, str]:
         return ("Microsoft Store yanıt vermedi",
                 "Store tarafında geçici bir sorun var. Biraz sonra tekrar deneyin; "
                 "bir ücret alınmadı.")
+    if sonuc is SatinAlmaSonucu.PENCERE_ACILMADI:
+        # Store SÜRÜMÜ ama pencere bağlanamadı. Store sayfasına göndermek işe
+        # yaramaz: uygulama kurulu olduğu için orada «Aç» yazar, satın alma düğmesi
+        # yoktur (canlıda görüldü). Kullanıcıyı çıkmaza sokmak yerine susuyoruz.
+        return ("Satın alma penceresi açılamadı",
+                "Microsoft Store penceresi başlatılamadı. MikRapor'u kapatıp yeniden "
+                "açtıktan sonra tekrar deneyin; bir ücret alınmadı.")
+    if sonuc is SatinAlmaSonucu.YANIT_YOK:
+        # Satın alma BAŞLADI. Ne olduğunu bilmiyoruz — bilmediğimizi söylüyoruz.
+        return ("Satın alma sonucu alınamadı",
+                "Microsoft Store penceresi açıldı ama sonuç MikRapor'a ulaşmadı. "
+                "Ödemeyi tamamladıysanız MikRapor'u kapatıp açın; premium kendiliğinden "
+                "açılır. Tamamlamadıysanız bir ücret alınmamıştır.")
     return ("Satın alma başlatılamadı",
             "Premium eklentisi yalnız Microsoft Store'dan kurulan MikRapor "
             "sürümünde satın alınabilir. Store sürümünü kurduktan sonra bu "

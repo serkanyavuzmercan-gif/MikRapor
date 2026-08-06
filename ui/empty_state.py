@@ -38,7 +38,13 @@ _MARK_SIZE = 44
 _COL_W = 480
 _TITLE_MAX_W = 360
 _BODY_MAX_W = 480
-_BODY_H = 48          # sabit 2 satır — Tahmin (referans) satır aralığı
+# Gövde yüksekliği SATIRLA ölçülür, piksel sabitiyle DEĞİL: Windows'ta sistem fontu
+# Linux'un ~1,59 katı genişlikte çiziyor (sekme çubuğunda ölçüldü, bkz. ui/app.py),
+# yani aynı metin orada daha çok satır tutuyor. Linux'ta tutturulmuş bir piksel
+# tavanı kullanıcının gerçek ekranında metni yine sıkıştırırdı.
+_BODY_SATIR = 3         # kısa açıklamaların referans yüksekliği
+_BODY_SATIR_AZAMI = 12  # bundan uzun açıklama zaten kısaltılmalı (kural 4)
+_ASGARI_OLCEK = 0.92    # bundan fazla yatay sıkıştırma okunmaz hâle getiriyor
 _BODY_COLOR = "#5c6b7a"  # referans açıklama gri (Tahmin empty)
 _CTA_W = 300
 _CTA_H = 48
@@ -51,13 +57,21 @@ _GAP_BRAND_TITLE = 14
 _GAP_TITLE_BODY = 10
 _GAP_BODY_CTA = 24
 
-# Sabit cluster yüksekliği (marka+başlık+açıklama+cta+araklıklar)
+# Cluster yüksekliği (marka+başlık+açıklama+cta+aralıklar)
 _BRAND_H = _MARK_SIZE
 _TITLE_H = 36
-_CLUSTER_H = (
-    _BRAND_H + _GAP_BRAND_TITLE + _TITLE_H + _GAP_TITLE_BODY
-    + _BODY_H + _GAP_BODY_CTA + _CTA_H + _CTA_BOTTOM_PAD
-)
+
+
+def _cluster_yuksekligi(body_h: int) -> int:
+    """Cluster yüksekliği GÖVDEYE GÖRE — uzun açıklamada aşağı büyür.
+
+    Sabit bir `_CLUSTER_H` vardı; gövde büyüyünce CTA kutunun dışında kalıyordu.
+    Tek yükseklik kaynağı burasıdır ve gövdenin GERÇEK yüksekliğini ister —
+    varsayılan bırakılsa yeni bir çağıran onu sessizce kullanır, hata geri gelirdi.
+    """
+    return (_BRAND_H + _GAP_BRAND_TITLE + _TITLE_H + _GAP_TITLE_BODY
+            + body_h + _GAP_BODY_CTA + _CTA_H + _CTA_BOTTOM_PAD)
+
 
 # Bilanço ile aynı varsayılan hero; sekme HERO_ASSET ile override edilir
 DEFAULT_HERO_ASSET = "anasayfalogo.png"
@@ -240,8 +254,39 @@ class _HScaleBody(QWidget):
         self._font.setPixelSize(14)
         self._font.setWeight(QFont.Weight.Normal)
         self._font.setBold(False)
-        self.setFixedSize(_BODY_MAX_W, _BODY_H)
+        satir = QFontMetrics(self._font).lineSpacing()
+        self.taban = _BODY_SATIR * satir
+        self.tavan = _BODY_SATIR_AZAMI * satir
+        self._yukseklik = self._gereken_yukseklik()
+        self.setFixedSize(_BODY_MAX_W, self._yukseklik)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+    def dogal_yukseklik(self, genislik: int = _BODY_MAX_W) -> int:
+        """Metnin KIRPILMADAN istediği yükseklik (sınırsız).
+
+        `tavan`ı aşıyorsa açıklama fazla uzundur: kutuya ancak yatay sıkıştırmayla
+        girer, yani okunaklılık kaybıyla. Bekçi buna bakar ve `genislik`i daraltarak
+        Windows'un geniş fontunu taklit eder — Linux'ta ölçen bir test o yolu hiç
+        koşturmaz, kod bozulur ve yeşil kalırdı.
+        """
+        if not self._text:
+            return self.taban
+        fm = QFontMetrics(self._font)
+        flags = int(Qt.AlignmentFlag.AlignHCenter | Qt.TextFlag.TextWordWrap)
+        return fm.boundingRect(
+            QRect(0, 0, max(1, genislik), 10_000), flags, self._text
+        ).height()
+
+    def _gereken_yukseklik(self) -> int:
+        """
+        Metnin kaç satıra ihtiyacı varsa o kadar — üç satıra ZORLANMAZ.
+
+        Eskiden yükseklik sabitti ve sığmayan metin yatay ölçekleniyordu. Kısa
+        açıklamalarda sorun yoktu; Yapay Zekâ sekmesinin açıklaması 354, kilitliyken
+        516 karakter olduğu için ölçek 0,5'in altına düşüyor ve yazı ekranda
+        BÜSBÜTÜN OKUNMAZ hâle geliyordu (canlıda görüldü).
+        """
+        return max(self.taban, min(self.tavan, self.dogal_yukseklik()))
 
     def paintEvent(self, _ev) -> None:  # noqa: N802
         if not self._text:
@@ -253,33 +298,39 @@ class _HScaleBody(QWidget):
         fm = QFontMetrics(self._font)
         flags = int(Qt.AlignmentFlag.AlignHCenter | Qt.TextFlag.TextWordWrap)
 
-        # 1) Normal: sabit banda kelime kaydır (Tahmin stili — ölçek yok)
+        yuk = self._yukseklik
+        # 1) Normal: kendi yüksekliğine kelime kaydır — ölçek yok
         br = fm.boundingRect(QRect(0, 0, _BODY_MAX_W, 10_000), flags, self._text)
-        if br.height() <= _BODY_H + 2:
+        if br.height() <= yuk + 2:
             opt = QTextOption(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
             opt.setWrapMode(QTextOption.WrapMode.WordWrap)
-            p.drawText(QRectF(0, 0, _BODY_MAX_W, _BODY_H), self._text, opt)
+            p.drawText(QRectF(0, 0, _BODY_MAX_W, yuk), self._text, opt)
             p.end()
             return
 
-        # 2) Uzun metin: 2 satıra sığacak daha geniş sanal satır → yatay ölçek
+        # 2) Azami yüksekliği de aşan metin: hafif yatay ölçek — ama OKUNAKLILIK
+        # TABANININ altına inilmez. Sıkıştırıp okunmaz hâle getirmektense son satırı
+        # üç noktayla kesmek yeğdir; kullanıcı zaten aynı metni balonda da görüyor.
         lo, hi = _BODY_MAX_W, max(_BODY_MAX_W * 2, fm.horizontalAdvance(self._text) + 8)
         best = hi
         while lo <= hi:
             mid = (lo + hi) // 2
             mid_br = fm.boundingRect(QRect(0, 0, mid, 10_000), flags, self._text)
-            if mid_br.height() <= _BODY_H + 2:
+            if mid_br.height() <= yuk + 2:
                 best = mid
                 hi = mid - 1
             else:
                 lo = mid + 1
         sx = min(1.0, _BODY_MAX_W / max(1, best))
+        if sx < _ASGARI_OLCEK:
+            sx = 1.0
+            best = _BODY_MAX_W
         p.translate(self.width() / 2.0, self.height() / 2.0)
         p.scale(sx, 1.0)
-        p.translate(-best / 2.0, -_BODY_H / 2.0)
+        p.translate(-best / 2.0, -yuk / 2.0)
         opt = QTextOption(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
         opt.setWrapMode(QTextOption.WrapMode.WordWrap)
-        p.drawText(QRectF(0, 0, best, _BODY_H), self._text, opt)
+        p.drawText(QRectF(0, 0, best, yuk), self._text, opt)
         p.end()
 
 
@@ -381,10 +432,16 @@ class EmptyState(QWidget):
         self._bg.lower()
         self._arka_plan = False
 
-        # Sabit cluster — layout stretch yok; resizeEvent ile alta sabitlenir
+        # Açıklama ÖNCE kurulur: cluster yüksekliği onun gerçek yüksekliğinden türer.
+        # Sabit yükseklik kullanılsaydı uzun açıklama kutunun dışında kalırdı — kural 2:
+        # sığmayan metni sıkıştırıp okunmaz hâle getirmek de, kırpmak da kabul edilmez.
+        body = _HScaleBody(aciklama)
+        self._cluster_h = _cluster_yuksekligi(body.height())
+
+        # Cluster — layout stretch yok; resizeEvent ile alta sabitlenir
         self._cluster = _ClusterPanel(self)
         self._cluster.setObjectName("emptyCol")
-        self._cluster.setFixedSize(_COL_W, _CLUSTER_H)
+        self._cluster.setFixedSize(_COL_W, self._cluster_h)
         self._cluster.setStyleSheet("background: transparent;")
         col_lay = QVBoxLayout(self._cluster)
         col_lay.setContentsMargins(0, 0, 0, 0)
@@ -423,7 +480,6 @@ class EmptyState(QWidget):
         col_lay.addWidget(title, alignment=Qt.AlignmentFlag.AlignHCenter)
         col_lay.addSpacing(_GAP_TITLE_BODY)
 
-        body = _HScaleBody(aciklama)
         col_lay.addWidget(body, alignment=Qt.AlignmentFlag.AlignHCenter)
         col_lay.addSpacing(_GAP_BODY_CTA)
 
@@ -456,8 +512,8 @@ class EmptyState(QWidget):
         w = max(1, self.width())
         h = max(1, self.height())
         x = (w - _COL_W) // 2
-        y = max(8, h - _BOTTOM_PAD - _CLUSTER_H)
-        self._cluster.setGeometry(x, y, _COL_W, _CLUSTER_H)
+        y = max(8, h - _BOTTOM_PAD - self._cluster_h)
+        self._cluster.setGeometry(x, y, _COL_W, self._cluster_h)
         self._cluster.raise_()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802

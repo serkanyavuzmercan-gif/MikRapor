@@ -158,14 +158,17 @@ class RaporTab(QWidget):
         """
         Sekmenin kendi ACIKLAMA'sı + neden kilitli olduğu. İkinci metin YAZILMAZ.
 
-        Düğmenin NEREYE götürdüğü de yazar: kullanıcı Microsoft Store'a atlayınca ne
-        arayacağını bilmeli, yoksa uygulamanın listelemesinde kaybolur.
+        KISA TUTULUR: bu metin sekmenin kendi açıklamasının ÜSTÜNE binyor ve boş
+        ekrandaki kutu beş satırdır. Uzun yazılınca metin kutuya sıkıştırılıyor,
+        yani okunmaz hâle geliyordu — kural 4. Eskiden ödemenin uygulamadan
+        çıkmadan tamamlandığı ayrıca anlatılıyordu; artık satın alma zaten uygulama
+        içinde açılıyor, cümle kendini tekrar ediyordu.
+        Bekçi: `test_ui_smoke.TestEmptyStateAciklamaSigar`.
         """
         return (f"{self.ACIKLAMA}<br><br>"
-                "<b>Bu sekme Premium'a dâhildir.</b> Tek seferlik satın alma ile bu "
-                "sekme, PDF/CSV dışa aktarma ve diğer premium özellikler kalıcı "
-                "olarak açılır. Ödeme Microsoft Store penceresinde tamamlanır; "
-                "MikRapor'dan çıkmanız gerekmez.")
+                "<b>Premium'a dâhildir.</b> Tek seferlik satın alma bu sekmeyi ve "
+                "PDF/CSV dışa aktarmayı kalıcı olarak açar; ödeme Microsoft Store "
+                "penceresinde tamamlanır.")
 
     # Satın alma sürerken düğme yeniden tetiklenmesin — modal Store penceresi
     # açıkken Qt olay döngüsü bloke ve ikinci bir akış başlatmak kilitlenme üretir.
@@ -183,7 +186,11 @@ class RaporTab(QWidget):
         from PyQt6.QtGui import QCursor
         from PyQt6.QtWidgets import QApplication
 
-        from domain.lisans import premium_acildi_mi, satin_alma_mesaji
+        from domain.lisans import (
+            SatinAlmaSonucu,
+            premium_acildi_mi,
+            satin_alma_mesaji,
+        )
         from infra.store_lisans import magaza_sayfasi_ac, satin_al
         from ui.premium import premium_ac
 
@@ -192,6 +199,10 @@ class RaporTab(QWidget):
         RaporTab._satin_aliniyor = True
         # Store penceresi modal; Qt döngüsü o sırada bloke olacak. Meşgul imleci,
         # kullanıcıya donmadığını değil BEKLEDİĞİNİ söyler.
+        # Store penceresi birkaç saniye sonra açılabiliyor; o sırada Qt döngüsü
+        # bloke olduğu için ekranda hiçbir şey değişmiyordu. En azından ne
+        # beklendiği yazsın.
+        self._durum("Microsoft Store satın alma penceresi açılıyor…", "notr")
         QApplication.setOverrideCursor(QCursor(_Qt.CursorShape.WaitCursor))
         try:
             hwnd = int(self.window().winId())
@@ -199,6 +210,7 @@ class RaporTab(QWidget):
         finally:
             QApplication.restoreOverrideCursor()
             RaporTab._satin_aliniyor = False
+            self._durum("", "notr")
 
         baslik, govde = satin_alma_mesaji(sonuc)
         if premium_acildi_mi(sonuc):
@@ -210,9 +222,11 @@ class RaporTab(QWidget):
             return
 
         QMessageBox.information(self, baslik, govde)
-        if sonuc.name == "YAPILAMADI":
-            # Store'dan kurulmamış sürüm: satın alma mümkün değil. Uygulamanın
-            # kendi sayfasına gönderiyoruz — orada «Al/Yükle» görecek.
+        if sonuc is SatinAlmaSonucu.BASLATILAMADI:
+            # YALNIZ Store'dan kurulmamış sürümde: orada sayfa «Al/Yükle» gösterir.
+            # Store SÜRÜMÜNDE oraya göndermek çıkmaz — uygulama kurulu olduğu için
+            # sayfada «Aç» yazar, satın alma düğmesi yoktur (canlıda görüldü).
+            # Zaman aşımı ve pencere hatası bu dala GİRMEZ.
             magaza_sayfasi_ac()
 
     def _rapor_acik(self) -> bool:

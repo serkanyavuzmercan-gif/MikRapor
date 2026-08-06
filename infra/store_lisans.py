@@ -10,7 +10,7 @@ ZAMAN AŞIMI ZORUNLU: WinRT çağrıları asılabilir ve bu çağrılar UI threa
 yapılıyor. `asyncio.wait_for` olmadan Store'un takılması uygulamayı kilitler.
 
 Hiçbir fonksiyon istisna ATMAZ: okunamazsa `BILINMIYOR`, satın alınamazsa
-`YAPILAMADI` döner ve kararı `domain/lisans.py` verir.
+`BASLATILAMADI`/`YANIT_YOK` döner ve kararı `domain/lisans.py` verir.
 
 VERİ DIŞARI ÇIKMAZ (kural 7). Buradaki çağrılar Windows'un kendi Store servisiyle
 konuşur; MikRapor'un okuduğu hiçbir mali veri bu yoldan geçmez. Dışarıya veri gönderen
@@ -29,7 +29,12 @@ from infra.surum import (
     PREMIUM_ADDON_URUN_ID,
 )
 
-_ZAMAN_ASIMI = 20.0   # saniye — WinRT asılırsa UI sonsuza kilitlenmesin
+# İKİ AYRI SINIR. Aynı sayıyı ikisine de vermek canlıda satın alma penceresini
+# kullanıcının elinden aldı: lisans okuması için makul olan 20 sn, insanın kart
+# bilgisi girip onayladığı bir akışta çok kısa. `wait_for` beklemeyi iptal edince
+# Store penceresi kapandı ve kullanıcı yanlış bir hata mesajıyla baş başa kaldı.
+_ZAMAN_ASIMI = 20.0          # lisans okuma — etkileşim yok, hızlı olmalı
+_SATIN_ALMA_ASIMI = 900.0    # satın alma — insan işlemi; sınır yalnız asılmaya karşı
 
 _log = logging.getLogger(__name__)
 
@@ -86,12 +91,12 @@ def lisans_durumu() -> LisansDurumu:
     return LisansDurumu.YOK
 
 
-def _bekle(coro):
+def _bekle(coro, sinir: float = _ZAMAN_ASIMI):
     """Coroutine'i zaman aşımıyla koştur — takılan Store UI'yı kilitlemesin."""
     import asyncio
 
     async def _sinirli():
-        return await asyncio.wait_for(coro, timeout=_ZAMAN_ASIMI)
+        return await asyncio.wait_for(coro, timeout=sinir)
 
     return asyncio.run(_sinirli())
 
@@ -155,29 +160,32 @@ def satin_al(hwnd: int) -> SatinAlmaSonucu:
     """
     magaza = _winrt_magaza()
     if magaza is None:
-        return SatinAlmaSonucu.YAPILAMADI
+        return SatinAlmaSonucu.BASLATILAMADI
     if not _pencereye_bagla(magaza, hwnd):
-        return SatinAlmaSonucu.YAPILAMADI
+        return SatinAlmaSonucu.PENCERE_ACILMADI
     try:
-        sonuc = _bekle(magaza.request_purchase_async(PREMIUM_ADDON_STORE_ID))
+        sonuc = _bekle(magaza.request_purchase_async(PREMIUM_ADDON_STORE_ID),
+                       sinir=_SATIN_ALMA_ASIMI)
     except Exception as exc:  # noqa: BLE001 — WinRT her türlü hatayı atabilir
-        _log.debug("Satın alma başlatılamadı: %s", exc)
-        return SatinAlmaSonucu.YAPILAMADI
+        # BAŞLADI ama cevap gelmedi. «Başlatılamadı» DEMEYİZ: pencere açılmış,
+        # kullanıcı ödemiş bile olabilir.
+        _log.debug("Satın alma sonucu alınamadı: %s", exc)
+        return SatinAlmaSonucu.YANIT_YOK
     return _durum_esle(sonuc)
 
 
 def _durum_esle(sonuc) -> SatinAlmaSonucu:
     """`StorePurchaseStatus` -> `SatinAlmaSonucu`. Sayı değerleri WinRT'de sabittir."""
     if sonuc is None:
-        return SatinAlmaSonucu.YAPILAMADI
+        return SatinAlmaSonucu.YANIT_YOK
     try:
         kod = int(getattr(sonuc, "status", sonuc))
     except (TypeError, ValueError):
-        return SatinAlmaSonucu.YAPILAMADI
+        return SatinAlmaSonucu.YANIT_YOK
     return {
         0: SatinAlmaSonucu.ALINDI,          # Succeeded
         1: SatinAlmaSonucu.ZATEN_VAR,       # AlreadyPurchased
         2: SatinAlmaSonucu.TAMAMLANMADI,    # NotPurchased
         3: SatinAlmaSonucu.AG_HATASI,       # NetworkError
         4: SatinAlmaSonucu.SUNUCU_HATASI,   # ServerError
-    }.get(kod, SatinAlmaSonucu.YAPILAMADI)
+    }.get(kod, SatinAlmaSonucu.YANIT_YOK)

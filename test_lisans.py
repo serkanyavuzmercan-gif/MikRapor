@@ -447,9 +447,59 @@ class TestSatinAlmaSonucu(unittest.TestCase):
 
         self.assertTrue(premium_acildi_mi(S.ALINDI))
         self.assertTrue(premium_acildi_mi(S.ZATEN_VAR))
-        for sonuc in (S.TAMAMLANMADI, S.AG_HATASI, S.SUNUCU_HATASI, S.YAPILAMADI):
+        for sonuc in (S.TAMAMLANMADI, S.AG_HATASI, S.SUNUCU_HATASI,
+                      S.BASLATILAMADI, S.PENCERE_ACILMADI, S.YANIT_YOK):
             with self.subTest(sonuc=sonuc):
                 self.assertFalse(premium_acildi_mi(sonuc))
+
+    def test_baslatilamadi_ile_yanit_yok_ayri_mesaj(self) -> None:
+        """
+        CANLIDA YAŞANDI: Store'un satın alma penceresi AÇILDI, kullanıcı ödeme
+        yaparken bizim 20 sn'lik zaman aşımımız bekleyişi iptal etti, pencere yok
+        oldu ve ekrana «yalnız Store'dan kurulan sürümde satın alınabilir» yazdık —
+        kullanıcı zaten Store sürümündeydi. Yanlış şeyi suçlayan mesaj, hiç mesaj
+        vermemekten kötüdür.
+        """
+        from domain.lisans import SatinAlmaSonucu as S
+        from domain.lisans import satin_alma_mesaji
+
+        b_baslik, b_govde = satin_alma_mesaji(S.BASLATILAMADI)
+        y_baslik, y_govde = satin_alma_mesaji(S.YANIT_YOK)
+        self.assertNotEqual(b_baslik, y_baslik)
+        # «Başladı ama cevap gelmedi» durumunda kurulum biçimi SUÇLANMAZ.
+        self.assertNotIn("kurulan", y_govde)
+        self.assertIn("kurulan", b_govde)
+
+    def test_store_sayfasi_yalniz_store_disi_kurulumda_acilir(self) -> None:
+        """
+        Store SÜRÜMÜNDE uygulamanın sayfası «Aç» gösterir, satın alma düğmesi yoktur
+        (canlıda görüldü). Oraya yönlendirmek kullanıcıyı çıkmaza sokar; yalnız
+        StoreContext hiç kurulamadığında — yani Store'dan kurulmamış sürümde — gidilir.
+        """
+        import ast
+        import inspect
+
+        import ui.rapor_tab as mod
+
+        govde = {f.name: f for f in ast.walk(ast.parse(inspect.getsource(mod)))
+                 if isinstance(f, ast.FunctionDef)}
+        kaynak = ast.unparse(govde["_on_premium"])
+        self.assertIn("BASLATILAMADI", kaynak)
+        self.assertIn("magaza_sayfasi_ac", kaynak)
+        # Zaman aşımı / pencere hatası dallarında sayfa AÇILMAZ.
+        for kotu in ("YANIT_YOK", "PENCERE_ACILMADI"):
+            self.assertNotIn(f"{kotu}:\n", kaynak)
+
+    def test_satin_alma_zaman_asimi_insan_hizinda(self) -> None:
+        """
+        Lisans okuma sınırı satın almaya UYGULANAMAZ: biri makine, diğeri insan
+        hızında. Aynı sabiti paylaşmak kullanıcının elinden ödeme penceresini aldı.
+        """
+        from infra.store_lisans import _SATIN_ALMA_ASIMI, _ZAMAN_ASIMI
+
+        self.assertGreater(_SATIN_ALMA_ASIMI, 300,
+                           "satın alma sınırı insan işlemi için çok kısa")
+        self.assertLess(_ZAMAN_ASIMI, 60, "lisans okuma sınırı gereksiz uzun")
 
     def test_tamamlanmadi_mesaji_suclamiyor(self) -> None:
         """
@@ -476,8 +526,8 @@ class TestSatinAlmaSonucu(unittest.TestCase):
         for kod, bekle in beklenen.items():
             with self.subTest(kod=kod):
                 self.assertIs(_durum_esle(_Sahte(kod)), bekle)
-        self.assertIs(_durum_esle(None), S.YAPILAMADI)
-        self.assertIs(_durum_esle(_Sahte(99)), S.YAPILAMADI)
+        self.assertIs(_durum_esle(None), S.YANIT_YOK)
+        self.assertIs(_durum_esle(_Sahte(99)), S.YANIT_YOK)
 
     @unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
     def test_satin_alma_sonrasi_lisans_yeniden_okunmuyor(self) -> None:

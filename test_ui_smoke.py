@@ -1180,6 +1180,120 @@ class TestEmptyStateOkunabilirlik(unittest.TestCase):
 
 
 @unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
+class TestEmptyStateAciklamaSigar(unittest.TestCase):
+    """
+    Boş ekrandaki açıklama SIKIŞTIRILMAZ.
+
+    Gövde sabit iki satırdı; sığmayan metin yatay ölçeklenerek daraltılıyordu. Kısa
+    açıklamalarda görünmüyordu — Yapay Zekâ sekmesinin açıklaması 305, kilitliyken
+    520 karakter olduğu için ölçek 0,5'in altına düşüyor ve yazı ekranda BÜSBÜTÜN
+    OKUNMAZ hâle geliyordu (canlıda görüldü, kullanıcı ekran görüntüsüyle bildirdi).
+
+    Bekçi iki şeyi birden tutar:
+      1. cluster gövdenin GERÇEK yüksekliğinden boyutlanıyor mu (yoksa CTA taşar),
+      2. dokuz sekmenin açıklaması — kilitli hâli dâhil — kutuya sıkıştırılmadan
+         sığıyor mu. Yeni bir açıklama fazla uzun yazılırsa test kırmızıya döner;
+         doğrusu metni kısaltmaktır (kural 4), kutuyu büyütmek değil.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def _govde(self, ekran):
+        from ui.empty_state import _HScaleBody
+        govde = ekran.findChild(_HScaleBody)
+        self.assertIsNotNone(govde, "boş ekranda açıklama gövdesi yok")
+        return govde
+
+    def test_uzun_aciklamada_cluster_govdeyle_birlikte_buyur(self) -> None:
+        from ui.empty_state import EmptyState, _cluster_yuksekligi
+
+        kisa = EmptyState("Başlık", "Kısa açıklama.", on_cta=lambda: None)
+        uzun = EmptyState("Başlık", "Uzun bir açıklama cümlesi. " * 12,
+                          on_cta=lambda: None)
+        try:
+            kisa_govde, uzun_govde = self._govde(kisa), self._govde(uzun)
+            self.assertEqual(kisa_govde.height(), kisa_govde.taban,
+                             "kısa metin referans yüksekliğini korumalı")
+            self.assertGreater(uzun_govde.height(), kisa_govde.height(),
+                               "gövde uzun metinde büyümüyor — metin sıkıştırılıyor")
+            for ekran in (kisa, uzun):
+                self.assertEqual(
+                    ekran._cluster.height(),
+                    _cluster_yuksekligi(self._govde(ekran).height()),
+                    "cluster gövdeye göre boyutlanmıyor — CTA kutunun dışında kalır")
+        finally:
+            kisa.deleteLater()
+            uzun.deleteLater()
+
+    def test_tavandaki_govde_en_kucuk_pencerede_sigar(self) -> None:
+        """
+        Tavan keyfî bir sayı değil: gövde büyüyünce cluster de büyüyor ve alta
+        sabitli olduğu için yukarı taşıyor. En küçük pencerede (960×640) boş ekran
+        alanı ~440px; tavandaki cluster oraya sığmazsa CTA ekranın dışında kalır —
+        yani metni okunur yapayım derken düğmeyi kaybederdik.
+        """
+        from ui.app import MikRaporWindow
+        from ui.empty_state import _BOTTOM_PAD, EmptyState, _cluster_yuksekligi
+
+        pencere = MikRaporWindow()
+        try:
+            pencere.resize(960, 640)      # setMinimumSize ile aynı
+            pencere.show()
+            self.app.processEvents()
+            bos = pencere._stack.widget(0)._empty
+            ekran = bos if isinstance(bos, EmptyState) else bos.findChild(EmptyState)
+            self.assertIsNotNone(ekran, "boş ekran bulunamadı")
+            tavan = self._govde(ekran).tavan
+            gerekli = _cluster_yuksekligi(tavan) + _BOTTOM_PAD
+            self.assertLessEqual(
+                gerekli, bos.height(),
+                f"tavandaki gövdeyle cluster {gerekli}px, alan {bos.height()}px — "
+                f"CTA ekran dışında kalır")
+        finally:
+            pencere.close()
+            pencere.deleteLater()
+
+    def test_her_sekmenin_aciklamasi_kilitliyken_de_sigar(self) -> None:
+        """
+        Ölçüm GENİŞ FONTLA yapılır: Windows sistem fontu Linux'un ~1,59 katı
+        genişlikte çiziyor (sekme çubuğunda ölçüldü), yani aynı metin kullanıcının
+        ekranında daha çok satır tutuyor. Linux'un dar fontuyla ölçen bir bekçi,
+        Windows'ta okunmaz hâle gelen metni geçirirdi.
+        """
+        from ui.app import MikRaporWindow
+        from ui.bilesenler import hos_geldin
+        from ui.empty_state import _BODY_MAX_W
+
+        dar = int(_BODY_MAX_W / 1.59)   # metni 1,59 kat genişletmekle eşdeğer
+        pencere = MikRaporWindow()
+        try:
+            for i in range(pencere._stack.count()):
+                sekme = pencere._stack.widget(i)
+                metinler = {"açık": sekme.ACIKLAMA,
+                            "kilitli": sekme._kilit_aciklamasi()}
+                for hal, metin in metinler.items():
+                    with self.subTest(sekme=sekme.BASLIK, hal=hal):
+                        ekran = hos_geldin(sekme.EMOJI, sekme.BASLIK, metin,
+                                           sekme.IPUCU, on_cta=lambda: None,
+                                           cta="Getir")
+                        try:
+                            govde = self._govde(ekran)
+                            gerekli, tavan = govde.dogal_yukseklik(dar), govde.tavan
+                        finally:
+                            ekran.deleteLater()
+                        self.assertLessEqual(
+                            gerekli, tavan,
+                            f"«{sekme.BASLIK}» açıklaması ({hal}) geniş fontta kutuya "
+                            f"sığmıyor: {gerekli}px > {tavan}px — sıkıştırılınca "
+                            f"okunmaz hâle gelir, metin kısaltılmalı")
+        finally:
+            pencere.close()
+            pencere.deleteLater()
+
+
+@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
 class TestAyarlarTekAdWidget(unittest.TestCase):
     """Düğme metni ile pencere başlığı aynı olmalı (kural 5)."""
 
