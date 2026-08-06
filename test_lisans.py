@@ -112,9 +112,24 @@ class TestKilitVeEtiket(unittest.TestCase):
 class TestStoreKoprusu(unittest.TestCase):
     """Lisans okuyucu HİÇBİR koşulda uygulamayı düşürmez."""
 
-    def test_windows_disinda_bilinmiyor_doner(self) -> None:
+    def test_lisans_okuma_hicbir_kosulda_dusurmez(self) -> None:
+        """
+        Köprü istisna ATMAZ; her platformda geçerli bir durum döner.
+
+        BU TEST DÜZELTİLDİ: eskiden her yerde `BILINMIYOR` bekliyordu, çünkü
+        `winsdk` hiç paketlenmemişti ve import daima hata veriyordu. Bağımlılık
+        eklenince Windows'ta köprü GERÇEKTEN çalıştı ve «bu hesapta eklenti yok»
+        anlamında `YOK` döndü — yani testi kıran şey, düzelen davranıştı.
+        Windows dışında hâlâ `BILINMIYOR` olmalı: sorulacak bir Store yok.
+        """
+        import sys
+
         from infra.store_lisans import lisans_durumu
-        self.assertIs(lisans_durumu(), LisansDurumu.BILINMIYOR)
+
+        sonuc = lisans_durumu()
+        self.assertIsInstance(sonuc, LisansDurumu)
+        if sys.platform != "win32":
+            self.assertIs(sonuc, LisansDurumu.BILINMIYOR)
 
     def test_satin_alma_pencereye_baglanmadan_denenmez(self) -> None:
         """
@@ -464,6 +479,7 @@ class TestSatinAlmaSonucu(unittest.TestCase):
         self.assertIs(_durum_esle(None), S.YAPILAMADI)
         self.assertIs(_durum_esle(_Sahte(99)), S.YAPILAMADI)
 
+    @unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
     def test_satin_alma_sonrasi_lisans_yeniden_okunmuyor(self) -> None:
         """
         EN KRİTİK DAL: `ALINDI` geldiğinde premium DOĞRUDAN açılır.
@@ -515,6 +531,7 @@ class TestAcilisYolu(unittest.TestCase):
         self.assertIn("if not yenile", kaynak,
                       "ağa çıkmayan hızlı yol yok — açılışta Store'a soruluyor")
 
+    @unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
     def test_lisans_arkaplanda_okunuyor(self) -> None:
         import ast
         import inspect
