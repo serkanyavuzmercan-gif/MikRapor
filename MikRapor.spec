@@ -45,6 +45,12 @@ a = Analysis(
         'PyQt6.QtGui',
         'PyQt6.QtWidgets',
         'PyQt6.QtNetwork',
+        # Store köprüsü dinamik import ediyor; PyInstaller statik taramada göremez.
+        # Bildirilmezse paketlenmiş uygulamada ImportError -> lisans hiç okunmaz ->
+        # ÖDEYEN müşteride bile premium açılmaz, üstelik sessizce.
+        'winsdk',
+        'winsdk._winrt',
+        'winsdk.windows.services.store',
     ],
     hookspath=[],
     hooksconfig={},

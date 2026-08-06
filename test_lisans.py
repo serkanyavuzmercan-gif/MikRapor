@@ -116,24 +116,47 @@ class TestStoreKoprusu(unittest.TestCase):
         from infra.store_lisans import lisans_durumu
         self.assertIs(lisans_durumu(), LisansDurumu.BILINMIYOR)
 
-    def test_uygulama_ici_odeme_penceresi_yazilmadi(self) -> None:
+    def test_satin_alma_pencereye_baglanmadan_denenmez(self) -> None:
         """
-        `RequestPurchaseAsync` + HWND/COM bağlama yolu bilerek KULLANILMIYOR: Python'dan
-        kırılgan ve bozulursa sonuç «kimse ödeme yapamıyor» olur. Satın alma Store
-        sayfasında tamamlanır.
+        BU BEKÇİ TERSİNE ÇEVRİLDİ — silinmedi, tarihi burada duruyor.
 
-        Metin araması YETMEZ: modülün docstring'i tam olarak bu yolu NEDEN
-        kullanmadığımızı anlatıyor ve kendi bekçisini kırmızıya düşürüyordu. AST'den
-        yalnız gerçek çağrılara bakılır.
+        Eskiden «`request_purchase_async` ÇAĞRILMIYOR» diye sınıyordu: satın alma
+        Store'un ürün sayfasında tamamlanacaktı. ÖLÇÜM o kararı çürüttü — yayındaki,
+        eksiksiz yapılandırılmış bir eklenti için bile `apps.microsoft.com/detail/
+        9PF68PSTZNTP` 404/ProductNotFound döner; eklentilerin web sayfası yoktur.
+        Uygulama içi satın alma tek yol oldu.
+
+        Yeni koşul: satın alma çağrısı VAR ve HWND bağlaması olmadan yapılmıyor.
+        Bağlanmamış çağrı sessizce başarısız olur ya da arayüzü dondurur.
         """
         import ast
 
-        agac = ast.parse((_KOK / "infra" / "store_lisans.py").read_text(encoding="utf-8"))
-        yasak = {"request_purchase_async", "requestpurchaseasync",
-                 "iinitializewithwindow", "queryinterface"}
-        bulunan = [d.attr for d in ast.walk(agac)
-                   if isinstance(d, ast.Attribute) and d.attr.lower() in yasak]
-        self.assertEqual(bulunan, [], f"uygulama içi ödeme yolu yazılmış: {bulunan}")
+        kaynak = (_KOK / "infra" / "store_lisans.py").read_text(encoding="utf-8")
+        agac = ast.parse(kaynak)
+        cagrilar = {d.attr for d in ast.walk(agac) if isinstance(d, ast.Attribute)}
+        self.assertIn("request_purchase_async", cagrilar,
+                      "satın alma yolu yok — eklenti hiç satılamaz")
+
+        govde = {f.name: f for f in ast.walk(agac) if isinstance(f, ast.FunctionDef)}
+        self.assertIn("_pencereye_bagla", govde, "HWND bağlama adımı yok")
+        satin_al = govde.get("satin_al")
+        self.assertIsNotNone(satin_al)
+        cagrilanlar = {c.func.id for c in ast.walk(satin_al)
+                       if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+        self.assertIn("_pencereye_bagla", cagrilanlar,
+                      "satın alma pencereye bağlanmadan çağrılıyor")
+
+    def test_lisans_okuma_zaman_asimina_bagli(self) -> None:
+        """
+        WinRT asılabilir ve bu çağrılar UI thread'inden yapılıyor. Zaman aşımı
+        olmadan Store'un takılması uygulamayı kilitler.
+        """
+        import ast
+
+        kaynak = (_KOK / "infra" / "store_lisans.py").read_text(encoding="utf-8")
+        adlar = {d.attr for d in ast.walk(ast.parse(kaynak))
+                 if isinstance(d, ast.Attribute)}
+        self.assertIn("wait_for", adlar, "WinRT çağrısı zaman aşımısız")
 
     def test_magaza_url_store_id_ile_kurulu(self) -> None:
         from infra.surum import MAGAZA_STORE_ID, MAGAZA_URL
@@ -141,20 +164,29 @@ class TestStoreKoprusu(unittest.TestCase):
         self.assertIn(MAGAZA_STORE_ID, MAGAZA_URL)
         self.assertTrue(MAGAZA_URL.startswith("ms-windows-store://"))
 
-    def test_satin_alma_eklentinin_sayfasina_gider(self) -> None:
+    def test_eklentinin_web_sayfasina_gonderilmiyor(self) -> None:
         """
-        Uygulamanın sayfasında «Yüklü / Aç» yazar — satın alma düğmesi EKLENTİNİN
-        kendi sayfasındadır ve adresi EKLENTİNİN Store ID'sinden kurulur.
+        `satin_alma_url()` SİLİNDİ — eklentinin web sayfası yok (404 ölçüldü).
+
+        Fonksiyon dursaydı biri altı ay sonra «hazır duruyor» deyip 404'e geri
+        dönerdi. `magaza_sayfasi_ac()` artık UYGULAMANIN sayfasını açıyor ve tek
+        işi «Store sürümünü kur» demek.
         """
-        from infra.surum import (
-            MAGAZA_STORE_ID,
-            PREMIUM_ADDON_STORE_ID,
-            eklenti_tanimli,
-            satin_alma_url,
-        )
-        self.assertTrue(eklenti_tanimli())
-        self.assertIn(PREMIUM_ADDON_STORE_ID, satin_alma_url())
-        self.assertNotIn(MAGAZA_STORE_ID, satin_alma_url())
+        import infra.surum as surum
+
+        self.assertFalse(hasattr(surum, "satin_alma_url"),
+                         "ölü fonksiyon duruyor — 404'e geri dönüş daveti")
+        self.assertFalse(hasattr(surum, "eklenti_tanimli"))
+
+        import ast
+        kaynak = (_KOK / "infra" / "store_lisans.py").read_text(encoding="utf-8")
+        govde = {f.name: f for f in ast.walk(ast.parse(kaynak))
+                 if isinstance(f, ast.FunctionDef)}
+        adlar = {d.id for d in ast.walk(govde["magaza_sayfasi_ac"])
+                 if isinstance(d, ast.Name)}
+        self.assertIn("MAGAZA_URL", adlar)
+        self.assertNotIn("PREMIUM_ADDON_STORE_ID", adlar,
+                         "eklentinin sayfasına gönderiliyor — o sayfa 404")
 
     def test_iki_kimlik_karistirilmamis(self) -> None:
         """
@@ -168,12 +200,17 @@ class TestStoreKoprusu(unittest.TestCase):
         self.assertEqual(PREMIUM_ADDON_URUN_ID, "mikrapor-premium")
         self.assertEqual(PREMIUM_ADDON_STORE_ID, "9PF68PSTZNTP")
         self.assertNotEqual(PREMIUM_ADDON_URUN_ID, PREMIUM_ADDON_STORE_ID)
-        # Lisans okuyucu Store ID'yi HİÇ kullanmamalı.
+        # LİSANS OKUMA ürün kimliğine bakar; SATIN ALMA Store ID'ye. İkisi de aynı
+        # dosyada ama ayrı fonksiyonlarda — hangisinin nerede olduğu sınanır.
         kaynak = (_KOK / "infra" / "store_lisans.py").read_text(encoding="utf-8")
-        adlar = {d.id for d in ast.walk(ast.parse(kaynak)) if isinstance(d, ast.Name)}
-        self.assertNotIn("PREMIUM_ADDON_STORE_ID", adlar,
+        govde = {f.name: f for f in ast.walk(ast.parse(kaynak))
+                 if isinstance(f, ast.FunctionDef)}
+        okuma = {d.id for d in ast.walk(govde["lisans_durumu"]) if isinstance(d, ast.Name)}
+        self.assertIn("PREMIUM_ADDON_URUN_ID", okuma)
+        self.assertNotIn("PREMIUM_ADDON_STORE_ID", okuma,
                          "lisans eşleşmesinde Store ID kullanılmış — hiç eşleşmez")
-        self.assertIn("PREMIUM_ADDON_URUN_ID", adlar)
+        alma = {d.id for d in ast.walk(govde["satin_al"]) if isinstance(d, ast.Name)}
+        self.assertIn("PREMIUM_ADDON_STORE_ID", alma)
 
 
 try:
@@ -369,3 +406,123 @@ class TestGetirKapisiMuhurlu(unittest.TestCase):
                     ezenler.append(yol.name)
         self.assertEqual(ezenler, [],
                          "premium kilidi baypas olur — ön koşulu _getir_on_kosul'a yazın")
+
+
+class TestSatinAlmaSonucu(unittest.TestCase):
+    """
+    Satın alma dallarının tamamı — Store OLMADAN sınanır.
+
+    CI'da Windows Store yok; gerçek satın alma denenemez. Ama enum eşlemesi ve
+    kararlar saf katmanda olduğu için burada tam kapsanır. Son metre (gerçek
+    hesapla ödeme) yalnız ELLE doğrulanabilir; bu testler onun yerine geçmez.
+    """
+
+    def test_her_dal_bir_mesaj_uretiyor(self) -> None:
+        from domain.lisans import SatinAlmaSonucu, satin_alma_mesaji
+
+        for sonuc in SatinAlmaSonucu:
+            with self.subTest(sonuc=sonuc):
+                baslik, govde = satin_alma_mesaji(sonuc)
+                self.assertTrue(baslik.strip())
+                self.assertTrue(govde.strip())
+
+    def test_yalniz_alindi_ve_zaten_var_acar(self) -> None:
+        from domain.lisans import SatinAlmaSonucu as S
+        from domain.lisans import premium_acildi_mi
+
+        self.assertTrue(premium_acildi_mi(S.ALINDI))
+        self.assertTrue(premium_acildi_mi(S.ZATEN_VAR))
+        for sonuc in (S.TAMAMLANMADI, S.AG_HATASI, S.SUNUCU_HATASI, S.YAPILAMADI):
+            with self.subTest(sonuc=sonuc):
+                self.assertFalse(premium_acildi_mi(sonuc))
+
+    def test_tamamlanmadi_mesaji_suclamiyor(self) -> None:
+        """
+        `NotPurchased` hem vazgeçmede hem ödeme reddinde dönüyor. «İptal ettiniz»
+        demek, kartı reddedilen kullanıcıya yanlış sebep söylemektir.
+        """
+        from domain.lisans import SatinAlmaSonucu, satin_alma_mesaji
+
+        _, govde = satin_alma_mesaji(SatinAlmaSonucu.TAMAMLANMADI)
+        for sozcuk in ("iptal", "vazgeç", "reddedil"):
+            self.assertNotIn(sozcuk, govde.lower(), f"sebep uyduruluyor: {sozcuk}")
+        self.assertIn("ücret alınmadı", govde.lower())
+
+    def test_winrt_kodlari_dogru_esleniyor(self) -> None:
+        """StorePurchaseStatus sayı değerleri WinRT'de sabittir."""
+        from domain.lisans import SatinAlmaSonucu as S
+        from infra.store_lisans import _durum_esle
+
+        class _Sahte:
+            def __init__(self, kod): self.status = kod
+
+        beklenen = {0: S.ALINDI, 1: S.ZATEN_VAR, 2: S.TAMAMLANMADI,
+                    3: S.AG_HATASI, 4: S.SUNUCU_HATASI}
+        for kod, bekle in beklenen.items():
+            with self.subTest(kod=kod):
+                self.assertIs(_durum_esle(_Sahte(kod)), bekle)
+        self.assertIs(_durum_esle(None), S.YAPILAMADI)
+        self.assertIs(_durum_esle(_Sahte(99)), S.YAPILAMADI)
+
+    def test_satin_alma_sonrasi_lisans_yeniden_okunmuyor(self) -> None:
+        """
+        EN KRİTİK DAL: `ALINDI` geldiğinde premium DOĞRUDAN açılır.
+
+        Lisans dağıtımı satın almadan hemen sonra oturmamış olabilir; oraya sorup
+        «yok» cevabı alınsa kullanıcı ödemiş ve ekran kilitli kalmış olurdu.
+        """
+        import ast
+        import inspect
+
+        import ui.rapor_tab as mod
+
+        kaynak = inspect.getsource(mod)
+        govde = {f.name: f for f in ast.walk(ast.parse(kaynak))
+                 if isinstance(f, ast.FunctionDef)}
+        cagrilar = {c.func.id for c in ast.walk(govde["_on_premium"])
+                    if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+        self.assertIn("premium_ac", cagrilar, "satın alma sonrası premium açılmıyor")
+        self.assertNotIn("premium_durumu", cagrilar,
+                         "satın alma sonrası lisans yeniden okunuyor — ödeyen kilitli kalır")
+
+    def test_premium_ac_onbellege_yaziyor(self) -> None:
+        """Açılan kilit yeniden başlatınca kapanmamalı."""
+        import ast
+        import inspect
+
+        import ui.premium as mod
+
+        govde = {f.name: f for f in ast.walk(ast.parse(inspect.getsource(mod)))
+                 if isinstance(f, ast.FunctionDef)}
+        cagrilar = {c.func.id for c in ast.walk(govde["premium_ac"])
+                    if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+        self.assertIn("premium_onbellek_yaz", cagrilar)
+
+
+class TestAcilisYolu(unittest.TestCase):
+    """Lisans okuması açılış yolundan ÇIKARILDI — Store yavaşsa uygulama donmasın."""
+
+    def test_varsayilan_cagri_aga_cikmiyor(self) -> None:
+        import ast
+        import inspect
+
+        import ui.premium as mod
+
+        govde = {f.name: f for f in ast.walk(ast.parse(inspect.getsource(mod)))
+                 if isinstance(f, ast.FunctionDef)}
+        kaynak = ast.unparse(govde["premium_durumu"])
+        # `lisans_durumu` importu YALNIZ yenile=True dalında olmalı.
+        self.assertIn("if not yenile", kaynak,
+                      "ağa çıkmayan hızlı yol yok — açılışta Store'a soruluyor")
+
+    def test_lisans_arkaplanda_okunuyor(self) -> None:
+        import ast
+        import inspect
+
+        import ui.app as mod
+
+        kaynak = inspect.getsource(mod)
+        self.assertIn("_lisansi_arkaplanda_oku", kaynak)
+        govde = {f.name: f for f in ast.walk(ast.parse(kaynak))
+                 if isinstance(f, ast.FunctionDef)}
+        self.assertIn("_lisansi_arkaplanda_oku", govde)

@@ -397,11 +397,61 @@ doğrulamayla açılır (`infra/config.py: premium_onbellek_yaz`) ve bir daha ka
 Kabul edilen bedel: config kopyalanabilir — B2B'de korsanlık teşviki, kilitlenen
 müşterinin bedelinden küçüktür.
 
-**UYGULAMA İÇİ ÖDEME PENCERESİ YOK.** `RequestPurchaseAsync` masaüstü uygulamasında
-HWND bağlaması ister; bunu Python'dan COM dönüşümüyle yapmak sürüme bağlı ve kırılgan,
-bozulursa sonuç «kimse ödeme yapamıyor» olur. Satın alma Store ürün sayfasında
-tamamlanır (`MAGAZA_URL`). Bekçi: `test_lisans.TestStoreKoprusu` — AST'den bakar,
-metin araması modülün *neden kullanmadığımızı anlatan* docstring'ine takılıyordu.
+**SATIN ALMA UYGULAMA İÇİNDE — bu karar ÖLÇÜMLE TERSİNE ÇEVRİLDİ.**
+
+Önce «uygulama içi ödeme penceresi yok» deniyordu: `RequestPurchaseAsync` HWND
+bağlaması ister, Python'dan kırılgan görünüyordu, satın alma Store ürün sayfasında
+tamamlanacaktı. **O sayfa yok.** Eklenti yayına alındıktan ve eksiksiz yapılandırıldıktan
+sonra (Public, tüm pazarlar, Forever, listeleme tam) ölçüldü:
+
+| adres | cevap |
+|---|---|
+| `apps.microsoft.com/detail/9NB421K1Z0GB` (uygulama) | 200, «In-App Purchases» etiketi var |
+| `apps.microsoft.com/detail/9PF68PSTZNTP` (eklenti) | **404 / ProductNotFound** |
+
+Add-on'ların web ürün sayfası yoktur; bu yayın durumundan bağımsız ve kalıcıdır.
+Kullanıcıyı oraya göndermek onu kırık bir sayfaya göndermekti. `satin_alma_url()` ve
+`eklenti_tanimli()` **silindi** — ölü bırakılsalardı biri «hazır duruyor» deyip 404'e
+geri dönerdi.
+
+Kırılganlık korkusu da ölçüldü, tahmin edilmedi (geçici teşhis, Windows runner):
+`winsdk._winrt.initialize_with_window` **var**, COM apartmanı QApplication sonrası
+**MAINSTA** — yani `IInitializeWithWindow`'un istediği durum. Pencere bağlanamazsa
+satın alma **hiç denenmez** (`_pencereye_bagla` → `False`): bağlanmamış çağrı sessizce
+başarısız olur ya da arayüzü dondurur.
+
+**DÖNÜŞ İSTİSNA DEĞİL, ENUM.** `StorePurchaseStatus` başarısızlığı durum koduyla
+bildirir; yalnız `try/except` koymak «ağ hatası»nı «başarılı» sanmaktı. Her dal
+`domain/lisans.py: SatinAlmaSonucu`ya eşlenir ve ayrı mesaj alır. `NotPurchased`
+mesajı SEBEP UYDURMAZ — aynı kod hem vazgeçmede hem ödemenin reddinde döner, bu
+yüzden «iptal ettiniz» denmez, «satın alma tamamlanmadı» denir.
+
+**SATIN ALMA CEVABI LİSANS OKUMASINDAN GÜÇLÜDÜR.** `ALINDI`/`ZATEN_VAR` gelince
+premium DOĞRUDAN açılır ve önbelleğe yazılır (`ui/premium.py: premium_ac`); lisans
+yeniden okunmaz. Satın almadan hemen sonra lisans dağıtımı oturmamış olabilir ve o
+aralıkta «yok» cevabı gelirse kullanıcı ödediği hâlde kilitli kalırdı. Ayrıca satın
+alma uygulama içinde bittiği için **pencere odağı değişmez** — eski
+`changeEvent`/`satin_alma_bekleniyor` yolu tetiklenmez, o artık yalnız yedektir.
+
+Bekçiler: `test_lisans.TestStoreKoprusu` (tersine çevrildi, silinmedi),
+`TestSatinAlmaSonucu` (enum dallarının tamamı, Store olmadan), `TestAcilisYolu`.
+
+**SON METRE OTOMATİK DOĞRULANAMAZ.** CI'da Store yok; gerçek ödeme denenemez.
+Store'dan kurulan sürümde, gerçek Microsoft hesabıyla elle duman testi yapılmadan
+«premium çalışıyor» denmez. Bu bir teslim koşuludur.
+
+**LİSANS AÇILIŞ YOLUNDA OKUNMAZ.** `kilitli()` → `_bos_ekran()` → `_build()` zinciri
+dokuz sekmenin kurulumunda UI thread'inde koşuyor; oraya senkron WinRT çağrısı koymak
+Store yavaşladığında uygulamayı **açılışta** dondurur. `premium_durumu()` yalnız yerel
+önbelleği okur; gerçek durum pencere açıldıktan sonra ayrı thread'de öğrenilir
+(`ui/app.py: _lisansi_arkaplanda_oku`). Bütün WinRT çağrıları `asyncio.wait_for` ile
+üst sınıra bağlıdır.
+
+**BAĞIMLILIK PAKETLENMELİ.** `winsdk` ne `requirements.txt`'te ne spec'in
+`hiddenimports`'undaydı: import hata veriyor, `BILINMIYOR` dönüyor, premium ÖDEYEN
+müşteride bile sessizce açılmıyordu. Mevcut bekçiler bunu görmedi çünkü hepsi «şunu
+ÇAĞIRMIYORUZ» diye bakıyordu — hiçbiri «şu gerçekten çalışıyor mu» diye sormuyordu.
+Bekçi: `test_paketleme.TestStoreKoprusuPaketleniyor`.
 
 **KİLİTLİ SEKME AÇILIR, İÇİ UYDURULMAZ.** Kullanıcı ne kaçırdığını görsün diye sekme
 girilebilir ve kendi `ACIKLAMA`'sını gösterir; bulanık ya da sahte rakam GÖSTERİLMEZ

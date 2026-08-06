@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 
-from PyQt6.QtCore import QEvent, QSize, Qt, QTimer
+from PyQt6.QtCore import QEvent, QSize, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QCloseEvent, QColor, QFont, QFontMetrics, QPainter, QPen
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
@@ -495,6 +495,10 @@ class MikRaporWindow(QMainWindow):
         layout.addWidget(self._stack, stretch=1)
         self._on_tab_degisti(0)
 
+        # Lisans AÇILIŞ YOLUNDA sorulmaz — pencere çizildikten sonra, ayrı thread'de.
+        self._lisans_isci: QThread | None = None
+        QTimer.singleShot(0, self._lisansi_arkaplanda_oku)
+
     def _aktif_tab(self) -> RaporTab | None:
         w = self._stack.currentWidget()
         return w if isinstance(w, RaporTab) else None
@@ -591,10 +595,12 @@ class MikRaporWindow(QMainWindow):
 
     def changeEvent(self, event) -> None:  # noqa: N802 — Qt API
         """
-        Store'dan dönüldüğünde kilidi tazeler — yeniden başlatma istenmez.
+        Store'dan dönüldüğünde kilidi tazeler — YEDEK yol.
 
-        Lisans YALNIZ kullanıcı satın almaya gittiyse sorulur; her odak değişiminde
-        Store'a sormak gereksiz yavaşlık olurdu.
+        Satın alma artık uygulama içinde tamamlanıyor, yani pencere odağı
+        değişmiyor ve bu yol tetiklenmiyor. Asıl açma `RaporTab._on_premium`da,
+        satın alma cevabı elde edilir edilmez yapılır. Burası, kullanıcı Store
+        uygulamasına elle gidip aldığı durum için duruyor — zararsız yedek.
         """
         super().changeEvent(event)
         if (event.type() == QEvent.Type.ActivationChange and self.isActiveWindow()
@@ -604,6 +610,10 @@ class MikRaporWindow(QMainWindow):
     def _premium_tazele(self) -> None:
         if not premium_durumu(yenile=True).acik:
             return
+        self.premium_hepsini_tazele()
+
+    def premium_hepsini_tazele(self) -> None:
+        """Bütün sekmeleri yeni lisans durumuna göre yeniden kurar."""
         for i in range(self._stack.count()):
             w = self._stack.widget(i)
             if isinstance(w, RaporTab):
@@ -611,6 +621,41 @@ class MikRaporWindow(QMainWindow):
         tab = self._aktif_tab()
         if tab is not None:
             tab.bagla_chrome(self._chrome)
+
+    def _lisansi_arkaplanda_oku(self) -> None:
+        """
+        Lisansı AÇILIŞ YOLUNUN DIŞINDA, ayrı thread'de okur.
+
+        `premium_durumu()` artık ağa çıkmıyor (bkz. ui/premium.py): açılışta dokuz
+        sekme kurulurken senkron WinRT çağrısı yapmak, Store yavaşladığında
+        uygulamayı açılışta donduruyordu. Gerçek durum pencere açıldıktan sonra
+        burada öğrenilir; premium çıkarsa sekmeler tazelenir.
+
+        Önbellek zaten açıksa sorulmaz — açılan kilit geri kapanmıyor (kural 8).
+        """
+        if premium_durumu().acik:
+            return
+
+        class _LisansIscisi(QThread):
+            sonuc = pyqtSignal(bool)
+
+            def run(self) -> None:  # noqa: D102 — QThread API
+                try:
+                    self.sonuc.emit(premium_durumu(yenile=True).acik)
+                except Exception:  # noqa: BLE001 — lisans okuma uygulamayı düşürmez
+                    self.sonuc.emit(False)
+
+        isci = _LisansIscisi(self)
+        self._lisans_isci = isci
+        isci.sonuc.connect(self._lisans_okundu)
+        # ÇALIŞAN QThread'e deleteLater() süreci çökertir; silme finished'e bırakılır.
+        isci.finished.connect(isci.deleteLater)
+        isci.start()
+
+    def _lisans_okundu(self, acik: bool) -> None:
+        self._lisans_isci = None
+        if acik:
+            self.premium_hepsini_tazele()
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 — Qt API
         if self._ping_worker is not None and self._ping_worker.isRunning():

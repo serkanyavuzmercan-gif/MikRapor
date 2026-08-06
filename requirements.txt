@@ -2,3 +2,9 @@ PyQt6>=6.6.0
 matplotlib>=3.8.0
 reportlab>=4.0.0
 pyinstaller>=6.3.0
+
+# Microsoft Store lisansı ve uygulama içi satın alma (infra/store_lisans.py).
+# YALNIZ Windows: başka platformda kurulmaz, kod da zaten sys.platform bakıyor.
+# ÖLÇÜLDÜ (store_tani.py, windows runner): windows.services.store'u bu paket
+# sağlıyor ve HWND bağlaması winsdk._winrt.initialize_with_window ile yapılıyor.
+winsdk>=1.0.0b10; sys_platform == "win32"

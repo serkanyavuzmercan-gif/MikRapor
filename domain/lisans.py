@@ -77,6 +77,67 @@ def disa_aktarim_kilitli(premium_acik_mi: bool) -> bool:
 # Bir işaret ancak kullanıcının yapabileceği bir şeye işaret ediyorsa değer taşır.
 
 
+class SatinAlmaSonucu(StrEnum):
+    """
+    Store'un `StorePurchaseStatus` enum'unun karşılığı — WinRT'siz, test edilebilir.
+
+    İSTİSNA DEĞİL ENUM: `RequestPurchaseAsync` başarısızlığı istisna olarak DEĞİL,
+    durum koduyla bildirir. Yalnız `try/except` koymak «ağ hatası»nı «başarılı»
+    sanmak demekti; her dal ayrı ele alınır.
+    """
+
+    ALINDI = "alindi"            # Succeeded
+    ZATEN_VAR = "zaten_var"      # AlreadyPurchased
+    TAMAMLANMADI = "tamamlanmadi"  # NotPurchased — vazgeçme VE ret aynı kod
+    AG_HATASI = "ag_hatasi"      # NetworkError
+    SUNUCU_HATASI = "sunucu"     # ServerError
+    YAPILAMADI = "yapilamadi"    # Store yok / paket kimliksiz / istisna
+
+
+def premium_acildi_mi(sonuc: SatinAlmaSonucu) -> bool:
+    """
+    Premium açılmalı mı?
+
+    `ZATEN_VAR` da açar: kullanıcı daha önce almış ama lisans okuması onu
+    görmemiş olabilir — Store'un kendi cevabı, lisans okumasından güçlüdür.
+
+    SATIN ALMA SONUCU POZİTİF DOĞRULAMADIR. Buradan `True` dönünce kilit
+    doğrudan açılır; lisansı yeniden okuyup «acaba gerçekten aldı mı» diye
+    sormak, kendi kesin bilgini belirsiz bir kaynağa ezdirmektir. Satın almadan
+    hemen sonra lisans dağıtımı henüz oturmamış olabilir; o aralıkta kullanıcı
+    ödemiş ve ekran kilitli kalmış olurdu.
+    """
+    return sonuc in (SatinAlmaSonucu.ALINDI, SatinAlmaSonucu.ZATEN_VAR)
+
+
+def satin_alma_mesaji(sonuc: SatinAlmaSonucu) -> tuple[str, str]:
+    """(başlık, gövde) — kullanıcıya gösterilecek metin. SEBEP UYDURULMAZ."""
+    if sonuc is SatinAlmaSonucu.ALINDI:
+        return ("Premium açıldı",
+                "Satın alma tamamlandı. PDF/CSV dışa aktarma ve Yapay Zekâ Yorumu "
+                "artık kullanılabilir.")
+    if sonuc is SatinAlmaSonucu.ZATEN_VAR:
+        return ("Premium zaten sizde",
+                "Bu Microsoft hesabında premium eklentisi kayıtlı. Yeniden ücret "
+                "alınmadı; premium açıldı.")
+    if sonuc is SatinAlmaSonucu.TAMAMLANMADI:
+        # «İptal ettiniz» DEMİYORUZ: aynı kod ödemenin reddedilmesinde de dönüyor.
+        return ("Satın alma tamamlanmadı",
+                "Bir ücret alınmadı. Dilediğiniz zaman tekrar deneyebilirsiniz.")
+    if sonuc is SatinAlmaSonucu.AG_HATASI:
+        return ("Bağlantı kurulamadı",
+                "Microsoft Store'a ulaşılamadı. İnternet bağlantınızı kontrol edip "
+                "tekrar deneyin; bir ücret alınmadı.")
+    if sonuc is SatinAlmaSonucu.SUNUCU_HATASI:
+        return ("Microsoft Store yanıt vermedi",
+                "Store tarafında geçici bir sorun var. Biraz sonra tekrar deneyin; "
+                "bir ücret alınmadı.")
+    return ("Satın alma başlatılamadı",
+            "Premium eklentisi yalnız Microsoft Store'dan kurulan MikRapor "
+            "sürümünde satın alınabilir. Store sürümünü kurduktan sonra bu "
+            "pencereden devam edebilirsiniz.")
+
+
 class LisansDurumu(StrEnum):
     """Store'dan gelen cevap. `BILINMIYOR` ile `YOK` KARIŞTIRILMAZ."""
 

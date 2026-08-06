@@ -268,3 +268,29 @@ class TestSpecIkiBicim(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestStoreKoprusuPaketleniyor(unittest.TestCase):
+    """
+    Lisans köprüsünün bağımlılığı gerçekten paketlenmeli.
+
+    YAŞANDI: `winsdk` ne requirements.txt'te ne spec'te vardı. `infra/store_lisans.py`
+    onu import ediyor, ImportError alıyor, `BILINMIYOR` dönüyor ve premium ÖDEYEN
+    müşteride bile hiç açılmıyordu — hiçbir hata mesajı olmadan. Mevcut bekçiler
+    bunu görmedi çünkü hepsi «şunu ÇAĞIRMIYORUZ» diye bakıyordu.
+    """
+
+    def test_winsdk_bagimliliklarda(self) -> None:
+        metin = (_KOK / "requirements.txt").read_text(encoding="utf-8")
+        self.assertIn("winsdk", metin, "Store köprüsünün bağımlılığı kurulmuyor")
+        self.assertIn('sys_platform == "win32"', metin,
+                      "winsdk Windows dışında da kurulmaya çalışılıyor")
+
+    def test_winsdk_spec_hiddenimports_icinde(self) -> None:
+        """Dinamik import PyInstaller'ın statik taramasında görünmez."""
+        metin = (_KOK / "MikRapor.spec").read_text(encoding="utf-8")
+        bas = metin.index("hiddenimports=[")
+        blok = metin[bas:metin.index("]", bas)]
+        for modul in ("winsdk", "winsdk.windows.services.store"):
+            with self.subTest(modul=modul):
+                self.assertIn(modul, blok, f"{modul} hiddenimports'ta yok")

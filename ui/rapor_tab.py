@@ -163,21 +163,57 @@ class RaporTab(QWidget):
         """
         return (f"{self.ACIKLAMA}<br><br>"
                 "<b>Bu sekme Premium'a dâhildir.</b> Tek seferlik satın alma ile bu "
-                "sekme ve diğer premium raporlar kalıcı olarak açılır. Düğme "
-                "Microsoft Store'daki satın alma sayfasını açar; ödeme tamamlanınca "
-                "MikRapor'a dönmeniz yeterli.")
+                "sekme, PDF/CSV dışa aktarma ve diğer premium özellikler kalıcı "
+                "olarak açılır. Ödeme Microsoft Store penceresinde tamamlanır; "
+                "MikRapor'dan çıkmanız gerekmez.")
+
+    # Satın alma sürerken düğme yeniden tetiklenmesin — modal Store penceresi
+    # açıkken Qt olay döngüsü bloke ve ikinci bir akış başlatmak kilitlenme üretir.
+    _satin_aliniyor = False
 
     def _on_premium(self) -> None:
-        """Store ürün sayfasını açar; satın alma orada tamamlanır."""
-        from infra.store_lisans import magaza_sayfasi_ac
-        from ui.premium import satin_almaya_gidildi
+        """
+        Premium satın alma — UYGULAMA İÇİNDE, Store penceresiyle.
 
-        satin_almaya_gidildi()
-        if not magaza_sayfasi_ac():
-            QMessageBox.information(
-                self, "Microsoft Store açılamadı",
-                "Store uygulaması açılamadı. MikRapor'u Microsoft Store'da arayıp "
-                "premium eklentisini oradan satın alabilirsiniz.")
+        Eklentinin web sayfasına GÖNDERİLMİYOR: öyle bir sayfa yok. Yayındaki,
+        eksiksiz yapılandırılmış bir add-on için bile `apps.microsoft.com/detail/
+        <eklenti store id>` 404 döner (ölçüldü). Tek yol `RequestPurchaseAsync`.
+        """
+        from PyQt6.QtCore import Qt as _Qt
+        from PyQt6.QtGui import QCursor
+        from PyQt6.QtWidgets import QApplication
+
+        from domain.lisans import premium_acildi_mi, satin_alma_mesaji
+        from infra.store_lisans import magaza_sayfasi_ac, satin_al
+        from ui.premium import premium_ac
+
+        if RaporTab._satin_aliniyor:
+            return
+        RaporTab._satin_aliniyor = True
+        # Store penceresi modal; Qt döngüsü o sırada bloke olacak. Meşgul imleci,
+        # kullanıcıya donmadığını değil BEKLEDİĞİNİ söyler.
+        QApplication.setOverrideCursor(QCursor(_Qt.CursorShape.WaitCursor))
+        try:
+            hwnd = int(self.window().winId())
+            sonuc = satin_al(hwnd)
+        finally:
+            QApplication.restoreOverrideCursor()
+            RaporTab._satin_aliniyor = False
+
+        baslik, govde = satin_alma_mesaji(sonuc)
+        if premium_acildi_mi(sonuc):
+            premium_ac()
+            pencere = self.window()
+            if hasattr(pencere, "premium_hepsini_tazele"):
+                pencere.premium_hepsini_tazele()
+            QMessageBox.information(self, baslik, govde)
+            return
+
+        QMessageBox.information(self, baslik, govde)
+        if sonuc.name == "YAPILAMADI":
+            # Store'dan kurulmamış sürüm: satın alma mümkün değil. Uygulamanın
+            # kendi sayfasına gönderiyoruz — orada «Al/Yükle» görecek.
+            magaza_sayfasi_ac()
 
     def _rapor_acik(self) -> bool:
         return getattr(self, "_stack", None) is not None and self._stack.currentIndex() == 1

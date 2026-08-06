@@ -33,9 +33,8 @@ MAGAZA_URL = f"ms-windows-store://pdp/?productid={MAGAZA_STORE_ID}"
 #       bununla yapılır. Oluşturulduktan sonra değiştirilemez.
 #
 #   PREMIUM_ADDON_STORE_ID «9PF68PSTZNTP»      — Microsoft'un verdiği kimlik.
-#       Eklentinin KENDİ ürün sayfasının adresi bundan kurulur; «Satın Al» düğmesi
-#       orada. Uygulamanın sayfasına göndermek işe yaramaz: kullanıcı orada
-#       «Yüklü / Aç» görür ve premium'u nereden alacağını anlamaz.
+#       `RequestPurchaseAsync` BUNU ister. Bir zamanlar eklentinin web sayfasının
+#       adresini kurmak için kullanılıyordu; öyle bir sayfa olmadığı ölçüldü.
 #
 # İkisini birbirinin yerine kullanmak sessiz arıza üretir: lisans hiç eşleşmez
 # (kullanıcı ödediği hâlde kilitli kalır) ya da link boş sayfa açar.
@@ -43,16 +42,12 @@ PREMIUM_ADDON_URUN_ID = "mikrapor-premium"
 PREMIUM_ADDON_STORE_ID = "9PF68PSTZNTP"
 
 
-def satin_alma_url() -> str:
-    """«Premium'a geç» düğmesinin açacağı sayfa — EKLENTİNİN kendi Store sayfası."""
-    if PREMIUM_ADDON_STORE_ID:
-        return f"ms-windows-store://pdp/?productid={PREMIUM_ADDON_STORE_ID}"
-    return MAGAZA_URL
-
-
-def eklenti_tanimli() -> bool:
-    """Her iki kimlik de yazıldı mı? Biri eksikse satın alma akışı EKSİKTİR."""
-    return bool(PREMIUM_ADDON_STORE_ID and PREMIUM_ADDON_URUN_ID)
+# `satin_alma_url()` ve `eklenti_tanimli()` SİLİNDİ. Eklentinin web sayfası yok:
+# yayındaki, eksiksiz yapılandırılmış bir add-on için bile
+# apps.microsoft.com/detail/9PF68PSTZNTP → 404/ProductNotFound (ölçüldü).
+# Satın alma artık uygulama içinde (`infra/store_lisans.py: satin_al`).
+# Fonksiyonlar ölü bırakılsaydı biri «hazır duruyor» deyip 404'e geri dönerdi.
+# Bekçi: test_lisans.TestStoreKoprusu.test_eklentinin_web_sayfasina_gonderilmiyor
 
 TANITIM = (
     "MikRapor, Mikro ERP verinizi mali müşavir raporu beklemeden okunur hâle getirir. "
