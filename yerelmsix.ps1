@@ -32,6 +32,46 @@ function Dogrula([bool]$sart, [string]$mesaj) {
     if (-not $sart) { throw $mesaj }
 }
 
+# PS 5.1 TUZAGI: $ErrorActionPreference='Stop' iken yerel bir programin stderr'e
+# yazmasi SONLANDIRICI hata uretiyor - ve '2>$null' bunu ONLEMIYOR, tersine
+# yonlendirmenin kendisi ErrorRecord dogurmasina sebep oluyor. py.exe "No
+# suitable Python runtime found" yazinca betik ilk adaydan sonra oluyordu;
+# ikinci adaya ve asil yardimci mesaja hic ulasamiyordu. Yoklamalar bu yuzden
+# bu iki yardimcidan gecer.
+function PyVar([string]$s) {
+    $eski = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
+    $tamam = $false
+    try {
+        $null = & py ('-' + $s) -c 'pass' 2>&1
+        $tamam = ($LASTEXITCODE -eq 0)
+    }
+    catch { $tamam = $false }
+    finally {
+        $ErrorActionPreference = $eski
+        $global:LASTEXITCODE = 0
+        $Error.Clear()
+    }
+    return $tamam
+}
+
+function VarsayilanSurum() {
+    $eski = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
+    $sonuc = ''
+    try {
+        $c = & python -c "import sys; print(str(sys.version_info[0]) + '.' + str(sys.version_info[1]))" 2>&1
+        if ($LASTEXITCODE -eq 0) { $sonuc = ($c | Select-Object -First 1).ToString().Trim() }
+    }
+    catch { $sonuc = '' }
+    finally {
+        $ErrorActionPreference = $eski
+        $global:LASTEXITCODE = 0
+        $Error.Clear()
+    }
+    return $sonuc
+}
+
 Dogrula (Test-Path 'MikRapor.spec') 'Repo kokunde degilsiniz (MikRapor.spec yok).'
 Dogrula (Test-Path 'packaging/AppxManifest.xml') 'packaging/AppxManifest.xml yok.'
 
@@ -47,38 +87,47 @@ Adim 1 'Uygun Python ile sanal ortam kur'
 #
 # Sanal ortam kullaniliyor ki sistem Python'unuz degismesin; ikinci kosuda
 # yeniden kurulmaz.
+$uygun = @('3.12', '3.11')
 $venv = '.venv-msix'
 if (-not (Test-Path $venv)) {
-    $kuruldu = $false
-    foreach ($s in @('3.12', '3.11')) {
-        if (Test-Path $venv) { Remove-Item -Recurse -Force $venv }
-        & py ('-' + $s) -m venv $venv 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host ('    Python ' + $s + ' (py launcher)')
-            $kuruldu = $true
-            break
-        }
+    $secilen = $null
+    foreach ($s in $uygun) {
+        if (PyVar $s) { $secilen = $s; break }
     }
-    if (-not $kuruldu) {
-        if (Test-Path $venv) { Remove-Item -Recurse -Force $venv }
-        $sur = & python -c "import sys; print('%d.%d' % sys.version_info[:2])"
-        if (($LASTEXITCODE -eq 0) -and (@('3.11', '3.12') -contains $sur)) {
+    if ($null -ne $secilen) {
+        & py ('-' + $secilen) -m venv $venv
+        Dogrula ($LASTEXITCODE -eq 0) 'Sanal ortam kurulamadi.'
+        Write-Host ('    Python ' + $secilen + ' (py launcher)')
+    }
+    else {
+        # py launcher hic kurulu olmayabilir; varsayilan python zaten uygunsa o kullanilir.
+        $vs = VarsayilanSurum
+        if ($uygun -contains $vs) {
             & python -m venv $venv
-            $kuruldu = ($LASTEXITCODE -eq 0)
-            Write-Host ('    Python ' + $sur + ' (varsayilan)')
+            Dogrula ($LASTEXITCODE -eq 0) 'Sanal ortam kurulamadi.'
+            Write-Host ('    Python ' + $vs + ' (varsayilan; py launcher yok)')
         }
         else {
+            $etiket = $vs
+            if ([string]::IsNullOrWhiteSpace($etiket)) { $etiket = '(python bulunamadi)' }
             Write-Host ''
             Write-Host 'Python 3.11 veya 3.12 bulunamadi.' -ForegroundColor Red
-            Write-Host ('Mevcut varsayilan surum: ' + $sur)
-            Write-Host 'winsdk daha yeni Python icin hazir paket yayinlamiyor;'
-            Write-Host 'kaynaktan derlemek Visual Studio gerektirir.'
-            Write-Host 'Kurulum: https://www.python.org/downloads/release/python-31109/'
-            Write-Host '(kurarken "py launcher" secili olsun, mevcut surumunuz silinmez)'
+            Write-Host ('  Kurulu varsayilan surum : ' + $etiket)
+            Write-Host '  Gereken                 : 3.11 ya da 3.12'
+            Write-Host ''
+            Write-Host 'SEBEP: Microsoft Store lisansini okuyan winsdk paketi yalnizca'
+            Write-Host 'Python 3.8-3.12 icin hazir surum yayinliyor. Daha yenisinde pip'
+            Write-Host 'kaynaktan derlemeye kalkiyor, o da Visual Studio + CMake istiyor.'
+            Write-Host 'winsdk ATLANAMAZ: olmadan premium, odeyen musteride bile acilmaz.'
+            Write-Host ''
+            Write-Host 'COZUM - mevcut Python surumunuz SILINMEZ, yan yana durur:' -ForegroundColor Yellow
+            Write-Host '  winget install Python.Python.3.12'
+            Write-Host 'ya da https://www.python.org/downloads/windows/ adresinden'
+            Write-Host '3.12.x "Windows installer (64-bit)" - kurulumda "py launcher"'
+            Write-Host 'isaretli olsun. Sonra bu betigi tekrar calistirin.'
             throw 'Uygun Python surumu yok.'
         }
     }
-    Dogrula $kuruldu 'Sanal ortam kurulamadi.'
 }
 else {
     Write-Host '    Mevcut .venv-msix kullaniliyor'

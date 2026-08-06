@@ -1,5 +1,6 @@
 # Python
 .venv/
+.venv-msix/
 __pycache__/
 **/__pycache__/
 *.py[cod]
@@ -8,6 +9,11 @@ __pycache__/
 build/
 dist/
 *.exe
+
+# Yerel MSIX uretimi (yerelmsix.ps1) - yuzlerce MB, repoya girmemeli
+msix-root/
+out/
+*.msix
 
 # IDE
 .vscode/
