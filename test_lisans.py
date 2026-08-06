@@ -24,6 +24,29 @@ from domain.lisans import (
 _KOK = Path(__file__).parent
 
 
+def _kaynak(*parcalar: str) -> str:
+    """Modül kaynağını DİSKTEN okur — modülü İMPORT ETMEZ.
+
+    `inspect.getsource(mod)` modülü içeri almayı gerektiriyor; `ui/rapor_tab.py`
+    ve `ui/app.py` PyQt6 çekiyor ve CI'da (ubuntu, PyQt6 yok) bekçiler
+    `ModuleNotFoundError` ile düşüyordu. Yerelde PyQt6 kurulu olduğu için hiçbir
+    koşuda görünmedi — iki kez yaşandı.
+
+    Çare `skipUnless` DEĞİLDİR: sınanan şey saf kaynak biçimi, çalışan bir Qt'ye
+    ihtiyacı yok. Atlanan bekçi, PyQt6'sız her ortamda sessizce koşmaz hâle gelir
+    ve kilit bozulunca yeşil kalır (bkz. «bakılamayan, temiz sayılmaz»).
+    """
+    return _KOK.joinpath(*parcalar).read_text(encoding="utf-8")
+
+
+def _fonksiyonlar(*parcalar: str) -> dict:
+    """Kaynaktaki fonksiyonlar {ad: düğüm} — AST bekçilerinin ortak girişi."""
+    import ast
+
+    return {f.name: f for f in ast.walk(ast.parse(_kaynak(*parcalar)))
+            if isinstance(f, ast.FunctionDef)}
+
+
 def _sekme_basliklari() -> set[str]:
     adlar = set()
     for yol in (_KOK / "ui" / "tabs").glob("*_tab.py"):
@@ -374,16 +397,23 @@ class TestCiktiKilidi(unittest.TestCase):
             sekme.disa_aktar("pdf")
         pdf.assert_called_once()
 
+
+class TestCiktiKapisiKaynakta(unittest.TestCase):
+    """
+    Gelirin taşıyıcısı olan kilidin bekçisi HER ORTAMDA koşmalı.
+
+    Bu sınama saf AST; Qt gerektirmiyor. `TestCiktiKilidi`nin içindeyken sınıfın
+    PyQt6 koşulunu miras alıyor ve CI'da (ubuntu) sessizce atlanıyordu — kilit
+    baypas edilse bile yeşil kalırdı.
+    """
+
     def test_chrome_disa_aktar_kapisindan_gecer(self) -> None:
         """
         Toolbar `_on_pdf`i DOĞRUDAN çağırmamalı; çağırırsa kilit büsbütün baypas olur.
         """
         import ast
-        import inspect
 
-        import ui.app as app_mod
-
-        agac = ast.parse(inspect.getsource(app_mod))
+        agac = ast.parse(_kaynak("ui", "app.py"))
         cagrilar = {
             n.func.attr for n in ast.walk(agac)
             if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
@@ -393,11 +423,6 @@ class TestCiktiKilidi(unittest.TestCase):
         self.assertNotIn("_on_csv", cagrilar)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-@unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
 class TestGetirKapisiMuhurlu(unittest.TestCase):
     """
     `_on_getir` alt sınıflarda EZİLMEZ — premium kilidi orada.
@@ -477,13 +502,8 @@ class TestSatinAlmaSonucu(unittest.TestCase):
         StoreContext hiç kurulamadığında — yani Store'dan kurulmamış sürümde — gidilir.
         """
         import ast
-        import inspect
 
-        import ui.rapor_tab as mod
-
-        govde = {f.name: f for f in ast.walk(ast.parse(inspect.getsource(mod)))
-                 if isinstance(f, ast.FunctionDef)}
-        kaynak = ast.unparse(govde["_on_premium"])
+        kaynak = ast.unparse(_fonksiyonlar("ui", "rapor_tab.py")["_on_premium"])
         self.assertIn("BASLATILAMADI", kaynak)
         self.assertIn("magaza_sayfasi_ac", kaynak)
         # Zaman aşımı / pencere hatası dallarında sayfa AÇILMAZ.
@@ -529,7 +549,6 @@ class TestSatinAlmaSonucu(unittest.TestCase):
         self.assertIs(_durum_esle(None), S.YANIT_YOK)
         self.assertIs(_durum_esle(_Sahte(99)), S.YANIT_YOK)
 
-    @unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
     def test_satin_alma_sonrasi_lisans_yeniden_okunmuyor(self) -> None:
         """
         EN KRİTİK DAL: `ALINDI` geldiğinde premium DOĞRUDAN açılır.
@@ -538,14 +557,9 @@ class TestSatinAlmaSonucu(unittest.TestCase):
         «yok» cevabı alınsa kullanıcı ödemiş ve ekran kilitli kalmış olurdu.
         """
         import ast
-        import inspect
 
-        import ui.rapor_tab as mod
-
-        kaynak = inspect.getsource(mod)
-        govde = {f.name: f for f in ast.walk(ast.parse(kaynak))
-                 if isinstance(f, ast.FunctionDef)}
-        cagrilar = {c.func.id for c in ast.walk(govde["_on_premium"])
+        govde = _fonksiyonlar("ui", "rapor_tab.py")["_on_premium"]
+        cagrilar = {c.func.id for c in ast.walk(govde)
                     if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
         self.assertIn("premium_ac", cagrilar, "satın alma sonrası premium açılmıyor")
         self.assertNotIn("premium_durumu", cagrilar,
@@ -554,13 +568,9 @@ class TestSatinAlmaSonucu(unittest.TestCase):
     def test_premium_ac_onbellege_yaziyor(self) -> None:
         """Açılan kilit yeniden başlatınca kapanmamalı."""
         import ast
-        import inspect
 
-        import ui.premium as mod
-
-        govde = {f.name: f for f in ast.walk(ast.parse(inspect.getsource(mod)))
-                 if isinstance(f, ast.FunctionDef)}
-        cagrilar = {c.func.id for c in ast.walk(govde["premium_ac"])
+        govde = _fonksiyonlar("ui", "premium.py")["premium_ac"]
+        cagrilar = {c.func.id for c in ast.walk(govde)
                     if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
         self.assertIn("premium_onbellek_yaz", cagrilar)
 
@@ -570,26 +580,16 @@ class TestAcilisYolu(unittest.TestCase):
 
     def test_varsayilan_cagri_aga_cikmiyor(self) -> None:
         import ast
-        import inspect
 
-        import ui.premium as mod
-
-        govde = {f.name: f for f in ast.walk(ast.parse(inspect.getsource(mod)))
-                 if isinstance(f, ast.FunctionDef)}
-        kaynak = ast.unparse(govde["premium_durumu"])
+        kaynak = ast.unparse(_fonksiyonlar("ui", "premium.py")["premium_durumu"])
         # `lisans_durumu` importu YALNIZ yenile=True dalında olmalı.
         self.assertIn("if not yenile", kaynak,
                       "ağa çıkmayan hızlı yol yok — açılışta Store'a soruluyor")
 
-    @unittest.skipUnless(_PYQT, "PyQt6 kurulu değil")
     def test_lisans_arkaplanda_okunuyor(self) -> None:
-        import ast
-        import inspect
+        self.assertIn("_lisansi_arkaplanda_oku", _kaynak("ui", "app.py"))
+        self.assertIn("_lisansi_arkaplanda_oku", _fonksiyonlar("ui", "app.py"))
 
-        import ui.app as mod
 
-        kaynak = inspect.getsource(mod)
-        self.assertIn("_lisansi_arkaplanda_oku", kaynak)
-        govde = {f.name: f for f in ast.walk(ast.parse(kaynak))
-                 if isinstance(f, ast.FunctionDef)}
-        self.assertIn("_lisansi_arkaplanda_oku", govde)
+if __name__ == "__main__":
+    unittest.main()
