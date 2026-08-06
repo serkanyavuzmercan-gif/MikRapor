@@ -38,12 +38,8 @@ _MARK_SIZE = 44
 _COL_W = 480
 _TITLE_MAX_W = 360
 _BODY_MAX_W = 480
-# Gövde yüksekliği SATIRLA ölçülür, piksel sabitiyle DEĞİL: Windows'ta sistem fontu
-# Linux'un ~1,59 katı genişlikte çiziyor (sekme çubuğunda ölçüldü, bkz. ui/app.py),
-# yani aynı metin orada daha çok satır tutuyor. Linux'ta tutturulmuş bir piksel
-# tavanı kullanıcının gerçek ekranında metni yine sıkıştırırdı.
 _BODY_SATIR = 3         # kısa açıklamaların referans yüksekliği
-_BODY_SATIR_AZAMI = 12  # bundan uzun açıklama zaten kısaltılmalı (kural 4)
+_BODY_PX = 14
 _ASGARI_OLCEK = 0.92    # bundan fazla yatay sıkıştırma okunmaz hâle getiriyor
 _BODY_COLOR = "#5c6b7a"  # referans açıklama gri (Tahmin empty)
 _CTA_W = 300
@@ -60,6 +56,21 @@ _GAP_BODY_CTA = 24
 # Cluster yüksekliği (marka+başlık+açıklama+cta+aralıklar)
 _BRAND_H = _MARK_SIZE
 _TITLE_H = 36
+
+
+# Gövdenin yükseklik bütçesi FONTTAN DEĞİL GEOMETRİDEN gelir. Satır sayısıyla
+# tanımlamak yanlıştı: satır yüksekliği platforma göre değişiyor (Windows fontu
+# aynı metni Linux'tan çok daha geniş çiziyor), PENCERE değişmiyor.
+#
+# Ölçü açılış penceresinden alınır (`resize(1220, 840)`), asgari pencereden
+# değil: asgariye göre kısıp metni kırpmak, kullanıcıların çoğunun hiç görmediği
+# bir durum için herkesin ekranını bozmak olurdu. Asgaride taşarsa ne olacağı
+# `_yerlestir`de çözülür — CTA asla kaybolmaz.
+_BOS_ALAN_ACILIS = 640   # 1220×840 penceresinde sekme gövdesi (ölçüldü: ~644)
+_BODY_TAVAN = _BOS_ALAN_ACILIS - _BOTTOM_PAD - (
+    _MARK_SIZE + _GAP_BRAND_TITLE + 36 + _GAP_TITLE_BODY
+    + _GAP_BODY_CTA + _CTA_H + _CTA_BOTTOM_PAD
+)
 
 
 def _cluster_yuksekligi(body_h: int) -> int:
@@ -241,52 +252,48 @@ class _HScaleLabel(QWidget):
 
 
 class _HScaleBody(QWidget):
-    """Açıklama — Tahmin empty referans stili: 14px regular, gri, ortalı, 2 satır.
+    """Açıklama — 14px regular, gri, ortalı; yüksekliği KENDİ METNİNDEN gelir.
 
-    Sabit yükseklik; metin önce normal genişlikte kaydırılır (kısa/uzun aynı stil).
-    2 satıra sığmazsa yatay ölçeklenir — dikey cluster kaymaz.
+    Eskiden yükseklik sabit iki satırdı ve taşan metin yatay ölçekle
+    sıkıştırılıyordu. Yapay Zekâ sekmesinin açıklaması 354, kilitliyken 516
+    karakter; ölçek 0,5'in altına düşüyor ve yazı BÜSBÜTÜN OKUNMAZ oluyordu
+    (kullanıcı ekran görüntüsüyle bildirdi). Artık kutu metne göre büyüyor.
+
+    Tavan (`_BODY_TAVAN`) GEOMETRİDEN gelir, satır sayısından değil: cluster
+    alta sabitli ve gövde büyüdükçe yukarı taşıyor, en küçük pencerede CTA
+    ekranın dışında kalabilir. Satırla tanımlamak yanlıştı — satır yüksekliği
+    platforma göre değişiyor, PENCERE değişmiyor.
     """
 
     def __init__(self, text: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._text = " ".join((text or "").split())
         self._font = QFont()
-        self._font.setPixelSize(14)
+        self._font.setPixelSize(_BODY_PX)
         self._font.setWeight(QFont.Weight.Normal)
         self._font.setBold(False)
-        satir = QFontMetrics(self._font).lineSpacing()
-        self.taban = _BODY_SATIR * satir
-        self.tavan = _BODY_SATIR_AZAMI * satir
-        self._yukseklik = self._gereken_yukseklik()
+        self.taban = _BODY_SATIR * QFontMetrics(self._font).lineSpacing()
+        self.tavan = _BODY_TAVAN
+        self._yukseklik = max(self.taban, min(self.tavan, self.dogal_yukseklik()))
         self.setFixedSize(_BODY_MAX_W, self._yukseklik)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
-    def dogal_yukseklik(self, genislik: int = _BODY_MAX_W) -> int:
-        """Metnin KIRPILMADAN istediği yükseklik (sınırsız).
+    def dogal_yukseklik(self) -> int:
+        """Metnin KIRPILMADAN istediği yükseklik — gerçek kutu genişliğinde.
 
-        `tavan`ı aşıyorsa açıklama fazla uzundur: kutuya ancak yatay sıkıştırmayla
-        girer, yani okunaklılık kaybıyla. Bekçi buna bakar ve `genislik`i daraltarak
-        Windows'un geniş fontunu taklit eder — Linux'ta ölçen bir test o yolu hiç
-        koşturmaz, kod bozulur ve yeşil kalırdı.
+        GENİŞLİK PARAMETRESİ KALDIRILDI. Bekçi burayı daraltarak Windows'un
+        geniş fontunu «taklit ediyordu»; oysa test Windows'ta koştuğunda font
+        ZATEN geniş ve aynı etki iki kez sayılıyordu. Ortaya çıkan 398px hiçbir
+        ekranda görünmeyen bir sayıydı ve olmayan bir arızayı ihbar etti.
+        Her platform kendi metriğiyle, gerçek genişlikte ölçer.
         """
         if not self._text:
             return self.taban
         fm = QFontMetrics(self._font)
         flags = int(Qt.AlignmentFlag.AlignHCenter | Qt.TextFlag.TextWordWrap)
         return fm.boundingRect(
-            QRect(0, 0, max(1, genislik), 10_000), flags, self._text
+            QRect(0, 0, _BODY_MAX_W, 10_000), flags, self._text
         ).height()
-
-    def _gereken_yukseklik(self) -> int:
-        """
-        Metnin kaç satıra ihtiyacı varsa o kadar — üç satıra ZORLANMAZ.
-
-        Eskiden yükseklik sabitti ve sığmayan metin yatay ölçekleniyordu. Kısa
-        açıklamalarda sorun yoktu; Yapay Zekâ sekmesinin açıklaması 354, kilitliyken
-        516 karakter olduğu için ölçek 0,5'in altına düşüyor ve yazı ekranda
-        BÜSBÜTÜN OKUNMAZ hâle geliyordu (canlıda görüldü).
-        """
-        return max(self.taban, min(self.tavan, self.dogal_yukseklik()))
 
     def paintEvent(self, _ev) -> None:  # noqa: N802
         if not self._text:
@@ -512,7 +519,11 @@ class EmptyState(QWidget):
         w = max(1, self.width())
         h = max(1, self.height())
         x = (w - _COL_W) // 2
-        y = max(8, h - _BOTTOM_PAD - self._cluster_h)
+        # ÜST BOŞLUK TABANI YOK. `max(8, …)` cluster'ı yukarıdan çiviliyordu:
+        # blok alandan uzunsa taşma AŞAĞIDAN oluyor ve ekran dışında kalan şey
+        # CTA düğmesi — yani kullanıcının tıklaması gereken tek şey. Böyle bir
+        # taşmada marka satırının kırpılması yeğdir; `y` eksiye düşebilir.
+        y = h - _BOTTOM_PAD - self._cluster_h
         self._cluster.setGeometry(x, y, _COL_W, self._cluster_h)
         self._cluster.raise_()
 

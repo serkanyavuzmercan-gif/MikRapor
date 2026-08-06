@@ -1227,46 +1227,63 @@ class TestEmptyStateAciklamaSigar(unittest.TestCase):
             kisa.deleteLater()
             uzun.deleteLater()
 
-    def test_tavandaki_govde_en_kucuk_pencerede_sigar(self) -> None:
+    def test_en_kucuk_pencerede_cta_ekranda_kalir(self) -> None:
         """
-        Tavan keyfî bir sayı değil: gövde büyüyünce cluster de büyüyor ve alta
-        sabitli olduğu için yukarı taşıyor. En küçük pencerede (960×640) boş ekran
-        alanı ~440px; tavandaki cluster oraya sığmazsa CTA ekranın dışında kalır —
-        yani metni okunur yapayım derken düğmeyi kaybederdik.
+        EN KÜÇÜK PENCEREDE (960×640) DÜĞME KAYBOLMAZ.
+
+        Blok alta sabitli ve gövdeyle birlikte büyüyor. Yerleşimde `max(8, …)`
+        ile üstten çivilenmişti; blok alandan uzun olduğunda taşma AŞAĞIDAN
+        oluyor ve ekran dışında kalan şey CTA — kullanıcının tıklaması gereken
+        tek şey. Uzun açıklamayı okunur yapayım derken düğmeyi kaybetmek olurdu.
+
+        Sınama tavan gibi varsayımsal bir gövdeyle değil, DOKUZ SEKMENİN
+        GERÇEK metinleriyle ve iki hâliyle (açık/kilitli) yapılır.
         """
         from ui.app import MikRaporWindow
-        from ui.empty_state import _BOTTOM_PAD, EmptyState, _cluster_yuksekligi
+        from ui.empty_state import EmptyState, _EmptyCtaButton
 
         pencere = MikRaporWindow()
         try:
             pencere.resize(960, 640)      # setMinimumSize ile aynı
             pencere.show()
             self.app.processEvents()
-            bos = pencere._stack.widget(0)._empty
-            ekran = bos if isinstance(bos, EmptyState) else bos.findChild(EmptyState)
-            self.assertIsNotNone(ekran, "boş ekran bulunamadı")
-            tavan = self._govde(ekran).tavan
-            gerekli = _cluster_yuksekligi(tavan) + _BOTTOM_PAD
-            self.assertLessEqual(
-                gerekli, bos.height(),
-                f"tavandaki gövdeyle cluster {gerekli}px, alan {bos.height()}px — "
-                f"CTA ekran dışında kalır")
+            for i in range(pencere._stack.count()):
+                sekme = pencere._stack.widget(i)
+                bos = sekme._empty
+                ekran = bos if isinstance(bos, EmptyState) else bos.findChild(EmptyState)
+                if ekran is None:
+                    continue
+                dugme = ekran.findChild(_EmptyCtaButton)
+                if dugme is None:
+                    continue
+                with self.subTest(sekme=sekme.BASLIK):
+                    alt = ekran._cluster.y() + dugme.y() + dugme.height()
+                    self.assertLessEqual(
+                        alt, ekran.height(),
+                        f"«{sekme.BASLIK}» CTA'sı {alt}px'te bitiyor, alan "
+                        f"{ekran.height()}px — düğme ekran dışında")
         finally:
             pencere.close()
             pencere.deleteLater()
 
     def test_her_sekmenin_aciklamasi_kilitliyken_de_sigar(self) -> None:
         """
-        Ölçüm GENİŞ FONTLA yapılır: Windows sistem fontu Linux'un ~1,59 katı
-        genişlikte çiziyor (sekme çubuğunda ölçüldü), yani aynı metin kullanıcının
-        ekranında daha çok satır tutuyor. Linux'un dar fontuyla ölçen bir bekçi,
-        Windows'ta okunmaz hâle gelen metni geçirirdi.
+        Ölçüm HER PLATFORMUN KENDİ FONTUYLA, GERÇEK KUTU GENİŞLİĞİNDE yapılır.
+
+        Önce kutu yapay olarak daraltılıp «Windows'un geniş fontu taklit
+        ediliyordu». Yanlıştı ve pahalıya mal oldu: test Windows'ta koştuğunda
+        font ZATEN geniş, aynı etki iki kez sayıldı ve 398px gibi hiçbir ekranda
+        görünmeyen bir rakam üretti. Bekçi olmayan bir arızayı ihbar edip
+        derlemeyi durdurdu; kullanıcı çalışan programa bakıp «hiçbir yerinde
+        taşma yok» dedi ve haklıydı.
+
+        Bir platformun davranışı ancak O PLATFORMDA ölçülür. Windows karşılığı
+        MSIX iş akışında koşuyor (`runs-on: windows-latest`), yani paket
+        üretilmeden önce gerçek metriklerle sınanıyor.
         """
         from ui.app import MikRaporWindow
         from ui.bilesenler import hos_geldin
-        from ui.empty_state import _BODY_MAX_W
 
-        dar = int(_BODY_MAX_W / 1.59)   # metni 1,59 kat genişletmekle eşdeğer
         pencere = MikRaporWindow()
         try:
             for i in range(pencere._stack.count()):
@@ -1280,14 +1297,14 @@ class TestEmptyStateAciklamaSigar(unittest.TestCase):
                                            cta="Getir")
                         try:
                             govde = self._govde(ekran)
-                            gerekli, tavan = govde.dogal_yukseklik(dar), govde.tavan
+                            gerekli, tavan = govde.dogal_yukseklik(), govde.tavan
                         finally:
                             ekran.deleteLater()
                         self.assertLessEqual(
                             gerekli, tavan,
-                            f"«{sekme.BASLIK}» açıklaması ({hal}) geniş fontta kutuya "
-                            f"sığmıyor: {gerekli}px > {tavan}px — sıkıştırılınca "
-                            f"okunmaz hâle gelir, metin kısaltılmalı")
+                            f"«{sekme.BASLIK}» açıklaması ({hal}) kutuya sığmıyor: "
+                            f"{gerekli}px > {tavan}px — sıkıştırılınca okunmaz hâle "
+                            f"gelir, metin kısaltılmalı")
         finally:
             pencere.close()
             pencere.deleteLater()
