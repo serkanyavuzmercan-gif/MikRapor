@@ -50,7 +50,13 @@ def _renk(v: float) -> str:
     return POZ if v >= 0 else NEG
 
 
-def _card(baslik: str, inner: QWidget) -> QFrame:
+def _card(baslik: str, inner: QWidget, ipucu: str = "") -> QFrame:
+    """Kart. `ipucu` verilirse başlığa ⓘ eklenir ve hover'da sade açıklama çıkar.
+
+    Kullanıcı demoda haklı bir şey söyledi: «her şeye açıklama yazmışız ama
+    tabloLARA açıklama koymamışız» — tablonun NE ANLATTIĞI bir bakışta yoktu.
+    Not şişirmek yerine (kural 4) açıklama balona taşınır.
+    """
     card = QFrame()
     card.setObjectName("gdCard")
     card.setStyleSheet(
@@ -60,8 +66,11 @@ def _card(baslik: str, inner: QWidget) -> QFrame:
     lay = QVBoxLayout(card)
     lay.setContentsMargins(16, 14, 16, 16)
     lay.setSpacing(10)
-    lbl = QLabel(baslik)
+    lbl = QLabel(baslik + ("  ⓘ" if ipucu else ""))
     lbl.setStyleSheet(f"color: {ACCENT}; font-size: 14px; font-weight: 800; background: transparent;")
+    if ipucu:
+        from ui.nav_tip import bagla_nav_tip
+        bagla_nav_tip(lbl, ipucu, eyebrow="BU TABLO NE?")
     lay.addWidget(lbl)
     lay.addWidget(inner)
     lay.addStretch(1)
@@ -94,8 +103,12 @@ def basliga_gore_en(metin: str, asgari: int = 0) -> int:
     """
     f = QFont(QApplication.font())
     f.setBold(True)
-    # QSS: QTreeWidget::item padding 6px 4px → sağ+sol 8px, üstüne küçük bir pay.
-    return max(asgari, QFontMetrics(f).horizontalAdvance(metin) + 12)
+    # QSS: QTreeWidget::item padding 6px 4px → sağ+sol 8px. Pay 12px'ti ve İKİ
+    # ortamda da yetmedi («Vadeye kalan» hem Windows'ta hem offscreen'de «Vadeye
+    # kal…» kırpıldı — ekran görüntüsüyle görüldü): Qt, metin sütun genişliğinin
+    # sınırındayken de üç nokta koyuyor. Pay elide eşiğinin üstünde kalacak kadar
+    # geniş olmalı.
+    return max(asgari, QFontMetrics(f).horizontalAdvance(metin) + 26)
 
 
 def _agac(kolon: int, sabit: list[tuple[int, int]], *, esnek: int = 0,
@@ -218,7 +231,12 @@ def _operasyonel_panel(gd: GercekDurum) -> QFrame:
              "faaliyet ve finansman gideri muhasebeden gelir. Vergi dâhil değildir. "
              "Brüt ayak «satılan malın maliyeti» değil «alınan malın tamamı»dır — "
              "stok biriktiren dönemde marjı düşük gösterir.", ""))
-    return _card("YÖNETİM GELİR TABLOSU  (kapanış beklemeden)", _ic(t, notlar))
+    return _card(
+        "GERÇEK KÂRLILIK  (kapanış beklemeden)", _ic(t, notlar),
+        ipucu=("Bu dönemde gerçekte ne kadar kazandın? Satış ve alış depo "
+               "hareketinden, giderler muhasebeden gelir. Muhasebeci satışın "
+               "maliyetini yıl sonunda topluca işlese bile bu tablo günceldir — "
+               "resmi gelir tablosunu beklemeden her ay kâr görebilirsin."))
 
 
 def _stok_koprusu_etiketi(v: float) -> str:
@@ -241,7 +259,7 @@ def _karsilastirma_panel(gd: GercekDurum) -> QFrame:
     if gd.resmi_brut_kar is None or gd.satis_koprusu is None or gd.maliyet_koprusu is None:
         _tsatir(t, [_c("Resmi gelir tablosu yüklenemedi.", renk=_MID), _c("")])
         _fit_height(t)
-        return _card("RESMİ → FİİLİ KÖPRÜSÜ", _ic(t))
+        return _card("MALİ MÜŞAVİRİN KÂRIYLA FARK NEDEN?", _ic(t))
 
     _tsatir(t, [_c("Resmi Brüt Kâr  ·  satılan malın maliyetiyle", kalin=True),
                 _c(tl(gd.resmi_brut_kar), kalin=True, sag=True)])
@@ -263,7 +281,13 @@ def _karsilastirma_panel(gd: GercekDurum) -> QFrame:
         notlar.append((
             f"Bu dönemde {tl(gd.maliyet_koprusu)} tutarında mal alınıp satılmadı, stoğa eklendi. "
             "Fiili marjın resmi marjdan düşük görünmesinin sebebi budur.", MUTED))
-    return _card("RESMİ → FİİLİ KÖPRÜSÜ  (mutabakat)", _ic(t, notlar))
+    return _card(
+        "MALİ MÜŞAVİRİN KÂRIYLA FARK NEDEN?  (mutabakat)", _ic(t, notlar),
+        ipucu=("Resmi tabloda başka, burada başka bir kâr görüyorsan sebebi bu "
+               "tablodadır: resmi kâr yalnız SATILAN malın maliyetini düşer, "
+               "buradaki gerçek kârlılık dönemde ALINAN malın tamamını düşer. "
+               "Aradaki iki kalem farkı kuruşu kuruşuna kapatır — usulsüzlük değil, "
+               "muhasebe zamanlamasıdır."))
 
 
 def _isletme_sermayesi_panel(gd: GercekDurum) -> QFrame:
@@ -299,7 +323,12 @@ def _isletme_sermayesi_panel(gd: GercekDurum) -> QFrame:
             notlar.append((
                 f"GL mizan farkı: alacak {tl(gd.gl_alacak)} · borç {tl(gd.gl_borc or 0)} "
                 f"· nakit {tl(gd.gl_nakit_mevcut or 0)} — cari ile GL uyumsuz olabilir.", "#b45309"))
-    return _card("İŞLETME SERMAYESİ  (günlük işi çevirecek net kaynak)", _ic(t, notlar))
+    return _card(
+        "İŞLETME SERMAYESİ  (günlük işi çevirecek net kaynak)", _ic(t, notlar),
+        ipucu=("Günlük işi döndürecek paran var mı? Kasandaki nakit + müşteriden "
+               "tahsil edeceklerin − satıcıya ödeyeceklerin. Pozitifse işi kendi "
+               "kaynağınla çeviriyorsun; eksiyse aradaki farkı kredi ya da öz "
+               "sermaye kapatmak zorunda."))
 
 
 def _cizgi() -> QFrame:
@@ -328,8 +357,16 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
     )
     head.setStyleSheet("background: transparent;")
     head.setTextFormat(Qt.TextFormat.RichText)
-    from ui.bilesenler import baslik_ile_gelecek_uyari
+    from ui.bilesenler import baslik_ile_gelecek_uyari, bilgi_karti
     root.addWidget(baslik_ile_gelecek_uyari(head, gd.bit, kaynak="canli"))
+    # Rapor iki soruyu cevaplıyor; bunu söylemeden üç tablo göstermek kullanıcıda
+    # «anlamsız bilgi yığını» hissi bıraktı (canlı demo) — önce çerçeve çizilir.
+    root.addWidget(bilgi_karti(
+        "BU RAPOR NEYİ GÖSTERİR?",
+        "İki soruya cevap verir: (1) Muhasebe kapanışını beklemeden bu dönemde "
+        "GERÇEKTE ne kadar kazandın? (2) Günlük işi döndürecek paran var mı? "
+        "Rakamlar depodan geçen mal ve bankadan geçen paradan gelir — resmi "
+        "tablolar gecikse bile bunlar günceldir."))
 
     if gd.stok_kirilim_sayisi == 0:
         uyari = QLabel(
@@ -405,14 +442,16 @@ def build_gercek_durum_widget(gd: GercekDurum, firma: str = "") -> QWidget:
         col.addWidget(dv)
         hl.addLayout(col, 1)
     root.addWidget(hero)
-    # Üç tablo yan yana: İşletme Sermayesi (bu taba özgü, öne çıkan) + Operasyonel + Mutabakat.
-    # Yan yana dizmek hem yatay boşluğu değerlendirir hem tek sütunlu tablodaki dev boşluğu keser.
-    # Mutabakat 4 sütunlu olduğu için biraz daha geniş pay (3:3:4).
+    # İKİ tablo yan yana, mutabakat TAM GENİŞLİK altta. Üçü yan yana sıkışınca
+    # etiketler kırpılıyordu («Fiili Satış (İrsaliye + …», «Resmi Brüt Kâr …» —
+    # 1220px'te ekran görüntüsüyle ölçüldü) ve rapor «bilgi yığını» gibi okunuyordu.
+    # Ana hikâye (gerçek kârlılık) geniş pay alır; muhasebe mutabakatı en altta
+    # ilgilenene durur.
     row1 = QHBoxLayout()
     row1.setSpacing(16)
-    row1.addWidget(_isletme_sermayesi_panel(gd), 3)
     row1.addWidget(_operasyonel_panel(gd), 3)
-    row1.addWidget(_karsilastirma_panel(gd), 4)
+    row1.addWidget(_isletme_sermayesi_panel(gd), 2)
     root.addLayout(row1)
+    root.addWidget(_karsilastirma_panel(gd))
     root.addStretch(1)
     return content

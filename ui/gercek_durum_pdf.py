@@ -36,7 +36,7 @@ def export_gercek_durum_pdf(gd: GercekDurum, path: str | Path, firma: str = "") 
     # OPERASYONEL KÂRLILIK — fiili kârlılık (stok hareketinden). Nakit akışı burada
     # tekrar edilmez (Nakit Akış tab'ının PDF'i ayrı); işletme sermayesi sentezi kalır.
     data = [
-        [Paragraph("OPERASYONEL KÂRLILIK  (stok hareketinden)", sty_sec()), ""],
+        [Paragraph("GERÇEK KÂRLILIK  (kapanış beklemeden)", sty_sec()), ""],
         [Paragraph("Fiili satış", sty_row()), tl(gd.gercek_satis)],
         [Paragraph("Fiili alış (−)", sty_row()), tl(-gd.gercek_alis)],
         [Paragraph("Fiili brüt kâr", sty_kpi()), tl(gd.gercek_brut_kar)],
@@ -54,7 +54,7 @@ def export_gercek_durum_pdf(gd: GercekDurum, path: str | Path, firma: str = "") 
         stok = "− Stok artışı (alınıp satılmayan mal)" if gd.maliyet_koprusu >= 0 \
             else "+ Stok azalışı (önceki dönemlerden satılan mal)"
         data += [
-            [Paragraph("RESMİ &#8594; FİİLİ KÖPRÜSÜ  (mutabakat)", sty_sec()), ""],
+            [Paragraph("MALİ MÜŞAVİRİN KÂRIYLA FARK NEDEN?  (mutabakat)", sty_sec()), ""],
             [Paragraph("Resmi brüt kâr (satılan malın maliyetiyle)", sty_row()),
              tl(gd.resmi_brut_kar)],
             [Paragraph("− Satış farkı (602 diğer gelirler, iade)", sty_row()),

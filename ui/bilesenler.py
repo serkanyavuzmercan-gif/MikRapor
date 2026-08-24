@@ -35,6 +35,33 @@ DURUM_RENK = {
 _BULGU_RENK = {"kritik": BAD, "uyari": WARN, "bilgi": "#2563eb", "iyi": OK}
 
 
+def bilgi_karti(baslik: str, metin: str) -> QWidget:
+    """Mavi «bu rapor neyi gösterir?» giriş kartı — sekmeler arasında TEK biçim.
+
+    Reel Değer'de vardı ve işe yaradı; Nakit & Kârlılık'ta yoktu ve kullanıcı raporu
+    «anlaması çok zor garip bir bilgi yığını» diye tarif etti (canlı demo). Kartı her
+    sekme kendisi çizerse renkler/biçim ayrışır; tek üretici buradadır.
+    """
+    from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout
+
+    f = QFrame()
+    f.setObjectName("raporBilgiKarti")
+    f.setStyleSheet(
+        "QFrame#raporBilgiKarti { background: #eef6ff; border: 1px solid #b8d6f2; "
+        "border-radius: 10px; }")
+    lay = QVBoxLayout(f)
+    lay.setContentsMargins(14, 10, 14, 10)
+    lay.setSpacing(3)
+    b = QLabel(baslik)
+    b.setStyleSheet("color:#1d4f91; font-size:11px; font-weight:800; background:transparent;")
+    lay.addWidget(b)
+    m = QLabel(metin)
+    m.setWordWrap(True)
+    m.setStyleSheet("color:#365676; font-size:12px; background:transparent;")
+    lay.addWidget(m)
+    return f
+
+
 def bulgular_karti(bulgular: list, baslik: str = "BULGULAR") -> QWidget | None:
     """Kural-tabanlı bulguları (domain.bulgular.Bulgu) kart olarak çizer; boşsa None."""
     if not bulgular:
