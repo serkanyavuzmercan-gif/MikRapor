@@ -225,11 +225,11 @@ class TestHataMesajlari(unittest.TestCase):
         """'İyi'.lower() birleşik nokta üretir; bölüm rengi bu yüzden yanlış çıkıyordu."""
         from domain.ortak import tr_kucuk
         from ui.ai_yorum_view import _bolum_rengi
-        self.assertIn("iyi giden", tr_kucuk("İyi Giden 3 Şey"))
+        self.assertIn("iyi giden", tr_kucuk("İyi Gidenler"))
         self.assertEqual(tr_kucuk("IŞIK"), "ışık")
         # Her başlık kendi rengini almalı; hepsi aynı (varsayılan) olmamalı.
         renkler = {_bolum_rengi(b) for b in (
-            "Özet", "İyi Giden 3 Şey", "Dikkat Edilmesi Gereken 3 Şey", "Karar Gerektiren 3 Konu")}
+            "Özet", "İyi Gidenler", "Dikkat Edilmesi Gerekenler", "Karar Gerektiren Konular")}
         self.assertEqual(len(renkler), 4)
 
     def test_zaman_asimi_ve_baglanti(self) -> None:
@@ -789,7 +789,7 @@ class TestKararBolumu(unittest.TestCase):
 
     def test_yapilacaklar_basligi_kaldirildi(self) -> None:
         self.assertNotIn("Bu Ay Yapılacak", SISTEM_PROMPT)
-        self.assertIn("## Karar Gerektiren 3 Konu", SISTEM_PROMPT)
+        self.assertIn("## Karar Gerektiren Konular", SISTEM_PROMPT)
 
     def test_emir_ve_zaman_bicme_yasak(self) -> None:
         self.assertIn("yapılacaklar listesi DEĞİLDİR", SISTEM_PROMPT)
@@ -931,9 +931,24 @@ class TestVeriPaketi(unittest.TestCase):
 
     def test_sistem_prompt_uydurmayi_yasaklar(self) -> None:
         self.assertIn("uydurma", SISTEM_PROMPT.lower())
-        for baslik in ("## Özet", "## İyi Giden 3 Şey", "## Dikkat Edilmesi Gereken 3 Şey",
-                       "## Karar Gerektiren 3 Konu", "## Veride Göremediklerim"):
+        for baslik in ("## Özet", "## Nakit ve Finansman", "## Kârlılık",
+                       "## Alacaklar ve Tahsilat", "## Borçlar ve Stok",
+                       "## Yıllar Arası Gidişat", "## İyi Gidenler",
+                       "## Dikkat Edilmesi Gerekenler", "## Karar Gerektiren Konular",
+                       "## Veride Göremediklerim"):
             self.assertIn(baslik, SISTEM_PROMPT)
+
+    def test_kapsamli_rapor_ister_ama_uydurmaya_kapi_acmaz(self) -> None:
+        """
+        «ÇOK KISA» şikâyeti biçim şablonundandı: «en fazla 4 cümle» + 3+3+3 madde,
+        8000 tokenlik çıktı bütçesinin ~%10'unu kullanıyordu. Kapsam artık açıkça
+        isteniyor — ama veri olmayan bölümü atlama izniyle birlikte, yoksa uzunluk
+        talebi uydurmaya davet olurdu.
+        """
+        self.assertIn("YÖNETİM RAPORUDUR", SISTEM_PROMPT)
+        self.assertIn("bölümü tamamen atla", SISTEM_PROMPT)
+        self.assertNotIn("3 Şey", SISTEM_PROMPT)
+        self.assertNotIn("En fazla 4 cümle", SISTEM_PROMPT)
 
 
 class TestYorumAyristirma(unittest.TestCase):
