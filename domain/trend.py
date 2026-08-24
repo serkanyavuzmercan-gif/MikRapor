@@ -23,6 +23,11 @@ class FinansalOran:
     deger: float | None
     birim: str = "x"          # "x" | "%" | "gün"
     aciklama: str = ""
+    # Değer «—» ise NEDEN «—» olduğu — kural 2: sebep rakamın YANINDA söylenir.
+    # Eskiden sebep yalnız bilanço özet kartındaki uyarıda yazıyordu; oran panelinde
+    # yedi satırın beşi açıklamasız çizgiydi ve kullanıcı «neden boş ki bunlar?» diye
+    # sordu (canlı demo). Boş değerin sebebi artık satırın kendisinde taşınır.
+    sebep: str = ""
 
     def metin(self) -> str:
         if self.deger is None:
@@ -94,6 +99,15 @@ def _ana_toplam(satirlar: list, ana_kodlar: set[str]) -> float:
     return sum(s.tutar for s in satirlar if s.ana in ana_kodlar)
 
 
+# Boş oranların sebepleri — üç yerde (ekran, PDF, CSV) aynı cümle.
+# Satır başına düşen sebep KISA tutulur (yedi satırda tekrar ediyor, kural 4);
+# mekanizmanın tam anlatımı MALIYET_EKSIK_UYARI'da, bilanço özetinin altında.
+MALIYET_SEBEP = "62 işlenmemiş — stok/özkaynak şişik olduğundan hesaplanmadı"
+OZKAYNAK_EKSI_SEBEP = ("özkaynak eksi: borçlar işletmenin tamamını aşmış — oran "
+                       "bu durumda anlamını yitirir")
+PAYDA_SIFIR_SEBEP = "payda sıfır — bilançoda bu kalem yok"
+
+
 def build_finansal_oranlar(b: Bilanco) -> tuple[list[FinansalOran], dict[str, float]]:
     """Bilanço satırlarından klasik TDHP oranları."""
     donen = _bolum_toplam(b.aktif, "1")
@@ -127,9 +141,9 @@ def build_finansal_oranlar(b: Bilanco) -> tuple[list[FinansalOran], dict[str, fl
         """
         return oran(pay, ozkaynak) if ozkaynak > 0.005 else None
 
-    def stok_kirli(deger: float | None) -> float | None:
+    def stok_kirli(deger: float | None) -> tuple[float | None, str]:
         """
-        Satışın maliyeti işlenmemişse stoğa dayanan oran GÖSTERİLMEZ.
+        Satışın maliyeti işlenmemişse stoğa dayanan oran GÖSTERİLMEZ — sebebiyle.
 
         Her satış «621 SMM / 153 Ticari Mallar» fişini gerektirir. Bu fiş atılmayınca
         153 hiç azalmaz, 621 hiç borçlanmaz: stok da kâr da AYNI tutarda şişer. Canlıda
@@ -141,24 +155,33 @@ def build_finansal_oranlar(b: Bilanco) -> tuple[list[FinansalOran], dict[str, fl
         Bu yüzden stoğa ya da özkaynağa dayanan oranlar bu durumda boş bırakılır.
         Asit-Test dokunulmaz: (dönen − stok) şişkinliği zaten götürür.
         """
-        return None if b.maliyet_eksik else deger
+        if b.maliyet_eksik:
+            return None, MALIYET_SEBEP
+        if deger is None:
+            return None, PAYDA_SIFIR_SEBEP
+        return deger, ""
+
+    def kirli_oran(kod: str, ad: str, ham: float | None, birim: str = "x",
+                   *, ozkaynakli: bool = False) -> FinansalOran:
+        deger, sebep = stok_kirli(ham)
+        # Maliyet temizken bile özkaynak eksiyse sebep o — daha özgül olan yazılır.
+        if deger is None and not b.maliyet_eksik and ozkaynakli and ozkaynak <= 0.005:
+            sebep = OZKAYNAK_EKSI_SEBEP
+        return FinansalOran(kod, ad, deger, birim, sade_oran(kod), sebep=sebep)
+
+    def duz_oran(kod: str, ad: str, deger: float | None, birim: str = "x") -> FinansalOran:
+        return FinansalOran(kod, ad, deger, birim, sade_oran(kod),
+                            sebep="" if deger is not None else PAYDA_SIFIR_SEBEP)
 
     # Açıklamalar formül tekrarı değil, sade dilde (bkz. domain.terimler).
     oranlar = [
-        FinansalOran("cari", "Cari Oran", stok_kirli(oran(donen, kvyk)), "x",
-                     sade_oran("cari")),
-        FinansalOran("asit", "Asit-Test (Likidite)", oran(donen - stok, kvyk), "x",
-                     sade_oran("asit")),
-        FinansalOran("nakit_oran", "Nakit Oranı", oran(nakit, kvyk), "x",
-                     sade_oran("nakit_oran")),
-        FinansalOran("borc_oz", "Borç / Özkaynak", stok_kirli(oz_orani(yabanci)), "x",
-                     sade_oran("borc_oz")),
-        FinansalOran("oz_oran", "Özkaynak Oranı", stok_kirli(yuz(ozkaynak, aktif)), "%",
-                     sade_oran("oz_oran")),
-        FinansalOran("kv_oran", "Kısa Vadeli Borç Oranı", stok_kirli(yuz(kvyk, aktif)), "%",
-                     sade_oran("kv_oran")),
-        FinansalOran("donen_oran", "Dönen Varlık Oranı", stok_kirli(yuz(donen, aktif)), "%",
-                     sade_oran("donen_oran")),
+        kirli_oran("cari", "Cari Oran", oran(donen, kvyk)),
+        duz_oran("asit", "Asit-Test (Likidite)", oran(donen - stok, kvyk)),
+        duz_oran("nakit_oran", "Nakit Oranı", oran(nakit, kvyk)),
+        kirli_oran("borc_oz", "Borç / Özkaynak", oz_orani(yabanci), ozkaynakli=True),
+        kirli_oran("oz_oran", "Özkaynak Oranı", yuz(ozkaynak, aktif), "%"),
+        kirli_oran("kv_oran", "Kısa Vadeli Borç Oranı", yuz(kvyk, aktif), "%"),
+        kirli_oran("donen_oran", "Dönen Varlık Oranı", yuz(donen, aktif), "%"),
     ]
     ozet = {
         "donen": donen, "duran": duran, "kvyk": kvyk, "uvyk": uvyk,
@@ -212,7 +235,9 @@ def trend_csv(t: TrendRapor) -> str:
         f"DÖNEM;Bilanço tarihi;{t.asof}",
     ]
     for o in t.oranlar:
-        out.append(f"ORAN;{o.ad};{o.metin()}")
+        # Kural 2: «—» tek başına yazılmaz, sebebi yanında gider.
+        deger = o.metin() if not o.sebep else f"{o.metin()} ({o.sebep})"
+        out.append(f"ORAN;{o.ad};{deger}")
     out.append(f"BİLANÇO;Dönen varlıklar;{s(t.donen)}")
     out.append(f"BİLANÇO;KVYK;{s(t.kvyk)}")
     out.append(f"BİLANÇO;Özkaynak;{s(t.ozkaynak)}")

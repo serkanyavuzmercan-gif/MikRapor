@@ -89,8 +89,14 @@ class ReelDegerAnalizi:
 
     @property
     def basabas_olculdu(self) -> bool:
-        """Tahsilat süresi ölçülebildi mi (satış yoksa ya da pencere kısaysa hayır)."""
-        return self.dso is not None and self.donem_gun > 0 and self.dso <= self.donem_gun
+        """Tahsilat süresi ölçülebildi mi (satış yoksa ya da pencere kısaysa hayır).
+
+        DSO ~0 da «ölçülemedi» sayılır: sıfır günde tahsil eden firmada başabaş
+        farkı zaten sıfırdır ve «ölçülen tahsil süren — … %0,0» gibi anlamsız bir
+        cümle üretiyordu (sentetik veriyle görüldü — _gun() 0'ı «—» basar).
+        """
+        return (self.dso is not None and self.donem_gun > 0
+                and 0.5 <= self.dso <= self.donem_gun)
 
     @property
     def basabas_alt_sinir(self) -> bool:
