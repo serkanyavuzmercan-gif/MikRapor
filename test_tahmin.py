@@ -223,3 +223,89 @@ class TestSonucOnceSoylenir(unittest.TestCase):
         t = self._t()
         self.assertEqual(t.eksi_ay_sayisi, 0)
         self.assertFalse(t.kalici_eksi)
+
+
+class TestBankaKredisiProjeksiyonda(unittest.TestCase):
+    """
+    Banka kredisi taksitleri NORMAL BEKLENTİYE girer.
+
+    Canlı demoda kullanıcı haklı çıktı: «kredi kartını yazıyoruz ama bankadan
+    çektiğimiz krediler yok — kaldı ki sistem kredi ödemelerini GÖRÜYOR». Taksit
+    takvimi zaten çekiliyordu ama yalnız «en kötü ihtimal» tablosu kullanıyordu;
+    manşet projeksiyon kredisiz, olduğundan iyimser çıkıyordu.
+    """
+
+    def _varsayim(self, **ek) -> TahminVarsayim:
+        temel = dict(baslangic_ay="2026-07", baslangic_nakit=1_000_000.0,
+                     baz_ciro=1_000_000.0, marj_yuzde=20.0, sabit_gider=100_000.0,
+                     ufuk_ay=3)
+        temel.update(ek)
+        return TahminVarsayim(**temel)
+
+    def test_taksit_nakitten_duser_kardan_dusmez(self) -> None:
+        """Taksit bir yükümlülük ödemesidir: kârı değil nakdi etkiler (kartla aynı ilke)."""
+        takvim = {"2026-08": 310_000.0, "2026-09": 310_000.0}
+        krediili = build_tahmin(self._varsayim(kredi_takvimi=takvim))
+        kredisiz = build_tahmin(self._varsayim())
+        self.assertEqual(krediili.toplam_net, kredisiz.toplam_net)
+        self.assertAlmostEqual(krediili.toplam_kredi_taksit, 620_000.0)
+        self.assertAlmostEqual(kredisiz.son_nakit - krediili.son_nakit, 620_000.0)
+        self.assertAlmostEqual(krediili.aylar[0].kredi_taksit, 310_000.0)
+        self.assertAlmostEqual(krediili.aylar[2].kredi_taksit, 0.0)  # takvim bitti
+
+    def test_taksitsiz_kredi_sabit_aylikla_modellenir(self) -> None:
+        """Rotatif gibi taksit tanımı olmayan kredi: ölçülen aylık ortalama düşülür."""
+        t = build_tahmin(self._varsayim(aylik_kredi_sabit=50_000.0))
+        self.assertTrue(all(abs(a.kredi_taksit - 50_000.0) < 0.01 for a in t.aylar))
+        self.assertAlmostEqual(t.toplam_kredi_taksit, 150_000.0)
+
+    def test_kredi_yoksa_hicbir_iz_yok(self) -> None:
+        """Kredisiz firmada sütun/KPI doğmasın diye toplam sıfır kalmalı (kural 6)."""
+        t = build_tahmin(self._varsayim())
+        self.assertEqual(t.toplam_kredi_taksit, 0.0)
+        self.assertFalse(t.varsayim.kredi_var)
+        self.assertNotIn("kredi taksidi", t.varsayim.ozet())
+
+    def test_ozet_ve_csv_kredi_soyler(self) -> None:
+        t = build_tahmin(self._varsayim(kredi_takvimi={"2026-08": 300_000.0}))
+        self.assertIn("kredi taksidi", t.varsayim.ozet())
+        csv = tahmin_csv(t)
+        self.assertIn("Kredi Taksidi", csv)
+        self.assertIn("TOPLAM;Kredi Taksitleri;300000,00", csv)
+
+    def test_tab_taksit_penceresi_sabit_ve_anapara_ayrimi_var(self) -> None:
+        """
+        Kaynak bekçisi (import ETMEZ — PyQt gerekir):
+        (a) taksit penceresi ufka bağlanamaz — kullanıcı «Doldur»dan sonra ufku
+            36'ya çıkarabilir ve fetch tekrarlanmaz; dar pencere o ayları sessizce
+            taksitsiz gösterirdi. Sabit 42 ay (azami ufuk 36 + 6).
+        (b) runway'e ANAPARA takvimi seçilir (66 tarihsel gideri faizi zaten
+            taşıyor) — tam taksit verilseydi faiz iki kez düşülürdü.
+        """
+        from pathlib import Path
+        kaynak = (Path(__file__).parent / "ui" / "tabs" / "tahmin_tab.py").read_text(
+            encoding="utf-8")
+        self.assertIn("ay_ileri=42", kaynak)
+        self.assertNotIn("ay_ileri=18", kaynak)
+        self.assertIn("anapara_olculebilir(", kaynak)
+        self.assertIn("anapara=True", kaynak)
+
+
+class TestKrediTakvimYardimcilari(unittest.TestCase):
+    def test_anapara_olculebilir(self) -> None:
+        from domain.kredi import KrediTaksit, anapara_olculebilir
+        dolu = [KrediTaksit(ay="2026-08", vade="2026-08-15", tutar=310_000.0,
+                            anapara=250_000.0, faiz=60_000.0)]
+        bos = [KrediTaksit(ay="2026-08", vade="2026-08-15", tutar=310_000.0)]
+        self.assertTrue(anapara_olculebilir(dolu))
+        self.assertFalse(anapara_olculebilir(bos))
+        self.assertFalse(anapara_olculebilir([]))
+
+    def test_iki_takvim_iki_tuketici(self) -> None:
+        """Normal beklenti TAM taksit, runway ANAPARA — çift sayım kapısı burada."""
+        from domain.kredi import KrediTaksit, kredi_takvimi_ay
+        ts = [KrediTaksit(ay="2026-08", vade="2026-08-15", tutar=310_000.0,
+                          anapara=250_000.0, faiz=60_000.0)]
+        self.assertEqual(kredi_takvimi_ay(ts, ilk_ay="2026-08"), {"2026-08": 310_000.0})
+        self.assertEqual(kredi_takvimi_ay(ts, ilk_ay="2026-08", anapara=True),
+                         {"2026-08": 250_000.0})

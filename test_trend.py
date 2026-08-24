@@ -236,3 +236,54 @@ class TestMaliyetEksikStok(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBosOranSebebi(unittest.TestCase):
+    """
+    «—» tek başına yazılmaz — NEDEN boş olduğu satırın kendisinde taşınır (kural 2).
+
+    Canlı demoda kullanıcı yedi oranın beşini çizgi görüp «neden boş ki bunlar?
+    boşsa göstermesin bari» dedi. Gizlemek çare değil (kural 2'nin kendisi);
+    çare sebebi rakamın yanına yazmaktı — bu bekçi onu sabitler.
+    """
+
+    def _bilanco(self, *, maliyet_eksik: bool, ozkaynak: float = 5000.0):
+        from domain.mizan_bilanco import Bilanco, BilancoSatir
+        b = Bilanco(asof="2026-07-31", maliyet_eksik=maliyet_eksik)
+        b.aktif = [BilancoSatir("100", "Kasa", 1000.0),
+                   BilancoSatir("153", "Ticari Mallar", 9000.0)]
+        b.pasif = [BilancoSatir("320", "Satıcılar", 4000.0),
+                   BilancoSatir("500", "Sermaye", ozkaynak)]
+        b.aktif_toplam = 10000.0
+        return b
+
+    def test_maliyet_eksikken_bos_oranin_sebebi_dolu(self) -> None:
+        from domain.trend import MALIYET_SEBEP
+        oranlar, _ = build_finansal_oranlar(self._bilanco(maliyet_eksik=True))
+        bos = {o.kod: o for o in oranlar if o.deger is None}
+        self.assertIn("cari", bos)
+        for o in bos.values():
+            self.assertTrue(o.sebep, f"{o.kod} boş ama sebepsiz — kural 2 ihlali")
+        self.assertEqual(bos["cari"].sebep, MALIYET_SEBEP)
+
+    def test_ozkaynak_eksi_sebebi_ayri(self) -> None:
+        """Maliyet temizken eksi özkaynak kendi sebebini söyler, 62'yi suçlamaz."""
+        from domain.trend import OZKAYNAK_EKSI_SEBEP
+        oranlar, _ = build_finansal_oranlar(
+            self._bilanco(maliyet_eksik=False, ozkaynak=-20000.0))
+        borc_oz = next(o for o in oranlar if o.kod == "borc_oz")
+        self.assertIsNone(borc_oz.deger)
+        self.assertEqual(borc_oz.sebep, OZKAYNAK_EKSI_SEBEP)
+
+    def test_saglikli_bilancoda_sebep_yok(self) -> None:
+        oranlar, _ = build_finansal_oranlar(self._bilanco(maliyet_eksik=False))
+        for o in oranlar:
+            if o.deger is not None:
+                self.assertEqual(o.sebep, "", f"{o.kod} dolu ama sebep taşıyor")
+
+    def test_csv_bos_oranin_sebebini_yazar(self) -> None:
+        from domain.trend import MALIYET_SEBEP
+        t = build_trend(bilanco=self._bilanco(maliyet_eksik=True),
+                        bas="2026-01-01", bit="2026-07-31")
+        csv = trend_csv(t)
+        self.assertIn(f"ORAN;Cari Oran;— ({MALIYET_SEBEP})", csv)
