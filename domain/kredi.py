@@ -144,16 +144,39 @@ def kredi_karti_odeme_takvimi(
     return takvim
 
 
-def kredi_takvimi_ay(taksitler: list[KrediTaksit], *, ilk_ay: str) -> dict[str, float]:
+def anapara_olculebilir(taksitler: list[KrediTaksit]) -> bool:
+    """Taksitlerin anapara kırılımı gerçekten girilmiş mi?
+
+    Bazı kurulumlar taksit tanımına yalnız TUTAR yazar, anapara/faiz boş kalır.
+    O durumda anapara takvimi sıfıra düşer ve krediyi hiç modellememiş oluruz —
+    eşik: toplam anapara, toplam tutarın en az %1'i olmalı (ölçülebilir koşul,
+    varsayım değil).
+    """
+    tutar = sum(t.tutar for t in taksitler)
+    if tutar < 0.005:
+        return False
+    return sum(t.anapara for t in taksitler) >= 0.01 * tutar
+
+
+def kredi_takvimi_ay(taksitler: list[KrediTaksit], *, ilk_ay: str,
+                     anapara: bool = False) -> dict[str, float]:
     """
     Taksitleri vade ayına göre toplar → {YYYY-MM: toplam}. Vadesi ilk_ay'dan önce olan
     (gecikmiş, hâlâ ödenmemiş) taksitler ilk_ay'a yığılır — yakında ödenecek borçtur.
+
+    İKİ TÜKETİCİ, İKİ TAKVİM — çift sayım burada engellenir:
+      • Normal beklenti (build_tahmin): TAM taksit (anapara+faiz). Orada gider
+        yalnız 63'ten gelir, faiz başka hiçbir kalemde yok.
+      • En kötü ihtimal (runway): `anapara=True`. Runway'in düzenli gideri 63+66'yı
+        (tarihsel finansman gideri dâhil) içeriyor; tam taksit verilseydi faiz İKİ
+        KEZ düşülürdü. 66'yı atmak da çare değildi — faktoring/komisyon gibi kredi
+        dışı finansman giderini de atar, eksik sayardı.
     """
     d: dict[str, float] = defaultdict(float)
     for t in taksitler:
         ay = t.ay if t.ay and t.ay >= ilk_ay else ilk_ay
-        d[ay] += t.tutar
-    return dict(d)
+        d[ay] += t.anapara if anapara else t.tutar
+    return {ay: v for ay, v in d.items() if v > 0.005}
 
 
 def kredi_ozet(taksitler: list[KrediTaksit], *, bugun_ay: str = "", en_fazla: int = 8) -> KrediOzet:
