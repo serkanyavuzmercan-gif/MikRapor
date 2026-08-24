@@ -28,7 +28,7 @@ from ui.gercek_durum_view import _DARK, _agac, _c, _ic, _tsatir
 from ui.mukayese_view import mukayese_karti
 from ui.nav_tip import bagla_nav_tip
 from ui.styles import BAD as NEG
-from ui.styles import BORDER, PANEL_BG
+from ui.styles import BORDER, PANEL_BG, WARN
 from ui.styles import OK as POZ
 
 
@@ -256,9 +256,20 @@ def _oranlar_panel(tr: TrendRapor) -> QFrame:
             renk = POZ if o.deger >= 1.0 else NEG
         elif o.deger is not None and o.kod == "borc_oz":
             renk = NEG if o.deger > 2.0 else POZ
-        _tsatir(t, [_c(o.ad, kalin=True), _c(o.metin(), renk=renk, kalin=True, sag=True),
-                    _c(o.aciklama, renk=FAINT)])
+        # «—» tek başına durmaz: NEDEN boş olduğu aynı satırda yazar (kural 2).
+        # Eskiden sebep yalnız bilanço kartındaki uyarıdaydı; kullanıcı beş çizgiye
+        # bakıp «neden boş ki bunlar?» diye sordu — haklıydı.
+        aciklama, a_renk = (o.aciklama, FAINT) if not o.sebep else (o.sebep, WARN)
+        it = _tsatir(t, [_c(o.ad, kalin=True),
+                         _c(o.metin(), renk=renk, kalin=True, sag=True),
+                         _c(aciklama, renk=a_renk)])
+        # Açıklama sütunu dar ekranda kırpılıyor («1'in ü…» — ekran görüntüsünde
+        # görüldü); tam metin balonda her zaman okunur.
+        it.setToolTip(2, aciklama)
     _fit_height(t)
+    # Kart altına AYRICA uyarı şeridi konmaz: sebep her «—» satırının kendi
+    # yanında yazıyor ve tam anlatım bilanço özetindeki şeritte — aynı metni
+    # iki kartta birden basmak kural 4'e takılır (denendi, ekranda görüldü).
     return _card("FİNANSAL ORANLAR  (bilanço)", _ic(t))
 
 
@@ -349,14 +360,28 @@ def build_trend_widget(tr: TrendRapor, firma: str = "",
     hl.setContentsMargins(20, 16, 20, 16)
     hl.setSpacing(24)
     cari = next((o for o in tr.oranlar if o.kod == "cari"), None)
+    asit = next((o for o in tr.oranlar if o.kod == "asit"), None)
+    # GÜVENİLMEZ RAKAMIN YERİNE HESAPLANABİLENİ KOY: cari oran maliyet şişkinliği
+    # yüzünden «—» ise, stoktan etkilenmeyen asit-test gösterilir — «—» ile açılan
+    # bir manşet hiçbir soru cevaplamıyordu. Hangisinin neden gösterildiği balonda.
+    if cari is not None and cari.deger is None and asit is not None and asit.deger is not None:
+        oran_baslik, oran_kart = "ASİT-TEST (LİKİDİTE)", asit
+        oran_ipucu = (f"Cari oran hesaplanamadı ({cari.sebep}). Asit-test stoğu hesaba "
+                      f"katmadığı için şişkinlikten etkilenmez; onun yerine gösteriliyor. "
+                      f"{sade_oran('asit')}")
+    else:
+        oran_baslik, oran_kart = "CARİ ORAN", cari
+        oran_ipucu = sade_oran("cari")
+        if cari is not None and cari.deger is None and cari.sebep:
+            oran_ipucu = f"Neden boş: {cari.sebep}"
     for baslik, deger, vr, ipucu in (
         ("TOPLAM SATIŞ", tl(tr.toplam_satis), "#0f172a", ""),
         ("TOPLAM BRÜT", tl(tr.toplam_brut), _renk(tr.toplam_brut), ""),
         ("NAKİT NET", tl(tr.toplam_nakit_net), _renk(tr.toplam_nakit_net), ""),
-        ("CARİ ORAN", cari.metin() if cari else "—",
-         (POZ if cari and cari.deger is not None and cari.deger >= 1 else NEG)
-         if cari and cari.deger is not None else MUTED,
-         sade_oran("cari")),
+        (oran_baslik, oran_kart.metin() if oran_kart else "—",
+         (POZ if oran_kart and oran_kart.deger is not None and oran_kart.deger >= 1 else NEG)
+         if oran_kart and oran_kart.deger is not None else MUTED,
+         oran_ipucu),
     ):
         col = QVBoxLayout()
         col.setSpacing(2)
@@ -372,18 +397,20 @@ def build_trend_widget(tr: TrendRapor, firma: str = "",
         hl.addLayout(col, 1)
     root.addWidget(hero)
 
+    # YILLAR ARASI MUKAYESE HERO'NUN HEMEN ALTINDA. Sekmenin adı bu; en altta
+    # dururken kullanıcı «esas önemli olan şey en altta, insan ilk çırpıda fark
+    # edemiyor» dedi (canlı demo) — haklıydı. API anahtarı gerektirmez, yorum
+    # sekmesinden buraya taşınmıştı (aynı veri iki sekmede tekrarlanmasın).
+    mukayese = mukayese_karti(kapanislar or [])
+    if mukayese is not None:
+        root.addWidget(mukayese)
+
     row = QHBoxLayout()
     row.setSpacing(20)
     row.addWidget(_oranlar_panel(tr), 2)
     row.addWidget(_bilanco_ozet(tr), 1)
     root.addLayout(row)
     root.addWidget(_trend_panel(tr))
-
-    # Yıllar arası mukayese en altta — API anahtarı gerektirmez, yorum sekmesinden
-    # buraya taşındı (aynı veri iki sekmede tekrarlanmasın).
-    mukayese = mukayese_karti(kapanislar or [])
-    if mukayese is not None:
-        root.addWidget(mukayese)
 
     root.addStretch(1)
     return content

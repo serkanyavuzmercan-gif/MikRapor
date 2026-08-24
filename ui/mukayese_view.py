@@ -231,9 +231,9 @@ def mukayese_karti(kapanislar: list[YilKapanis]) -> QFrame | None:
     notlar += [("  ·  ".join(dipnot), "")]
 
     card = QFrame()
-    card.setObjectName("aiCard")
+    card.setObjectName("mukayeseKarti")
     card.setStyleSheet(
-        f"QFrame#aiCard {{ background: {PANEL_BG}; border: 1px solid {BORDER}; "
+        f"QFrame#mukayeseKarti {{ background: {PANEL_BG}; border: 1px solid {BORDER}; "
         "border-left: 3px solid #0f766e; border-radius: 12px; }")
     lay = QVBoxLayout(card)
     lay.setContentsMargins(16, 13, 16, 15)

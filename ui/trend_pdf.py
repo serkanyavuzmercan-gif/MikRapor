@@ -41,14 +41,26 @@ def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "",
     elems: list = []
     letterhead_sade(elems, firma=firma, bas=tr.bas, bit=tr.bit)
 
+    # MUKAYESE ÖNCE — ekranla aynı sıra (kural 5: aynı rapor). Sekmenin adı bu;
+    # en sonda basılınca PDF'te de gözden kaçıyordu.
+    tablo = mukayese_tablosu(kapanislar or [], en=en)
+    if tablo is not None:
+        elems.append(Paragraph("YILLAR ARASI MUKAYESE", sty_sec()))
+        elems.append(Spacer(1, 4))
+        elems.append(tablo)
+        elems.append(mukayese_notu(kapanislar or []))
+        elems.append(Spacer(1, 10))
+
     elems.append(Paragraph("FİNANSAL ORANLAR", sty_sec()))
     elems.append(Spacer(1, 4))
     oran_rows = [[Paragraph(h, sty_sec()) for h in ("Oran", "Değer", "Açıklama")]]
     for o in tr.oranlar:
+        # «—» satırında açıklama yerine NEDEN boş olduğu yazar — ekranla aynı
+        # kaynak (FinansalOran.sebep), PDF ayrışmaz (kural 2 + kural 5).
         oran_rows.append([
             Paragraph(o.ad, sty_kpi()),
             Paragraph(o.metin(), sty_row()),
-            Paragraph(o.aciklama, sty_row()),
+            Paragraph(o.sebep or o.aciklama, sty_row()),
         ])
     ot = Table(oran_rows, colWidths=[52 * mm, 26 * mm, en - 78 * mm], repeatRows=1)
     ot.setStyle(TableStyle([
@@ -134,13 +146,6 @@ def export_trend_pdf(tr: TrendRapor, path: str | Path, firma: str = "",
             ("LINEBELOW", (0, 1), (-1, -1), 0.25, LINE),
         ]))
         elems.append(tt)
-
-    tablo = mukayese_tablosu(kapanislar or [], en=en)
-    if tablo is not None:
-        elems.append(Paragraph("YILLAR ARASI MUKAYESE", sty_sec()))
-        elems.append(Spacer(1, 4))
-        elems.append(tablo)
-        elems.append(mukayese_notu(kapanislar or []))
 
     dipnot_ekle(
         elems,
