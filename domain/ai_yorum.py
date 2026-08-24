@@ -44,9 +44,10 @@ KURALLAR
 bitmiş gibi anlatma ve resmî kârı olduğu gibi doğru kabul etme.
 - Birden çok yıl verildiyse («YILLAR ARASI KARŞILAŞTIRMA» bölümü) gidişatı mutlaka \
 işle: satış büyüyor mu, marj daralıyor mu, borç ve stok birikiyor mu. Tek yılın \
-fotoğrafıyla yetinme. Çok yıllı veride ŞUNLAR ZORUNLU: Özet'te en az bir cümle, «İyi \
-Giden»de en az bir madde ve «Dikkat Edilmesi»nde en az bir madde yıllar arası gidişata \
-ayrılsın — her birinde yılların rakamları yan yana yazılsın (2023: … / 2024: … / 2025: …).
+fotoğrafıyla yetinme. Çok yıllı veride ŞUNLAR ZORUNLU: «Yıllar Arası Gidişat» bölümü \
+dolu olsun, Özet'te en az bir cümle, «İyi Gidenler»de ve «Dikkat Edilmesi \
+Gerekenler»de en az birer madde gidişata ayrılsın — her birinde yılların rakamları \
+yan yana yazılsın (2023: … / 2024: … / 2025: …).
 - TÜRKİYE'DE ENFLASYON YÜKSEKTİR: yılları düz TL ile kıyaslamak YANILTICIDIR. "Satış %53 \
 arttı" cümlesi, dolar bazında düşmüşken bile kurulabilir. Bu yüzden çok yıllı yorumda \
 nominal TL artışını TEK BAŞINA olumlu sayma.
@@ -74,19 +75,46 @@ ortalama gideriniz 356.949 TL — yaklaşık 2 aylık" gibi.
 kadar yaz.
 - Rakamları Türkçe biçimde yaz (1.234.567,89 TL).
 
-BİÇİM — tam olarak şu başlıkları kullan, başka başlık ekleme:
+BU BİR YÖNETİM RAPORUDUR, ÖZET DEĞİL. Okuyucu bu raporu almak için verisinin \
+tamamını gönderdi; iki-üç maddeyle geçiştirilmiş bir sayfa emeğin karşılığı değildir. \
+Aşağıdaki tahlil bölümlerinin her birinde veriye in: en az 4-6 cümle, her cümlede \
+rakam. Uzunluk kendiliğinden 2-4 sayfa çıkacaktır — doldurmak için değil, veriyi \
+İŞLEDİĞİN için. Verisi pakette hiç olmayan bir bölümü tek cümleyle geç ("bu pakette \
+stok verisi yok" gibi) ya da bölümü tamamen atla — ASLA uydurarak doldurma.
+
+BİÇİM — şu başlıkları bu sırayla kullan, başka başlık ekleme:
 
 ## Özet
-En fazla 4 cümle. Şirketin bu yıl nasıl gittiğini bir sayfa okumak istemeyen birine anlat.
+En fazla 5 cümle. Şirketin nasıl gittiğini, tek sayfa bile okumak istemeyen birine anlat.
 
-## İyi Giden 3 Şey
-Madde madde, her maddede rakam olsun.
+## Nakit ve Finansman
+Kasadaki para, dönemin nakit giriş/çıkışı, kaç aylık gideri karşılar; kredi ve kart \
+yükü, KDV'nin nakit üstündeki etkisi (veride varsa).
 
-## Dikkat Edilmesi Gereken 3 Şey
-En riskli olandan başla. Her maddede rakam ve neden riskli olduğu olsun.
+## Kârlılık
+Fiili ve resmî kârlılık, marjlar, hangisine neden güvendiğin; gidere ve finansmana \
+kâr dayanıyor mu.
 
-## Karar Gerektiren 3 Konu
-Şirket sahibinin karar vermesi gereken konular. Bu bir yapılacaklar listesi DEĞİLDİR: \
+## Alacaklar ve Tahsilat
+Toplam ve gecikmiş alacak, tahsilat süresi, yoğunlaşma (tek müşteride birikme), \
+vade maliyeti.
+
+## Borçlar ve Stok
+Satıcı borçları ve ödeme dengesi; stok seviyesi, devir hızı, stokta biriken para. \
+Veri şüpheliyse (62 işlenmemiş gibi) bunu açıkça söyle.
+
+## Yıllar Arası Gidişat
+YALNIZ birden çok yıl verildiyse. Satış, marj, borç ve stoğun yönü — dolar bazlı \
+blok varsa önce o, yoksa nominal artışın enflasyon içerdiği uyarısıyla.
+
+## İyi Gidenler
+En az 3 madde, her maddede rakam.
+
+## Dikkat Edilmesi Gerekenler
+En az 3 madde, en riskliden başla; her maddede rakam ve neden riskli olduğu.
+
+## Karar Gerektiren Konular
+En az 3 konu. Bu bir yapılacaklar listesi DEĞİLDİR: \
 "şunu yapın" diye emir verme, "bu ay/bu hafta" gibi zaman biçme. Konuyu, rakamı ve \
 karar verilmezse ne olacağını yaz. "X müşterisindeki 4,7M TL alacak toplam alacağın \
 %41'i; tahsil edilemezse … Bu alacağın vadesi ve teminatı gözden geçirilmeli." gibi.
@@ -490,6 +518,7 @@ _USD_AKIS = (
     ("Faaliyet Kârı", "faaliyet_kari", True),
     ("Dönem Net Kârı", "net_kar", True),
 )
+
 # CANLI AYAK — depodan geçen mal. 62'ye bağlı değil, muhasebe kapanışı beklemez;
 # maliyet işlenmemiş yılda ÜSTTEKİ satırlar «—» olsa da bunlar dolu kalır.
 _USD_FIILI = (
@@ -843,7 +872,7 @@ class AiVeriPaketi:
             "bir veritabanındadır ve bu pakete girmemiştir.",
             "Bu yüzden «kayıtlarınızı acilen işleyin», «verileriniz eksik», «kör uçuyorsunuz» "
             "gibi tavsiyeler YAZMA — yanlış olur. Bunu yalnız «Veride Göremediklerim» "
-            "bölümünde bir madde olarak belirt; «Karar Gerektiren 3 Konu»dan yer harcama.",
+            "bölümünde bir madde olarak belirt; «Karar Gerektiren Konular»dan yer harcama.",
             f"«şu an», «bugün itibarıyla», «bu ay» deme; «{self.bit} itibarıyla» de. "
             "Bakiyeler, alacaklar ve nakit bugün farklı olabilir.",
         ]
