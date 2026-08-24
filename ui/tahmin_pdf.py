@@ -43,11 +43,15 @@ def export_tahmin_pdf(t: Tahmin, path: str | Path, firma: str = "") -> Path:
         [Paragraph("Aylık sabit gider", sty_row()), tl(v.sabit_gider)],
         [Paragraph("Açık kredi kartı borcu", sty_row()), tl(v.kart_borcu_acik)],
         [Paragraph("Kart borcu aylık ödeme oranı", sty_row()), f"%{v.kart_borcu_odeme_yuzde:.1f}".replace(".", ",")],
+        *([[Paragraph("Aylık kredi taksidi (ölçülen, ort.)", sty_row()),
+            tl(v.aylik_kredi_ort())]] if v.kredi_var else []),
         [Paragraph("ÖZET", sty_sec()), ""],
         [Paragraph("Toplam ciro", sty_kpi()), tl(t.toplam_ciro)],
         [Paragraph("Toplam brüt kâr", sty_row()), tl(t.toplam_brut)],
         [Paragraph("Toplam net kâr", sty_row()), tl(t.toplam_net)],
         [Paragraph("Kart borcu ödemesi", sty_row()), tl(t.toplam_kart_borcu_odeme)],
+        *([[Paragraph("Kredi taksitleri", sty_row()), tl(t.toplam_kredi_taksit)]]
+          if t.toplam_kredi_taksit > 0.005 else []),
         [Paragraph("Kalan kart borcu", sty_row()), tl(t.kalan_kart_borcu)],
         [Paragraph("Toplam net nakit etkisi", sty_row()), tl(t.toplam_net_nakit)],
         [Paragraph("Dönem sonu nakit", sty_kpi()), tl(t.son_nakit)],
@@ -63,13 +67,17 @@ def export_tahmin_pdf(t: Tahmin, path: str | Path, firma: str = "") -> Path:
     ]))
     elems.extend([tbl, Spacer(1, 10), Paragraph("AYLIK PROJEKSİYON", sty_sec()), Spacer(1, 4)])
 
-    rows = [[Paragraph(h, sty_sec()) for h in ("Ay", "Ciro", "Brüt", "Kart borcu", "Net nakit", "Nakit")]]
+    kredi_var = t.toplam_kredi_taksit > 0.005
+    basliklar = ["Ay", "Ciro", "Brüt"] + (["Kredi taksidi"] if kredi_var else []) \
+        + ["Kart borcu", "Net nakit", "Nakit"]
+    rows = [[Paragraph(h, sty_sec()) for h in basliklar]]
     for a in t.aylar:
-        rows.append([
-            Paragraph(a.ay, sty_row()), tl(a.ciro), tl(a.brut_kar), tl(a.kart_borcu_odeme),
-            tl(a.net_nakit), tl(a.nakit),
-        ])
-    at = Table(rows, colWidths=[22 * mm, 27 * mm, 27 * mm, 30 * mm, 32 * mm, 32 * mm])
+        rows.append([Paragraph(a.ay, sty_row()), tl(a.ciro), tl(a.brut_kar)]
+                    + ([tl(a.kredi_taksit)] if kredi_var else [])
+                    + [tl(a.kart_borcu_odeme), tl(a.net_nakit), tl(a.nakit)])
+    genislikler = ([22 * mm, 25 * mm, 25 * mm, 26 * mm, 26 * mm, 23 * mm, 23 * mm]
+                   if kredi_var else [22 * mm, 27 * mm, 27 * mm, 30 * mm, 32 * mm, 32 * mm])
+    at = Table(rows, colWidths=genislikler)
     at.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), FONT),
         ("FONTSIZE", (0, 0), (-1, -1), 8),

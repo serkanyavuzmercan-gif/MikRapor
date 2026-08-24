@@ -196,28 +196,44 @@ def _kotu_tablo(rt: RunwayTakvim) -> QFrame:
 
 
 def _tablo_panel(t: Tahmin) -> QFrame:
-    tr = _agac(6, [(1, 108), (2, 118), (3, 108), (4, 118), (5, 120)])
-    _tsatir(tr, [_c(""), _c("Girecek", renk=MUTED, kalin=True, sag=True),
-                 _c("İşletme çıkışı", renk=MUTED, kalin=True, sag=True),
-                 _c("Kart borcu", renk=MUTED, kalin=True, sag=True),
-                 _c("Aylık Fark", renk=MUTED, kalin=True, sag=True),
-                 _c("Kalan Nakit", renk=MUTED, kalin=True, sag=True)])
+    # «Kredi taksidi» sütunu yalnız kredi VARSA (kural 6): kredisiz firmada
+    # yedi sütunluk tabloyu boş çizgiyle genişletmek gürültü olurdu.
+    kredi_var = t.toplam_kredi_taksit > 0.005
+    basliklar = ["", "Girecek", "İşletme çıkışı"]
+    if kredi_var:
+        basliklar.append("Kredi taksidi")
+    basliklar += ["Kart borcu", "Aylık Fark", "Kalan Nakit"]
+    # Sütun genişliği BAŞLIĞINDAN ölçülür — sabit 108px «İşletme çıkışı»nı
+    # kırpıyordu (7 sütuna çıkınca ekran görüntüsünde görüldü).
+    from ui.gercek_durum_view import basliga_gore_en
+    tr = _agac(len(basliklar),
+               [(i, basliga_gore_en(b, 108 if i < len(basliklar) - 1 else 120))
+                for i, b in enumerate(basliklar) if i > 0])
+    _tsatir(tr, [_c(b, renk=MUTED, kalin=True, sag=bool(i))
+                 for i, b in enumerate(basliklar)])
     for a in t.aylar:
         cikis = a.ciro - a.net_kar  # mal maliyeti + aylık sabit gider
-        _tsatir(tr, [_c(_ay_str(a.ay) if len(a.ay) >= 7 else a.ay),
-                     _c(tl(a.ciro), renk=POZ, sag=True),
-                     _c(tl(cikis), renk=NEG, sag=True),
-                     _c(tl(a.kart_borcu_odeme) if a.kart_borcu_odeme > 0.005 else "—",
-                        renk="#b45309" if a.kart_borcu_odeme > 0.005 else FAINT, sag=True),
-                     _c(("+" if a.net_nakit >= 0 else "") + tl(a.net_nakit),
-                        renk=_renk(a.net_nakit), sag=True),
-                     _c(tl(a.nakit), renk=_renk(a.nakit), kalin=True, sag=True)])
+        hucre = [_c(_ay_str(a.ay) if len(a.ay) >= 7 else a.ay),
+                 _c(tl(a.ciro), renk=POZ, sag=True),
+                 _c(tl(cikis), renk=NEG, sag=True)]
+        if kredi_var:
+            hucre.append(_c(tl(a.kredi_taksit) if a.kredi_taksit > 0.005 else "—",
+                            renk=NEG if a.kredi_taksit > 0.005 else FAINT, sag=True))
+        hucre += [_c(tl(a.kart_borcu_odeme) if a.kart_borcu_odeme > 0.005 else "—",
+                     renk="#b45309" if a.kart_borcu_odeme > 0.005 else FAINT, sag=True),
+                  _c(("+" if a.net_nakit >= 0 else "") + tl(a.net_nakit),
+                     renk=_renk(a.net_nakit), sag=True),
+                  _c(tl(a.nakit), renk=_renk(a.nakit), kalin=True, sag=True)]
+        _tsatir(tr, hucre)
     _fit_height(tr)
 
+    kredi_s = (" Kredi taksidi, banka kredilerinin ölçülen taksit/ödeme planıdır — "
+               "kârı değil nakdi etkiler." if kredi_var else "")
     notlar = [(
         "İşletme çıkışı = satılan malın maliyeti + aylık sabit gider (yeni mal alımı bunun içinde). "
-        "Kart borcu, bugünkü açık kart bakiyesinin ayrı nakit ödemesidir; kârı değil nakdi etkiler. "
-        "Aylık Fark = Girecek − İşletme çıkışı − Kart borcu. Kalan Nakit = önceki ay + aylık fark.", FAINT)]
+        "Kart borcu, bugünkü açık kart bakiyesinin ayrı nakit ödemesidir; kârı değil nakdi etkiler."
+        + kredi_s +
+        " Aylık Fark = Girecek − çıkışların tamamı. Kalan Nakit = önceki ay + aylık fark.", FAINT)]
     return _card("① NORMAL BEKLENTİ  ·  ay ay tahmin (satış devam eder)", _ic(tr, notlar))
 
 
@@ -419,6 +435,11 @@ def build_tahmin_widget(
     kpi.addWidget(_kpi_card("TOPLAM NET KÂR", tl(t.toplam_net), nk_bg, nk_vr))
     # KART KARTI YALNIZ BORÇ VARSA. Kredi kartı kullanmayan firmada bu kutu her koşuda
     # sıfır gösteriyordu; kurulum bağımlı bir kalemi herkese göstermek kural 6'ya aykırı.
+    if t.toplam_kredi_taksit > 0.005:
+        kpi.addWidget(_kpi_card(
+            f"KREDİ TAKSİTLERİ ({len(t.aylar)} AY)", tl(t.toplam_kredi_taksit),
+            "#fdf0f0", NEG,
+            alt="banka kredisi ödemeleri — ölçülen taksit takvimi"))
     if v.kart_borcu_acik > 0.005:
         faiz = (f" · finansman maliyeti: {tl(t.toplam_kart_finansman)}"
                 if t.toplam_kart_finansman > 0.005 else "")
