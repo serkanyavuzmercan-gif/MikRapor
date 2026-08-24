@@ -19,7 +19,6 @@ from ui.gercek_durum_view import (
     _tsatir,
     basliga_gore_en,
 )
-from ui.styles import PRIMARY_SOFT
 
 
 def _gun(v: float) -> str:
@@ -116,16 +115,30 @@ def _erime_tablo(kayitlar: list, *, alacak: bool) -> QFrame:
                     _c(_gun(c.agirlikli_gun), sag=True),
                     _c(tl(c.vade_etkisi), renk=NEG if alacak else POZ, kalin=True, sag=True)])
     _fit_height(t)
+    # Mekanizma TEK cümlede, tablonun dibinde — kullanıcı «Berkand Makina 46 gün
+    # sonra ödeyecek, vade maliyetini nasıl etkiliyor anlamadım» dedi (canlı demo):
+    # gecikme sanılıyordu, oysa vadenin KENDİSİ maliyet. Ayrıntı başlıktaki ⓘ'de.
     aciklama = (
-        "Sıra bakiyeye değil erimeye göre: büyük ama hızlı ödeyen müşteri, küçük ama "
-        "uzun vadeli müşteriden daha az eritir. Vade farkı konuşulacak ilk adresler "
-        "listenin başındakiler."
+        "Malı bugün verdin, paran «vadeye kalan» gün sonra gelecek; o süre boyunca "
+        "o parayı kullanamıyorsun — «vade maliyeti» bu bekleyişin parasıdır, müşteri "
+        "hiç gecikmese bile vardır. Sıra bakiyeye değil erimeye göre: vade farkı "
+        "konuşulacak ilk adresler listenin başındakiler."
         if alacak else
-        "Uzun vadeli satıcı lehine çalışır: ödemeyi geciktikçe borcun bugünkü yükü azalır."
+        "Uzun vadeli satıcı lehine çalışır: ödemeyi vadeye yaydıkça borcun bugünkü "
+        "yükü azalır."
     )
     baslik = ("④ VADE MALİYETİNİ EN ÇOK BÜYÜTEN MÜŞTERİLER" if alacak
               else "⑤ EN ÇOK VADE AVANTAJI SAĞLAYAN SATICILAR")
-    return _card(baslik, _ic(t, [(aciklama, FAINT)]))
+    ipucu = (
+        "Örnek: 46 gün vadeli 1.000.000 TL alacak, paranın yıllık maliyeti %45 iken "
+        "bugünkü parayla ~954.000 TL eder; aradaki ~46.000 TL tabloda «vade maliyeti» "
+        "olarak yazar. «Vadeye kalan» tahsil tarihine kalan gündür — vadesi geçmiş "
+        "kalem 0 sayılır, bu yüzden toplam bir alt sınırdır."
+        if alacak else
+        "Aynı hesabın ayna görüntüsü: 60 gün sonra ödeyeceğin 1.000.000 TL'nin "
+        "bugünkü yükü daha azdır; aradaki fark «vade avantajı» olarak yazar."
+    )
+    return _card(baslik, _ic(t, [(aciklama, FAINT)]), ipucu=ipucu)
 
 
 def _bilgilendirme() -> QFrame:
@@ -174,31 +187,26 @@ def build_reel_deger_widget(a: ReelDegerAnalizi, *, bas: str, bit: str, firma: s
     root.addWidget(baslik_ile_gelecek_uyari(head, bit, kaynak="canli"))
     root.addWidget(_bilgilendirme())
 
+    # KPI'lar TÜREV üçlüdür, panellerin tekrarı DEĞİL. Eskiden beş kart vardı ve
+    # dördü (nominal + bugünkü değer × 2) hemen altındaki panellerde aynen tekrar
+    # ediyordu; kullanıcı «yeni bir şey okuduğumu sanırken hero'daki rakamları
+    # görüyormuşum» dedi (canlı demo) ve haklıydı. Manşet artık raporun ÜRETTİĞİ
+    # üç rakamı söylüyor; girdiler (nominal, bugünkü değer) yalnız panellerde.
+    # Eski «vade etkisi» şeridi de kalktı — üçüncü kartın kendisi o cümle.
     kpi = QHBoxLayout()
     kpi.setSpacing(12)
-    kpi.addWidget(_kpi_card("NOMİNAL ALACAK", tl(a.alacak.nominal), PRIMARY_SOFT, ACCENT))
-    kpi.addWidget(_kpi_card("ALACAĞIN BUGÜNKÜ DEĞERİ", tl(a.alacak.bugunku_deger), "#eef6ff", "#1d4f91"))
-    kpi.addWidget(_kpi_card("NOMİNAL BORÇ", tl(a.borc.nominal), "#fdf3e0", "#b45309"))
-    kpi.addWidget(_kpi_card("BORCUN BUGÜNKÜ DEĞERİ", tl(a.borc.bugunku_deger), "#fff7ed", "#b45309"))
-    net_bg, net_renk = ("#e8f6ee", POZ) if a.reel_net_pozisyon >= 0 else ("#fdecec", NEG)
-    kpi.addWidget(_kpi_card("REEL NET POZİSYON", tl(a.reel_net_pozisyon), net_bg, net_renk))
-    root.addLayout(kpi)
-
+    kpi.addWidget(_kpi_card(
+        "VADE MALİYETİ  (alacaklar)", tl(a.alacak.vade_etkisi), "#fdecec", NEG,
+        alt="tahsilatı beklerken eriyen değer — alt sınır"))
+    kpi.addWidget(_kpi_card(
+        "VADE AVANTAJI  (borçlar)", tl(a.borc.vade_etkisi), "#e8f6ee", POZ,
+        alt="ödemeyi vadeye yayarak kazandığın değer"))
     fark = a.net_vade_etkisi
-    if abs(fark) > 0.005:
-        renk = NEG if fark < 0 else POZ
-        yon = "azaltıyor" if fark < 0 else "artırıyor"
-        etki = QLabel(
-            f"<b>Vade etkisi:</b> Alacak ve borçların vade yapısı, net ekonomik pozisyonu "
-            f"{tl(abs(fark))} {yon}."
-        )
-        etki.setTextFormat(Qt.TextFormat.RichText)
-        etki.setStyleSheet(
-            f"QLabel {{ background: {'#fdecec' if fark < 0 else '#e8f6ee'}; "
-            f"border: 1px solid {'#f0b4b4' if fark < 0 else '#bfe3cd'}; border-radius: 8px; "
-            f"color: {renk}; padding: 10px 13px; font-size: 12px; }}"
-        )
-        root.addWidget(etki)
+    net_bg, net_renk = ("#e8f6ee", POZ) if fark >= 0 else ("#fdecec", NEG)
+    kpi.addWidget(_kpi_card(
+        "NET VADE ETKİSİ", tl(fark), net_bg, net_renk,
+        alt=("vade yapın net pozisyonunu " + ("artırıyor" if fark >= 0 else "azaltıyor"))))
+    root.addLayout(kpi)
 
     row = QHBoxLayout()
     row.setSpacing(20)

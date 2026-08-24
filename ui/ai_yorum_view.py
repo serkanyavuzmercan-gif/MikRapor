@@ -30,6 +30,13 @@ _BOLUM_RENK = (
     ("karar", "#b45309"),
     ("iyi giden", POZ),
     ("özet", "#0f766e"),
+    # Tahlil bölümleri (kapsamlı rapor biçimi) — nötr lacivert; karar/risk
+    # bölümlerinden renkle ayrışsınlar ama alarm rengi taşımasınlar.
+    ("nakit", "#1d4f91"),
+    ("kârlılık", "#1d4f91"),
+    ("alacak", "#1d4f91"),
+    ("borçlar", "#1d4f91"),
+    ("yıllar arası", "#1d4f91"),
 )
 
 

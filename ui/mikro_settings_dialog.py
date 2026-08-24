@@ -73,12 +73,21 @@ class MikroAyarlarDialog(QDialog):
         self._sifre_gun.setEchoMode(QLineEdit.EchoMode.Password)
         self._sifre_gun.setPlaceholderText("Mikro kullanıcı şifresi")
 
+        # SIRA BİLEREK BÖYLE: önce bağlantı alanları, «Yılları Tara» EN SONA.
+        # Düğme kullanıcı kodu/şifreden ÖNCE dururken, formu yukarıdan aşağı
+        # dolduran kullanıcı ona bağlantı bilgisi girmeden basıyordu — doğal
+        # davranış — ve düğme «çalışmıyor» sanılıyordu (canlı demo). Tarama
+        # bağlantı İSTER; istediği alanlar artık üstünde durur.
         form.addRow("Mikro API adresi:", self._base_url)
         form.addRow("API anahtarı:", self._api_key)
+        form.addRow("Kullanıcı kodu:", self._kullanici)
+        form.addRow("Şifre:", self._sifre_gun)
         firma_kodlari_row = QHBoxLayout()
         firma_kodlari_row.addWidget(self._firma_kodlari, stretch=1)
         self._btn_katalog = QPushButton("Yılları Tara")
-        self._btn_katalog.setToolTip("Kodların taşıdığı yıl aralıklarını Mikro'dan tarar")
+        self._btn_katalog.setToolTip(
+            "Kodların taşıdığı yıl aralıklarını Mikro'dan tarar — yukarıdaki "
+            "bağlantı bilgileri dolu olmalı")
         self._btn_katalog.clicked.connect(self._on_katalog_tara)
         firma_kodlari_row.addWidget(self._btn_katalog)
         form.addRow("Yıl veritabanları:", firma_kodlari_row)
@@ -89,8 +98,6 @@ class MikroAyarlarDialog(QDialog):
         self._katalog_sonuc.setWordWrap(True)
         self._katalog_sonuc.setStyleSheet("color: #9aa0a8; font-size: 11px;")
         form.addRow("", self._katalog_sonuc)
-        form.addRow("Kullanıcı kodu:", self._kullanici)
-        form.addRow("Şifre:", self._sifre_gun)
 
         self._firma_adi = QLineEdit(self._cfg.firma_adi)
         self._firma_adi.setPlaceholderText("Boş bırakırsanız Mikro'dan (FIRMALAR.fir_unvan) otomatik çekilir")
@@ -166,8 +173,14 @@ class MikroAyarlarDialog(QDialog):
         cfg = self._current_config()
         eksik = cfg.eksik_alanlar()
         if eksik:
-            self._katalog_sonuc.setText("Tarama için eksik: " + ", ".join(eksik))
-            self._katalog_sonuc.setStyleSheet("color: #ffb74d; font-size: 11px;")
+            # Sessiz kalınmaz VE kullanıcı aranacak yerde bırakılmaz: mesaj hangi
+            # alanların boş olduğunu söyler, imleç İLK boş alana gider.
+            self._katalog_sonuc.setText(
+                "Tarama Mikro'ya bağlanarak yapılır — önce yukarıdaki alanları "
+                "doldurun: " + ", ".join(eksik))
+            self._katalog_sonuc.setStyleSheet(
+                "color: #b45309; font-size: 11px; font-weight: 700;")
+            self._eksik_alana_odaklan(eksik)
             return
         kodlar = firma_kodlari(cfg)
         self._katalog_sonuc.setText(f"{len(kodlar)} kod taranıyor; bu işlem biraz sürebilir…")
@@ -201,6 +214,21 @@ class MikroAyarlarDialog(QDialog):
             self._katalog_sonuc.setStyleSheet("color: #e57373; font-size: 11px;")
 
         self._baslat_is(is_fn, on_ok, on_err)
+
+    def _eksik_alana_odaklan(self, eksik: list[str]) -> None:
+        """İlk eksik alana imleci götürür — kullanıcı hangi kutu olduğunu aramasın."""
+        # eksik_alanlar() KULLANICIYA GÖRÜNEN adları döndürür («Mikro API adresi»),
+        # alan anahtarı değil — eşleme o adlarla kurulur (ölçüldü, varsayılmadı).
+        alanlar = {
+            "Mikro API adresi": self._base_url, "API anahtarı": self._api_key,
+            "Kullanıcı kodu": self._kullanici, "Şifre": self._sifre_gun,
+            "Firma kodu": self._firma_kodlari,
+        }
+        for ad in eksik:
+            w = alanlar.get(ad)
+            if w is not None:
+                w.setFocus()
+                return
 
     def _baslat_is(self, is_fn, on_ok, on_err) -> None:
         if self._worker is not None and self._worker.isRunning():
