@@ -28,6 +28,7 @@ from domain.gelir_tablosu import build_gelir_tablosu
 from domain.gercek_durum import build_gercek_durum
 from domain.kredi import (
     KART_BORCU_VARSAYILAN_ODEME_YUZDE,
+    anapara_olculebilir,
     kredi_karti_borclarini_derle,
     kredi_karti_odeme_takvimi,
     kredi_takvimi_ay,
@@ -140,6 +141,11 @@ class TahminTab(RaporTab):
         self._sp_gider = para_spin()
         self._sp_kart_borc = para_spin()
         self._sp_kart_borc.setReadOnly(True)
+        # Banka kredisi taksitleri ÖLÇÜLÜR, senaryo değildir — salt okunur.
+        # Takvim ay ay değişebilir (balon ödeme); alan ORTALAMAYI gösterir,
+        # model gerçek takvimi kullanır. Ay ay kırılım sağdaki tabloda.
+        self._sp_kredi = para_spin()
+        self._sp_kredi.setReadOnly(True)
         self._sp_kart_oran = yuzde_spin(0.0, 100.0)
         self._sp_kart_oran.setValue(KART_BORCU_VARSAYILAN_ODEME_YUZDE)
         # Reel Değer'den taşındı: kart borcu zaten burada modelleniyordu, faizi eksikti.
@@ -154,8 +160,8 @@ class TahminTab(RaporTab):
 
         for sp in (
             self._sp_nakit, self._sp_ciro, self._sp_gider, self._sp_kart_borc,
-            self._sp_buyume, self._sp_marj, self._sp_kart_oran, self._sp_kart_faiz,
-            self._sp_ufuk,
+            self._sp_kredi, self._sp_buyume, self._sp_marj, self._sp_kart_oran,
+            self._sp_kart_faiz, self._sp_ufuk,
         ):
             sp.setMinimumWidth(0)
             sp.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -170,6 +176,7 @@ class TahminTab(RaporTab):
             ("Aylık büyüme", self._sp_buyume),
             ("Kâr oranı (brüt marj)", self._sp_marj),
             ("Aylık sabit gider", self._sp_gider),
+            ("Kredi taksidi / ay (canlı · ort.)", self._sp_kredi),
             ("Açık kredi kartı borcu (canlı)", self._sp_kart_borc),
             ("Kredi kartı aylık ödeme oranı", self._sp_kart_oran),
             ("Kredi kartı aylık faizi", self._sp_kart_faiz),
@@ -295,6 +302,39 @@ class TahminTab(RaporTab):
                                - na.kredi_odeme) / ay_sayisi
                 gider_proxy = -sabit_gider
 
+            # BANKA KREDİSİ AYAĞI — hem manşet projeksiyon hem runway kullanır,
+            # o yüzden runway bloğunun DIŞINDA çekilir (eskiden vade sorgusu
+            # düşerse taksitler de kayboluyordu). Pencere SABİT 42 AY: ufka
+            # bağlanmaz, çünkü kullanıcı «Geçmişten Doldur»dan sonra ufku 36'ya
+            # çıkarabilir ve fetch tekrarlanmaz — dar pencere o ayları sessizce
+            # taksitsiz gösterirdi (azami ufuk 36 + gecikme payı 6).
+            try:
+                bildir("Kredi taksit takvimi çekiliyor…")
+                taksitler = taksitleri_derle(fetch_kredi_taksitleri(client, ay_ileri=42))
+            except MikroAPIError:
+                taksitler = []
+            ilk_ay = _ay_ekle(bit[:7], 1)  # 1. projeksiyon ayı
+            if taksitler:
+                # Normal beklenti TAM taksiti düşer (faiz orada başka kalemde yok);
+                # runway ANAPARAYI düşer (66 tarihsel gideri zaten faizi taşıyor).
+                # Anapara kırılımı girilmemiş kurulumda tam tutara düşülür ve
+                # çift sayımı önlemek için runway gideri 63'e iner (bkz. kredi.py).
+                kredi_takvimi_tam = kredi_takvimi_ay(taksitler, ilk_ay=ilk_ay)
+                if anapara_olculebilir(taksitler):
+                    kredi_takvimi_rw = kredi_takvimi_ay(taksitler, ilk_ay=ilk_ay, anapara=True)
+                    runway_gider = gider_proxy
+                else:
+                    kredi_takvimi_rw = kredi_takvimi_tam
+                    runway_gider = sabit_gider if gt is not None else gider_proxy
+                kredi_proxy = None
+            else:
+                # Taksit tanımı yok (rotatif vb.) — dönemin ölçülen anapara
+                # ödemesi ortalamasına düşülür; faiz 66'da zaten var.
+                kredi_takvimi_tam = None
+                kredi_takvimi_rw = None
+                runway_gider = gider_proxy
+                kredi_proxy = donem_toplami(cfg, bas, bit, fetch_kredi_anapara) / ay_sayisi
+
             # Vade-takvimli runway (gerçek açık kalemlerden) — başarısız olsa da tahmin üretilir.
             runway: RunwayTakvim | None = None
             runway_bilesenleri: dict[str, Any] | None = None
@@ -303,25 +343,11 @@ class TahminTab(RaporTab):
                 vade_gun_map = fetch_cari_vade_gun(client)
                 acik_rows = fetch_acik_kalemler(client, bit, bas, bit)
                 ta = build_tahsilat_alacak(acik_rows, vade_gun_map=vade_gun_map, bas=bas, bit=bit)
-                # Kredi ayağı: gerçek taksit takvimi (ödenmemiş taksitler) — düz ortalamadan
-                # çok daha doğru. Okunamazsa GL 300/303 ortalamasına düşülür.
-                try:
-                    bildir("Kredi taksit takvimi çekiliyor…")
-                    taksitler = taksitleri_derle(fetch_kredi_taksitleri(client, ay_ileri=18))
-                except MikroAPIError:
-                    taksitler = []
-                if taksitler:
-                    ilk_ay = _ay_ekle(bit[:7], 1)  # runway 1. projeksiyon ayı
-                    kredi_takvimi = kredi_takvimi_ay(taksitler, ilk_ay=ilk_ay)
-                    kredi_proxy = None
-                else:
-                    kredi_takvimi = None
-                    kredi_proxy = donem_toplami(cfg, bas, bit, fetch_kredi_anapara) / ay_sayisi
                 runway_bilesenleri = {
                     "na": na, "ta": ta, "baslangic_ay": bit[:7], "ufuk_ay": 6,
                     "baslangic_nakit": baslangic_nakit,
-                    "aylik_gider": gider_proxy, "aylik_kredi": kredi_proxy or 0.0,
-                    "kredi_takvimi": kredi_takvimi,
+                    "aylik_gider": runway_gider, "aylik_kredi": kredi_proxy or 0.0,
+                    "kredi_takvimi": kredi_takvimi_rw,
                 }
                 runway = runway_takvim_kur(
                     **runway_bilesenleri,
@@ -338,7 +364,9 @@ class TahminTab(RaporTab):
                 baslangic_nakit=baslangic_nakit, aylik_sabit_gider=sabit_gider,
                 baslangic_ay=bit[:7], kart_borcu_acik=kart_borcu_acik,
                 kart_borcu_odeme_yuzde=KART_BORCU_VARSAYILAN_ODEME_YUZDE,
-                kart_aylik_faiz_yuzde=_KART_AYLIK_FAIZ_VARSAYILAN, ufuk_ay=ufuk,
+                kart_aylik_faiz_yuzde=_KART_AYLIK_FAIZ_VARSAYILAN,
+                kredi_takvimi=kredi_takvimi_tam,
+                aylik_kredi_sabit=kredi_proxy or 0.0, ufuk_ay=ufuk,
             )
             return {
                 "varsayim": v, "firma": firma_getir(cfg, client), "runway": runway,
@@ -362,6 +390,10 @@ class TahminTab(RaporTab):
         self._nakit_kaynagi = sonuc.get("nakit_kaynagi", "gl")
         self._nakit_celiski_notu = sonuc.get("nakit_celiski_notu", "")
         self._olculen_nakit = v.baslangic_nakit
+        # Ölçülen kredi ayağı — «Hesapla» yeniden kurarken buradan okunur.
+        self._kredi_takvimi = dict(v.kredi_takvimi)
+        self._aylik_kredi_sabit = v.aylik_kredi_sabit
+        self._sp_kredi.setValue(v.aylik_kredi_ort())
         self._sp_nakit.setValue(v.baslangic_nakit)
         self._sp_ciro.setValue(v.baz_ciro)
         self._sp_buyume.setValue(v.buyume_yuzde)
@@ -426,6 +458,8 @@ class TahminTab(RaporTab):
             kart_borcu_acik=self._sp_kart_borc.value(),
             kart_borcu_odeme_yuzde=self._sp_kart_oran.value(),
             kart_aylik_faiz_yuzde=self._sp_kart_faiz.value(),
+            kredi_takvimi=getattr(self, "_kredi_takvimi", {}),
+            aylik_kredi_sabit=getattr(self, "_aylik_kredi_sabit", 0.0),
             ufuk_ay=self._sp_ufuk.value(),
         )
         self._t = build_tahmin(v)
